@@ -65,7 +65,7 @@
 		<div class="mt-4 text-sm text-ink-2 text-center py-6">{t('pods.empty')}</div>
 	{/if}
 	{#if !loading && !loadError}
-  <ResponsiveTable>
+  <ResponsiveTable embedded>
    {#snippet cards()}
     {#each view.rows as pod (pod.name)}
      {@const actioning = s.workloadActioning === `${s.selectedNamespace}:pod:${pod.name}`}

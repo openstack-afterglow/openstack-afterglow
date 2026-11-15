@@ -342,6 +342,11 @@ describe('McpAccessSection', () => {
 		expect(within(observations).getByText(tp('mcpClients.count', { count: 2 }))).toBeTruthy();
 		const summaries = observations.querySelectorAll('summary');
 		expect(summaries).toHaveLength(2);
+		for (const row of within(observations).getAllByRole('listitem')) {
+			expect(row.classList.contains('border-t')).toBe(true);
+			expect(row.classList.contains('border-l')).toBe(false);
+			expect(row.classList.contains('[overflow-wrap:anywhere]')).toBe(true);
+		}
 		const details = summaries[0].closest('details')!;
 		expect(details.open).toBe(false);
 		expect(within(summaries[0]).getByText(hostile)).toBeTruthy();

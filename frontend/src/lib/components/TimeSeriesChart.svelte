@@ -85,7 +85,7 @@
 <div class="bg-surface-base border border-line rounded-xl p-5">
   <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
     <div class="flex items-center gap-3">
-      <h3 class="text-sm font-semibold text-ink-2">{title}</h3>
+      <h2 class="text-sm font-semibold text-ink-2">{title}</h2>
       {#if points.length > 0}
         <span class="text-xl font-bold text-ink-0">{latestVal?.toLocaleString(intlLocale()) ?? '—'}</span>
         {#if delta !== null && delta > 0}

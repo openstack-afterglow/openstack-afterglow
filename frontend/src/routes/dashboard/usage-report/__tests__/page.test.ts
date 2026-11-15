@@ -128,7 +128,7 @@ describe('usage report page', () => {
 	it('renders real flavors, GPU forecast rows and the project resource inventory', async () => {
 		mockSources(report(), Promise.resolve(QUOTAS));
 
-		render(Page);
+		const { container } = render(Page);
 
 		expect((await screen.findAllByText('gpu.8c_64g_a10')).length).toBeGreaterThan(0);
 		expect(screen.getByText('GPU ×1')).toBeTruthy();
@@ -136,6 +136,10 @@ describe('usage report page', () => {
 		expect(screen.getByText(/약 12일 후 한도 도달/)).toBeTruthy();
 		expect(screen.getByText('쿼터 임박')).toBeTruthy();
 		expect(screen.queryByText('unknown')).toBeNull();
+		for (const title of ['flavors', 'forecast', 'instances', 'inventory'] as const) {
+			expect(screen.getByRole('heading', { level: 2, name: t(`usageReport.${title}.title`) })).toBeTruthy();
+		}
+		expect(container.querySelectorAll('.responsive-table-embedded')).toHaveLength(2);
 
 		const router = await screen.findByText('라우터');
 		expect(router.parentElement?.textContent?.replace(/\s+/g, '')).toContain('2/10');
@@ -143,6 +147,25 @@ describe('usage report page', () => {
 		// Absent optional quota keys are omitted rather than rendered as empty bars.
 		expect(screen.queryByText('스냅샷')).toBeNull();
 		expect(mockGet).toHaveBeenCalledWith('/api/v1/dashboard/quotas', 'token', 'project');
+	});
+
+	it('keeps all chat quantities in one unboxed definition list', async () => {
+		const chat = { found: true, month_prompt_tokens: 120, month_completion_tokens: 35, month_credited_cost: 2, month_request_count: 7, quota_used: 9, quota_max: 100 };
+		mockGet.mockImplementation((path: string) => Promise.resolve(
+			path.startsWith('/api/v1/dashboard/usage-report') ? report() : path === '/api/v1/dashboard/quotas' ? QUOTAS : chat,
+		));
+		render(Page);
+		const heading = await screen.findByRole('heading', { level: 2, name: t('usageReport.chat.title') });
+		const card = heading.closest<HTMLElement>('.card')!;
+		expect(card.querySelectorAll('dl > div')).toHaveLength(6);
+		expect(card.querySelector('.stat-tile')).toBeNull();
+		for (const [key, value] of [
+			['monthTokens', '155'], ['inputTokens', '120'], ['outputTokens', '35'],
+			['monthCredits', '2'], ['monthRequests', '7'],
+			['monthQuota', t('usageReport.chat.quotaValue', { used: '9', max: '100' })],
+		] as const) {
+			expect(within(card).getByText(t(`usageReport.chat.${key}`)).nextElementSibling?.textContent).toBe(value);
+		}
 	});
 
 	it('keeps the report visible when the resource inventory fails', async () => {
@@ -236,6 +259,9 @@ describe('usage report page', () => {
 			expect(screen.getByText('cpu.4c_8g')).toBeTruthy();
 			const database = within(screen.getByRole('region', { name: t('usageReport.resources.database') }));
 			const objects = within(screen.getByRole('region', { name: t('usageReport.resources.objectStorage') }));
+			const databaseRegion = screen.getByRole('region', { name: t('usageReport.resources.database') });
+			expect(databaseRegion.querySelector('dl')).toBeTruthy();
+			expect(databaseRegion.querySelector('.stat-tile, .rounded-lg')).toBeNull();
 			if (databaseFailed) {
 				expect(database.getByText(ta('overview.availability.unknown'))).toBeTruthy();
 				expect(database.queryByText('0')).toBeNull();

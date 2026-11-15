@@ -516,7 +516,7 @@
 		padding: 0.55rem 0.8rem;
 		border-radius: 0.5rem;
 		font-size: 0.8rem;
-		color: var(--color-state-danger);
+		color: var(--color-state-danger-text);
 		background: color-mix(in oklab, var(--color-state-danger) 12%, transparent);
 		border: 1px solid color-mix(in oklab, var(--color-state-danger) 35%, transparent);
 	}

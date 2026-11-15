@@ -64,7 +64,7 @@
 	</div>
 
 	{#if showAddInterface && !s.waygateLocked}
-		<div class="motion-enter mb-4 bg-surface-sunken rounded-lg p-4">
+		<div class="motion-enter mb-4 border-y border-line py-4">
 			<p class="text-xs text-ink-2 mb-2">{t('network.selectNetworkLabel')}</p>
 			<div class="flex gap-2">
 				<select
@@ -90,11 +90,11 @@
 	{#if s.interfaces.length === 0}
 		<p class="text-sm text-ink-2">{t('network.empty')}</p>
 	{:else}
-		<div class="space-y-4">
+		<div class="divide-y divide-line border-t border-line">
 			{#each s.interfaces as iface (iface.id)}
 				{@const ifaceFip = s.floatingIps.find(f => f.port_id === iface.id)}
 				{@const appliedGroupIds = s.securityGroupIdsForPort(iface)}
-				<div class="min-w-0 bg-surface-sunken/50 rounded-lg p-4">
+				<div class="min-w-0 py-4 last:pb-0">
 					<div class="flex items-start justify-between mb-3">
 						<div class="grid grid-cols-1 @3xl/panel:grid-cols-2 gap-x-6 gap-y-2 flex-1 min-w-0">
 							<div>
@@ -169,7 +169,7 @@
 							</button>
 						</div>
 						{#if sgEditPortId === iface.id && !s.waygateLocked}
-							<div class="motion-enter bg-surface-selected rounded p-3 mt-2">
+							<div class="motion-enter border-y border-line py-3 mt-2">
 								<p class="text-xs text-ink-2 mb-2">{t('network.projectSecurityGroups')}</p>
 								<div class="space-y-1.5 mb-3 max-h-56 overflow-y-auto">
 									{#each s.allSecurityGroups as sg}

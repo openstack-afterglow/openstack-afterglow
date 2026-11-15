@@ -106,7 +106,7 @@
 	<PageHeader breadcrumb={t('routersPage.breadcrumb')} title={t('routersPage.title')}>
 		{#snippet actions()}
 			<TutorialStartButton tour="admin-routers" compactOnMobile />
-			<button data-tour="admin-routers-create-open" onclick={openCreate} onpointerenter={prefetchExternalNetworks} onfocus={prefetchExternalNetworks} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">{t('routersPage.actions.create')}</button>
+			<button data-tour="admin-routers-create-open" onclick={openCreate} onpointerenter={prefetchExternalNetworks} onfocus={prefetchExternalNetworks} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg">{t('routersPage.actions.create')}</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}

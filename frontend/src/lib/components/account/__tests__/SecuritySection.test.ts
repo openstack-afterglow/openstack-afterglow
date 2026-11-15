@@ -55,6 +55,23 @@ describe('SecuritySection logout navigation', () => {
 		vi.useRealTimers();
 	});
 
+	it('uses section headings, divider session rows and flat confirmation feedback', async () => {
+		render(SecuritySection);
+		await screen.findByText(session.origin_ip);
+		expect(screen.getByRole('heading', { level: 2 }).classList.contains('text-sm')).toBe(true);
+		const row = screen.getByText(session.origin_ip).closest('.border-t')!;
+		expect(row.classList.contains('rounded-lg')).toBe(false);
+		expect(row.classList.contains('border-line')).toBe(true);
+		const logout = screen.getByRole('button', { name: '모든 위치에서 로그아웃' });
+		expect(logout.classList.contains('btn-danger')).toBe(true);
+		await fireEvent.click(logout);
+		expect(screen.getByRole('alert').classList.contains('alert-flat')).toBe(true);
+		expect(screen.getByRole('button', { name: '확인' }).classList.contains('btn-danger')).toBe(true);
+		await fireEvent.click(screen.getByRole('button', { name: '취소' }));
+		expect(screen.queryByRole('alert')).toBeNull();
+		expect(api.post).not.toHaveBeenCalled();
+	});
+
 	it('replaces history with the login page after removing the final session', async () => {
 		api.get
 			.mockResolvedValueOnce({ sessions: [session], count: 1 })

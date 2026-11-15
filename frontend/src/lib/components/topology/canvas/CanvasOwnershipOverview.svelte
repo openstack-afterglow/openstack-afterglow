@@ -63,7 +63,7 @@
 	<p class="overview-note">{t('overview.description')}</p>
 	{#each groups as domain (domain.id)}
 		<section class="domain" data-overview-domain={domain.id}>
-			<h3>{domain.label}</h3>
+			<h2>{domain.label}</h2>
 			{#each domain.projects as project (project.id)}
 				<details class="project" data-overview-project={project.id ?? 'owner:unknown'} open={Boolean(query.trim())}>
 					<summary>
@@ -90,7 +90,7 @@
 	.overview { display: grid; gap: 1rem; max-height: 68dvh; overflow: auto; }
 	.overview-note { margin: 0; color: var(--color-ink-2); font-size: 0.8125rem; }
 	.domain { border: 1px solid var(--color-line-2); border-radius: var(--radius-lg); padding: 1rem; background: var(--color-surface-base); }
-	h3 { margin: 0 0 0.75rem; color: var(--color-ink-1); font-size: 0.875rem; font-weight: 600; overflow-wrap: anywhere; }
+	h2 { margin: 0 0 0.75rem; color: var(--color-ink-1); font-size: 0.875rem; font-weight: 600; overflow-wrap: anywhere; }
 	.project + .project { border-top: 1px solid var(--color-line-2); }
 	summary { padding: 0.75rem 0; cursor: pointer; min-height: 44px; color: var(--color-ink-1); }
 	summary:focus-visible { outline: none; box-shadow: var(--focus-ring); }

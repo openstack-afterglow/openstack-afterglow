@@ -214,7 +214,6 @@
 
 <section class="settings-page">
 	<header class="page-head">
-		<p class="eyebrow">{t('settings.eyebrow')}</p>
 		<h1>{t('settings.title')}</h1>
 		<p>{t('settings.description')}</p>
 	</header>
@@ -227,6 +226,7 @@
 						type="button"
 						class="nav-item"
 						class:active={section === s.key}
+						aria-current={section === s.key ? 'page' : undefined}
 						onclick={() => selectSection(s.key)}
 					>
 						{s.label}
@@ -237,7 +237,7 @@
 			<div class="content">
 				{#if section === 'usage'}
 					<section class="sec">
-						<h3 class="sec-title">{t('settings.usage.title')}</h3>
+						<h2 class="sec-title">{t('settings.usage.title')}</h2>
 						<div class="stats">
 							<div class="stat">
 								<span class="stat-val">{fmt(monthTokens)}</span>
@@ -268,11 +268,12 @@
 					</section>
 				{:else if section === 'apikeys'}
 					<section class="sec">
+						<h2 class="sr-only">{t('settings.sections.apiKeys')}</h2>
 						<ChatApiKeysManager {usage} />
 					</section>
 				{:else if section === 'memory'}
 					<section class="sec">
-						<h3 class="sec-title">memory.md</h3>
+						<h2 class="sec-title">memory.md</h2>
 						<p class="sec-desc">
 							{t('settings.memory.description')}
 						</p>
@@ -292,7 +293,7 @@
 							</div>
 						{/if}
 						<div class="divider"></div>
-						<h4 class="memory-manage-title">{t('settings.memory.manageTitle')}</h4>
+						<h3 class="memory-manage-title">{t('settings.memory.manageTitle')}</h3>
 						<LumenPermissionNotice leaves={['lumen-history_editor']} />
 						<p class="sec-desc">{t('settings.memory.manageDescription')}</p>
 						<form
@@ -402,14 +403,6 @@
 		color: var(--color-ink-2);
 		font-size: 0.875rem;
 	}
-	.page-head .eyebrow {
-		margin: 0 0 0.35rem;
-		font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-		font-size: 0.6875rem;
-		font-weight: 700;
-		letter-spacing: 0.14em;
-		color: var(--color-accent);
-	}
 	.panel {
 		display: flex;
 		min-height: 0;
@@ -457,7 +450,7 @@
 		color: var(--color-ink-0);
 	}
 	.nav-item.active {
-		background: var(--color-surface-raised);
+		background: var(--color-surface-selected);
 		color: var(--color-ink-0);
 	}
 	.content {
@@ -492,10 +485,8 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.2rem;
-		padding: 0.8rem 0.9rem;
-		border-radius: 0.7rem;
-		border: 1px solid var(--color-line);
-		background: var(--color-surface-base);
+		padding: 0.8rem 0;
+		border-bottom: 1px solid var(--color-line);
 	}
 	.stat-val {
 		font-size: 1.05rem;
@@ -514,9 +505,6 @@
 	.memory-document {
 		margin-top: 0.45rem;
 		overflow: hidden;
-		border: 1px solid var(--color-line);
-		border-radius: 0.65rem;
-		background: var(--color-surface-base);
 	}
 	.memory-document-head {
 		display: flex;
@@ -594,13 +582,11 @@
 		display: flex;
 		align-items: flex-start;
 		gap: 0.75rem;
-		padding: 0.7rem 0.85rem;
-		border-radius: 0.65rem;
-		border: 1px solid var(--color-line);
-		background: var(--color-surface-base);
+		padding: 0.7rem 0;
+		border-bottom: 1px solid var(--color-line);
 	}
-	.mem-card.inactive {
-		opacity: 0.6;
+	.mem-card.inactive .mem-content {
+		color: var(--color-ink-2);
 	}
 	.mem-main {
 		flex: 1;

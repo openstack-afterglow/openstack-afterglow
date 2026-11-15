@@ -3,11 +3,13 @@
 	import { t } from '$lib/i18n/ns/usage-schedule';
 	import type { UsageScheduleDraft } from '$lib/types/instanceUsage';
 	import { calendarMonthAfter, usageDraftError, toLocalDateTime } from '$lib/utils/instanceUsage';
-	let { value, onchange, disabled = false, currentExpiry, startsAt, idPrefix = 'usage-schedule', extensionOnly = false }: {
+	let { value, onchange, disabled = false, currentExpiry, startsAt, idPrefix = 'usage-schedule', extensionOnly = false, flat = false }: {
 		value: UsageScheduleDraft; onchange: (value: UsageScheduleDraft) => void;
 		disabled?: boolean; currentExpiry?: string; startsAt?: string; idPrefix?: string;
 		/** Only a later expiry and its reason can change (Waygate gateways); the expiry action stays as is. */
 		extensionOnly?: boolean;
+		/** Flatten feedback only when these fields already belong to a section surface. */
+		flat?: boolean;
 	} = $props();
 	const error = $derived(usageDraftError(value, currentExpiry, Date.now(), startsAt));
 	const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -37,7 +39,7 @@
 		</select>
 	</Field>
 	{#if value.expiryAction === 'delete'}
-		<Alert tone="warning">{t('destructive')}</Alert>
+		<Alert {flat} tone="warning">{t('destructive')}</Alert>
 		<label class="flex min-h-11 items-start gap-3 text-sm text-ink-1">
 			<input type="checkbox" checked={value.deleteVolumes} {disabled} class="mt-1 shrink-0"
 				onchange={(event) => onchange({ ...value, deleteVolumes: event.currentTarget.checked })} />
@@ -57,5 +59,5 @@
 		{#if extended}<p class="text-sm leading-relaxed text-ink-2">{t('reasonFollowup')}</p>{/if}
 	</Field>
 	{/if}
-	{#if error}<Alert tone="danger">{t(error)}</Alert>{/if}
+	{#if error}<Alert {flat} tone="danger">{t(error)}</Alert>{/if}
 </div>

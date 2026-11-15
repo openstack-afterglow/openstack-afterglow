@@ -213,7 +213,7 @@
 		<p class="text-sm text-ink-2" role="status">{tl('table.noMatches')}</p>
 	{/if}
 	<div data-tour="database-backups-list">
-    <ResponsiveTable>
+    <ResponsiveTable embedded>
       {#snippet cards()}
         {#each s.backupView.rows as b (b.id)}
           <CompactResourceCard>

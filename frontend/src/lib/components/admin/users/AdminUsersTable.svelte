@@ -26,6 +26,7 @@
     onPrev,
     onNext,
     tourDeleteId = null,
+    embedded = false,
   }: {
     users: User[];
     view: TableView<User>;
@@ -40,11 +41,12 @@
     onPrev: () => void;
     onNext: () => void;
     tourDeleteId?: string | null;
+    embedded?: boolean;
   } = $props();
 </script>
 
   <div data-tour="admin-identity-status-filter"><TableViewControls {view} /></div>
-  <ResponsiveTable>
+  <ResponsiveTable {embedded}>
     {#snippet cards()}
       {#each users as u, index (u.id)}
         <CompactResourceCard>

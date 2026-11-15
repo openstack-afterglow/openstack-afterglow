@@ -70,7 +70,7 @@
 			{#each displayedServices as service (service.id || service.binary + service.host)}
 				<CompactResourceCard>
 					<div class="flex flex-wrap items-start justify-between gap-2">
-						<h3 class="min-w-0 break-all font-mono text-sm font-medium text-ink-0">{service.binary}</h3>
+						<h2 class="min-w-0 break-all font-mono text-sm font-medium text-ink-0">{service.binary}</h2>
 						<div class="flex flex-wrap gap-1">
 							{#if columns.some((column) => column.type === 'state')}<StatusChip status={service.state} />{/if}
 							{#if columns.some((column) => column.type === 'status')}<StatusChip status={service.status} />{/if}

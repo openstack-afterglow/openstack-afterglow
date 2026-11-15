@@ -64,6 +64,18 @@ beforeEach(() => {
 });
 
 describe('MetricsPanel', () => {
+	it.each([false, true])('keeps chart boundaries only outside an existing section (embedded=%s)', async (embedded) => {
+		mockAllMetrics();
+		const { container } = render(MetricsPanel, { instanceId: 'inst-1', embedded });
+		await screen.findByRole('group', { name: t('metrics.cpuUsage') });
+		const charts = container.querySelectorAll('[data-instance-metric]');
+		expect(charts.length).toBe(4);
+		for (const chart of charts) {
+			expect(chart.classList.contains('border')).toBe(!embedded);
+			expect(chart.classList.contains('border-t')).toBe(embedded);
+		}
+	});
+
 	it('renders native metrics for a projectless administrator without impersonating the target tenant', async () => {
 		mockAllMetrics();
 		auth.update(state => ({ ...state, projectId: null, isSystemAdmin: true }));

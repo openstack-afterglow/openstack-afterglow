@@ -2,6 +2,7 @@
   import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
   import Button from '$lib/components/ui/Button.svelte';
+  import Pill from '$lib/components/ui/Pill.svelte';
   import { t } from '$lib/i18n/ns/account';
   import { t as tc } from '$lib/i18n/ns/common';
   import { intlLocale } from '$lib/i18n/runtime.svelte';
@@ -148,7 +149,7 @@
         <h2 class="text-lg font-semibold text-ink-0 mb-3">{t('keypairs.privateKey')}</h2>
         <p class="text-sm text-yellow-300 mb-3">{t('keypairs.privateWarning')}</p>
         <pre class="bg-surface-sunken rounded p-3 text-xs text-green-300 overflow-auto max-h-48 mb-4">{createdPrivateKey}</pre>
-        <button onclick={() => { createdPrivateKey = null; showModal = false; }} class="w-full px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg transition-colors">{t('keypairs.confirm')}</button>
+        <button onclick={() => { createdPrivateKey = null; showModal = false; }} class="w-full px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg transition-colors">{t('keypairs.confirm')}</button>
       {:else}
         <h2 class="text-lg font-semibold text-ink-0 mb-5">{t('keypairs.create')}</h2>
         <div class="space-y-4">
@@ -170,7 +171,7 @@
         {#if createError}<div class="mt-3 text-red-400 text-xs">{createError}</div>{/if}
         <div class="flex justify-end gap-3 mt-6">
           <button onclick={() => showModal = false} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('keypairs.cancel')}</button>
-          <button onclick={createKeypair} disabled={creating} class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 text-sm font-medium rounded-lg transition-colors">{#if creating}<LoadingState variant="control" label={t('keypairs.creating')}  />{:else}{t('keypairs.createAction')}{/if}</button>
+          <button onclick={createKeypair} disabled={creating} class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors">{#if creating}<LoadingState variant="control" label={t('keypairs.creating')}  />{:else}{t('keypairs.createAction')}{/if}</button>
         </div>
       {/if}
     </div>
@@ -179,7 +180,7 @@
 
 <div class="motion-fade bg-surface-base border border-line rounded-xl p-5">
   <div class="flex items-center justify-between mb-4">
-    <h3 class="text-sm font-semibold text-ink-0">{t('keypairs.title')}</h3>
+    <h2 class="text-sm font-semibold text-ink-0">{t('keypairs.title')}</h2>
     <button onclick={() => showModal = true} class="text-xs px-3 py-1.5 bg-surface-selected hover:bg-surface-selected text-ink-0 rounded-lg transition-colors">{t('keypairs.add')}</button>
   </div>
 
@@ -194,12 +195,12 @@
   {:else}
     {#if keypairs.length === 0}<div class="text-ink-2 text-xs text-center py-6">{t('keypairs.empty')}</div>
     {:else if view.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
-    <ResponsiveTable>{#snippet cards()}{#each view.rows as kp (kp.name)}<CompactResourceCard>
-      <div class="flex flex-wrap justify-between gap-2"><h4 class="text-sm font-medium">{kp.name}</h4><span class="font-mono text-xs">{kp.type}</span></div>
+    <ResponsiveTable embedded>{#snippet cards()}{#each view.rows as kp (kp.name)}<CompactResourceCard>
+      <div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{kp.name}</h3><Pill tone="neutral" size="xs" class="font-mono">{kp.type}</Pill></div>
       {#snippet details()}<code class="text-xs break-all">{kp.fingerprint}</code>{/snippet}
       {#snippet actions()}<Button variant="secondary" size="sm" onclick={() => copyFingerprint(kp.fingerprint)}>{copiedFingerprint === kp.fingerprint ? t('keypairs.copied') : t('keypairs.copy')}</Button><Button variant="danger-outline" size="sm" onclick={() => deleteKeypair(kp.name)} disabled={deleting === kp.name} ariaBusy={deleting === kp.name}>{t('keypairs.delete')}</Button>{/snippet}
     </CompactResourceCard>{/each}{/snippet}
-    <div class="bg-[#0B1220] border border-line rounded-lg overflow-hidden">
+    <div class="border-y border-line overflow-hidden">
       <div class="grid grid-cols-[1fr_100px_80px] px-3 py-2 border-b border-line text-xs uppercase tracking-wider text-ink-2">
         <div class="flex flex-wrap gap-2"><TableColumnControl {view} columnKey="name" /><TableColumnControl {view} columnKey="fingerprint" /></div>
         <div><TableColumnControl {view} columnKey="type" /></div>
@@ -212,7 +213,7 @@
             <div class="text-xs text-ink-2 font-mono truncate mt-0.5">{kp.fingerprint}</div>
           </div>
           <div>
-            <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-violet-900/25 border border-violet-800 text-violet-400">{kp.type}</span>
+            <Pill tone="neutral" size="xs" class="font-mono">{kp.type}</Pill>
           </div>
           <div class="flex flex-wrap gap-1 justify-end">
             <button

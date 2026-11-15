@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as Reactivity from 'svelte/reactivity';
 import type { NetworkAgent, Service } from '$lib/types/adminServices';
 import NetworkAgentTable from '../NetworkAgentTable.svelte';
 import ServiceTable from '../ServiceTable.svelte';
@@ -8,7 +9,12 @@ import { setLocale } from '$lib/i18n/runtime.svelte';
 import { t } from '$lib/i18n/ns/admin-ops';
 import { t as commonT } from '$lib/i18n/ns/common';
 import { clearColumn, setColumnValues, sortColumn } from './tableInteractions';
-beforeEach(() => setLocale('en'));
+const viewport = vi.hoisted(() => ({ desktop: true }));
+vi.mock('svelte/reactivity', async original => ({
+	...await original<typeof Reactivity>(),
+	MediaQuery: class { get current() { return viewport.desktop; } },
+}));
+beforeEach(() => { setLocale('en'); viewport.desktop = true; });
 
 afterEach(cleanup);
 
@@ -96,5 +102,14 @@ describe('ServiceTable', () => {
 		await sortColumn(t('services.columns.updated'));
 		await sortColumn(t('services.columns.updated'));
 		expect(tableColumn(1)).toEqual(['host-2', 'host-1', 'host-3']);
+	});
+
+	it('uses a level-two resource heading in compact route composition without changing type scale', () => {
+		viewport.desktop = false;
+		const service: Service = { id: 'compute', binary: 'nova-compute', host: 'host-1', status: 'enabled', state: 'up', zone: 'zone-a', updated_at: null, disabled_reason: null };
+		render(ServiceTable, { props: { services: [service], columns: COMPUTE_COLUMNS, loading: false, emptyMessage: 'No data' } });
+		const heading = screen.getByRole('heading', { name: service.binary, level: 2 });
+		expect(heading.classList.contains('text-sm')).toBe(true);
+		expect(screen.queryByRole('heading', { name: service.binary, level: 3 })).toBeNull();
 	});
 });

@@ -60,6 +60,7 @@ describe.each([true, false])('AdminUsersPage delete consumer (desktop=%s)', desk
     renderPage(); await loaded();
     expect((screen.getByRole('button', { name: t('userDelete.selfProtected') }) as HTMLButtonElement).disabled).toBe(true);
     expect(document.querySelector('[data-responsive-view]')?.getAttribute('data-responsive-view')).toBe(desktop ? 'table' : 'cards');
+    expect(document.querySelector('[data-tour="admin-identity-list"] .responsive-table-embedded')).not.toBeNull();
     await open();
     expect(mocks.get).toHaveBeenCalledWith(userPath, 'admin-token', 'personal-project', readOptions);
     for (const value of [alice.id, alice.name, alice.domain_id, 'Native home']) expect(within(modal()!).getByText(value)).toBeTruthy();

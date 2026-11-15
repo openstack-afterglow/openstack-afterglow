@@ -256,8 +256,9 @@
 		{#if effectiveProjectId && s.instance.id === instanceId && s.instance.project_id === effectiveProjectId && $auth.token}
 		<UsageScheduleSection {instanceId} projectId={effectiveProjectId} {adminMode} canWrite={$canWrite} waygateLocked={s.waygateLocked} {onUpdated} />
 		<div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
-			<div class="text-ink-0 text-[15px] font-semibold mb-4">{t('panel.monitoring')}</div>
+			<h2 class="text-ink-0 text-[15px] font-semibold mb-4">{t('panel.monitoring')}</h2>
 			<MetricsPanel
+				embedded
 				{instanceId}
 				projectId={effectiveProjectId}
 				{adminMode}

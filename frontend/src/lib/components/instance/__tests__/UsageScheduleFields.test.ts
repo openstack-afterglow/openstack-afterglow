@@ -4,6 +4,14 @@ import UsageScheduleFields from '../UsageScheduleFields.svelte';
 import { defaultUsageDraft } from '$lib/utils/instanceUsage';
 
 describe('usage schedule fields', () => {
+	it.each([undefined, true])('flattens notices only when its owner opts in (flat=%s)', (flat) => {
+		const value = { ...defaultUsageDraft(), expiryAction: 'delete' as const, expiresLocal: '' };
+		const { container } = render(UsageScheduleFields, { value, onchange: vi.fn(), flat });
+		const alerts = container.querySelectorAll('.alert');
+		expect(alerts.length).toBe(2);
+		for (const alert of alerts) expect(alert.classList.contains('alert-flat')).toBe(flat === true);
+	});
+
 	it('offers no volume deletion for default archive and requires separate consent for delete', async () => {
 		const draft = defaultUsageDraft();
 		const onchange = vi.fn();

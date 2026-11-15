@@ -407,6 +407,7 @@
 				<div data-tour={!loading && !loadError ? 'admin-identity-list-ready' : undefined}>
 				{#if !loading && !loadError && !pagedUsers.length}<p class="py-6 text-center text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
 				<AdminUsersTable
+					embedded
 					users={pagedUsers}
 					view={tableView}
 					{refreshing}

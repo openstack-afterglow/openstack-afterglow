@@ -172,7 +172,7 @@
 	<PageHeader breadcrumb={t('portsPage.breadcrumb')} title={t('portsPage.title')}>
 		{#snippet actions()}
 			<TutorialStartButton tour="admin-ports" compactOnMobile />
-			<button data-tour="admin-ports-create-open" onclick={() => { showCreate = true; createError = ''; }} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">{t('portsPage.actions.create')}</button>
+			<button data-tour="admin-ports-create-open" onclick={() => { showCreate = true; createError = ''; }} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg">{t('portsPage.actions.create')}</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -185,7 +185,8 @@
 				{#each [10, 20, 30] as n}
 					<button
 						onclick={() => { pageSize = n; markerStack = []; nextMarker = null; load(); }}
-						class="px-2 py-0.5 rounded {pageSize === n ? 'bg-action-warm text-ink-0' : 'bg-surface-sunken hover:bg-surface-selected text-ink-2'}"
+						aria-pressed={pageSize === n}
+						class="px-2 py-0.5 rounded {pageSize === n ? 'bg-surface-selected text-ink-0 shadow-[inset_0_0_0_1px_var(--color-line-2)]' : 'bg-surface-sunken hover:bg-surface-selected text-ink-2'}"
 					>{n}</button>
 				{/each}
 			</div>

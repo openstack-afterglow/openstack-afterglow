@@ -334,7 +334,7 @@
 		</dd></div>
 	</dl>
 	{#if info.association_state === 'mismatch' || info.association_state === 'unknown'}
-		<Alert tone="warning" class="mt-2">{t(info.association_state === 'mismatch' ? 'storageAttachments.associationMismatch' : 'storageAttachments.associationUnknown')}</Alert>
+		<Alert flat tone="warning" class="mt-2">{t(info.association_state === 'mismatch' ? 'storageAttachments.associationMismatch' : 'storageAttachments.associationUnknown')}</Alert>
 	{/if}
 	<p class="text-xs text-ink-2 mt-2">{info.association_state === 'tracked' && info.state === 'active' ? t('storageAttachments.ruleActive') : pending(info.state) ? t('storageAttachments.rulePending') : t('storageAttachments.ruleInactive')}</p>
 {/snippet}
@@ -348,9 +348,9 @@
 			</Button>
 		{/if}
 	</div>
-	<Alert tone="info" class="mb-4">{t('storageAttachments.manualConnection')}</Alert>
+	<Alert flat tone="info" class="mb-4">{t('storageAttachments.manualConnection')}</Alert>
 	{#if showForm && $canWrite && !s.waygateLocked}
-		<div class="motion-enter mb-4 bg-surface-sunken rounded-lg p-4">
+		<div class="motion-enter mb-4 border-y border-line py-4">
 			<div class="grid grid-cols-1 gap-3 mb-3">
 				<div>
 					<label for="attachment-storage" class="block text-xs text-ink-2 mb-1">{t('storageAttachments.storageLabel')}</label>
@@ -359,7 +359,7 @@
 						{#each availableStorages as fs}<option value={fs.id}>{fs.name || fs.id.slice(0, 12)} ({fs.share_proto})</option>{/each}
 					</select>
 					{#if catalogStatus === 'loading'}<LoadingState variant="inline" class="mt-1" label={t('storageAttachments.catalogLoading')} />
-					{:else if catalogStatus === 'error'}<Alert class="mt-2">{catalogError} {t('storageAttachments.catalogRetry')}</Alert>
+					{:else if catalogStatus === 'error'}<Alert flat class="mt-2">{catalogError} {t('storageAttachments.catalogRetry')}</Alert>
 					{:else if catalogStatus === 'loaded' && availableStorages.length === 0}<p class="text-xs text-ink-2 mt-1">{t('storageAttachments.noAvailableStorage')}</p>{/if}
 				</div>
 				{#if selectedStorage?.share_proto === 'NFS'}
@@ -382,23 +382,23 @@
 		</div>
 	{/if}
 	{#if lastConnection && $canWrite && targetIsCurrent}
-		<div class="motion-enter mb-4 bg-surface-sunken border border-line-2 rounded-lg p-4">
+		<div class="motion-enter mb-4 border-y border-line py-4">
 			<div class="flex justify-between gap-3"><h3 class="text-sm font-medium text-ink-0">{t('storageAttachments.connectionDetails')}</h3><Button variant="ghost" size="xs" onclick={clearDisclosure}>{t('storageAttachments.close')}</Button></div>
 			{@render authorizationDetails(lastConnection)}
 			{#if lastConnection.secret?.type === 'cephx_key' && lastConnection.secret.value}
-				<Alert tone="warning" title={t('storageAttachments.transientSecret')} class="mt-3">
+				<Alert flat tone="warning" title={t('storageAttachments.transientSecret')} class="mt-3">
 					<p>{t('storageAttachments.transientSecretHelp')}</p><code class="block break-all mt-2 select-all">{lastConnection.secret.value}</code>
 				</Alert>
 			{/if}
 		</div>
 	{/if}
 	{#if loading}<LoadingState variant="section" label={t('storageAttachments.loading')} />
-	{:else if attachmentError}<Alert>{attachmentError}</Alert>
+	{:else if attachmentError}<Alert flat>{attachmentError}</Alert>
 	{:else if attachments.length === 0}<p class="text-sm text-ink-2">{t('storageAttachments.empty')}</p>
 	{:else}
-		<div class="space-y-2">
+		<div class="divide-y divide-line border-t border-line">
 			{#each attachments as att (att.file_storage_id)}
-				<div class="p-3 bg-surface-sunken/50 rounded-lg border border-line-2/50">
+				<div class="py-3 last:pb-0">
 					<div class="flex flex-wrap items-center justify-between gap-2">
 						<div class="flex items-center gap-2 min-w-0"><span class="text-sm text-ink-0 font-medium truncate">{att.name || att.file_storage_id.slice(0, 12)}</span>{#if att.share_proto}<span class="text-xs text-ink-2 font-mono">{att.share_proto}</span>{/if}</div>
 						{#if $canWrite && att.managed && att.association_state === 'tracked'}

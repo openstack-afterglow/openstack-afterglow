@@ -265,20 +265,20 @@
 
 		{#if !isAvailable}
 			{#if sec.id === 'file_storage' && (!secError || secError === 'service_disabled')}
-				<div class="bg-surface-sunken/60 border border-line-2 rounded-lg p-4 text-sm text-ink-2">
+				<div class="py-4 text-sm text-ink-2">
 					{t('quotaForm.fileStorageDisabled')}
 				</div>
 			{:else if secError}
-				<Alert tone="danger" title={t('quotaForm.serviceUnavailableTitle', { label: sec.label })} class="text-sm">
+				<Alert flat tone="danger" title={t('quotaForm.serviceUnavailableTitle', { label: sec.label })} class="text-sm">
 					{secError}
 				</Alert>
 			{:else}
-				<div class="bg-surface-sunken/60 border border-line-2 rounded-lg p-4 text-sm text-ink-2">
+				<div class="py-4 text-sm text-ink-2">
 					{t('quotaForm.serviceUnavailable', { label: sec.label })}
 				</div>
 			{/if}
 		{:else}
-      <ResponsiveTable>
+      <ResponsiveTable embedded>
         {#snippet cards()}
           {#each sec.fields as field (field.key)}
             {@const quotaItem = secQuotas[field.key]}
@@ -346,7 +346,7 @@
 							/>
 						{/if}
 						{#if field.help}
-							<p class="text-[11px] text-ink-3 mt-1">{field.help}</p>
+							<p class="text-[11px] text-ink-2 mt-1">{field.help}</p>
 						{/if}
 					</div>
 				{/each}
@@ -354,12 +354,12 @@
       </ResponsiveTable>
 
 			{#if displayError}
-				<Alert tone="danger" class="mt-4">{displayError}</Alert>
+				<Alert flat tone="danger" class="mt-4">{displayError}</Alert>
 			{/if}
 			{#if displaySuccess}
-				<div class="bg-state-success/12 border border-state-success/32 text-state-success-text rounded-lg px-4 py-2.5 text-sm mt-4">
+				<Alert flat tone="success" class="mt-4">
 					{displaySuccess}
-				</div>
+				</Alert>
 			{/if}
 
 			<div class="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-line/50">

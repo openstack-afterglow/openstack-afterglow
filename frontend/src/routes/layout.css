@@ -110,13 +110,12 @@
   /* State */
   --color-state-success: #5ddca0;
   --color-state-success-text: var(--color-state-success);
-  /* Semantic tones need a text sibling: the raw tone is tuned as a FILL, and on a light surface —
-     including the 12% wash Alert paints behind its own copy — it lands below AA. Dark passes, so
-     dark aliases the tone and only :root.light carries a darker value. */
+  /* Semantic tones need a text sibling: fills do not guarantee readable text over their washes.
+     Neutral uses the muted-ink role in both themes; the other dark tones retain their hue. */
   --color-state-warning-text: var(--color-state-warning);
   --color-state-danger-text: var(--color-state-danger);
   --color-state-info-text: var(--color-state-info);
-  --color-state-neutral-text: var(--color-state-neutral);
+  --color-state-neutral-text: var(--color-ink-2);
   --color-state-warning: #f4b85a;
   --color-state-danger: #f06b6b;
   --color-state-info: #5ed4e4;
@@ -540,6 +539,8 @@ body {
   --color-warm-2: #c2410c;
   --color-warm-text: #c2410c;
   --color-action-on-warm: #18191b;
+  /* A light warm fill carries dark text, so hover lightens rather than reducing its contrast. */
+  --color-action-warm-hover: color-mix(in oklab, var(--color-warm) 88%, var(--color-surface-base));
   --color-state-success: #0f8f53;
   --color-state-success-text: #0b6b3e;
   --color-state-warning-text: #7a5208;
@@ -614,8 +615,9 @@ body {
   border-color: var(--color-line-2);
   color: var(--color-ink-0);
 }
-:root.light input:not([type="checkbox"]):not([type="radio"]):not([type="range"])::placeholder {
+:root :is(input, textarea)::placeholder {
   color: var(--color-ink-2);
+  opacity: 1;
 }
 :root.light textarea {
   background-color: var(--color-surface-input);
@@ -677,15 +679,15 @@ body {
    ============================================================ */
 
 /* 초록 계열 (ACTIVE, Running, available) */
-:root.light .text-green-400 { color: #16a34a !important; }
+:root.light .text-green-400 { color: var(--color-state-success-text) !important; }
 :root.light .bg-green-900\/30 { background-color: rgba(22,163,74,0.1) !important; }
 :root.light .border-green-800 { border-color: #86efac !important; }
-:root.light .text-green-300 { color: #15803d !important; }
-:root.light .hover\:text-green-300:hover { color: #15803d !important; }
+:root.light .text-green-300 { color: var(--color-state-success-text) !important; }
+:root.light .hover\:text-green-300:hover { color: var(--color-state-success-text) !important; }
 :root.light .border-green-900 { border-color: #bbf7d0 !important; }
 
 /* 노란 계열 (PENDING, creating, 경고) */
-:root.light .text-yellow-400 { color: #b45309 !important; }
+:root.light .text-yellow-400 { color: var(--color-state-warning-text) !important; }
 :root.light .bg-yellow-900\/30 { background-color: rgba(180,83,9,0.08) !important; }
 :root.light .border-yellow-700 { border-color: #fcd34d !important; }
 :root.light .text-yellow-300 { color: #92400e !important; }
@@ -699,22 +701,22 @@ body {
 :root.light .border-yellow-800\/40 { border-color: #fcd34d !important; }
 
 /* 빨간 계열 (ERROR, 삭제, 에러) */
-:root.light .text-red-400 { color: #dc2626 !important; }
+:root.light .text-red-400 { color: var(--color-state-danger-text) !important; }
 :root.light .bg-red-900\/30 { background-color: rgba(220,38,38,0.08) !important; }
 :root.light .bg-red-900\/40 { background-color: rgba(220,38,38,0.08) !important; }
 :root.light .bg-red-900\/20 { background-color: rgba(220,38,38,0.06) !important; }
 :root.light .border-red-700 { border-color: #fca5a5 !important; }
 :root.light .border-red-800 { border-color: #fca5a5 !important; }
 :root.light .border-red-900 { border-color: #fecaca !important; }
-:root.light .text-red-300 { color: #dc2626 !important; }
-:root.light .hover\:text-red-300:hover { color: #b91c1c !important; }
+:root.light .text-red-300 { color: var(--color-state-danger-text) !important; }
+:root.light .hover\:text-red-300:hover { color: var(--color-state-danger-text) !important; }
 :root.light .hover\:border-red-700:hover { border-color: #f87171 !important; }
 
 /* 주황 계열 (Deleting, 중지) */
-:root.light .text-orange-400 { color: #ea580c !important; }
+:root.light .text-orange-400 { color: var(--color-warm-text) !important; }
 :root.light .bg-orange-900\/30 { background-color: rgba(234,88,12,0.08) !important; }
 :root.light .border-orange-800 { border-color: #fdba74 !important; }
-:root.light .hover\:text-orange-300:hover { color: #c2410c !important; }
+:root.light .hover\:text-orange-300:hover { color: var(--color-warm-text-hover) !important; }
 
 /* 파란 계열 (Created, active link, blue buttons) */
 :root.light .text-blue-400 { color: #2563eb !important; }

@@ -76,7 +76,7 @@
 	{:else if s.userView.rows.length === 0}
 		<p class="text-sm text-ink-2" role="status">{tl('table.noMatches')}</p>
 	{/if}
-  <ResponsiveTable>
+  <ResponsiveTable embedded>
    {#snippet cards()}{#each s.userView.rows as u (u.name + '@' + u.host)}<CompactResourceCard><strong class="text-sm font-mono break-all">{u.name}@{u.host || '%'}</strong>{#snippet details()}{#if u.databases?.length}<p class="text-xs text-ink-2 break-all">{u.databases.map(d => d.name).join(', ')}</p>{/if}{/snippet}{#snippet actions()}<button onclick={() => s.deleteUser(u)} disabled={s.deletingUser === userKey(u)} class="inline-flex items-center gap-1 text-state-danger-text disabled:text-ink-3 text-xs px-2 py-1 rounded border border-line-2">{#if s.deletingUser === userKey(u)}<LoadingState variant="control" label="" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>{/snippet}</CompactResourceCard>{/each}{/snippet}
 		<div class="space-y-1">
 			<div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)_auto] items-center gap-3 border-b border-line py-2 text-xs text-ink-2">

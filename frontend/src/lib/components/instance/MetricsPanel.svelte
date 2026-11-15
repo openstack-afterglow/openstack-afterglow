@@ -18,6 +18,8 @@
 		isGpu?: boolean;
 		projectId?: string;
 		adminMode?: boolean;
+		/** Reuse the surrounding section surface instead of boxing each chart again. */
+		embedded?: boolean;
 	}
 
 	type RangeKey = '15m' | '1h' | '6h' | '24h' | '7d';
@@ -28,7 +30,7 @@
 		value: number | null;
 	}
 
-	let { instanceId, isGpu = false, projectId: instanceProjectId, adminMode = false }: Props = $props();
+	let { instanceId, isGpu = false, projectId: instanceProjectId, adminMode = false, embedded = false }: Props = $props();
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived(adminMode ? $auth.projectId ?? undefined : instanceProjectId ?? $auth.projectId ?? undefined);
@@ -224,11 +226,11 @@
 		<div class="flex gap-1">
 			<button
 				onclick={() => { activeTab = 'chart'; }}
-				class="text-xs px-3 py-1 rounded transition-colors {activeTab === 'chart' ? 'bg-action-warm text-ink-0' : 'text-ink-2 hover:text-ink-2 border border-line-2'}"
+				class="text-xs px-3 py-1 rounded transition-colors {activeTab === 'chart' ? 'bg-action-warm text-action-on-warm' : 'text-ink-2 hover:text-ink-2 border border-line-2'}"
 			>{t('metrics.chart')}</button>
 			<button
 				onclick={() => { activeTab = 'grafana'; }}
-				class="text-xs px-3 py-1 rounded transition-colors {activeTab === 'grafana' ? 'bg-action-warm text-ink-0' : 'text-ink-2 hover:text-ink-2 border border-line-2'}"
+				class="text-xs px-3 py-1 rounded transition-colors {activeTab === 'grafana' ? 'bg-action-warm text-action-on-warm' : 'text-ink-2 hover:text-ink-2 border border-line-2'}"
 			>Grafana</button>
 		</div>
 		{/if}
@@ -274,7 +276,7 @@
 		{#each activeCharts as chart (chart.key)}
 			{@const m = metrics[chart.key]}
 			{@const ex = chart.extraKey ? metrics[chart.extraKey] : null}
-			<div data-instance-metric={chart.key} class="bg-surface-base border border-line rounded-lg p-4">
+			<div data-instance-metric={chart.key} class={embedded ? 'min-w-0 border-t border-line pt-4' : 'bg-surface-base border border-line rounded-lg p-4'}>
 				<div class="flex min-h-6 items-center justify-between mb-2">
 					<span class="text-xs font-semibold text-ink-2">{chart.title}</span>
 					{#if m.data && m.data.length > 0}

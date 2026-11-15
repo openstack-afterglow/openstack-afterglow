@@ -43,7 +43,7 @@
 	{#snippet cards()}
 		{#each view.rows as r (r.id)}
 			<CompactResourceCard>
-				<div class="flex items-start justify-between gap-2"><h3 class="break-all font-medium text-ink-0">{r.name || r.id.slice(0, 8)}</h3><StatusChip status={r.status} /></div>
+				<div class="flex items-start justify-between gap-2"><h2 class="break-all font-medium text-ink-0">{r.name || r.id.slice(0, 8)}</h2><StatusChip status={r.status} /></div>
 				<div class="space-y-1 text-xs text-ink-2"><p>{t('adminRoutersTable.subnetCount', { count: r.connected_subnet_ids.length })}</p><p>{t('adminRoutersTable.externalGateway')}: {r.external_gateway_network_id?.slice(0, 8) ?? '-'}</p><p>{t('adminRoutersTable.project')}: {r.project_id?.slice(0, 8) ?? '-'}</p></div>
 				{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => onEdit(r)}>{t('adminRoutersTable.edit')}</Button><Button variant="danger" size="sm" onclick={() => onDelete(r)} dataTour={r.id === tourDeleteId ? 'admin-routers-delete' : undefined}>{t('adminRoutersTable.delete')}</Button>{/snippet}
 				{#snippet details()}<div class="space-y-2 break-all font-mono text-xs text-ink-2"><p>{r.id}</p><p>{r.project_id ?? '-'}</p><p>{r.external_gateway_network_id ?? '-'}</p>{#each r.connected_subnet_ids as id}<p>{id}</p>{/each}</div>{/snippet}

@@ -1,0 +1,32 @@
+{
+  "scope": "source/local, isolated detached worktree; no production acceptance",
+  "branch": "ux/slop-pass-3",
+  "merged_local_dev": "2d7c823b32c1cadda227e52057309be756cccc14",
+  "source_sha256": "64f0c73dcc36e01db923f7ffcd7b7b6facd498882624d0791e9ef58680fb14a0",
+  "source_inventory_files": 4348,
+  "command": "env PATH=\"/Users/pieroot/.local/share/uv/python/cpython-3.12-macos-aarch64-none/bin:$PATH\" AFTERGLOW_TEST_PROJECT_NAME=afterglow-slop3-gate-20261116-70143 npm run test:gate",
+  "exit": 0,
+  "wall_seconds": 299.95,
+  "backend": { "passed": 15221, "skipped": 106 },
+  "frontend": { "files": 592, "passed": 8014 },
+  "contracts": { "passed": 262 },
+  "functional": { "passed": 292, "skipped": 46, "deselected": 131 },
+  "ruff": { "check": "passed", "formatted_files": 912 },
+  "previous_attempts": "gate-pre-hover.json preserves native crash, stale pre-dev tutorial expectation, owned heading-selector regression, baseline classification and the earlier complete green source. None substitutes for this final full gate.",
+  "proof_root": "~/.local/share/afterglow-proofs/slop-audit-3-20261116/",
+  "final_log": "gate-hover-final-full.log",
+  "visual_evidence": {
+    "consumer": { "cases": 846, "matched_cases": 180, "matched_raw_findings_before": 446, "matched_raw_findings_after": 48, "manifest": "consumer/accepted-summary.json" },
+    "administrator": { "supported_routes": 24, "route_cases": 288, "state_and_supplement_captures": 270, "baseline_guarded_redirects": 39, "manifest": "admin-after/report.json" },
+    "public": { "cases": 216, "manifest": "public-after/summary.json" },
+    "cutovers": { "cases": 48, "manifest": "consumer/cutover-matrix.json" },
+    "hover": { "cases": 12, "detector_findings": 0, "light_rest": 4.94, "light_hover": 5.87, "dark_rest": 7.95, "dark_hover": 8.73, "manifest": "admin-after/hover-fix-acceptance.json" },
+    "native_recordings": ["before-native-detail.mp4", "after-native-detail.mp4"],
+    "recording_metadata": "paired-recording-metadata.json",
+    "native_zoom": "native-zoom200.json"
+  },
+  "remaining_real_p2": "Selected administrator user overview retains sparse summary stretched to activity-panel height, pushing directory below fold. Fixing directory/aside grid ownership is outside this bounded border/contrast refinement; evidence is retained in admin-after/report.json.",
+  "configuration": "Real npm ci and frozen uv dev dependencies. Removed only byte-identical ignored configuration copies from gate worktrees; originals preserved.",
+  "datastore_cleanup": "Functional runner removed only the unique test project's ephemeral DB/Redis containers and network.",
+  "limits": "Tutorial authority, beta gates and unsupported detail fixtures were not bypassed. No real login/signup/recovery/provider/cloud operation or authenticated palette acceptance. Final three administrator shared heading/yellow fixes were rechecked in Korean only; locale matrices precede those narrow edits. Viewport emulation is not physical touch-device acceptance. Existing art/type/technical-wrap detector findings remain classified."
+}

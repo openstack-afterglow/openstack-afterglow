@@ -106,7 +106,7 @@
 		</p>
 	{/if}
 
-	<section class="border border-line rounded-lg p-3 mb-4" aria-label={t('securityGroupRules.instancesLabel')}>
+	<section class="border-t border-line pt-3 mb-4" aria-label={t('securityGroupRules.instancesLabel')}>
 		<h2 class="text-sm font-medium text-ink-0 mb-2">{instancesError || instancesLoading ? t('securityGroupRules.instancesTitle') : t('securityGroupRules.instancesCount', { count: instances.length })}</h2>
 		{#if instancesLoading}
 			<LoadingState variant="control" label={t('securityGroupRules.instancesLoading')} />
@@ -123,15 +123,15 @@
 		{/if}
 	</section>
 
-	<section aria-label={t('securityGroupRules.rulesLabel')} class="border border-line rounded-lg overflow-hidden bg-surface-base">
-		<div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-line">
+	<section aria-label={t('securityGroupRules.rulesLabel')} class="border-t border-line pt-3">
+		<div class="flex items-center justify-between gap-2 lg:px-3 pb-2">
 			<h2 class="text-sm font-medium text-ink-0"><AnimatedNumber value={group.rules.length} format={(value) => t('securityGroupRules.rulesCount', { count: Math.round(value) })} /></h2>
 			{#if !addRuleOpen}
 				<button type="button" onclick={onStartAdd} aria-expanded={false} disabled={addingRule || locked} title={lockTitle} class="text-xs text-warm-text border border-action-warm rounded-md px-2 py-1.5 shrink-0 disabled:opacity-50">{t('securityGroupRules.add')}</button>
 			{/if}
 		</div>
 		<TableViewControls {view} />
-		<ResponsiveTable>
+		<ResponsiveTable embedded>
 			{#snippet cards()}
 				{#each view.rows as rule (rule.id)}
 					<CompactResourceCard>

@@ -347,9 +347,8 @@
 
 	const inputCls =
 		'w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-base)] px-3 py-2 text-sm text-[var(--color-ink-1)] focus:outline-none focus:border-[var(--color-accent)]';
-	const cardCls = 'rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-raised)]';
 	const badge = (active: boolean) =>
-		`rounded px-1.5 py-0.5 text-xs ${active ? 'bg-[var(--color-state-success)]/15 text-[var(--color-state-success)]' : 'bg-[var(--color-line)] text-[var(--color-ink-3)]'}`;
+		`rounded px-1.5 py-0.5 text-xs ${active ? 'bg-[var(--color-state-success)]/15 text-[var(--color-state-success)]' : 'bg-[var(--color-line)] text-[var(--color-ink-2)]'}`;
 </script>
 
 {#if !isAdmin}
@@ -363,12 +362,13 @@
 <!-- MCP 서버 -->
 {#if !only || only === 'mcp'}
 <section class="mb-8">
+	<h2 class="sr-only">{t('settings.sections.mcp')}</h2>
 	{#if !isAdmin}
 		<ChatMcpCatalogue servers={mcps.filter((mcp) => mcp.scope === 'global')} loading={loading && !catalogLoaded} {oauthStatus} onChanged={load} />
 	{/if}
 	<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('extensions.mcp.title')}</h3>
-	<p class="mb-3 text-xs text-[var(--color-ink-3)]">{t('extensions.mcp.description', { scope: isAdmin ? t('extensions.scope.global') : t('extensions.scope.personal') })}</p>
-	<div class="{cardCls} mb-4 p-5">
+	<p class="mb-3 text-xs text-[var(--color-ink-2)]">{t('extensions.mcp.description', { scope: isAdmin ? t('extensions.scope.global') : t('extensions.scope.personal') })}</p>
+	<div class="mb-4 border-b border-[var(--color-line)] pb-4">
 		<div class="grid grid-cols-1 gap-3 md:grid-cols-3">
 			<input class={inputCls} placeholder={t('extensions.mcp.namePlaceholder')} bind:value={mName} />
 			<select class={inputCls} bind:value={mTransport}>
@@ -378,7 +378,7 @@
 		</div>
 		{#if isAdmin}
 			<div class="mt-3">
-				<label class="mb-1 block text-xs text-[var(--color-ink-3)]" for="mcp-auth-mode">{t('extensions.mcp.authPolicy')}</label>
+				<label class="mb-1 block text-xs text-[var(--color-ink-2)]" for="mcp-auth-mode">{t('extensions.mcp.authPolicy')}</label>
 				<select id="mcp-auth-mode" class={inputCls} bind:value={mAuthMode}>
 					<option value="none">{t('extensions.mcp.auth.public')}</option>
 					<option value="oauth">OAuth</option>
@@ -386,7 +386,7 @@
 				</select>
 			</div>
 			<div class="mt-3">
-				<label class="mb-1 block text-xs text-[var(--color-ink-3)]" for="mcp-load-policy">{t('extensions.loadPolicy.label')}</label>
+				<label class="mb-1 block text-xs text-[var(--color-ink-2)]" for="mcp-load-policy">{t('extensions.loadPolicy.label')}</label>
 				<select id="mcp-load-policy" class={inputCls} bind:value={mLoadPolicy}>
 					<option value="on_demand">{t('extensions.loadPolicy.onDemand')}</option>
 					<option value="preloaded">{t('extensions.loadPolicy.preloaded')}</option>
@@ -394,27 +394,27 @@
 			</div>
 			{#if mAuthMode === 'oauth'}
 				<div class="mt-3">
-					<label class="mb-1 block text-xs text-[var(--color-ink-3)]" for="mcp-oauth-scopes">{t('extensions.mcp.oauthScopes')}</label>
+					<label class="mb-1 block text-xs text-[var(--color-ink-2)]" for="mcp-oauth-scopes">{t('extensions.mcp.oauthScopes')}</label>
 					<input id="mcp-oauth-scopes" class={inputCls} placeholder="read write" bind:value={mOAuthScopes} />
 				</div>
 				<div class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
 					<div>
-						<label class="mb-1 block text-xs text-[var(--color-ink-3)]" for="mcp-oauth-client-id">{t('extensions.mcp.oauthClientId')}</label>
+						<label class="mb-1 block text-xs text-[var(--color-ink-2)]" for="mcp-oauth-client-id">{t('extensions.mcp.oauthClientId')}</label>
 						<input id="mcp-oauth-client-id" class={inputCls} autocomplete="off" bind:value={mOAuthClientId} />
 					</div>
 					<div>
-						<label class="mb-1 block text-xs text-[var(--color-ink-3)]" for="mcp-oauth-client-secret">{t('extensions.mcp.oauthClientSecret')}</label>
+						<label class="mb-1 block text-xs text-[var(--color-ink-2)]" for="mcp-oauth-client-secret">{t('extensions.mcp.oauthClientSecret')}</label>
 						<input id="mcp-oauth-client-secret" class={inputCls} type="password" autocomplete="new-password" bind:value={mOAuthClientSecret} />
 					</div>
 				</div>
 			{:else if mAuthMode === 'admin'}
 				<div class="mt-3">
-					<label class="mb-1 block text-xs text-[var(--color-ink-3)]" for="mcp-headers"><RichText segments={t.rich('extensions.mcp.headers')} /></label>
+					<label class="mb-1 block text-xs text-[var(--color-ink-2)]" for="mcp-headers"><RichText segments={t.rich('extensions.mcp.headers')} /></label>
 					<textarea id="mcp-headers" class="{inputCls} font-mono" rows="2" placeholder={'Authorization: Bearer <token>\nX-Api-Key: <key>'} bind:value={mHeaders}></textarea>
 				</div>
 			{/if}
 		{:else}
-			<p class="mt-3 text-xs text-[var(--color-ink-3)]">{t('extensions.mcp.authHelp')}</p>
+			<p class="mt-3 text-xs text-[var(--color-ink-2)]">{t('extensions.mcp.authHelp')}</p>
 		{/if}
 		<div class="mt-3 flex justify-end">
 			<Button onclick={addMcp} disabled={addingMcp || !canMcp}>{#if addingMcp}<LoadingState variant="control" label={t('extensions.actions.adding')} />{:else}{t('extensions.mcp.add')}{/if}</Button>
@@ -424,23 +424,23 @@
 	{#if loading && !catalogLoaded}
 		<LoadingState label={t('extensions.mcp.loading')} />
 	{:else if mcps.filter((mcp) => isAdmin || mcp.scope !== 'global').length === 0}
-		<p class="px-1 text-sm text-[var(--color-ink-3)]">{t('extensions.mcp.empty')}</p>
+		<p class="px-1 text-sm text-[var(--color-ink-2)]">{t('extensions.mcp.empty')}</p>
 	{:else}
-		<div class="space-y-2">
+		<div class="divide-y divide-[var(--color-line)]">
 			{#each mcps.filter((mcp) => isAdmin || mcp.scope !== 'global') as m (m.id)}
-				<div class={cardCls}>
-					<div class="flex items-center justify-between gap-3 px-4 py-3">
+				<div>
+					<div class="flex flex-wrap items-center justify-between gap-3 py-3">
 						<div class="min-w-0">
 							<div class="flex items-center gap-2">
 								<span class="truncate text-sm font-medium text-[var(--color-ink-1)]">{m.name}</span>
 								<span class={badge(m.is_active)}>{m.is_active ? t('extensions.state.active') : t('extensions.state.inactive')}</span>
-								<span class="text-xs text-[var(--color-ink-3)]">{m.transport}</span>
-								{#if m.has_headers}<span class="text-xs text-[var(--color-ink-3)]" title={t('extensions.mcp.sharedHeaders')}>🔒</span>{/if}
+								<span class="text-xs text-[var(--color-ink-2)]">{m.transport}</span>
+								{#if m.has_headers}<span class="text-xs text-[var(--color-ink-2)]" title={t('extensions.mcp.sharedHeaders')}>🔒</span>{/if}
 								{#if m.auth_mode === 'oauth'}
 									<span title={t('extensions.mcp.oauthRequired')}><Pill tone="neutral" size="xs">OAuth</Pill></span>
 								{/if}
 							</div>
-							{#if m.url}<div class="mt-0.5 truncate text-xs text-[var(--color-ink-3)]">{m.url}</div>{/if}
+							{#if m.url}<div class="mt-0.5 truncate text-xs text-[var(--color-ink-2)]">{m.url}</div>{/if}
 						</div>
 						<div class="flex shrink-0 items-center gap-3 text-xs">
 							{#if !isAdmin && m.auth_mode === 'oauth'}
@@ -486,9 +486,9 @@
 <!-- 커스텀 HTTP 툴 -->
 {#if !only || only === 'tools'}
 <section>
-	<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('extensions.tools.title')}</h3>
-	<p class="mb-3 text-xs text-[var(--color-ink-3)]">{t('extensions.tools.description', { scope: isAdmin ? t('extensions.scope.global') : t('extensions.scope.personal') })}</p>
-	<div class="{cardCls} mb-4 p-5">
+	<h2 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('extensions.tools.title')}</h2>
+	<p class="mb-3 text-xs text-[var(--color-ink-2)]">{t('extensions.tools.description', { scope: isAdmin ? t('extensions.scope.global') : t('extensions.scope.personal') })}</p>
+	<div class="mb-4 border-b border-[var(--color-line)] pb-4">
 		<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
 			<input class={inputCls} placeholder={t('extensions.tools.namePlaceholder')} bind:value={tName} />
 			<input class={inputCls} placeholder={t('extensions.tools.descriptionPlaceholder')} bind:value={tDesc} />
@@ -500,7 +500,7 @@
 		</div>
 		{#if isAdmin}
 			<div class="mt-3">
-				<label class="mb-1 block text-xs text-[var(--color-ink-3)]" for="tool-load-policy">{t('extensions.loadPolicy.label')}</label>
+				<label class="mb-1 block text-xs text-[var(--color-ink-2)]" for="tool-load-policy">{t('extensions.loadPolicy.label')}</label>
 				<select id="tool-load-policy" class={inputCls} bind:value={tLoadPolicy}>
 					<option value="on_demand">{t('extensions.loadPolicy.onDemand')}</option>
 					<option value="preloaded">{t('extensions.loadPolicy.preloaded')}</option>
@@ -515,18 +515,18 @@
 	{#if loading && !catalogLoaded}
 		<LoadingState label={t('extensions.tools.loading')} />
 	{:else if tools.length === 0}
-		<p class="px-1 text-sm text-[var(--color-ink-3)]">{t('extensions.tools.empty')}</p>
+		<p class="px-1 text-sm text-[var(--color-ink-2)]">{t('extensions.tools.empty')}</p>
 	{:else}
-		<div class="space-y-2">
+		<div class="divide-y divide-[var(--color-line)]">
 			{#each tools as tool (tool.id)}
-				<div class="{cardCls} flex items-center justify-between gap-3 px-4 py-3">
+				<div class="flex flex-wrap items-center justify-between gap-3 py-3">
 					<div class="min-w-0">
 						<div class="flex items-center gap-2">
 							<span class="truncate text-sm font-medium text-[var(--color-ink-1)]">{tool.name}</span>
 							<span class={badge(tool.is_active)}>{tool.is_active ? t('extensions.state.active') : t('extensions.state.inactive')}</span>
-							<span class="text-xs text-[var(--color-ink-3)]">{tool.method}</span>
+							<span class="text-xs text-[var(--color-ink-2)]">{tool.method}</span>
 						</div>
-						<div class="mt-0.5 truncate text-xs text-[var(--color-ink-3)]">{tool.description} · {tool.url}</div>
+						<div class="mt-0.5 truncate text-xs text-[var(--color-ink-2)]">{tool.description} · {tool.url}</div>
 					</div>
 					<div class="flex shrink-0 items-center gap-3 text-xs">
 						{#if isAdmin}
@@ -558,15 +558,15 @@
 <!-- 스킬 (선택 시 채팅 지침으로 주입) -->
 {#if !only || only === 'skills'}
 <section class="mt-8">
-	<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('extensions.skills.title')}</h3>
-	<p class="mb-3 text-xs text-[var(--color-ink-3)]">{t('extensions.skills.description', { scope: isAdmin ? t('extensions.scope.global') : t('extensions.scope.personal') })}</p>
-	<div class="{cardCls} mb-4 p-5">
+	<h2 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('extensions.skills.title')}</h2>
+	<p class="mb-3 text-xs text-[var(--color-ink-2)]">{t('extensions.skills.description', { scope: isAdmin ? t('extensions.scope.global') : t('extensions.scope.personal') })}</p>
+	<div class="mb-4 border-b border-[var(--color-line)] pb-4">
 		<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
 			<input class={inputCls} placeholder={t('extensions.skills.namePlaceholder')} bind:value={sName} />
 			<input class={inputCls} placeholder={t('extensions.skills.descriptionPlaceholder')} bind:value={sDesc} />
 		</div>
 		<div class="mt-3">
-			<label class="mb-1 block text-xs text-[var(--color-ink-3)]" for="skill-instructions">
+			<label class="mb-1 block text-xs text-[var(--color-ink-2)]" for="skill-instructions">
 				{t('extensions.skills.instructionsLabel')}
 			</label>
 			<textarea
@@ -585,17 +585,17 @@
 	{#if loading && !catalogLoaded}
 		<LoadingState label={t('extensions.skills.loading')} />
 	{:else if skills.length === 0}
-		<p class="px-1 text-sm text-[var(--color-ink-3)]">{t('extensions.skills.empty')}</p>
+		<p class="px-1 text-sm text-[var(--color-ink-2)]">{t('extensions.skills.empty')}</p>
 	{:else}
-		<div class="space-y-2">
+		<div class="divide-y divide-[var(--color-line)]">
 			{#each skills as s (s.id)}
-				<div class="{cardCls} flex items-center justify-between gap-3 px-4 py-3">
+				<div class="flex flex-wrap items-center justify-between gap-3 py-3">
 					<div class="min-w-0">
 						<div class="flex items-center gap-2">
 							<span class="truncate text-sm font-medium text-[var(--color-ink-1)]">{s.name}</span>
 							<span class={badge(s.is_active)}>{s.is_active ? t('extensions.state.active') : t('extensions.state.inactive')}</span>
 						</div>
-						{#if s.description}<div class="mt-0.5 truncate text-xs text-[var(--color-ink-3)]">{s.description}</div>{/if}
+						{#if s.description}<div class="mt-0.5 truncate text-xs text-[var(--color-ink-2)]">{s.description}</div>{/if}
 					</div>
 					<div class="flex shrink-0 items-center gap-3 text-xs">
 						<button disabled={!canAssets} class="text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)]" onclick={() => toggle('skills', s.id, s.is_active)}>{s.is_active ? t('extensions.actions.deactivate') : t('extensions.actions.activate')}</button>

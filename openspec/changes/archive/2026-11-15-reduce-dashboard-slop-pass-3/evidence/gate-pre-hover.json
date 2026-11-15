@@ -1,0 +1,47 @@
+{
+  "scope": "source/local, isolated detached worktree; no production acceptance",
+  "branch": "ux/slop-pass-3",
+  "merged_local_dev": "2d7c823b32c1cadda227e52057309be756cccc14",
+  "source_sha256": "96e8dcf3b97edd5d80dc1055f41b46ed88bc3d8623a34028a1e1016f5c9b0ea5",
+  "source_inventory_files": 4348,
+  "command": "env PATH=\"/Users/pieroot/.local/share/uv/python/cpython-3.12-macos-aarch64-none/bin:$PATH\" AFTERGLOW_TEST_PROJECT_NAME=afterglow-slop3-gate-20261116-70143 npm run test:gate",
+  "exit": 0,
+  "wall_seconds": 283.49,
+  "backend": { "passed": 15221, "skipped": 106 },
+  "frontend": { "files": 592, "passed": 8014 },
+  "contracts": { "passed": 262 },
+  "functional": { "passed": 292, "skipped": 46, "deselected": 131 },
+  "ruff": { "check": "passed", "formatted_files": 912 },
+  "orchestration": { "passed": 274, "existing_todo": 1 },
+  "kolla_node": { "passed": 29 },
+  "cli": { "passed": 20, "skipped": 36 },
+  "frontend_file_log": { "passed": 9 },
+  "focused": {
+    "merged_tutorial": { "command": "npx vitest run src/lib/tutorial/", "files": 6, "passed": 71 },
+    "pristine_dev_ownership": { "command": "npm ci && npx vitest run src/lib/components/topology/canvas/__tests__/domainGrouping.test.ts", "files": 1, "passed": 12 },
+    "corrected_ownership_and_design": { "command": "npx vitest run src/lib/components/topology/canvas/__tests__/domainGrouping.test.ts src/routes/__tests__/designSystemRules.test.ts", "files": 2, "passed": 34 }
+  },
+  "previous_attempts": [
+    {
+      "log": "gate-full.log",
+      "exit": 139,
+      "reason": "Native Vitest SIGSEGV, with two untouched transport tests timing out before the crash. Concurrent gates were reported by parent; causality is not established.",
+      "crash_report": "/Users/pieroot/Library/Logs/DiagnosticReports/node-2026-11-16-022349.ips"
+    },
+    {
+      "log": "gate-quiet-full.log",
+      "exit": 1,
+      "reason": "No crash/transport timeout recurrence. Existing 2efce387 tutorial test expected two buttons and a dialog. Imported already-fixed local dev, without manual tutorial edits."
+    },
+    {
+      "log": "gate-merged-heading-failure.log",
+      "exit": 1,
+      "reason": "Owned h3-to-h2 repair required one ownership-test selector update. Pristine dev file passed 12 tests before the selector was changed; all owner-ID/foreign-domain assertions retained."
+    }
+  ],
+  "proof_root": "~/.local/share/afterglow-proofs/slop-audit-3-20261116/",
+  "final_log": "gate-final-full.log",
+  "configuration": "Real npm ci and frozen uv dev dependencies. Removed only byte-identical ignored configuration copies from gate worktrees; originals preserved.",
+  "datastore_cleanup": "Functional runner removed only the unique test project's ephemeral DB/Redis containers and network.",
+  "limits": "Passing test doubles, loopback/native-contract tests and rendered tutorial fixtures do not establish live authentication, provider operations, deployment or production readiness."
+}

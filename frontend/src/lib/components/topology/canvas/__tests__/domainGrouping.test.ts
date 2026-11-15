@@ -119,7 +119,7 @@ describe('native administrator domain ownership', () => {
 		const resource = utils.container.querySelector('[data-overview-resource="vm-shared-only"]')!;
 		const owner = resource.closest('[data-overview-domain]')!;
 		expect(owner.getAttribute('data-overview-domain')).toBe('project:live-project-only');
-		expect(owner.querySelector('h3')?.textContent).toBe(t('domain.unknown'));
+		expect(owner.querySelector('h2')?.textContent).toBe(t('domain.unknown'));
 		expect(utils.container.querySelector('[data-overview-domain="domain:domain-a"] [data-overview-resource="vm-shared-only"]')).toBeNull();
 	});
 

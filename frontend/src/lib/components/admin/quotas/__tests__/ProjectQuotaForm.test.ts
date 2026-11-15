@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/sve
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Quotas } from '$lib/types/quotas';
 import ProjectQuotaForm from '../ProjectQuotaForm.svelte';
+import { t } from '$lib/i18n/ns/admin-identity';
 
 const media = vi.hoisted(() => {
   const events = new EventTarget();
@@ -94,6 +95,16 @@ describe('ProjectQuotaForm', () => {
 
 		const manilaSharesInput = screen.getByTestId('quota-file_storage-shares') as HTMLInputElement;
 		expect(manilaSharesInput.value).toBe('5');
+	});
+
+	it('keeps enabled field help readable inside an embedded quota section', () => {
+		render(ProjectQuotaForm, { quotas: sampleQuotas, projectId: 'proj-123', onSaveSection: unusedSave });
+		const section = screen.getByTestId('quota-section-compute');
+		expect(section.querySelector('.responsive-table-embedded')).not.toBeNull();
+		const help = within(section).getByText(t('quotaForm.compute.instances.help'));
+		expect(help.classList.contains('text-ink-2')).toBe(true);
+		expect(help.classList.contains('text-ink-3')).toBe(false);
+		expect((screen.getByTestId('quota-compute-instances') as HTMLInputElement).disabled).toBe(false);
 	});
 
 	it('displays unlimited badge when limit is -1', () => {
@@ -372,6 +383,7 @@ describe('ProjectQuotaForm', () => {
     await fireEvent.input(screen.getByTestId('quota-compute-cores'), { target: { value: '31' } });
     media.matches = false; media.dispatchEvent(new Event('change'));
     await waitFor(() => expect(screen.getByTestId('quota-compute-cores').closest('article')).not.toBeNull());
+    expect(screen.getByTestId('quota-compute-cores').closest('.responsive-table-embedded')).not.toBeNull();
     expect((screen.getByTestId('quota-compute-cores') as HTMLInputElement).value).toBe('31');
     expect(onSaveSection).not.toHaveBeenCalled();
     media.matches = true; media.dispatchEvent(new Event('change'));

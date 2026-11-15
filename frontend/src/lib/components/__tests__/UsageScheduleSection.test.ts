@@ -54,6 +54,17 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('usage schedule detail with its real controller and fields', () => {
+	it('keeps destructive notices flat inside the independent schedule section', async () => {
+		transport.get.mockResolvedValue(schedule({ expiry_action: 'delete', delete_volumes: true }));
+		const { container } = render(UsageScheduleSection, props);
+		await ready();
+		const section = container.querySelector('#usage-schedule')!;
+		expect(section.classList.contains('border')).toBe(true);
+		expect(section.querySelectorAll('.alert').length).toBeGreaterThan(0);
+		expect(section.querySelector('.alert:not(.alert-flat)')).toBeNull();
+		expect(screen.getByRole('checkbox', { name: t('deleteVolumes') })).toBeTruthy();
+	});
+
 	it('scrolls a delayed reminder anchor once on mount, never again on schedule refresh', async () => {
 		const originalScroll = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView');
 		const scroll = vi.fn();

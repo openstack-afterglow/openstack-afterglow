@@ -26,7 +26,7 @@
 	<h3 class="text-xs text-ink-2 uppercase tracking-wide mb-3">{t('overview.vms.title')}</h3>
 	<RegexSearch id="k3s-vms-search" bind:value={tableState.search} />
 	<TableViewControls {view} />
-	<ResponsiveTable>
+	<ResponsiveTable embedded>
 		{#snippet cards()}
 			{#each view.rows as row (row.id)}
 				<CompactResourceCard>

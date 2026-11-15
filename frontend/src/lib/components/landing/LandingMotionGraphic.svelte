@@ -291,7 +291,7 @@
 	.transcript .reply { color: var(--color-ink-0); }
 	.tool-group { margin-top: 0.25rem; font-size: 0.75rem; }
 	.tool { padding: 0.375rem 0.625rem; border: 1px solid var(--color-line); border-radius: var(--radius-md, 0.5rem); color: var(--color-ink-1); font-size: 0.75rem; overflow-wrap: anywhere; }
-	.tool.hit { border-color: var(--color-warm); background: color-mix(in oklab, var(--color-warm) 12%, transparent); color: var(--color-warm-text); }
+	.tool.hit { border-color: var(--color-warm); background: var(--color-surface-base); color: var(--color-warm-text); }
 	.vm-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.25rem 0.5rem; padding-block: 0.5rem; }
 	.vm-row + .vm-row { border-top: 1px solid var(--color-line); }
 	.vm-row .glyph { color: var(--color-warm); }

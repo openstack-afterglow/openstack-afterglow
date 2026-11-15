@@ -19,7 +19,7 @@
 	<div class="beta-gate-icon mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full">
 		<span class="text-xl font-semibold">β</span>
 	</div>
-	<h1 class="text-xl font-semibold">{title}</h1>
+	<h1 class="text-xl font-semibold text-balance">{title}</h1>
 	<p class="beta-gate-description mx-auto mt-3 max-w-xl text-sm leading-6">{description ?? t('beta.description')}</p>
 	<Button href={accountHref} variant="primary" class="mt-6">{t('beta.openSettings')}</Button>
 </div>
@@ -28,13 +28,12 @@
 	.beta-gate {
 		border: 1px solid color-mix(in oklab, var(--color-warm) 32%, var(--color-line));
 		background: color-mix(in oklab, var(--color-warm) 9%, var(--color-surface-raised));
-		box-shadow: 0 24px 80px color-mix(in oklab, var(--color-surface-canvas) 42%, transparent);
 		color: var(--color-ink-0);
 	}
 
 	.beta-gate-icon {
 		background: color-mix(in oklab, var(--color-warm) 14%, transparent);
-		color: var(--color-warm);
+		color: var(--color-ink-1);
 	}
 
 	.beta-gate-description {

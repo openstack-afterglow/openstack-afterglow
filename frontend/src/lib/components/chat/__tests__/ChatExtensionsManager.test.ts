@@ -23,6 +23,12 @@ vi.mock('$lib/stores/toast', () => ({ toast: mocks.toast }));
 import ChatExtensionsManager from '../ChatExtensionsManager.svelte';
 
 describe('ChatExtensionsManager MCP OAuth', () => {
+	it.each(['mcp', 'tools', 'skills'] as const)('keeps the %s settings section in the page outline', async (only) => {
+		render(ChatExtensionsManager, { base: '/api/v1/chat', only });
+		const sectionTitle = only === 'mcp' ? 'MCP 서버' : only === 'tools' ? '커스텀 HTTP 툴' : '스킬';
+		expect(screen.getByRole('heading', { level: 2, name: sectionTitle })).toBeTruthy();
+		await screen.findByRole('button', { name: only === 'mcp' ? '+ MCP 서버 추가' : only === 'tools' ? '+ 커스텀 툴 추가' : '+ 스킬 추가' });
+	});
 	it('separates MCP editing from destruction and tool execution', async () => {
 		grantLumen('lumen-mcp_editor');
 		render(ChatExtensionsManager, { base: '/api/v1/chat', only: 'mcp' });

@@ -33,6 +33,9 @@ describe('profile image controls and shared header renderer', () => {
 	it('selects, regenerates and resets a persisted image in every mounted consumer', async () => {
 		const header = render(ProfileImage, { name: 'Alpha', label: 'Header profile' });
 		render(ProfileSection);
+		expect(screen.getByRole('heading', { level: 2 }).classList.contains('text-sm')).toBe(true);
+		await screen.findByRole('heading', { level: 3 });
+		expect(document.querySelector('h4')).toBeNull();
 		await waitFor(() => expect(header.container.querySelector('img')?.getAttribute('src')).toBe(original.url));
 		expect(header.container.querySelector('img')?.getAttribute('referrerpolicy')).toBe('no-referrer');
 		api.put.mockResolvedValueOnce(generated).mockResolvedValueOnce({ ...generated, url: 'data:image/png;base64,Yg==' }).mockResolvedValueOnce(original);
@@ -84,6 +87,7 @@ describe('profile image controls and shared header renderer', () => {
 		api.put.mockRejectedValueOnce(new Error('forbidden')).mockResolvedValueOnce(generated);
 		await fireEvent.click(screen.getByRole('button', { name: '아바타 생성' }));
 		await waitFor(() => expect((screen.getByRole('button', { name: '아바타 생성' }) as HTMLButtonElement).disabled).toBe(false));
+		expect(screen.getByRole('alert').classList.contains('alert-flat')).toBe(true);
 		expect(header.container.querySelector('img')?.getAttribute('src')).toBe(original.url);
 		await fireEvent.click(screen.getByRole('button', { name: '아바타 생성' }));
 		await waitFor(() => expect(header.container.querySelector('img')?.getAttribute('src')).toBe(generated.url));

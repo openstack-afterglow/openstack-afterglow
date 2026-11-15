@@ -6,6 +6,8 @@
 	import { t } from '$lib/i18n/ns/admin-network';
 	import RichText from '$lib/i18n/RichText.svelte';
 
+	const id = $props.id();
+
 	let {
 		open = $bindable(),
 		allNetworks,
@@ -50,11 +52,11 @@
 		use:dialogFocus={{ enabled: true, onEscape: () => (open = false) }}
 		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={(event) => { if (event.target === event.currentTarget) (() => { open = false; })(); }}
-		role="dialog" aria-modal="true"
+		role="dialog" aria-modal="true" aria-labelledby="{id}-title"
 		tabindex="-1"
 	>
 		<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]">
-			<h2 class="text-lg font-semibold text-ink-0 mb-5">{t('portCreateModal.title')}</h2>
+			<h2 id="{id}-title" class="text-lg font-semibold text-ink-0 mb-5">{t('portCreateModal.title')}</h2>
 			{#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 			<div class="space-y-4">
 				<div class="space-y-4" data-tour="admin-ports-create-fields">
@@ -82,7 +84,7 @@
 			</div>
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={() => { open = false; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('portCreateModal.cancel')}</button>
-				<button aria-busy={creating} onclick={handleCreate} disabled={creating || !form.network_id || (!!targetDomainId && !form.project_id)} data-tour="admin-ports-create-submit" class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if creating}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('portCreateModal.creating')}</span>{:else}{t('portCreateModal.create')}{/if}</button>
+				<button aria-busy={creating} onclick={handleCreate} disabled={creating || !form.network_id || (!!targetDomainId && !form.project_id)} data-tour="admin-ports-create-submit" class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg disabled:opacity-30">{#if creating}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('portCreateModal.creating')}</span>{:else}{t('portCreateModal.create')}{/if}</button>
 			</div>
 		</div>
 	</div>

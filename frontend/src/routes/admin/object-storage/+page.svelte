@@ -133,7 +133,7 @@
 				data-tour="admin-object-storage-create-open"
 				onclick={() => { showModal = true; }}
 				disabled={!projectId}
-				class="text-xs text-ink-0 bg-indigo-600 hover:bg-indigo-500 transition-colors px-3 py-1.5 rounded border border-indigo-500"
+				class="text-xs text-action-on-warm bg-action-warm hover:bg-action-warm-hover transition-colors px-3 py-1.5 rounded border border-action-warm"
 			>{t('buckets.adminPage.create')}</button>
 			<AutoRefreshControl
 				bind:active={ar.active}

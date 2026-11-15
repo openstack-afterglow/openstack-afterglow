@@ -112,37 +112,38 @@
 		void Promise.all([loadSummary(), loadSeries(), loadKeys()]).finally(() => (loading = false));
 	});
 
-	const cardCls = 'rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-raised)]';
 </script>
 
 <div class="space-y-4">
 	<!-- 접근경로 분해 -->
 	<div>
-		<h4 class="mb-2 text-xs font-semibold text-[var(--color-ink-2)]">{t('usage.sourcesTitle')}</h4>
-		<div class="grid grid-cols-2 gap-2">
-			<div class="{cardCls} px-3 py-2">
-				<div class="text-xs text-[var(--color-ink-3)]">{t('usage.web')}</div>
+		<h3 class="mb-2 text-xs font-semibold text-[var(--color-ink-2)]">{t('usage.sourcesTitle')}</h3>
+		<div class="grid grid-cols-2 gap-4 divide-x divide-[var(--color-line)]">
+			<div class="py-2">
+				<div class="text-xs text-[var(--color-ink-2)]">{t('usage.web')}</div>
 				<div class="text-sm font-semibold text-[var(--color-ink-1)]">{t('usage.tokens', { count: Math.round(web.tokens) })}</div>
-				<div class="text-xs text-[var(--color-ink-3)]">{t('usage.requests', { count: Math.round(web.request_count) })}</div>
+				<div class="text-xs text-[var(--color-ink-2)]">{t('usage.requests', { count: Math.round(web.request_count) })}</div>
 			</div>
-			<div class="{cardCls} px-3 py-2">
-				<div class="text-xs text-[var(--color-ink-3)]">API</div>
+			<div class="py-2 pl-4">
+				<div class="text-xs text-[var(--color-ink-2)]">API</div>
 				<div class="text-sm font-semibold text-[var(--color-ink-1)]">{t('usage.tokens', { count: Math.round(apiUse.tokens) })}</div>
-				<div class="text-xs text-[var(--color-ink-3)]">{t('usage.requests', { count: Math.round(apiUse.request_count) })}</div>
+				<div class="text-xs text-[var(--color-ink-2)]">{t('usage.requests', { count: Math.round(apiUse.request_count) })}</div>
 			</div>
 		</div>
 	</div>
 
 	<!-- 시계열 (web/api 스택) -->
-	<div>
-		<div class="mb-2 flex items-center justify-between">
-			<h4 class="text-xs font-semibold text-[var(--color-ink-2)]">{t('usage.trendTitle')}</h4>
+	<div class="border-t border-[var(--color-line)] pt-4">
+		<div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+			<h3 class="text-xs font-semibold text-[var(--color-ink-2)]">{t('usage.trendTitle')}</h3>
 			<div class="flex gap-1">
 				{#each BUCKETS as b (b.key)}
 					<button
+						type="button"
+						aria-pressed={bucket === b.key}
 						class="rounded px-2 py-0.5 text-xs {bucket === b.key
-							? 'bg-[var(--color-accent)] text-ink-0'
-							: 'text-[var(--color-ink-3)] hover:text-[var(--color-ink-1)]'}"
+							? 'bg-[var(--color-surface-selected)] text-ink-0'
+							: 'text-[var(--color-ink-2)] hover:text-[var(--color-ink-1)]'}"
 						onclick={() => setBucket(b.key)}>{b.label}</button
 					>
 				{/each}
@@ -151,9 +152,9 @@
 		{#if loading}
 			<LoadingState label={t('usage.trendLoading')} />
 		{:else if points.length === 0}
-			<p class="px-1 text-xs text-[var(--color-ink-3)]">{t('usage.empty')}</p>
+			<p class="px-1 text-xs text-[var(--color-ink-2)]">{t('usage.empty')}</p>
 		{:else}
-			<div class="{cardCls} space-y-1 p-3">
+			<div class="space-y-1">
 				<BklitChart spec={usageChart} height={Math.max(144, points.length * 24 + 48)} label={t('usage.trendTitle')} />
 				<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-ink-2 tabular-nums">
 					{#each points as point (point.bucket)}
@@ -163,7 +164,7 @@
 						</div>
 					{/each}
 				</div>
-				<div class="mt-1 flex gap-3 text-xs text-[var(--color-ink-3)]">
+				<div class="mt-1 flex gap-3 text-xs text-[var(--color-ink-2)]">
 					<span><span class="inline-block h-2 w-2 rounded-sm bg-[var(--color-accent)]"></span> {t('usage.web')}</span>
 					<span><span class="inline-block h-2 w-2 rounded-sm bg-[var(--color-state-success)]"></span> API</span>
 				</div>
@@ -173,13 +174,13 @@
 
 	<!-- API 키별 -->
 	{#if keys.length}
-		<div>
-			<h4 class="mb-2 text-xs font-semibold text-[var(--color-ink-2)]">{t('usage.keysTitle')}</h4>
-			<div class="{cardCls} divide-y divide-[var(--color-line)]">
+		<div class="border-t border-[var(--color-line)] pt-4">
+			<h3 class="mb-2 text-xs font-semibold text-[var(--color-ink-2)]">{t('usage.keysTitle')}</h3>
+			<div class="divide-y divide-[var(--color-line)]">
 				{#each keys as k (k.api_key_id)}
-					<div class="flex items-center justify-between px-3 py-2">
+					<div class="flex flex-wrap items-center justify-between gap-2 py-2">
 						<span class="truncate text-xs text-[var(--color-ink-1)]">{k.name || k.key_prefix || t('usage.keyFallback', { id: k.api_key_id })}</span>
-						<span class="shrink-0 text-xs text-[var(--color-ink-3)]">{t('usage.keySummary', { tokens: Math.round(k.total_tokens), requests: Math.round(k.request_count) })}</span>
+						<span class="text-xs text-[var(--color-ink-2)]">{t('usage.keySummary', { tokens: Math.round(k.total_tokens), requests: Math.round(k.request_count) })}</span>
 					</div>
 				{/each}
 			</div>

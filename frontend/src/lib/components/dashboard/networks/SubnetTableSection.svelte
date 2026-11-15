@@ -163,7 +163,7 @@
 	<TableViewControls {view} class={network.subnet_details.length ? 'lg:hidden' : ''} />
 	{#if network.subnet_details.length > 0 && view.rows.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
 	{#if network.subnet_details.length > 0}
-		<ResponsiveTable>
+		<ResponsiveTable embedded>
 			{#snippet cards()}
 				{#each view.rows as subnet (subnet.id)}
 					{@const connected = (network.routers || []).filter((router) => router.connected_subnet_ids.includes(subnet.id))}

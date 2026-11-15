@@ -45,9 +45,9 @@
 		<RegexSearch id={`${uid}-search`} bind:value={state.search} />
 		<TableViewControls {view} class="" />
 		{#if view.rows.length === 0}<p role="status">{tc('table.noMatches')}</p>{/if}
-		<ul class="space-y-2">
+		<ul>
 			{#each view.rows as observation}
-				<li class="min-w-0 border-l border-line pl-3 [overflow-wrap:anywhere]">
+				<li class="min-w-0 border-t border-line py-2 [overflow-wrap:anywhere]">
 					<details>
 						<summary class="min-h-11 py-3 md:min-h-0 md:py-0 cursor-pointer text-xs text-ink-1 focus-visible:outline-2 focus-visible:outline-accent">
 							<span><strong>{observation.client_name || observation.product || t('mcp.unknownClient')}</strong> · <span>{observation.client_name ? t('mcp.clientSource.client_info') : t('mcp.clientEvidence', { source: t(`mcp.clientSource.${observation.identity_source}`) })}</span></span>

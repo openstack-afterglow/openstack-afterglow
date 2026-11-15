@@ -149,7 +149,7 @@
 	</div>
 
 	{#if showAttachVolume && !s.waygateLocked}
-		<div class="mb-4 bg-surface-sunken rounded-lg p-4">
+		<div class="mb-4 border-y border-line py-4">
 			<div class="flex gap-1 mb-3">
 				<button
 					onclick={() => { attachMode = 'existing'; }}
@@ -222,7 +222,7 @@
 	{#if s.volumes.length === 0}
 		<p class="text-sm text-ink-2">{t('volumes.empty')}</p>
 	{:else}
-		<ResponsiveTable>
+		<ResponsiveTable embedded>
 			{#snippet cards()}
 				{#each s.volumes as vol (vol.volume_id)}
 					{@const reason = expansionReason(vol.volume_id)}
@@ -238,10 +238,10 @@
 					</CompactResourceCard>
 				{/each}
 			{/snippet}
-		<div class="space-y-2">
+		<div class="divide-y divide-line border-y border-line">
 			{#each s.volumes as vol}
 				{@const reason = expansionReason(vol.volume_id)}
-				<div class="flex flex-wrap items-center justify-between gap-3 bg-surface-sunken/50 rounded px-3 py-2">
+				<div class="flex flex-wrap items-center justify-between gap-3 py-3">
 					<div class="flex flex-wrap items-center gap-4 min-w-0">
 						<span class="text-xs font-mono text-warm-text hover:text-warm-text-hover">
 							<a href="/dashboard/volumes/{vol.volume_id}">{vol.name || vol.volume_id.slice(0, 12) + '...'}</a>
@@ -302,7 +302,7 @@
 			<p class="mt-3 text-xs text-ink-2">{t('volumes.extendOfflineRequired')}</p>
 		{/if}
 	{/if}
-	{#if extendError}<Alert tone="danger" class="mt-3">{extendError}</Alert>{/if}
+	{#if extendError}<Alert flat tone="danger" class="mt-3">{extendError}</Alert>{/if}
 </div>
 
 <VolumeExtendModal

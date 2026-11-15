@@ -29,7 +29,7 @@
 <div class="auth-studio" data-variant={variant} class:auth-wide={wide}>
 	<header class="auth-topbar">
 		<a class="auth-brand" href="/" aria-label={t('loginBrand.home')}>
-			{#if operatorLogo}<img src={operatorLogo} alt="" height="28" />{/if}
+			{#if operatorLogo}<img src={operatorLogo} alt="" height="28" style:color-scheme={$resolvedTheme} />{/if}
 			<span>{site}</span>
 		</a>
 		<div class="auth-top-actions">
@@ -106,7 +106,7 @@
 	.auth-motion {
 		position: absolute; z-index: 2; bottom: 1rem; left: clamp(1.25rem, 4vw, 4.5rem);
 		min-height: 44px; padding: 0.5rem 0; border: 0; background: transparent;
-		color: var(--color-ink-2); font: inherit; font-size: 0.6875rem; cursor: pointer;
+		color: var(--color-ink-2); font: inherit; font-size: var(--type-support); cursor: pointer;
 	}
 	.auth-motion:hover { color: var(--color-ink-0); }
 	.auth-motion:focus-visible { outline: 2px solid var(--color-warm-2); outline-offset: 4px; }
@@ -157,7 +157,7 @@
 	.auth-footer {
 		display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: nowrap;
 		padding: 0 clamp(1.25rem, 4vw, 4.5rem); min-width: 0;
-		border-top: 1px solid var(--color-line); color: var(--color-ink-2); font-size: 0.625rem;
+		border-top: 1px solid var(--color-line); color: var(--color-ink-2); font-size: var(--type-identifier);
 	}
 	.auth-footer > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.auth-footer a { display: flex; align-items: center; gap: 0.5rem; min-height: 44px; color: inherit; text-decoration: none; white-space: nowrap; }
@@ -188,12 +188,11 @@
 		.auth-layout { grid-template-columns: 1fr; grid-template-rows: minmax(60px, 15%) minmax(0, 1fr); }
 		.auth-identity { border-right: 0; border-bottom: 1px solid var(--color-line); }
 		.auth-identity-copy, .auth-identity-index { display: none; }
-		.auth-motion { left: auto; right: 1rem; bottom: 0.25rem; font-size: 0.625rem; }
+		.auth-motion { left: auto; right: 1rem; bottom: 0.25rem; }
 		.auth-panel { padding: 0.75rem 1.25rem; }
 		.auth-panel-content { max-width: 440px; }
 		.auth-footer-note { display: none; }
 		.auth-panel-content :global(.auth-flow) { gap: 0.85rem; }
-		.auth-footer { font-size: 0.5625rem; }
 	}
 	@media (max-height: 800px) {
 		.auth-studio { grid-template-rows: 48px minmax(0, 1fr) 33px; }
@@ -206,7 +205,7 @@
 	}
 	@media (max-width: 767px) and (max-height: 800px) {
 		.auth-layout { grid-template-rows: minmax(32px, 9%) minmax(0, 1fr); }
-		.auth-motion { bottom: 0; font-size: 0.5625rem; }
+		.auth-motion { bottom: 0; }
 	}
 	@media (max-height: 620px) {
 		.auth-studio { grid-template-rows: 44px minmax(0, 1fr); }

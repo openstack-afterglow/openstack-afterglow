@@ -21,11 +21,12 @@ afterEach(() => { cleanup(); initLocale('ko'); });
 describe('account login preference', () => {
 	it('is opt-in and saves only the explicit boolean without arbitrary browser target IDs', async () => {
 		render(LoginPreferenceSection);
+		expect(screen.getByRole('heading', { level: 2, name: t('loginPreference.title') }).classList.contains('text-sm')).toBe(true);
 		const checkbox = await screen.findByRole('checkbox', { name: t('loginPreference.remember') }) as HTMLInputElement;
 		await waitFor(() => expect(checkbox.disabled).toBe(false)); expect(checkbox.checked).toBe(false);
 		await fireEvent.click(checkbox); await fireEvent.click(screen.getByRole('button', { name: t('loginPreference.save') }));
 		expect(mocks.put).toHaveBeenCalledExactlyOnceWith('/api/v1/profile/login-preference', { remember_last_workspace: true }, 'token', 'project', { cache: 'no-store', replayOnUnauthorized: false });
-		await screen.findByText(t('loginPreference.saved'));
+		expect((await screen.findByText(t('loginPreference.saved'))).closest('[role="status"]')?.classList.contains('alert-flat')).toBe(true);
 	});
 	it('requires an explicit reload after an uncertain save and never replays', async () => {
 		mocks.put.mockRejectedValueOnce(new Error('private'));
@@ -33,7 +34,7 @@ describe('account login preference', () => {
 		const checkbox = screen.getByRole('checkbox') as HTMLInputElement;
 		await waitFor(() => expect(checkbox.disabled).toBe(false));
 		await fireEvent.click(checkbox); await fireEvent.click(screen.getByRole('button', { name: t('loginPreference.save') }));
-		await screen.findByRole('alert');
+		expect((await screen.findByRole('alert')).classList.contains('alert-flat')).toBe(true);
 		expect((screen.getByRole('button', { name: t('loginPreference.save') }) as HTMLButtonElement).disabled).toBe(true);
 		expect(mocks.put).toHaveBeenCalledTimes(1); expect(document.body.textContent).not.toContain('private');
 		await fireEvent.click(screen.getByRole('button', { name: t('loginPreference.reload') }));

@@ -21,6 +21,7 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import Pill from '$lib/components/ui/Pill.svelte';
 	import SearchSelect from '$lib/components/ui/SearchSelect.svelte';
 	import type { AnnouncementAdmin, AnnouncementSeverity, AnnouncementTargetType } from '$lib/types/announcements';
 	import { t } from '$lib/i18n/ns/admin-system';
@@ -153,20 +154,12 @@
 		return t(({ info: 'announcements.severity.info', warning: 'announcements.severity.warning', danger: 'announcements.severity.danger' } as const)[s]);
 	}
 
-	function severityStyle(s: AnnouncementSeverity): string {
-		const color = {
-			info: 'var(--color-state-info)',
-			warning: 'var(--color-state-warning)',
-			danger: 'var(--color-state-danger)',
-		}[s];
-		return `color: ${color}; border-color: color-mix(in oklab, ${color} 40%, transparent); background: color-mix(in oklab, ${color} 15%, transparent);`;
-	}
 
 	function activeStyle(isActive: boolean): string {
 		if (isActive) {
-			return 'color: var(--color-state-success); border-color: color-mix(in oklab, var(--color-state-success) 40%, transparent); background: color-mix(in oklab, var(--color-state-success) 15%, transparent);';
+			return 'color: var(--color-state-success-text); border-color: color-mix(in oklab, var(--color-state-success) 40%, transparent); background: color-mix(in oklab, var(--color-state-success) 15%, transparent);';
 		}
-		return 'color: var(--color-ink-3); border-color: var(--color-line); background: var(--color-surface-sunken);';
+		return 'color: var(--color-ink-2); border-color: var(--color-line); background: var(--color-surface-sunken);';
 	}
 	const tableSearchId = $props.id();
 	let tableSearch = $state('');
@@ -187,9 +180,9 @@
 	<Card padding="lg" class="mb-5">
 		<h2 class="text-sm font-semibold text-[var(--color-ink-0)] mb-4">{t('announcements.form.title')}</h2>
 		{#if ctrl.createError}
-			<Alert tone="danger" class="mb-4">{ctrl.createError}</Alert>
+			<Alert flat tone="danger" class="mb-4">{ctrl.createError}</Alert>
 		{/if}
-		{#if emailUnknown}<Alert tone="warning" class="mb-4">{tm('unknown')}</Alert>{/if}
+		{#if emailUnknown}<Alert flat tone="warning" class="mb-4">{tm('unknown')}</Alert>{/if}
 		{#if emailAttempt && !ctrl.emailOperation}<p class="mb-3 text-sm font-mono [overflow-wrap:anywhere]">{tm('operation', { id: emailAttempt })}</p>{/if}
 		{#if ctrl.emailOperation}<MailOperationResult operation={ctrl.emailOperation} />{/if}
 		<fieldset disabled={mutationBusy || emailUnknown} class="min-w-0" data-tour="admin-announcements-form">
@@ -310,13 +303,13 @@
 		{:else if ctrl.announcements.length === 0}
 			<div class="text-center text-[var(--color-ink-3)] text-sm py-8">{t('announcements.history.empty')}</div>
 		{:else}
-			<ResponsiveTable>
+			<ResponsiveTable embedded>
 				{#snippet cards()}
 					{#each tableView.rows as a (a.id)}
 						<CompactResourceCard>
 							<div class="flex min-w-0 items-start justify-between gap-2">
 								<span class="min-w-0 font-medium">{a.title}</span>
-								<span class="shrink-0 rounded border px-1.5 py-0.5 text-xs" style={severityStyle(a.severity)}>{severityLabel(a.severity)}</span>
+								<Pill tone={a.severity} size="xs" class="shrink-0">{severityLabel(a.severity)}</Pill>
 							</div>
 							<dl>
 								<div><dt>{t('announcements.history.target')}</dt><dd>{targetLabel(a)}</dd></div>
@@ -357,7 +350,7 @@
 								<td class="py-2.5 pr-4 text-[var(--color-ink-2)] tabular-nums whitespace-nowrap">{formatIsoDateTime(a.created_at)}</td>
 								<td class="py-2.5 pr-4 text-[var(--color-ink-0)] max-w-[240px] truncate" title={a.title}>{a.title}</td>
 								<td class="py-2.5 pr-4">
-									<span class="px-1.5 py-0.5 rounded text-xs border" style={severityStyle(a.severity)}>{severityLabel(a.severity)}</span>
+									<Pill tone={a.severity} size="xs">{severityLabel(a.severity)}</Pill>
 								</td>
 								<td class="py-2.5 pr-4 text-[var(--color-ink-1)] whitespace-nowrap">{targetLabel(a)}</td>
 								<td class="py-2.5 pr-4">
@@ -391,3 +384,12 @@
 	</Card>
 	</div>
 </PageShell>
+
+<style>
+	[data-tour='admin-announcements-history'] :global(.compact-resource-footer) {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	[data-tour='admin-announcements-history'] :global(.compact-resource-actions) {
+		grid-column: 1 / -1;
+	}
+</style>

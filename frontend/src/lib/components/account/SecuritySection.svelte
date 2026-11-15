@@ -9,6 +9,8 @@
   import { onDestroy, onMount } from 'svelte';
   import { cloudShell } from '$lib/stores/cloudShell.svelte';
   import LoadingState from '$lib/components/ui/LoadingState.svelte';
+  import Alert from '$lib/components/ui/Alert.svelte';
+  import Button from '$lib/components/ui/Button.svelte';
   import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
   import { t as tc } from '$lib/i18n/ns/common';
   import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
@@ -134,7 +136,7 @@
 
 <div class="motion-fade bg-surface-base border border-line rounded-xl p-5">
   <div class="flex items-center justify-between mb-4">
-    <h3 class="text-sm font-semibold text-ink-0">{t('security.title')}</h3>
+    <h2 class="text-sm font-semibold text-ink-0">{t('security.title')}</h2>
     <button
       onclick={loadSessions}
       class="text-xs text-ink-2 hover:text-ink-2 transition-colors"
@@ -143,10 +145,10 @@
   </div>
 
   {#if error}
-    <div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-3 py-2 text-xs mb-3">{error}</div>
+    <Alert flat tone="danger" class="mb-3">{error}</Alert>
   {/if}
   {#if success}
-    <div class="bg-green-900/40 border border-green-700 text-green-300 rounded-lg px-3 py-2 text-xs mb-3">{success}</div>
+    <Alert flat tone="success" class="mb-3">{success}</Alert>
   {/if}
 
   <!-- 활성 세션 목록 -->
@@ -158,13 +160,13 @@
       <p class="text-xs text-ink-2 mb-2"><RichText segments={t.rich('security.count', { count: sessions.length })} tags={{ count: sessionCount }} /></p>
       {#if view.rows.length === 0}<p role="status" class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
       {#each view.rows as sess (sess.jti)}
-        <div class="bg-surface-sunken/60 rounded-lg px-3 py-2 text-xs {sess.blacklisted ? 'border border-red-800/60' : 'border border-line-2/40'}">
-          <div class="flex items-center justify-between gap-2">
+        <div class="border-t border-line py-3 text-xs">
+          <div class="flex flex-wrap items-center justify-between gap-2">
             <div class="flex flex-col gap-0.5 min-w-0">
               <span class="text-ink-2 font-mono truncate">{sess.origin_ip || '—'}</span>
               <span class="text-ink-2">{deviceLabel(sess)}</span>
             </div>
-            <div class="flex items-center gap-2 shrink-0">
+            <div class="flex flex-wrap items-center gap-2">
               {#if sess.blacklisted}
                 <span class="text-red-400 text-xs font-semibold uppercase">{t('security.blocked')}</span>
               {:else}
@@ -172,11 +174,11 @@
               {/if}
               {#if deletingJti === sess.jti}
                 <div class="flex items-center gap-1">
-                  <button
+                  <Button
+                    variant="danger" size="xs"
                     onclick={() => deleteSession(sess.jti)}
                     disabled={removingJti === sess.jti}
-                    class="px-2 py-0.5 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-ink-0 text-xs rounded transition-colors"
-                  >{t('security.confirm')}</button>
+                  >{t('security.confirm')}</Button>
                   <button
                     onclick={() => { deletingJti = null; }}
                     class="px-2 py-0.5 bg-surface-selected hover:bg-surface-selected text-ink-0 text-xs rounded transition-colors"
@@ -210,28 +212,28 @@
       {t('security.logoutHelp')}
     </p>
     {#if showConfirm}
-      <div class="bg-red-950/40 border border-red-800/60 rounded-lg px-3 py-3 mb-3">
-        <p class="text-xs text-red-300 mb-2">
+      <Alert flat tone="danger" class="mb-3">
+        <p class="text-xs mb-2">
           <RichText segments={t.rich('security.logoutConfirm')} />
         </p>
-        <div class="flex gap-2">
-          <button
+        <div class="flex flex-wrap gap-2">
+          <Button
+            variant="danger" size="xs"
             onclick={logoutAll}
             disabled={revoking}
-            class="px-3 py-1.5 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-ink-0 text-xs rounded-lg transition-colors"
-          >{#if revoking}<LoadingState variant="control" label={t('security.revoking')}  />{:else}{t('security.confirm')}{/if}</button>
+          >{#if revoking}<LoadingState variant="control" label={t('security.revoking')}  />{:else}{t('security.confirm')}{/if}</Button>
           <button
             onclick={() => { showConfirm = false; }}
             class="px-3 py-1.5 bg-surface-selected hover:bg-surface-selected text-ink-0 text-xs rounded-lg transition-colors"
           >{t('security.cancel')}</button>
         </div>
-      </div>
+      </Alert>
     {:else}
-      <button
+      <Button
+        variant="danger"
         onclick={() => { showConfirm = true; }}
         disabled={revoking}
-        class="px-4 py-2 bg-red-700/80 hover:bg-red-600 disabled:opacity-50 text-ink-0 text-sm rounded-lg transition-colors"
-      >{t('security.logoutAll')}</button>
+      >{t('security.logoutAll')}</Button>
     {/if}
   </div>
 </div>

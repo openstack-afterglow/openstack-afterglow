@@ -20,7 +20,7 @@
 
 <div class="motion-enter bg-surface-base border border-line rounded-lg p-6 mb-4">
 	<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-4">{t('info.title')}</h2>
-	<ResponsiveTable>
+	<ResponsiveTable embedded>
 		{#snippet cards()}
 			<CompactResourceCard>
 				<div class="flex min-w-0 flex-wrap items-start justify-between gap-2"><h3 class="break-all text-sm font-medium line-clamp-2" title={s.instance!.name || s.instance!.id}>{s.instance!.name || s.instance!.id}</h3><StatusChip status={s.instance!.status} kind="server" /></div>

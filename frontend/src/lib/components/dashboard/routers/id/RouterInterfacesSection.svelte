@@ -107,7 +107,7 @@
 	{#if router.interfaces.length === 0}
 		<p class="text-sm text-ink-2">{t('router.interfaces.empty')}</p>
 	{:else}
-		<ResponsiveTable>
+		<ResponsiveTable embedded>
 			{#snippet cards()}
 				{#each view.rows as iface (iface.subnet_id)}
 					{@const removing = pending.isActive(`remove:${iface.subnet_id}`, saving)}

@@ -55,11 +55,11 @@
 </script>
 
 <Card class="p-5 space-y-4">
-	<h3 class="text-sm font-semibold text-ink-0">{t('loginPreference.title')}</h3>
+	<h2 class="text-sm font-semibold text-ink-0">{t('loginPreference.title')}</h2>
 	<p class="text-sm text-ink-2">{t('loginPreference.help')}</p>
 	{#if busy}<LoadingState variant={loaded ? 'inline' : 'section'} label={t('loginPreference.loading')}  />{/if}
-	{#if error}<Alert tone="danger">{error} <Button variant="secondary" disabled={busy || !$authReady || $logoutInProgress || $projectSwitching} onclick={load}>{t('loginPreference.reload')}</Button></Alert>{/if}
-	{#if saved}<Alert tone="success">{t('loginPreference.saved')}</Alert>{/if}
+	{#if error}<Alert flat tone="danger">{error} <Button variant="secondary" disabled={busy || !$authReady || $logoutInProgress || $projectSwitching} onclick={load}>{t('loginPreference.reload')}</Button></Alert>{/if}
+	{#if saved}<Alert flat tone="success">{t('loginPreference.saved')}</Alert>{/if}
 	<label class="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" bind:checked={enabled} disabled={blocked} />{t('loginPreference.remember')}</label>
 	<Button variant="secondary" disabled={blocked || (enabled && !$auth.projectId)} onclick={save}>{t('loginPreference.save')}</Button>
 </Card>

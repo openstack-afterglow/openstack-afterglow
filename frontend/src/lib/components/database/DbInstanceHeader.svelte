@@ -22,16 +22,16 @@
 	const statusLabel: Record<string, string> = { SHUTDOWN: tr('state.deletingShort') };
 </script>
 
-<div class="flex items-start justify-between">
-	<div>
+<div class="flex flex-wrap items-start justify-between gap-3">
+	<div class="min-w-0 flex-1 basis-40">
 		{#if s.instance}
-			<h1 class="text-xl font-bold text-ink-0">{s.instance?.name ?? ''}</h1>
+			<h1 class="break-words text-xl font-bold text-ink-0">{s.instance?.name ?? ''}</h1>
 			<span class="text-xs font-medium {statusColor[s.instance?.status ?? ''] ?? 'text-ink-2'}">
 				{statusLabel[s.instance?.status ?? ''] ?? s.instance?.status ?? ''}
 			</span>
 		{/if}
 	</div>
-	<div class="flex items-center gap-2 flex-shrink-0">
+	<div class="flex min-w-0 max-w-full flex-wrap items-center gap-2">
 		<AutoRefreshControl
 			bind:active={s.ar.active}
 			bind:intervalSeconds={s.ar.intervalSeconds}

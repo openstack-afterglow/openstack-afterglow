@@ -58,7 +58,7 @@
 	{#snippet cards()}
 		{#each view.rows as p (p.id)}
 			<CompactResourceCard>
-				<div class="flex items-start justify-between gap-2"><h3 class="break-all font-medium text-ink-0">{p.name || p.id.slice(0, 12)}</h3><StatusChip status={p.status} /></div>
+				<div class="flex items-start justify-between gap-2"><h2 class="break-all font-medium text-ink-0">{p.name || p.id.slice(0, 12)}</h2><StatusChip status={p.status} /></div>
 				<div class="space-y-1 break-all text-xs text-ink-2"><p>{t('portsTable.ipAddress')}: {p.fixed_ips[0]?.ip_address ?? '-'}{p.fixed_ips.length > 1 ? ` (+${p.fixed_ips.length - 1})` : ''}</p><p>{t('portsTable.deviceOwner')}: {p.device_owner || '-'}</p><p>{t('portsTable.project')}: {p.project_id ? ($projectNames.get(p.project_id) ?? p.project_id.slice(0, 8)) : '-'}</p></div>
 				{#snippet actions()}{#if !p.device_owner}<Button variant="secondary" size="sm" onclick={() => onEdit(p)}>{t('portsTable.edit')}</Button><Button variant="danger" size="sm" onclick={() => onDelete(p)} dataTour={p.id === tourDeleteId ? 'admin-ports-delete' : undefined}>{t('portsTable.delete')}</Button>{/if}{/snippet}
 				{#snippet details()}<div class="space-y-2 break-all font-mono text-xs text-ink-2"><p>{p.id}</p><p>{p.project_id ?? '-'}</p>{#each p.fixed_ips as ip}<p>{ip.ip_address}</p>{/each}</div>{/snippet}

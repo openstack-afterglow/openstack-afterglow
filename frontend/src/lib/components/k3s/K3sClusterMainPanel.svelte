@@ -68,20 +68,20 @@
 <K3sClusterAuthorizationNotice />
 
 {#if isStampede}
-	<div class="mb-3 flex items-center justify-between bg-surface-selected/20 border border-action-warm/40 rounded-lg px-3 py-2.5">
-		<div class="flex items-center gap-2">
+	<div class="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-2 bg-surface-selected/20 border border-action-warm/40 rounded-lg px-3 py-2.5">
+		<div class="flex min-w-0 flex-wrap items-center gap-2">
 			<span class="text-warm-text text-sm font-medium">{t('overview.main.stampedeMode')}</span>
-			<span class="text-xs text-warm-text/70">{t('overview.main.stampedeDescription')}</span>
+			<span class="text-xs text-warm-text">{t('overview.main.stampedeDescription')}</span>
 		</div>
 		<button
 			onclick={disableStampede}
 			disabled={!$k3sPermissions.editClusters || disabling}
-			class="text-xs text-warm-text/70 hover:text-red-400 disabled:opacity-50 transition-colors px-2 py-1 rounded"
+			class="text-xs text-warm-text hover:text-red-400 disabled:opacity-50 transition-colors px-2 py-1 rounded"
 		>{#if disabling}<LoadingState variant="control" label={tc('state.processing')} />{:else}{t('overview.main.disable')}{/if}</button>
 	</div>
 {:else if canEnableStampede}
-	<div class="mb-3 flex items-center justify-between bg-surface-sunken/50 border border-line-2 rounded-lg px-3 py-2.5">
-		<div class="flex items-center gap-2">
+	<div class="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-2 bg-surface-sunken/50 border border-line-2 rounded-lg px-3 py-2.5">
+		<div class="flex min-w-0 flex-wrap items-center gap-2">
 			<span class="text-ink-2 text-sm">{t('overview.main.stampedeAutoscale')}</span>
 			<span class="text-xs text-ink-2">{t('overview.main.enableHint')}</span>
 		</div>

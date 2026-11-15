@@ -54,7 +54,7 @@
 		</h4>
 		{#if expanded}
 			<TableViewControls {view} />
-			<ResponsiveTable>
+			<ResponsiveTable embedded>
 				{#snippet cards()}
 					{#each view.rows as row (row.key)}
 						{#snippet remoteDetails()}<p class="break-all font-mono text-xs">{row.remote.kind === 'group' ? row.remote.value : row.remoteLabel}</p>{/snippet}

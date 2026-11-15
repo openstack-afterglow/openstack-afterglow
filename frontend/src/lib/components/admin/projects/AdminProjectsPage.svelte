@@ -219,7 +219,8 @@
 				{#each [10, 20, 30] as n}
 					<button
 						onclick={() => { pageSize = n; resetList(); }}
-						class="px-2 py-0.5 rounded {pageSize === n ? 'bg-action-warm text-ink-0' : 'bg-surface-sunken hover:bg-surface-selected text-ink-2'}"
+						aria-pressed={pageSize === n}
+						class="px-2 py-0.5 rounded {pageSize === n ? 'bg-surface-selected text-ink-0 shadow-[inset_0_0_0_1px_var(--color-line-2)]' : 'bg-surface-sunken hover:bg-surface-selected text-ink-2'}"
 					>{n.toLocaleString(intlLocale())}</button>
 				{/each}
 			</div>

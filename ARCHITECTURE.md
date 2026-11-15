@@ -4,6 +4,9 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
+**세 번째 시각 정리 (2026-11-16, source/local):** 기존 layout.css semantic text token과 shared embedded/flat/table/card/form 경계를 재사용해 consumer/admin 상세·계정·Lumen 설정의 중첩 외곽선, 제목 단계, 작업 대비와 좁은 상세 header를 수정한다. AuthStudioShell은 기존 resolvedTheme를 SVG color-scheme에 전달하고 보조 글자 크기만 기존 type role로 올린다. 포트 생성창은 기존 localized heading을 dialog 이름으로 연결한다. 자원·credential·권위·API·scope·polling·tutorial 가용성·DB/schema·배포 경계는 바꾸지 않는 presentation-only 변경이다. 실제 렌더·native 조작과 synthetic/redirect 한계는 docs/testing.md에 구분하며 운영 수용으로 승격하지 않는다.
+
+
 이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.32.11`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
 
 **1.32.11 준비 (2026-11-08, source/local):** `1.32.10` 이후 dev의 도메인 IAM 그룹 관리(`/api/v1/iam/groups*`), 도메인 manager 프로젝트 수정(`PATCH /api/v1/iam/projects/{id}`, 이름·설명만), 프로젝트 표·슬라이드인 화면, manager 전용 프로젝트 생성(`project_creator` 위임 폐기)과 manager 투영의 native `manager` 부여(v1 `reader` 투영 migration, 투영 파생 row의 manager 계산 제외)를 포함한다. 사용자 페이지의 `/api/v1/{chat,k3s,waygate,palimpsest}/*`에서 시스템 관리자 승격을 제거하고 `/admin/*` 하위에만 남긴다. 스키마·SQL 변경과 새 설정 키는 없다. 시스템 관리자 승격을 제거한 `deps._resolve_jwt_session` 경계는 `test_auth_domain_boundaries`로 검증했다. 브라우저 실화면과 실제 Keystone의 reader→manager 투영 migration은 확인하지 않았다. 이 항목은 source/local 준비이며 발행·운영 배포는 별도 기록한다.
@@ -2193,9 +2196,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "40df540d937c679c1c95813ef5b99e7f4c463855449151623fd3ac005f856be2",
-  "reviewed_at": "2026-11-15T15:29:58Z",
-  "summary": "Release 1.32.20: tutorial availability fix with dashboard slop pass 2, docs and version bump; no further source change."
+  "source_sha256": "64f0c73dcc36e01db923f7ffcd7b7b6facd498882624d0791e9ef58680fb14a0",
+  "reviewed_at": "2026-11-15T18:40:08Z",
+  "summary": "Final third visual refinement over local dev 2d7c823b: paired-theme contrast including light warm CTA hover, embedded resource/account/admin composition, heading/dialog naming and auth branding/type; full isolated gate green; no API, authority, tutorial, data or deployment contract change."
 }
 ```
 <!-- architecture-review:end -->

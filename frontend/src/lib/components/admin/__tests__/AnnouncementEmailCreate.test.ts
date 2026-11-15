@@ -5,11 +5,18 @@ import { auth, authReady, logoutInProgress, projectSwitching } from '$lib/stores
 import { initLocale } from '$lib/i18n/runtime.svelte';
 import en from '$lib/i18n/messages/en/admin-email.json';
 import system from '$lib/i18n/messages/en/admin-system.json';
-const mocks = vi.hoisted(() => ({ create: vi.fn(), load: vi.fn(), loadOptions: vi.fn(), loadDomains: vi.fn(), invalidateOwner: vi.fn(), dispose: vi.fn(), selectDomain: vi.fn() }));
+import type { AnnouncementAdmin } from '$lib/types/announcements';
+import type * as Reactivity from 'svelte/reactivity';
+const viewport = vi.hoisted(() => ({ desktop: true }));
+vi.mock('svelte/reactivity', async original => ({
+	...await original<typeof Reactivity>(),
+	MediaQuery: class { get current() { return viewport.desktop; } },
+}));
+const mocks = vi.hoisted(() => ({ create: vi.fn(), load: vi.fn(), loadOptions: vi.fn(), loadDomains: vi.fn(), invalidateOwner: vi.fn(), dispose: vi.fn(), selectDomain: vi.fn(), toggleActive: vi.fn(), announcements: [] as AnnouncementAdmin[] }));
 vi.mock('$lib/stores/adminAnnouncementsController.svelte', () => ({
 	createAdminAnnouncementsController: () => ({
 		...mocks, createError: '', error: '', loading: false, refreshing: false, creating: false, deleting: false,
-		togglingId: null, domainId: '', allProjects: [], allUsers: [], announcements: [], options: null,
+		togglingId: null, domainId: '', allProjects: [], allUsers: [], announcements: mocks.announcements, options: null,
 		domains: [], domainsLoading: false, domainsError: '', projectsLoading: false, projectsError: '', usersLoading: false, usersError: '', emailOperation: null,
 	}),
 }));
@@ -17,7 +24,7 @@ vi.mock('$lib/stores/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() 
 import AnnouncementsPage from '../../../../routes/admin/announcements/+page.svelte';
 const operationId = 'd06803e9-63c6-4a4f-a1ad-af62f2b08250';
 beforeEach(() => {
-	vi.resetAllMocks(); initLocale('en');
+	vi.resetAllMocks(); initLocale('en'); viewport.desktop = true; mocks.announcements = [];
 	auth.set({ ...get(auth), sessionId: 'logical-login', token: 'admin-token', userId: 'admin', identityDomainId: 'home', domainId: 'home', projectId: 'project', roles: ['admin'], isSystemAdmin: true });
 	authReady.set(true); logoutInProgress.set(false); projectSwitching.set(false); mocks.create.mockResolvedValue({ status: 'ok' });
 	vi.spyOn(crypto, 'randomUUID').mockReturnValue(operationId);
@@ -48,5 +55,23 @@ describe('announcement create email controls', () => {
 		await fireEvent.click(submit);
 		expect(mocks.create).not.toHaveBeenCalled(); expect(screen.queryByText(en.unknown)).toBeNull();
 		expect(submit.disabled).toBe(false); expect((document.getElementById('announcement-title') as HTMLInputElement).disabled).toBe(false);
+	});
+	it.each([true, false])('keeps history embedded and state labels readable (desktop=%s)', async desktop => {
+		viewport.desktop = desktop;
+		const announcement: AnnouncementAdmin = {
+			id: 1, created_at: '2026-11-16T00:00:00Z', updated_at: '2026-11-16T00:00:00Z',
+			created_by_user_id: 'admin', created_by_username: 'Administrator', title: 'Maintenance',
+			body: 'Announcement body', severity: 'warning', target_type: 'all', target_id: null,
+			starts_at: null, ends_at: null, is_active: true,
+		};
+		mocks.announcements = [announcement];
+		const { container } = render(AnnouncementsPage);
+		const history = container.querySelector('[data-tour="admin-announcements-history"]')!;
+		expect(history.querySelector('.responsive-table-embedded')).not.toBeNull();
+		expect(history.querySelector('.pill-warning')?.textContent?.trim()).toBe(system['announcements.severity.warning']);
+		const active = screen.getByRole('button', { name: system['announcements.status.active'] });
+		expect(active.getAttribute('style')).toContain('color: var(--color-state-success-text)');
+		await fireEvent.click(active);
+		expect(mocks.toggleActive).toHaveBeenCalledExactlyOnceWith(announcement);
 	});
 });

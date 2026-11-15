@@ -73,6 +73,7 @@ describe('account controls follow real pending work', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '+ 키페어 생성' }));
 		await fireEvent.input(screen.getByPlaceholderText('my-keypair'), { target: { value: 'new-key' } });
 		const create = screen.getByRole('button', { name: '생성' }) as HTMLButtonElement;
+		expect(create.classList.contains('text-action-on-warm')).toBe(true);
 		await fireEvent.click(create);
 		expect(create.disabled).toBe(true);
 		pending.reject(new Error('failed'));
@@ -157,11 +158,13 @@ describe('account controls follow real pending work', () => {
 	it('keeps the session when the current password is rejected', async () => {
 		api.post.mockRejectedValue(new ApiError(401, 'password_current_invalid'));
 		render(PasswordSection);
+		expect(screen.getByRole('heading', { level: 2, name: '패스워드 변경' }).classList.contains('text-sm')).toBe(true);
 		await fireEvent.input(await screen.findByLabelText('현재 패스워드'), { target: { value: 'incorrect' } });
 		await fireEvent.input(screen.getByLabelText('새 패스워드'), { target: { value: 'new-password' } });
 		await fireEvent.input(screen.getByLabelText('새 패스워드 확인'), { target: { value: 'new-password' } });
 		await fireEvent.click(screen.getByRole('button', { name: '패스워드 변경' }));
 		expect(await screen.findByText('현재 패스워드가 올바르지 않습니다.')).toBeTruthy();
+		expect(screen.getByRole('alert').classList.contains('alert-flat')).toBe(true);
 		expect((screen.getByLabelText('현재 패스워드') as HTMLInputElement).value).toBe('');
 		expect(get(authReady)).toBe(true);
 		expect(clearAuth).not.toHaveBeenCalled();
@@ -189,6 +192,8 @@ describe('account controls follow real pending work', () => {
 		const { container } = render(PasswordSection);
 		const create = await screen.findByRole('button', { name: '패스워드 생성하기' });
 		expect(screen.getByText(/다중 인증\(MFA\)이나 계정 비활성화 정책/)).toBeTruthy();
+		expect(screen.getByRole('heading', { level: 2, name: '패스워드 생성하기' })).toBeTruthy();
+		expect(container.querySelectorAll('.alert:not(.alert-flat)')).toHaveLength(0);
 		expect(container.querySelector('input[type="password"]')).toBeNull();
 		await fireEvent.click(create); await fireEvent.click(create);
 		expect(api.post).toHaveBeenCalledOnce();
@@ -333,8 +338,12 @@ describe('account controls follow real pending work', () => {
 		const refresh = deferred<unknown[]>();
 		api.get.mockReturnValueOnce(refresh.promise);
 		api.delete.mockReturnValue(pending.promise);
-		render(KeypairsSection);
+		const { container } = render(KeypairsSection);
 		const remove = await screen.findByRole('button', { name: '삭제' }) as HTMLButtonElement;
+		expect(screen.getByRole('heading', { level: 2 }).classList.contains('text-sm')).toBe(true);
+		expect(container.querySelector('.responsive-table-embedded')).not.toBeNull();
+		expect(screen.getByText('ssh').classList.contains('pill-neutral')).toBe(true);
+		expect(container.querySelector('[class*="bg-[#0B1220]"]')).toBeNull();
 		await fireEvent.click(remove);
 		await waitFor(() => expect(remove.disabled).toBe(true));
 		expect(screen.getByText('ssh-key')).toBeTruthy();

@@ -84,7 +84,7 @@
 <PageShell>
 	<PageHeader breadcrumb={t('groupPage.breadcrumb')} title={t('groupPage.title')}>
 		{#snippet actions()}
-			<button data-tour="admin-groups-create-open" onclick={() => { ctrl.showCreate = true; ctrl.createError = ''; }} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">{t('groupPage.create')}</button>
+			<button data-tour="admin-groups-create-open" onclick={() => { ctrl.showCreate = true; ctrl.createError = ''; }} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg">{t('groupPage.create')}</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}

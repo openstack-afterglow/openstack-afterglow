@@ -60,10 +60,10 @@
 
 	<div class="min-w-0 space-y-4 break-words [overflow-wrap:anywhere]">
 		{#if controller.loading}<LoadingState variant="inline" label={t('loading')} />{/if}
-		{#if controller.error}<Alert tone="danger">{controller.error}</Alert>{/if}
-		{#if controller.saved}<Alert tone="success">{t('saved')}</Alert>{/if}
+		{#if controller.error}<Alert flat tone="danger">{controller.error}</Alert>{/if}
+		{#if controller.saved}<Alert flat tone="success">{t('saved')}</Alert>{/if}
 		{#if controller.pendingRequest}
-			<Alert tone="info">{t('pendingSubmitted')}<br />{t('pendingWarning')}</Alert>
+			<Alert flat tone="info">{t('pendingSubmitted')}<br />{t('pendingWarning')}</Alert>
 			<p class="text-sm text-ink-1">{t('requestedExpiry')}: <time datetime={controller.pendingRequest.expires_at}>{formatDate(controller.pendingRequest.expires_at)}</time></p>
 		{/if}
 
@@ -84,24 +84,24 @@
 				{#if schedule.reason}<div class="min-w-0"><dt class="mb-1 text-xs text-ink-2">{t('lastReason')}</dt>
 					<dd class="whitespace-pre-wrap text-ink-0">{schedule.reason}</dd></div>{/if}
 			</dl>
-			{#if schedule.delete_volumes}<Alert tone="warning">{t('deleteVolumes')}<br />{t('destructive')}</Alert>
+			{#if schedule.delete_volumes}<Alert flat tone="warning">{t('deleteVolumes')}<br />{t('destructive')}</Alert>
 			{:else}<p class="text-sm text-ink-2">{t('retain')}</p>{/if}
 			{#if schedule.expiry_action === 'delete'}<p class="text-xs leading-relaxed text-ink-2">{t('storageScope')}</p>{/if}
 			<p class="text-sm text-ink-2">{t('noResume')}</p>
 			<p class="text-sm text-ink-2">{t('policyHelp')}</p>
 			<a href="/dashboard/usage#usage-extension-review" class="inline-flex min-h-11 items-center text-sm text-accent underline underline-offset-4">{t('reviewTitle')}</a>
-			{#if schedule.last_error}<Alert tone="danger">{schedule.last_error}</Alert>{/if}
-			{#if locked}<Alert tone="danger">{t('locked')}</Alert>{/if}
+			{#if schedule.last_error}<Alert flat tone="danger">{schedule.last_error}</Alert>{/if}
+			{#if locked}<Alert flat tone="danger">{t('locked')}</Alert>{/if}
 			{#if !canWrite}
 				<p class="text-sm text-ink-2">{t('readonly')}</p>
 			{:else}
-				{#if waygateLocked}<WaygateManagedNote />{/if}
+				{#if waygateLocked}<WaygateManagedNote flat />{/if}
 				<form class="min-w-0 space-y-4 border-t border-line pt-4" aria-label={t('edit')}
 					onsubmit={(event) => { event.preventDefault(); void controller.save(); }}>
-					<UsageScheduleFields value={controller.draft} onchange={(value) => { controller.draft = value; }}
+					<UsageScheduleFields flat value={controller.draft} onchange={(value) => { controller.draft = value; }}
 						disabled={!controller.editable} currentExpiry={schedule.expires_at} startsAt={schedule.starts_at} idPrefix="usage-schedule-edit"
 						extensionOnly={waygateLocked} />
-					{#if resumeError && !draftError}<Alert tone="danger">{t(resumeError)}</Alert>{/if}
+					{#if resumeError && !draftError}<Alert flat tone="danger">{t(resumeError)}</Alert>{/if}
 					<div class="flex min-w-0 flex-wrap gap-2">
 						<Button variant="secondary" class="min-h-11 max-w-full whitespace-normal" disabled={!controller.editable}
 							onclick={extendDraft}>{t('extend')}</Button>

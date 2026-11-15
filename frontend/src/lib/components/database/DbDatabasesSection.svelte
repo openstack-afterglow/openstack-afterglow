@@ -50,7 +50,7 @@
 	{:else if s.databaseView.rows.length === 0}
 		<p class="text-sm text-ink-2" role="status">{tl('table.noMatches')}</p>
 	{/if}
-  <ResponsiveTable>
+  <ResponsiveTable embedded>
    {#snippet cards()}{#each s.databaseView.rows as db (db.name)}<CompactResourceCard><strong class="text-sm break-all">{db.name}</strong>{#snippet actions()}<button onclick={() => s.deleteDb(db.name)} disabled={s.deletingDb === db.name} class="inline-flex items-center gap-1 text-state-danger-text disabled:text-ink-3 text-xs px-2 py-1 rounded border border-line-2">{#if s.deletingDb === db.name}<LoadingState variant="control" label="" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>{/snippet}</CompactResourceCard>{/each}{/snippet}
 		<div class="space-y-1">
 			<div class="flex items-center justify-between gap-3 border-b border-line py-2 text-xs text-ink-2">

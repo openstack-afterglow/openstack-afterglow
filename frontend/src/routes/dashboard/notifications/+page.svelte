@@ -163,7 +163,7 @@
 		</Card>
 	{:else if quotaAlerts.length > 0}
 		<Card padding="lg" class="mb-4">
-			<p class="text-xs uppercase tracking-wide text-[var(--color-ink-3)] mb-3">{t('notifications.quotaWarnings')}</p>
+			<p class="text-xs uppercase tracking-wide text-[var(--color-ink-2)] mb-3">{t('notifications.quotaWarnings')}</p>
 			<ul class="flex flex-col gap-2">
 				{#each quotaAlerts as alert}
 					<li class="flex items-start gap-2.5 text-sm">
@@ -183,7 +183,7 @@
 	{:else}
 
 		<Card padding="lg">
-			<p class="text-xs uppercase tracking-wide text-[var(--color-ink-3)] mb-3">{t('notifications.history')}</p>
+			<p class="text-xs uppercase tracking-wide text-[var(--color-ink-2)] mb-3">{t('notifications.history')}</p>
 			{#if announcements.length === 0}
 				<EmptyState headline={t('notifications.empty')} description={t('notifications.emptyHelp')} />
 			{:else}
@@ -203,7 +203,7 @@
 											<span class="text-xs uppercase tracking-wide text-[var(--color-accent)] border border-[var(--color-accent)]/40 rounded px-1 py-0.5">{t('notifications.new')}</span>
 										{/if}
 									</span>
-									<span class="block text-xs text-[var(--color-ink-3)] mt-1 tabular-nums">{formatIsoDateTime(a.created_at)} · {t('notifications.senderName', { name: a.created_by_username })}</span>
+									<span class="block text-xs text-[var(--color-ink-2)] mt-1 tabular-nums">{formatIsoDateTime(a.created_at)} · {t('notifications.senderName', { name: a.created_by_username })}</span>
 								</span>
 								<svg
 									class="w-3.5 h-3.5 mt-1 flex-shrink-0 text-[var(--color-ink-3)] transition-transform {expandedId === a.id ? 'rotate-180' : ''}"

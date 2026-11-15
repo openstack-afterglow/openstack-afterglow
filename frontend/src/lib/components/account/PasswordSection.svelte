@@ -137,16 +137,16 @@
 
 {#if $authReady}
 <Card class="p-5 space-y-4">
-  <h3 class="text-sm font-semibold text-ink-0">{t(mode === 'create' ? 'password.createTitle' : 'password.title')}</h3>
-  {#if error}<Alert tone="danger">{error}</Alert>{/if}
+  <h2 class="text-sm font-semibold text-ink-0">{t(mode === 'create' ? 'password.createTitle' : 'password.title')}</h2>
+  {#if error}<Alert flat tone="danger">{error}</Alert>{/if}
   {#if loading}<LoadingState variant="section" label={t('password.checking')}  />
   {:else if mode === 'create'}
-    <Alert tone="warning">{t('password.createWarning')}</Alert>
+    <Alert flat tone="warning">{t('password.createWarning')}</Alert>
     <p class="text-sm text-ink-1">{t('password.createHelp')}</p>
-    {#if sent}<Alert tone="success">{t('password.createSent')}</Alert>
+    {#if sent}<Alert flat tone="success">{t('password.createSent')}</Alert>
     {:else}<div class="flex justify-end"><Button onclick={requestCreation} disabled={blocked} ariaBusy={saving}>{#if saving}<LoadingState variant="control" label={t('password.createRequesting')}  />{:else}{t('password.createTitle')}{/if}</Button></div>{/if}
   {:else if mode === 'change'}
-    {#if stateUnknown}<Alert tone="warning">{t('password.stateUnknown')}</Alert>{/if}
+    {#if stateUnknown}<Alert flat tone="warning">{t('password.stateUnknown')}</Alert>{/if}
     <form onsubmit={submit} novalidate class="space-y-3">
       <Field for={`${sectionId}-current`} label={t('password.current')}>
         <TextInput id={`${sectionId}-current`} type="password" bind:value={currentPassword} autocomplete="current-password" maxlength={1024} disabled={blocked} required />
@@ -163,11 +163,11 @@
     </form>
     <div class="space-y-3 border-t border-line pt-4">
       <p class="text-sm text-ink-1">{t('password.recoveryHelp')}</p>
-      {#if recoverySent}<Alert tone="info">{t('password.recoveryAccepted')}</Alert>
+      {#if recoverySent}<Alert flat tone="info">{t('password.recoveryAccepted')}</Alert>
       {:else}<Button variant="secondary" onclick={requestRecovery} disabled={blocked} ariaBusy={saving}>{t('password.forgot')}</Button>{/if}
     </div>
   {:else}
-    {#if !error}<Alert tone="warning">{t('password.unavailable')}</Alert>{/if}
+    {#if !error}<Alert flat tone="warning">{t('password.unavailable')}</Alert>{/if}
     <Button variant="secondary" onclick={loadCapability} disabled={blocked}>{t('password.reload')}</Button>
     <p class="text-sm text-ink-1">{t('password.recoveryHelp')}</p>
     <Button variant="link" href="/recover">{t('password.openRecovery')}</Button>

@@ -25,11 +25,11 @@
 </script>
 
 <div class="bg-surface-base border border-line rounded-xl p-4">
-  <div class="flex items-center justify-between mb-3">
+  <div class="flex min-w-0 flex-wrap items-center justify-between gap-2 mb-3">
     <h3 class="text-xs text-ink-2 uppercase tracking-wide">{t('nodes.title')}</h3>
     {#if s.health}
-      <div class="flex items-center gap-2">
-        <span class="px-2 py-0.5 rounded border text-xs font-medium {healthColor[s.health.status] ?? 'text-ink-2 bg-surface-sunken border-line-2'}">
+      <div class="flex min-w-0 flex-wrap items-center gap-2">
+        <span class="max-w-full break-words px-2 py-0.5 rounded border text-xs font-medium {healthColor[s.health.status] ?? 'text-ink-2 bg-surface-sunken border-line-2'}">
           {s.health.status}
         </span>
         <span class="text-xs text-ink-2">{new Date(s.health.checked_at).toLocaleTimeString(intlLocale())}</span>
@@ -43,7 +43,7 @@
   <TableViewControls {view} class="" />
   {#if s.health && s.health.nodes.length > 0}
 
-   <ResponsiveTable>
+   <ResponsiveTable embedded>
     {#snippet cards()}{#each view.rows as node (node.name)}<CompactResourceCard><strong class="text-sm font-mono break-all">{node.name}</strong><p class="text-xs"><span class={node.ready ? 'text-state-success-text' : 'text-state-danger-text'}>{node.ready ? 'Ready' : 'NotReady'}</span> · {node.role}</p>{#if node.kubelet_version}<p class="text-xs text-ink-2">{node.kubelet_version}</p>{/if}</CompactResourceCard>{/each}{/snippet}
     <div class="space-y-2">
       {#each view.rows as node}

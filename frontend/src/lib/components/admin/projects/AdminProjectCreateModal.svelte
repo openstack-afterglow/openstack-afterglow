@@ -110,7 +110,7 @@
 			</div>
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={() => { open = false; createError = ''; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{tc('actions.cancel')}</button>
-				<button aria-busy={creating} onclick={createProject} disabled={creating || !form.name} data-tour="admin-projects-create-submit" class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if creating}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('state.creating')}</span>{:else}{t('actions.create')}{/if}</button>
+				<button aria-busy={creating} onclick={createProject} disabled={creating || !form.name} data-tour="admin-projects-create-submit" class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg disabled:opacity-30">{#if creating}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('state.creating')}</span>{:else}{t('actions.create')}{/if}</button>
 			</div>
 		</div>
 	</div>

@@ -1084,8 +1084,8 @@
 	.subheading { margin-bottom: 0.5rem; }
 	.subheading h3 { font-size: 0.875rem; }
 	.subheading span { color: var(--color-ink-2); font-size: 0.75rem; }
-	.records { display: grid; gap: 0.5rem; }
-	.record { align-items: flex-start; padding: 0.75rem; border: 1px solid var(--color-line); border-radius: 0.625rem; background: var(--color-surface-base); }
+	.records { display: grid; }
+	.record { align-items: flex-start; padding: 0.75rem 0; border-bottom: 1px solid var(--color-line); }
 	.record-main { min-width: 0; }
 	.record-title { gap: 0.5rem; flex-wrap: wrap; }
 	.record-title strong { color: var(--color-ink-0); font-size: 0.875rem; }

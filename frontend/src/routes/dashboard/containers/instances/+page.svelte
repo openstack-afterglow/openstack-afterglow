@@ -241,7 +241,7 @@
         onManualRefresh={forceRefresh}
       />
       <TutorialStartButton tour="containers" compactOnMobile />
-      <button data-tour="containers-create-open" onclick={() => showModal = true} class="bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('instances.list.create')}</button>
+      <button data-tour="containers-create-open" onclick={() => showModal = true} class="bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('instances.list.create')}</button>
     {/snippet}
   </PageHeader>
 

@@ -100,6 +100,8 @@ describe('database detail table conditions', () => {
 		await fireEvent.input(userSearch, { target: { value: '^app-' } });
 		await fireEvent.input(databaseSearch, { target: { value: '^app-data$' } });
 		const table = screen.getByRole('table');
+		expect(table.closest('.responsive-table')?.classList.contains('responsive-table-embedded')).toBe(true);
+		expect(panel.container.querySelectorAll('.responsive-table-embedded')).toHaveLength(3);
 		await fireEvent.click(within(table).getByRole('button', { name: common('table.sortColumn', { column: t('labels.size'), direction: common('table.none') }) }));
 		await fireEvent.click(within(table).getByRole('button', { name: common('table.sortColumn', { column: t('labels.size'), direction: common('table.ascending') }) }));
 		await fireEvent.click(within(table).getByRole('button', { name: common('table.filterColumn', { column: t('labels.status') }) }));

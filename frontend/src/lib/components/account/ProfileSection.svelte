@@ -118,19 +118,19 @@
 </script>
 
 <Card class="p-5 space-y-4">
-  <h3 class="text-sm font-semibold text-ink-0">{t('profile.title')}</h3>
-  {#if error}<Alert tone="danger">{error}</Alert>{/if}
-  {#if success}<Alert tone="success">{success}</Alert>{/if}
+  <h2 class="text-sm font-semibold text-ink-0">{t('profile.title')}</h2>
+  {#if error}<Alert flat tone="danger">{error}</Alert>{/if}
+  {#if success}<Alert flat tone="success">{success}</Alert>{/if}
   {#if loading}<LoadingState variant="section" label={tc('state.loading')}  />{:else}
     <div class="text-sm text-ink-2 break-all"><span>{t('profile.userId')}: </span><span class="font-mono">{profile.id}</span></div>
     <section class="space-y-3 border-b border-line pb-4" aria-label={t('profile.image.title')}>
       <div class="flex flex-wrap items-center gap-4">
         <ProfileImage name={profile.name} label={t('profile.image.alt')} large />
-        <div class="min-w-0 flex-1 space-y-1"><h4 class="text-sm font-medium text-ink-0">{t('profile.image.title')}</h4><p class="text-sm text-ink-2">{t('profile.image.help')}</p></div>
+        <div class="min-w-0 flex-1 space-y-1"><h3 class="text-sm font-medium text-ink-0">{t('profile.image.title')}</h3><p class="text-sm text-ink-2">{t('profile.image.help')}</p></div>
       </div>
-      {#if imageError}<Alert tone="danger">{imageError} <Button variant="secondary" size="sm" disabled={imageBlocked} onclick={() => { imageError = ''; void profileImage.refresh(); }}>{t('profile.image.retry')}</Button></Alert>{/if}
-      {#if imageSuccess}<Alert tone="success">{t('profile.image.saved')}</Alert>{/if}
-      {#if $profileImage.failed}<Alert tone="warning">{t('profile.image.loadFailed')} <Button variant="secondary" size="sm" disabled={imageBlocked} onclick={() => profileImage.refresh()}>{t('profile.image.retry')}</Button></Alert>{/if}
+      {#if imageError}<Alert flat tone="danger">{imageError} <Button variant="secondary" size="sm" disabled={imageBlocked} onclick={() => { imageError = ''; void profileImage.refresh(); }}>{t('profile.image.retry')}</Button></Alert>{/if}
+      {#if imageSuccess}<Alert flat tone="success">{t('profile.image.saved')}</Alert>{/if}
+      {#if $profileImage.failed}<Alert flat tone="warning">{t('profile.image.loadFailed')} <Button variant="secondary" size="sm" disabled={imageBlocked} onclick={() => profileImage.refresh()}>{t('profile.image.retry')}</Button></Alert>{/if}
       <div class="flex flex-wrap gap-2">
         <Button variant="secondary" disabled={imageBlocked} ariaPressed={$profileImage.image?.kind === 'gravatar'} onclick={() => saveImage('gravatar')}>{t('profile.image.gravatar')}</Button>
         <Button variant="secondary" disabled={imageBlocked} ariaPressed={$profileImage.image?.kind === 'generated'} onclick={() => saveImage('generated')}>{t($profileImage.image?.kind === 'generated' ? 'profile.image.regenerate' : 'profile.image.generate')}</Button>
@@ -146,8 +146,8 @@
     </form>
     <form onsubmit={changeEmail} class="space-y-3 border-t border-line pt-4">
       <p class="text-sm text-ink-2 break-all">{t('profile.email')}: {profile.email}</p>
-      {#if emailError}<Alert tone="danger">{emailError}</Alert>{/if}
-      {#if emailSent}<Alert tone="info">{ta('emailChange.sent')}</Alert>{/if}
+      {#if emailError}<Alert flat tone="danger">{emailError}</Alert>{/if}
+      {#if emailSent}<Alert flat tone="info">{ta('emailChange.sent')}</Alert>{/if}
       <Field for="profile-email" label={ta('emailChange.newEmail')} help={ta('emailChange.help')} required><TextInput id="profile-email" type="email" autocomplete="email" bind:value={editEmail} disabled={blocked} required /></Field>
       <Field for="profile-email-password" label={ta('emailChange.currentPassword')} required><TextInput id="profile-email-password" type="password" autocomplete="current-password" bind:value={currentPassword} maxlength={1024} disabled={blocked} required /></Field>
       <Button type="submit" variant="secondary" disabled={blocked || !currentPassword || editEmail.trim() === profile.email} ariaBusy={sending}>{#if sending}<LoadingState variant="control" label={ta('emailChange.submit')} />{:else}{ta('emailChange.submit')}{/if}</Button>

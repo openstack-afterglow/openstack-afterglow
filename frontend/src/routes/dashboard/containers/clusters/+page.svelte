@@ -182,7 +182,7 @@
         onManualRefresh={ar.refresh}
       />
       <TutorialStartButton tour="containers-clusters" compactOnMobile />
-      <button data-tour="containers-clusters-create-open" disabled={!$canWrite} onclick={openCreate} onpointerenter={prefetchTemplates} onfocus={prefetchTemplates} class="bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('clusters.actions.create')}</button>
+      <button data-tour="containers-clusters-create-open" disabled={!$canWrite} onclick={openCreate} onpointerenter={prefetchTemplates} onfocus={prefetchTemplates} class="bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('clusters.actions.create')}</button>
     {/snippet}
   </PageHeader>
 

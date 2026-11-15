@@ -197,12 +197,14 @@ describe('registered-user compose and account preferences', () => {
 	it('loads and explicitly saves both owner-bound notification preferences', async () => {
 		auth.update(state => ({ ...state, isSystemAdmin: false }));
 		render(EmailNotificationsSection);
+		expect(screen.getByRole('heading', { level: 2, name: en.preferences }).classList.contains('text-sm')).toBe(true);
 		await waitFor(() => expect(element<HTMLInputElement>('email-preference-announcements').disabled).toBe(false));
 		expect(element<HTMLInputElement>('email-preference-announcements').checked).toBe(true);
 		expect(element<HTMLInputElement>('email-preference-resource-alerts').checked).toBe(false);
 		await fireEvent.click(element('email-preference-resource-alerts'));
 		expect(mocks.savePreferences).not.toHaveBeenCalled();
 		await fireEvent.click(screen.getByRole('button', { name: en.save })); await screen.findByText(en.preferenceSaved);
+		expect(screen.getByText(en.preferenceSaved).closest('[role="status"]')?.classList.contains('alert-flat')).toBe(true);
 		expect(mocks.savePreferences).toHaveBeenCalledWith({ announcements: true, resource_alerts: true }, expect.objectContaining({ token: 'admin-token' }));
 	});
 	it('does not publish another owner’s late preference response after ABA', async () => {

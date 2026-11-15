@@ -287,6 +287,24 @@ describe('design system source contracts', () => {
 		expect(alertSource).not.toContain('color: var(--alert-tone);');
 	});
 
+	it('keeps neutral washes and legacy state copy on readable text roles', () => {
+		const darkBlock = layoutSource.slice(0, layoutSource.indexOf(':root.light {'));
+		expect(darkBlock).toContain('--color-state-neutral-text: var(--color-ink-2);');
+		expect(layoutSource.slice(layoutSource.indexOf(':root.light {'))).toContain('--color-action-warm-hover: color-mix(in oklab, var(--color-warm) 88%, var(--color-surface-base));');
+		for (const [legacy, semantic] of [
+			['green-400', 'state-success-text'],
+			['green-300', 'state-success-text'],
+			['red-400', 'state-danger-text'],
+			['yellow-400', 'state-warning-text'],
+			['red-300', 'state-danger-text'],
+			['orange-400', 'warm-text'],
+		]) {
+			expect(layoutSource).toContain(`:root.light .text-${legacy} { color: var(--color-${semantic}) !important; }`);
+		}
+		expect(layoutSource).toMatch(/:root :is\(input, textarea\)::placeholder\s*\{\s*color: var\(--color-ink-2\);\s*opacity: 1;/);
+		expect(source('lib/components/chat/ChatWindow.svelte')).toMatch(/\.error-bar\s*\{[^}]*color: var\(--color-state-danger-text\);/);
+	});
+
 
 	it('exports the reusable primitives required for new UI work', () => {
 		for (const componentName of requiredUiExports) {
@@ -374,6 +392,90 @@ describe('design system source contracts', () => {
 		expect(cluster).toContain('flex flex-wrap items-center gap-2.5');
 		expect(cluster).toContain('flex-1 basis-24 min-w-0');
 		expect(cluster).toContain('flex flex-wrap gap-1.5');
+	});
+
+	it('keeps administrator affirmative actions on readable warm fills', () => {
+		for (const path of [
+			'routes/admin/ports/+page.svelte',
+			'routes/admin/routers/+page.svelte',
+			'routes/admin/floating-ips/+page.svelte',
+			'routes/admin/object-storage/+page.svelte',
+			'lib/components/admin/ports/PortCreateModal.svelte',
+			'lib/components/admin/groups/AdminGroupsPage.svelte',
+			'lib/components/admin/groups/GroupCreateModal.svelte',
+			'lib/components/admin/groups/GroupEditModal.svelte',
+			'lib/components/admin/projects/AdminProjectsPage.svelte',
+			'lib/components/admin/projects/AdminProjectCreateModal.svelte',
+			'lib/components/admin/projects/AdminProjectEditModal.svelte',
+		]) {
+			const component = source(path);
+			const warmClasses = [...component.matchAll(/class="([^"]*\bbg-action-warm\b[^"]*)"/g)]
+				.filter(([, classes]) => /\btext-/.test(classes));
+			expect(warmClasses.length, path).toBeGreaterThan(0);
+			for (const [, classes] of warmClasses) {
+				expect(classes.split(/\s+/), path).toContain('text-action-on-warm');
+				expect(classes.split(/\s+/), path).not.toContain('text-ink-0');
+			}
+		}
+		expect(source('routes/admin/object-storage/+page.svelte')).not.toMatch(/\b(?:bg|border)-indigo-/);
+	});
+
+	it('uses neutral selection for administrator port and project page sizes', () => {
+		for (const path of [
+			'routes/admin/ports/+page.svelte',
+			'lib/components/admin/projects/AdminProjectsPage.svelte',
+		]) {
+			const component = source(path);
+			expect(component, path).toContain("pageSize === n ? 'bg-surface-selected text-ink-0 shadow-[inset_0_0_0_1px_var(--color-line-2)]'");
+			expect(component, path).toContain('aria-pressed={pageSize === n}');
+		}
+	});
+
+	it('names the port dialog from its localized heading without replacing focus or submission', () => {
+		const port = source('lib/components/admin/ports/PortCreateModal.svelte');
+		expect(port).toContain('const id = $props.id();');
+		expect(port).toContain('aria-labelledby="{id}-title"');
+		expect(port).toMatch(/<h2 id="\{id\}-title"[^>]*>\{t\('portCreateModal\.title'\)\}<\/h2>/);
+		expect(port).toContain('use:dialogFocus={{ enabled: true, onEscape: () => (open = false) }}');
+		expect(port).toContain('onclick={handleCreate} disabled={creating || !form.network_id || (!!targetDomainId && !form.project_id)}');
+	});
+
+	it('keeps standalone administrator compact resource names at h2 without changing their type scale', () => {
+		for (const path of [
+			'lib/components/admin/ports/PortsTable.svelte',
+			'lib/components/admin/routers/AdminRoutersTable.svelte',
+			'routes/admin/floating-ips/+page.svelte',
+		]) {
+			const component = source(path);
+			expect(component, path).toMatch(/<h2 class="break-all (?:font-mono )?font-medium text-ink-0">/);
+			expect(component, path).not.toContain('<h3');
+			expect(component, path).not.toContain('<h1');
+		}
+	});
+
+	it('keeps auth branding tied to the app theme and functional utility text on the type ramp', () => {
+		const auth = source('lib/components/auth/AuthStudioShell.svelte');
+		expect(auth).toContain('style:color-scheme={$resolvedTheme}');
+		expect(auth).toContain('font-size: var(--type-support)');
+		expect(auth).toContain('font-size: var(--type-identifier)');
+		expect(auth).not.toMatch(/\.auth-motion\s*\{[^}]*font-size:\s*0\.(?:5625|625|6875)rem/);
+		const beta = source('lib/components/ui/BetaFeatureGate.svelte');
+		expect(beta).toContain('color: var(--color-ink-1)');
+		expect(beta).not.toContain('box-shadow');
+		const artwork = source('lib/components/landing/LandingMotionGraphic.svelte');
+		expect(artwork).toMatch(/\.tool\.hit\s*\{[^}]*background: var\(--color-surface-base\);[^}]*color: var\(--color-warm-text\);/);
+	});
+
+	it('keeps detail actions wrapping and credential records as divider rows', () => {
+		expect(source('lib/components/ui/DetailHeader.svelte')).toContain('flex flex-wrap items-start');
+		expect(source('lib/components/database/DbInstanceHeader.svelte')).toContain('flex min-w-0 max-w-full flex-wrap items-center');
+		expect(source('lib/components/account/McpAccessSection.svelte')).toContain('.record { align-items: flex-start; padding: 0.75rem 0; border-bottom: 1px solid var(--color-line); }');
+		const secrets = source('routes/dashboard/secrets/+page.svelte');
+		expect(secrets).not.toContain('STATUS_CLASS');
+		expect(secrets).toContain('<Pill tone={getStatusStyle(s.status).tone}');
+		expect(secrets).not.toContain('<h3');
+		expect(source('lib/components/TimeSeriesChart.svelte')).toContain('<h2 class="text-sm font-semibold text-ink-2">{title}</h2>');
+		expect(source('lib/components/topology/canvas/CanvasOwnershipOverview.svelte')).toContain('<h2>{domain.label}</h2>');
 	});
 
 });

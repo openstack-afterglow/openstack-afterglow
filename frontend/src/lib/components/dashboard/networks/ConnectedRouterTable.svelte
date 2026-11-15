@@ -126,7 +126,7 @@
 	<TableViewControls {view} class={routers.length ? 'lg:hidden' : ''} />
 	{#if routers.length > 0 && view.rows.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
 	{#if routers.length > 0}
-		<ResponsiveTable>
+		<ResponsiveTable embedded>
 			{#snippet cards()}
 				{#each view.rows as router (router.id)}
 					<CompactResourceCard>

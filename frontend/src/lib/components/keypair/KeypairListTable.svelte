@@ -6,6 +6,7 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+ import Pill from '$lib/components/ui/Pill.svelte';
 
 	let {
 		keypairs,
@@ -53,7 +54,7 @@
 				<span class="truncate">{kp.name}</span>
 			</div>
 			<div class="hidden md:block">
-				<span class="text-xs font-mono px-2 py-0.5 rounded-md bg-violet-900/25 border border-violet-800 text-violet-400">{kp.type}</span>
+				<Pill tone="neutral" size="xs">{kp.type}</Pill>
 			</div>
 			<div class="hidden md:block text-ink-2 font-mono text-xs truncate">{kp.fingerprint}</div>
 			<div class="flex gap-1.5 justify-end">

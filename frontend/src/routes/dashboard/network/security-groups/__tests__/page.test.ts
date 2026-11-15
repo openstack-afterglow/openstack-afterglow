@@ -136,6 +136,8 @@ describe('project security-group management', () => {
 		expect(screen.getByRole('link', { name: /vm-main/ }).getAttribute('href')).toBe('/dashboard/compute/instances/vm-1');
 		expect(screen.getByLabelText('프로젝트 보안 그룹 쿼터').textContent).toMatch(/2\s*\/\s*10/);
 		const table = screen.getByRole('region', { name: '보안 그룹 규칙' });
+		expect(table.classList.contains('rounded-lg')).toBe(false);
+		expect(table.querySelector('.responsive-table-embedded')).toBeTruthy();
 		expect(within(table).getByTitle('sg-db').textContent).toContain('db');
 		await fireEvent.click(within(table).getByRole('button', { name: '+ 규칙 추가' }));
 		await fireEvent.change(screen.getByLabelText('프로토콜'), { target: { value: 'tcp' } });

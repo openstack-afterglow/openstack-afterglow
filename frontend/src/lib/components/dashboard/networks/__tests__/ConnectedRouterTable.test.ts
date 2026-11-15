@@ -32,7 +32,7 @@ const subnets = [
 
 describe('ConnectedRouterTable ownership and connection', () => {
 	it('hides disconnect action for foreign router attached to owned network', () => {
-		render(ConnectedRouterTable, {
+		const { container } = render(ConnectedRouterTable, {
 			routers: [ownedRouter, foreignRouter],
 			subnets,
 			availableRouters,
@@ -42,6 +42,7 @@ describe('ConnectedRouterTable ownership and connection', () => {
 			onDisconnect: vi.fn(),
 		});
 
+		expect(container.querySelector('.responsive-table-embedded')).toBeTruthy();
 		const ownedRow = screen.getByRole('row', { name: /my-router/ });
 		const foreignRow = screen.getByRole('row', { name: /other-router/ });
 		expect(within(ownedRow).getByRole('button', { name: /해제/ })).toBeTruthy();

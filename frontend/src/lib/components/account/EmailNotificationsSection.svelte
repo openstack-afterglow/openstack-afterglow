@@ -29,11 +29,11 @@
 	}
 </script>
 <Card class="p-5 space-y-4">
-	<h3 class="text-sm font-semibold text-ink-0">{t('preferences')}</h3>
+	<h2 class="text-sm font-semibold text-ink-0">{t('preferences')}</h2>
 	<p class="text-sm text-ink-2">{t('preferencesHelp')}</p>
 	{#if busy}<LoadingState variant="inline" label={t('loading')} />{/if}
-	{#if error}<Alert tone="danger">{error}</Alert>{/if}
-	{#if saved}<Alert tone="success">{t('preferenceSaved')}</Alert>{/if}
+	{#if error}<Alert flat tone="danger">{error}</Alert>{/if}
+	{#if saved}<Alert flat tone="success">{t('preferenceSaved')}</Alert>{/if}
 	<label class="flex min-h-11 items-center gap-3 text-sm"><input id="email-preference-announcements" type="checkbox" bind:checked={value.announcements} disabled={blocked} />{t('announcements')}</label>
 	<label class="flex min-h-11 items-center gap-3 text-sm"><input id="email-preference-resource-alerts" type="checkbox" bind:checked={value.resource_alerts} disabled={blocked} />{t('resourceAlerts')}</label>
 	<div class="flex flex-wrap gap-3"><Button variant="secondary" disabled={blocked} onclick={save}>{t('save')}</Button><Button variant="secondary" disabled={busy || !$auth.token || !$authReady || $logoutInProgress || $projectSwitching} onclick={load}>{t('refresh')}</Button></div>

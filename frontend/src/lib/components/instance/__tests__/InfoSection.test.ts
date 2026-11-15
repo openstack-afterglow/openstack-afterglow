@@ -58,6 +58,12 @@ afterEach(() => {
 });
 
 describe('InfoSection host visibility', () => {
+	it('embeds responsive information rows while retaining the section boundary', () => {
+		const { container } = renderInfoSection();
+		expect(container.querySelector('.responsive-table-embedded')).not.toBeNull();
+		expect(container.firstElementChild?.classList.contains('border')).toBe(true);
+	});
+
 	it.each([
 		{ flavor_name: 'm1.small', flavor_display_name: 'cpu.2c_1.5g', expected: '2 vCPU · 1.5 GiB RAM' },
 		{ flavor_name: 'gpu.render', flavor_display_name: null, expected: 'gpu.render' },

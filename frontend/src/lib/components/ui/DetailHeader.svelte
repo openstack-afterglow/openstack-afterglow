@@ -30,8 +30,8 @@
   const titleClass = $derived(size === 'lg' ? 'text-[length:var(--type-console-title)]' : size === 'sm' ? 'text-sm' : 'text-lg');
 </script>
 
-<div class="flex items-start justify-between mb-6 gap-4 {className}">
-  <div class="min-w-0 flex-1">
+<div class="flex flex-wrap items-start justify-between mb-6 gap-4 {className}">
+  <div class="min-w-0 flex-1 basis-48">
     <div class="flex items-center gap-2 flex-wrap">
       <h2 class="{titleClass} font-bold text-ink-0 truncate">{title}</h2>
       {#if status}<StatusChip {status} kind={statusKind} />{/if}
@@ -45,7 +45,7 @@
     {/if}
   </div>
   {#if actions}
-    <div class="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
+    <div class="flex min-w-0 max-w-full items-center gap-2 flex-wrap justify-end">
       {@render actions()}
     </div>
   {/if}

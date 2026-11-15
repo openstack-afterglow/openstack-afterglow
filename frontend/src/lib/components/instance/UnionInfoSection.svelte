@@ -22,7 +22,7 @@
 
 <div class="motion-enter bg-surface-base border border-line rounded-lg p-6 mb-4">
 	<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-4">{t('union.title')}</h2>
-	<ResponsiveTable>
+	<ResponsiveTable embedded>
 		{#snippet cards()}
 			<CompactResourceCard>
 				<h3 class="text-sm font-medium">{s.instance!.union_strategy ? strategyLabel[s.instance!.union_strategy] ?? s.instance!.union_strategy : '-'}</h3>
@@ -90,7 +90,7 @@
 		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-4">{t('union.metadata')}</h2>
 		<TableViewControls {view} />
 		{#if Object.keys(s.instance!.metadata ?? {}).length > 0 && view.rows.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
-		<ResponsiveTable>
+		<ResponsiveTable embedded>
 			{#snippet cards()}
 				{#each view.rows as [k, v] (k)}
 					<CompactResourceCard>

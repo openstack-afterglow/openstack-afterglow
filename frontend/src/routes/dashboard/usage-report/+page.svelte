@@ -29,7 +29,6 @@
 		PageShell,
 		Pill,
 		ResourceToolbar,
-		SectionHeader,
 		SectionLabel,
 		Spark,
 		StatTile,
@@ -597,13 +596,16 @@
 
 		<div class="grid grid-cols-1 gap-3.5 lg:grid-cols-[2fr_1fr]">
 			<Card padding="lg" class="min-w-0">
-				<SectionHeader title={t('usageReport.flavors.title')} meta={t('usageReport.flavors.count', { count: sortedFlavors.length })} />
+				<div class="flex flex-wrap items-baseline gap-2">
+					<h2 class="text-[length:var(--type-support)] font-medium uppercase tracking-[0.12em] text-ink-2">{t('usageReport.flavors.title')}</h2>
+					<span class="text-[length:var(--type-support)] text-ink-2">{t('usageReport.flavors.count', { count: sortedFlavors.length })}</span>
+				</div>
 				{#if sortedFlavors.length === 0}
 					<div class="mt-6 py-6 text-center text-sm text-ink-2">{t('usageReport.noData')}</div>
 				{:else}
 					<ObservationTable model={observationView0}>
 {#snippet children(tableView)}
-<ResponsiveTable class="mt-4">{#snippet cards()}{#each tableView.rows as f (f.flavor)}<CompactResourceCard>
+<ResponsiveTable embedded class="mt-4">{#snippet cards()}{#each tableView.rows as f (f.flavor)}<CompactResourceCard>
 						<div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-mono">{f.flavor}</h3>{#if f.gpu_count > 0}<Pill tone="accent">{t('usageReport.flavors.gpuCount', { count: formatValue(f.gpu_count) })}</Pill>{/if}</div><p class="text-sm tabular-nums">{t('usageReport.columns.usageHours')}: {formatValue(f.usage_hours, 1)}</p><p class="text-xs">{t('usageReport.columns.vmCount')}: {formatValue(f.instance_count)}</p>
 						{#snippet details()}<p class="text-xs">vCPU: {formatValue(f.vcpus)} · RAM(GB): {formatValue(Math.round(f.ram_mb / 1024))}</p><p class="text-xs">vCPU·h: {formatValue(f.vcpu_hours, 1)}</p>{/snippet}
 					</CompactResourceCard>{/each}{/snippet}
@@ -647,8 +649,11 @@
 			</Card>
 
 			<Card padding="lg" class="flex min-w-0 flex-col gap-4">
-				<SectionHeader title={t('usageReport.forecast.title')} meta={t('usageReport.forecast.window', { days: data.forecast.window_days })} />
-				{#if data.quota.compute_pool?.state === 'paused' || data.quota.compute_pool?.state === 'unavailable'}<Alert tone="warning">{tp(data.quota.compute_pool.state === 'paused' ? 'pauseHelp' : 'domainUnavailable')}</Alert>{/if}
+				<div class="flex flex-wrap items-baseline gap-2">
+					<h2 class="text-[length:var(--type-support)] font-medium uppercase tracking-[0.12em] text-ink-2">{t('usageReport.forecast.title')}</h2>
+					<span class="text-[length:var(--type-support)] text-ink-2">{t('usageReport.forecast.window', { days: data.forecast.window_days })}</span>
+				</div>
+				{#if data.quota.compute_pool?.state === 'paused' || data.quota.compute_pool?.state === 'unavailable'}<Alert flat tone="warning">{tp(data.quota.compute_pool.state === 'paused' ? 'pauseHelp' : 'domainUnavailable')}</Alert>{/if}
 
 				<div class="space-y-3">
 					<SectionLabel>{t('usageReport.resources.compute')}</SectionLabel>
@@ -692,13 +697,16 @@
 		</div>
 
 		<Card padding="lg">
-			<SectionHeader title={t('usageReport.instances.title')} meta={t('usageReport.instances.top', { count: formatValue(data.instance_usage.length) })} />
+			<div class="flex flex-wrap items-baseline gap-2">
+				<h2 class="text-[length:var(--type-support)] font-medium uppercase tracking-[0.12em] text-ink-2">{t('usageReport.instances.title')}</h2>
+				<span class="text-[length:var(--type-support)] text-ink-2">{t('usageReport.instances.top', { count: formatValue(data.instance_usage.length) })}</span>
+			</div>
 			{#if data.instance_usage.length === 0}
 				<div class="mt-6 py-6 text-center text-sm text-ink-2">{t('usageReport.noData')}</div>
 			{:else}
 				<ObservationTable model={observationView1}>
 {#snippet children(tableView)}
-<ResponsiveTable class="mt-4">{#snippet cards()}{#each tableView.rows as row (row.instance_id)}<CompactResourceCard>
+<ResponsiveTable embedded class="mt-4">{#snippet cards()}{#each tableView.rows as row (row.instance_id)}<CompactResourceCard>
 					<div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{row.name || t('usageReport.missingValue')}</h3><StatusChip status={row.state} /></div><p class="text-sm tabular-nums">{t('usageReport.columns.usageHours')}: {formatValue(row.hours, 1)}</p>{#if row.ended_at}<Pill tone="neutral">{t('usageReport.instances.deleted')}</Pill>{/if}
 					{#snippet details()}<p class="text-xs font-mono">{row.instance_id}</p><p class="text-xs">{t('usageReport.columns.flavor')}: {row.flavor}</p><p class="text-xs">{t('usageReport.columns.started')}: {row.started_at ? formatDate(row.started_at) : t('usageReport.missingValue')}</p><p class="text-xs">vCPU: {formatValue(row.vcpus)} · GPU: {row.gpu_count ? formatValue(row.gpu_count) : t('usageReport.missingValue')}</p>{/snippet}
 				</CompactResourceCard>{/each}{/snippet}
@@ -747,12 +755,15 @@
 		</Card>
 
 		<Card padding="lg">
-			<SectionHeader title={t('usageReport.inventory.title')} meta={t('usageReport.inventory.meta')} />
+			<div class="flex flex-wrap items-baseline gap-2">
+				<h2 class="text-[length:var(--type-support)] font-medium uppercase tracking-[0.12em] text-ink-2">{t('usageReport.inventory.title')}</h2>
+				<span class="text-[length:var(--type-support)] text-ink-2">{t('usageReport.inventory.meta')}</span>
+			</div>
 			<div class="mt-4">
 				{#if inventoryState === 'loading'}
 					<LoadingState variant="section" label={tl('state.loadingNamed', { name: t('usageReport.inventory.title') })} />
 				{:else if inventoryState === 'error'}
-					<Alert tone="warning">{t('usageReport.inventory.loadFailed')}</Alert>
+					<Alert flat tone="warning">{t('usageReport.inventory.loadFailed')}</Alert>
 				{:else}
 					<div class="grid grid-cols-1 gap-3.5 md:grid-cols-2 lg:grid-cols-3">
 						{#each inventoryGroups as group (group.id)}
@@ -762,7 +773,12 @@
 									<CapacityBar label={row.label} used={row.item.in_use} total={row.item.limit} unit={row.unit} size="xs" />
 								{/each}
 								{#if group.id === 'compute' && data.quota.compute_available !== false && isQuotaItem(inventory?.compute.key_pairs)}
-									<StatTile label={t('usageReport.inventory.keyPairLimit')} value={inventory.compute.key_pairs.limit === -1 ? t('usageReport.forecast.unlimited') : formatValue(inventory.compute.key_pairs.limit)} accent="blue" flat />
+									<dl class="border-t border-line pt-2.5">
+										<div class="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+											<dt class="text-ink-2">{t('usageReport.inventory.keyPairLimit')}</dt>
+											<dd class="tabular-nums text-ink-0">{inventory.compute.key_pairs.limit === -1 ? t('usageReport.forecast.unlimited') : formatValue(inventory.compute.key_pairs.limit)}</dd>
+										</div>
+									</dl>
 								{/if}
 							</section>
 						{/each}
@@ -770,11 +786,11 @@
 							<section class="space-y-2.5" aria-label={t('usageReport.resources.objectStorage')}>
 								<SectionLabel>{t('usageReport.resources.objectStorage')}</SectionLabel>
 								{#if objectStorage}
-								<div class="grid gap-px overflow-hidden rounded-lg border border-line bg-line">
-									<StatTile label={t('usageReport.resources.container')} value={objectStorage.container_count.toLocaleString(intlLocale())} accent="blue" flat />
-									<StatTile label={t('usageReport.resources.object')} value={objectStorage.object_count.toLocaleString(intlLocale())} accent="cyan" flat />
-									<StatTile label={t('usageReport.resources.usage')} value={objectStorage.bytes_used > 0 ? formatSize(objectStorage.bytes_used) : `${formatValue(0)} B`} accent="violet" flat />
-								</div>
+								<dl class="divide-y divide-line border-t border-line">
+									<div class="flex flex-wrap items-baseline justify-between gap-2 py-2.5 text-sm"><dt class="text-ink-2">{t('usageReport.resources.container')}</dt><dd class="tabular-nums text-ink-0">{objectStorage.container_count.toLocaleString(intlLocale())}</dd></div>
+									<div class="flex flex-wrap items-baseline justify-between gap-2 py-2.5 text-sm"><dt class="text-ink-2">{t('usageReport.resources.object')}</dt><dd class="tabular-nums text-ink-0">{objectStorage.object_count.toLocaleString(intlLocale())}</dd></div>
+									<div class="flex flex-wrap items-baseline justify-between gap-2 py-2.5 text-sm"><dt class="text-ink-2">{t('usageReport.resources.usage')}</dt><dd class="tabular-nums text-ink-0">{objectStorage.bytes_used > 0 ? formatSize(objectStorage.bytes_used) : `${formatValue(0)} B`}</dd></div>
+								</dl>
 								{:else}
 									<p class="text-sm text-ink-2">{optionalUsageUnavailable('object_storage')}</p>
 								{/if}
@@ -783,9 +799,9 @@
 						{#if $siteConfig.services.trove}
 							<section class="space-y-2.5" aria-label={t('usageReport.resources.database')}>
 								<SectionLabel>{t('usageReport.resources.database')}</SectionLabel>
-								<div class="overflow-hidden rounded-lg border border-line">
-									<StatTile label={t('usageReport.resources.dbInstance')} value={database?.instances_count == null ? optionalUsageUnavailable('database') : formatValue(database.instances_count)} accent="emerald" flat />
-								</div>
+								<dl class="border-t border-line pt-2.5">
+									<div class="flex flex-wrap items-baseline justify-between gap-2 text-sm"><dt class="text-ink-2">{t('usageReport.resources.dbInstance')}</dt><dd class="tabular-nums text-ink-0">{database?.instances_count == null ? optionalUsageUnavailable('database') : formatValue(database.instances_count)}</dd></div>
+								</dl>
 							</section>
 						{/if}
 					</div>
@@ -796,45 +812,18 @@
 		<!-- LLM 채팅 사용량 (빌트인) -->
 		{#if chatUsage?.found}
 			<Card padding="lg">
-				<SectionHeader title={t('usageReport.chat.title')} meta={t('usageReport.chat.meta')} />
-				<div class="grid grid-cols-2 lg:grid-cols-3 gap-3.5 mt-4">
-					<StatTile
-						label={t('usageReport.chat.monthTokens')}
-						value={(chatUsage.month_prompt_tokens + chatUsage.month_completion_tokens).toLocaleString(intlLocale())}
-						accent="blue"
-					>
-						{#snippet icon()}
-							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-								<path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-							</svg>
-						{/snippet}
-					</StatTile>
-					<StatTile label={t('usageReport.chat.inputTokens')} value={chatUsage.month_prompt_tokens.toLocaleString(intlLocale())} accent="blue" />
-					<StatTile label={t('usageReport.chat.outputTokens')} value={chatUsage.month_completion_tokens.toLocaleString(intlLocale())} accent="cyan" />
-					<StatTile
-						label={t('usageReport.chat.monthCredits')}
-						value={chatUsage.month_credited_cost.toLocaleString(intlLocale())}
-						accent="violet"
-					>
-						{#snippet icon()}
-							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-								<circle cx="12" cy="12" r="10"/>
-							</svg>
-						{/snippet}
-					</StatTile>
-					<StatTile
-						label={t('usageReport.chat.monthRequests')}
-						value={formatValue(chatUsage.month_request_count)}
-						accent="cyan"
-					>
-						{#snippet icon()}
-							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-								<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-							</svg>
-						{/snippet}
-					</StatTile>
-					<StatTile label={t('usageReport.chat.monthQuota')} value={t('usageReport.chat.quotaValue', { used: chatUsage.quota_used.toLocaleString(intlLocale()), max: chatUsage.quota_max.toLocaleString(intlLocale()) })} accent="amber" />
+				<div class="flex flex-wrap items-baseline gap-2">
+					<h2 class="text-[length:var(--type-support)] font-medium uppercase tracking-[0.12em] text-ink-2">{t('usageReport.chat.title')}</h2>
+					<span class="text-[length:var(--type-support)] text-ink-2">{t('usageReport.chat.meta')}</span>
 				</div>
+				<dl class="mt-4 divide-y divide-line border-t border-line">
+					<div class="flex flex-wrap items-baseline justify-between gap-2 py-3 text-sm"><dt class="text-ink-2">{t('usageReport.chat.monthTokens')}</dt><dd class="tabular-nums text-ink-0">{(chatUsage.month_prompt_tokens + chatUsage.month_completion_tokens).toLocaleString(intlLocale())}</dd></div>
+					<div class="flex flex-wrap items-baseline justify-between gap-2 py-3 text-sm"><dt class="text-ink-2">{t('usageReport.chat.inputTokens')}</dt><dd class="tabular-nums text-ink-0">{chatUsage.month_prompt_tokens.toLocaleString(intlLocale())}</dd></div>
+					<div class="flex flex-wrap items-baseline justify-between gap-2 py-3 text-sm"><dt class="text-ink-2">{t('usageReport.chat.outputTokens')}</dt><dd class="tabular-nums text-ink-0">{chatUsage.month_completion_tokens.toLocaleString(intlLocale())}</dd></div>
+					<div class="flex flex-wrap items-baseline justify-between gap-2 py-3 text-sm"><dt class="text-ink-2">{t('usageReport.chat.monthCredits')}</dt><dd class="tabular-nums text-ink-0">{chatUsage.month_credited_cost.toLocaleString(intlLocale())}</dd></div>
+					<div class="flex flex-wrap items-baseline justify-between gap-2 py-3 text-sm"><dt class="text-ink-2">{t('usageReport.chat.monthRequests')}</dt><dd class="tabular-nums text-ink-0">{formatValue(chatUsage.month_request_count)}</dd></div>
+					<div class="flex flex-wrap items-baseline justify-between gap-2 py-3 text-sm"><dt class="text-ink-2">{t('usageReport.chat.monthQuota')}</dt><dd class="tabular-nums text-ink-0">{t('usageReport.chat.quotaValue', { used: chatUsage.quota_used.toLocaleString(intlLocale()), max: chatUsage.quota_max.toLocaleString(intlLocale()) })}</dd></div>
+				</dl>
 			</Card>
 		{/if}
 	{:else}

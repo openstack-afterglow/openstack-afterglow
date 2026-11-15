@@ -48,16 +48,19 @@ describe('ChatSettings', () => {
 	});
 
 	it('renders all settings sections as a dedicated page and updates its deep link', async () => {
-		render(ChatSettings);
+		const { container } = render(ChatSettings);
 
 		expect(screen.queryByRole('dialog')).toBeNull();
-		expect(screen.getByRole('heading', { name: '채팅 설정' })).toBeTruthy();
+		expect(screen.getByRole('heading', { level: 1, name: '채팅 설정' })).toBeTruthy();
+		expect(screen.getByRole('heading', { level: 2, name: '이번 달 사용량' })).toBeTruthy();
+		expect(container.querySelector('.eyebrow')).toBeNull();
 		expect(await screen.findByText('주간 쿼터 12 / 1,000')).toBeTruthy();
 		const sectionButtons = ['사용량', 'API 키', '메모리', 'MCP 서버', '도구', '스킬'].map(
 			(name) => screen.getByRole('button', { name })
 		);
 		expect(sectionButtons).toHaveLength(6);
 		expect(sectionButtons[0].classList.contains('active')).toBe(true);
+		expect(sectionButtons[0].getAttribute('aria-current')).toBe('page');
 
 		await fireEvent.click(screen.getByRole('button', { name: 'MCP 서버' }));
 		expect(mocks.goto).toHaveBeenCalledWith('/dashboard/chat/settings?section=mcp', {
@@ -66,6 +69,9 @@ describe('ChatSettings', () => {
 			noScroll: true
 		});
 		expect(screen.getByRole('button', { name: 'MCP 서버' }).classList.contains('active')).toBe(true);
+		expect(screen.getByRole('heading', { level: 2, name: 'MCP 서버' })).toBeTruthy();
+		expect(sectionButtons[0].hasAttribute('aria-current')).toBe(false);
+		expect(screen.getByRole('button', { name: 'MCP 서버' }).getAttribute('aria-current')).toBe('page');
 	});
 
 	it('shows the automatically maintained memory.md and copies its plaintext content', async () => {
@@ -77,6 +83,8 @@ describe('ChatSettings', () => {
 		render(ChatSettings, {
 			initialSection: 'memory'
 		});
+		expect(await screen.findByRole('heading', { level: 2, name: 'memory.md' })).toBeTruthy();
+		expect(screen.getAllByRole('heading').some((heading) => heading.tagName === 'H4')).toBe(false);
 
 		const document = await screen.findByLabelText('memory.md 내용');
 		expect(document.textContent).toContain('# Memory');
