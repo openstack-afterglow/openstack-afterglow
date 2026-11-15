@@ -1,16 +1,28 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const startTour = vi.hoisted(() => vi.fn());
 vi.mock('../engine', () => ({ startTour, isTourActive: () => false, onTourActivityChange: () => () => {} }));
 
 import TutorialStartButton from '../TutorialStartButton.svelte';
+import { authReady, exitMockAuth, enterMockAuth, setLoginAuth, logoutInProgress, projectSwitching } from '$lib/stores/auth';
+import { buildMockAuth } from '$lib/mockup/auth';
 import { tutorialStatuses, tutorialStatusesLoaded } from '../status';
 
 beforeEach(() => {
 	startTour.mockReset();
+	exitMockAuth();
+	enterMockAuth(buildMockAuth('admin', '/admin'), 'admin');
+	authReady.set(true);
 	tutorialStatuses.set({});
 	tutorialStatusesLoaded.set(false);
+});
+
+afterEach(() => {
+	exitMockAuth();
+	authReady.set(false);
+	logoutInProgress.set(false);
+	projectSwitching.set(false);
 });
 
 describe('TutorialStartButton', () => {
@@ -21,6 +33,39 @@ describe('TutorialStartButton', () => {
 		tutorialStatusesLoaded.set(true);
 		expect(await screen.findByRole('dialog')).toBeTruthy();
 		expect(screen.getByText('튜토리얼을 시작하시겠습니까?')).toBeTruthy();
+	});
+
+	it('hides launcher and invite when a real non-admin session replaces tutorial auth', async () => {
+		tutorialStatusesLoaded.set(true);
+		render(TutorialStartButton, { tour: 'vm-create' });
+
+		expect(await screen.findAllByRole('button', { name: '튜토리얼 시작' })).toHaveLength(2);
+		expect(await screen.findByRole('dialog')).toBeTruthy();
+
+		exitMockAuth();
+		setLoginAuth({ token: 'real-token', userId: 'u1', username: 'real', isSystemAdmin: false });
+		authReady.set(true);
+
+		await waitFor(() => {
+			expect(screen.queryByRole('button', { name: '튜토리얼 시작' })).toBeNull();
+			expect(screen.queryByRole('dialog')).toBeNull();
+		});
+	});
+
+	it('shows real-admin tours only after verification and hides them during project switching', async () => {
+		exitMockAuth();
+		setLoginAuth({ token: 'real-admin-token', userId: 'operator', username: 'admin', isSystemAdmin: true });
+		authReady.set(false);
+		render(TutorialStartButton, { tour: 'admin-settings' });
+
+		expect(screen.queryByRole('button', { name: '튜토리얼 시작' })).toBeNull();
+		authReady.set(true);
+		expect(await screen.findByRole('button', { name: '튜토리얼 시작' })).toBeTruthy();
+
+		projectSwitching.set(true);
+		await waitFor(() => expect(screen.queryByRole('button', { name: '튜토리얼 시작' })).toBeNull());
+		projectSwitching.set(false);
+		expect(await screen.findByRole('button', { name: '튜토리얼 시작' })).toBeTruthy();
 	});
 
 	it('does not invite a completed tour but keeps the accessible restart button', () => {

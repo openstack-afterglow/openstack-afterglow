@@ -3,6 +3,7 @@
   import { page } from '$app/stores';
   import InstanceDetailPanel from '$lib/components/InstanceDetailPanel.svelte';
   import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
+  import { tourAvailability } from '$lib/tutorial/access';
   import { tutorialViewport } from '$lib/tutorial/viewport';
   import { onDestroy } from 'svelte';
   import { invalidateInstanceDetailSelection } from '$lib/stores/instanceDetailController.svelte';
@@ -10,12 +11,13 @@
   onDestroy(unsubscribeSelection);
 
   const instanceId = $derived($page.params.id!);
+  const instanceDetailTourAvailable = tourAvailability('instance-detail-delete');
 </script>
 
 <PageShell>
   <!-- Route-only entry: the slide panel and admin detail reuse InstanceDetailPanel without this tour.
        Tutorials are tablet-and-up, so mobile omits the empty row and the instance name stays on top. -->
-  {#if tutorialViewport.current}
+  {#if tutorialViewport.current && $instanceDetailTourAvailable}
     <div class="mb-3 flex justify-end">
       <TutorialStartButton tour="instance-detail-delete" compactOnMobile />
     </div>

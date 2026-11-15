@@ -25,6 +25,28 @@ afterEach(() => {
 });
 
 describe('mockup transport', () => {
+	it('provides a selectable tutorial flavor composition preview and saves only valid CPU tuples', async () => {
+		const { maybeMockJson } = await import('./transport');
+		const token = 'mock-token-tutorial-scoped';
+		const project = 'mock-project-1';
+		const options = await maybeMockJson<{ variants: { preview: { id: string } | null; regions: { vcpus: { min: number } }[] }[] }>(
+			'GET', '/api/v1/flavors/composer-options', undefined, token, project,
+		);
+		if (typeof options === 'symbol') throw new Error('Expected tutorial composer options');
+		expect(options.variants[0]).toMatchObject({ preview: { id: 'composer-preview' }, regions: [{ vcpus: { min: 1 } }] });
+		const composition = { vcpus: 4, ram_mb: 8192, gpu_profile_id: null, gpu_count: 0 };
+		const saved = await maybeMockJson<{ id: string; composition: typeof composition; vcpus: number; ram: number }>(
+			'POST', '/api/v1/flavors/compositions?operation_id=mock-operation', composition, token, project,
+		);
+		if (typeof saved === 'symbol') throw new Error('Expected saved synthetic flavor');
+		expect(saved).toMatchObject({ id: 'mock-flavor-composed-4c-8192m', composition, vcpus: 4, ram: 8192 });
+		const history = await maybeMockJson<{ items: { id: string }[] }>('GET', '/api/v1/flavors/compositions', undefined, token, project);
+		if (typeof history === 'symbol') throw new Error('Expected synthetic composition history');
+		expect(history.items).toEqual([expect.objectContaining({ id: saved.id })]);
+		await expect(maybeMockJson('POST', '/api/v1/flavors/compositions', { ...composition, vcpus: 3 }, token, project)).rejects.toMatchObject({ status: 409 });
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
 	it('serves native Key Manager metadata arrays without payloads and rejects invalid secret creation', async () => {
 		// resetModules must recreate the tutorial singleton for this transport-boundary test.
 		const { maybeMockJson } = await import('./transport');

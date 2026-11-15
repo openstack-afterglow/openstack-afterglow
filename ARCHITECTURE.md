@@ -297,6 +297,7 @@ Swift overview의 `count_containers_all_projects(conn)`는 검증된 고정 admi
 정렬 scoped review는 private 설정/공유 index/global review marker를 보존한 frozen public-source snapshot의 working stamp·staged guard에서 `6bd6e09a330f61919cbfe74acb3449d426e898217f369e2495b407dd8c47afdc`/3532entries를 확인했다(실행용 root dependency symlink1 포함). 동시 traffic WIP가 포함된 digest이며 그 변경의 설계 review를 대체하지 않는다. Native nullable timestamp와 표시 정렬·pagination 변경만 있고 DB/schema·서비스/권한/배포 구조 영향은 없다. 실제 HTTP·Chromium 및 full gate는 `docs/testing.md`의 별도 receipt를 따른다.
 
 Tutorial transport의 관리자 두 목록도 필터 뒤 같은 `sortResources`를 적용하고 marker로 나눈다. 프로젝트 모의 볼륨에는 명시적 fixture 생성 시각을 제공한다. Native 생성 시각 없는 기존 response cache와의 cutover를 위해 프로젝트 volumes namespace와 해당 모든 단건 mutation invalidation을 v3으로 함께 이동하며 wildcard/TTL·실제 인증/DB/배포 구조는 유지한다. 이전 parity 이전 gate와 최종 후속 source gate를 `docs/testing.md`에서 구분한다.
+VM 생성 튜토리얼 flavor composer mock은 선택 가능한 CPU preview를 제공하고, 합성 저장 결과를 mock state와 history에 보존해 생성 직전 재검증에서도 찾을 수 있게 한다. 지원하지 않는 조합은 기존 fail-closed 409를 유지한다. API/DB·서비스 구조 영향은 없다.
 
 Tutorial/cache parity를 포함하는 후속 최종 snapshot의 working stamp/staged guard는 `4c1759b01b265498d426d39535f7e23906ebee5ba4808d644a9e1868f9aa8b43`/3532entries이며 같은 source의 전체 gate가 통과했다. 실제 native cloud/운영 cache acceptance나 배포 증거는 아니며 공유 index/global marker를 보존했다.
 
@@ -489,7 +490,10 @@ graph LR
 
 튜토리얼은 태블릿(`md`, 768px) 이상에서만 제공한다. `frontend/src/lib/tutorial/viewport.ts`의 `tutorialViewport`(MediaQuery)가 `TutorialStartButton` 렌더와 `startTour` 시작을 막으므로 모바일에서는 시작 버튼·초대 말풍선이 없고 저장된 투어 재개와 `?tour=` 링크도 시작되지 않는다. 초대 말풍선의 왼쪽 경계는 `--app-sidebar-offset`만큼 이동해 사이드바 아래로 클리핑되지 않으며, 앵커와 그 부모의 크기 변화에도 다시 측정한다. 엔진은 강조 대상을 `scrollIntoView` 가운데로 맞춘 뒤 `driver.highlight()` 다음 프레임에 `revealBelowHeader`를 적용한다. driver.js가 대상이 창 안에 완전히 들어오지 않으면 `highlight()` 안에서 다시 스크롤하기 때문에 사전 보정은 덮어쓰이며, 대상 상단이 고정 헤더(48px) 아래 8px보다 위로 가려지면 `#main-content`를 위로 스크롤하고 `driver.refresh()`로 컷아웃과 팝오버를 다시 맞춘다.
 
-실제 관리자 권한 투어(`admin-user-credentials`, `admin-settings`, `admin-system-admins`)는 튜토리얼 목업을 쓰지 않는다. 합성 튜토리얼 관리자가 `isSystemAdmin: true`이므로 `frontend/src/lib/tutorial/access.ts`의 `canStartTour`가 `startTour`에서 시작 버튼·`?tour=`·저장 투어 재개를 함께 거른다: 목업 세션이면 거부하고 로그인 토큰·`isSystemAdmin`·`authReady`가 있으며 프로젝트 전환·로그아웃 중이 아닐 때만 시작한다. 이 게이트는 표시 보조이며 백엔드 `require_admin`과 native 정책이 권위다. 시스템 관리자 투어는 읽기 전용이다: 권한 부여 API는 멱등이라 새 할당을 만들었는지 보고하지 않으므로 투어가 만든 부여만 회수하는 안내를 증명할 수 없어 클릭으로 진행하지 않는다. 강조한 영역에 실제 추가·회수 버튼이 있으므로 `TourStep.readOnly` 단계는 엔진이 강조 영역 안의 클릭·키보드 활성화를 캡처 단계에서 막는다. API·DB·배포 구조 변경은 없다.
+실제 관리자 권한 투어(`admin-user-credentials`, `admin-settings`, `admin-system-admins`)는 튜토리얼 목업을 쓰지 않는다. 합성 튜토리얼 관리자가 `isSystemAdmin: true`이므로 `frontend/src/lib/tutorial/access.ts`의 `canStartTour`가 시작 버튼·초대·`?tour=`·저장 투어 재개를 함께 거른다: 목업 세션이면 거부하고 로그인 토큰·`isSystemAdmin`·`authReady`가 있으며 프로젝트 전환·로그아웃 중이 아닐 때만 시작한다. `TutorialStartButton`은 같은 판정을 사용해 허용되지 않는 일반 투어 버튼과 초대도 렌더하지 않고 인증 상태 변경을 반영한다. 일반 투어는 목업 모드에서만 노출된다. 이 게이트는 표시 보조이며 백엔드 `require_admin`과 native 정책이 권위다. 시스템 관리자 투어는 읽기 전용이다: 권한 부여 API는 멱등이라 새 할당을 만들었는지 보고하지 않으므로 투어가 만든 부여만 회수하는 안내를 증명할 수 없어 클릭으로 진행하지 않는다. 강조한 영역에 실제 추가·회수 버튼이 있으므로 `TourStep.readOnly` 단계는 엔진이 강조 영역 안의 클릭·키보드 활성화를 캡처 단계에서 막는다. API·DB·배포 구조 변경은 없다.
+
+`frontend/src/lib/tutorial/access.ts`의 `tourAvailability(tourId)`는 인증 토큰·검증 준비·프로젝트 전환·로그아웃 store를 결합한 reactive presentation gate다. `TutorialStartButton`과 인스턴스 상세 route wrapper가 같은 store를 사용하므로, 접근 불가 상태에서는 버튼·초대뿐 아니라 wrapper 여백도 렌더하지 않고 권한 변화도 반영한다.
+
 
 모바일(<768px) 및 데스크톱 콘솔 UX는 프론트엔드만 변경한다. `utils/mobileViewport.ts`가 모바일 판정의 단일 소유자이고, `utils/resourceSearch.ts`는 `CmdPalette`에서 분리한 리소스 로드·퍼지 매칭으로 명령 팔레트와 모바일 드로어의 통합 검색이 함께 쓴다. `HeaderAccountControls.svelte`는 프로필 메뉴(계정·내 리소스·알림·라이트/다크·로그아웃)를 모바일과 데스크톱 전 폭에서 공통 렌더하며, 데스크톱 헤더는 Cloud Shell 트리거와 관리자 모드 토글, 언어 선택을 헤더 바에 유지한다. `ui/TableFilterSheet.svelte`는 카드 모드 모바일 필터(임시 draft, `조회하기`로 일괄 적용)를 담당한다. API·인증·SQL·배포 topology 변경은 없다.
 
@@ -2185,9 +2189,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "256c26c76c2b7f7a2e27c6c3e14c246a5a9631468af73bd7aed70f5dac8d4cd9",
-  "reviewed_at": "2026-11-15T13:31:41Z",
-  "summary": "Release 1.32.19: member-session backup ownership fix, archive and version bump; no further source change."
+  "source_sha256": "aa894f09b51494afc2614ccdc5bcc34bad0f2a1e37434d44fe3f791b9ed8dda5",
+  "reviewed_at": "2026-11-15T15:02:42Z",
+  "summary": "Tutorial start button availability gate and mock-to-real transition fix landed from the previously uncommitted shared-checkout work; no further change."
 }
 ```
 <!-- architecture-review:end -->

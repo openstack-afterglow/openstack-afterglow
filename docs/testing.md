@@ -428,6 +428,21 @@ nav_order: 8
 - 후속 실제 route smoke: 일시적으로 tutorial attachment를 auto-delete=true로 설정하고 `/dashboard/compute/instances?tutorial=on`의 stopped VM 메뉴에서 삭제했다. `root-disk` 동반 삭제 경고, 빈/오입력 시 확인 비활성, 취소 후 VM 유지와 재열기 입력 초기화, 정확한 `Delete` 입력 후 확인 시에만 mock VM 제거를 관찰했다. fixture는 false로 복원했다. 이는 실제 route/controller/helper/mock transport의 UI 검증이며 운영 API·native provider 수용이 아니다.
 - 후속 최종 검증은 consumer list24개, named instance backend2766통과/1skip·frontend1162통과, Svelte 오류0/경고17이다. 최초 후속 named 실행의 retained 안내 문자열 exact-match 실패는 구현을 되돌리지 않고 incidental wording assertion을 제거하고 실제 삭제 동작 검증을 유지했다. 전체 gate 기록은 위 후속 cache 수정 전 실행이며 기능 datastore 포트 충돌로 미완료 상태다.
 
+## VM 생성 튜토리얼 flavor composer (2026-11-13, source/local)
+
+- 첫 재현에서 플레이버 선택 단계가 비활성 `이 사양으로 계속`으로 멈췄다. `composer-options` mock의 `preview: null`은 composer selection을 비웠고, POST mock이 없었다.
+- 수정 후 mock state에 선택한 synthetic CPU flavor를 저장하고 composition history 조회에서 반환한다. 유효한 짝수 vCPU/RAM만 받고, 지원하지 않는 조합은 409 fail-closed다.
+- `transport.test.ts`는 preview, 저장, history 복원, 잘못된 vCPU 거부, 네트워크 호출 부재를 검증한다. 전체 frontend Vitest는590 files/7,926 tests 통과했다.
+- 실제 Vite + 격리 Chromium에서 VM 튜토리얼 1/6→6/6과 합성 VM 목록 추가를 확인했다. `/admin?tutorial=admin`은 대시보드에서 오류 없이 열렸고 `/admin/instances?tutorial=admin`에서 관리자 Compute 튜토리얼 시작을 확인했다.
+- 전체 `npm run test:gate`는 `scripts/local-services-config.test.js`에서 실패했다. 전체 frontend Vitest는 통과했지만, 이 환경의 config test가 변경 전에도 실패했는지는 확인하지 않았다. 실제 Nova 생성·운영 cloud 동작은 검증하지 않았다.
+
+
+## 실계정 튜토리얼 시작 버튼 가시성 (2026-11-14, source/local)
+
+- `access.ts`의 `tourAvailability(tourId)`가 `TutorialStartButton`과 인스턴스 상세 route wrapper의 표시를 함께 제어한다. 비허용 상태에서는 버튼·초대·지연 힌트와 상세 페이지의 바깥 여백을 렌더하지 않는다.
+- `TutorialStartButton.test.ts`는 mock→실계정 비관리자 전환에서 launcher/invite가 사라지고, 실관리자 `admin-settings`가 `authReady=false→true`에서 표시되며 `projectSwitching` 시작·종료에 따라 숨겨지고 다시 보이는지 검증한다.
+- 실계정 UI는 2026-11-13 live check에서 버튼 클릭이 무동작인 것을 재현했다. 번들에 같은 gate가 있어 원인 경로와 일치하며, exact deployed version은 관측되지 않았다.
+- 집중 테스트 3 files/22 tests 통과. 전체 `npx vitest run` 590 files/7,928 tests 통과. `npm run check` 0 errors/15 warnings(기존 warning 포함). Architecture working stamp 및 `--staged` 검사가 통과했다.
 ## 남은 운영 마찰·경험 관측 경계 (2026-11-05, source/local)
 
 - Standalone container/file detail의 실제 mounted route·실제 API client·collector 회귀41개가 통과했습니다.

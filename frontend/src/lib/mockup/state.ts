@@ -8,7 +8,7 @@ import type { SecurityGroup } from '$lib/types/securityGroup';
 import type { SecretInfo } from '$lib/api/secrets';
 import type { VolumeBackup } from '$lib/types/volume';
 import type { AnnouncementAdmin } from '$lib/types/announcements';
-import type { Flavor } from '$lib/types/flavor';
+import type { Flavor, FlavorOption } from '$lib/types/flavor';
 import type { PortInfo } from '$lib/types/networks';
 import type { Group } from '$lib/types/adminGroup';
 import type { ZunContainer } from '$lib/types/zunContainer';
@@ -93,6 +93,7 @@ interface MockupState {
 	volumeBackups: VolumeBackup[];
 	adminAnnouncements: AnnouncementAdmin[];
 	adminFlavors: Flavor[];
+	composedFlavors: FlavorOption[];
 	// Unbound ports created on the admin ports page; device-owned ports are derived from topology.
 	adminPorts: PortInfo[];
 	// IDs of users created on the admin users page; they live in admin.users and only these are deletable.
@@ -369,6 +370,7 @@ function seedState(): MockupState {
 			{ id: 'mock-managed-cpu-4', name: 'cpu.4c_8g', vcpus: 4, ram: 8192, disk: 0, is_public: false, description: 'Synthetic managed shape; native publication unverified.', is_gpu: false, gpu_count: 0, gpu_primary_aliases: [], frontend_visible: true, extra_specs: { 'afterglow:managed_by': 'domain-compute-v1', 'afterglow:access_mode': 'domain_quota', 'afterglow:frontend_visible': 'true' } },
 			{ id: 'mock-flavor-small', name: 'sample.2c_4g', vcpus: 2, ram: 4096, disk: 40, is_public: true, description: null, is_gpu: false, gpu_count: 0, gpu_primary_aliases: [], frontend_visible: true, extra_specs: {} },
 		],
+		composedFlavors: [],
 		adminPorts: [],
 		adminCreatedUserIds: [],
 		adminGroups: [

@@ -7,6 +7,7 @@ import { MOCK_MCP_CONSENT_TICKET, MOCKUP_QUERY_KEY, MOCKUP_SESSION_KEY, MOCKUP_S
 import type { MockupProfileId } from '$lib/mockup/contracts';
 import { cloneMockup, getMockupState } from '$lib/mockup/state';
 import type { K3sSseProgressMessage } from '$lib/api/k3sSseStream';
+import type { FlavorOption } from '$lib/types/flavor';
 import { RESOURCE_CATEGORIES, type ProjectResourceInventory, type ResourceCategory, type ResourceInventory, type ResourceItem, type ResourceTotal, type UserDashboardSummary } from '$lib/types/userDashboard';
 import { isTourId } from '$lib/tutorial/tours';
 import { t } from '$lib/i18n/ns/tutorial';
@@ -350,6 +351,33 @@ function userInventoryFixture(profile: MockupProfileId, projectId?: string): Use
 		return [category, ready.length === values.length ? { state: 'ready', count, known_count: count } : { state: 'disabled', count: null, known_count: count }];
 	})) as Record<ResourceCategory, ResourceTotal>;
 	return { user_id: userId, current_project_id: projectId ?? state.selectedProjectId, projects, totals: { resources, usage: { vcpus: null, ram_mb: null, storage_gb: projects.reduce((sum, project) => sum + (project.usage.storage_gb ?? 0), 0) } } };
+}
+
+/** Eligible, quota- and capacity-clean flavor the tutorial composer previews and "saves"; no real Nova host is consulted. */
+function mockComposedFlavor(composition: { vcpus: number; ram_mb: number; gpu_profile_id: string | null; gpu_count: number }, id: string) {
+	return {
+		id,
+		name: `cpu.${composition.vcpus}c_${composition.ram_mb / 1024}g`,
+		display_name: null,
+		vcpus: composition.vcpus,
+		ram: composition.ram_mb,
+		disk: 80,
+		is_public: true,
+		extra_specs: {},
+		is_gpu: false,
+		gpu_count: 0,
+		composition: { ...composition },
+		eligibility: {
+			selectable: true,
+			requirements: { instances: 1, cores: composition.vcpus, ram_mb: composition.ram_mb, gpus: {} },
+			remaining: { instances: 8, cores: 56, ram_mb: 196608, gpus: {} },
+			blockers: [],
+			capacity: {
+				status: 'available' as const, checked_at: NOW_ISO, candidate_hosts: 1,
+				cpu_resource_class: 'VCPU' as const, remaining_vcpus: 32, remaining_ram_mb: 98304,
+			},
+		},
+	};
 }
 
 function jsonFixture(method: string, normalized: string, body: unknown, profile: MockupProfileId, requestProjectId?: string): unknown | typeof symbolNoMatch {
@@ -1165,12 +1193,25 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 				{
 					gpu_profile_id: null, gpu_count: 0, status: 'available',
 					regions: [{ vcpus: { min: 1, max: 8, step: 1 }, ram_mb: { min: 1024, max: 65536, step: 1024 } }],
-					preview: null,
+					// Without a preview the composer has no selection and keeps its Continue action disabled.
+					preview: mockComposedFlavor({ vcpus: 2, ram_mb: 2048, gpu_profile_id: null, gpu_count: 0 }, 'composer-preview'),
 				},
 			],
 		};
 	}
-	if (method === 'GET' && pathname === '/api/v1/flavors/compositions') return { items: [] };
+	if (method === 'GET' && pathname === '/api/v1/flavors/compositions') return { items: state.composedFlavors };
+	if (method === 'POST' && pathname === '/api/v1/flavors/compositions') {
+		const composition = body as { vcpus?: unknown; ram_mb?: unknown; gpu_profile_id?: unknown; gpu_count?: unknown } | null;
+		const { vcpus, ram_mb } = composition ?? {};
+		// Only the non-GPU variant the options fixture offers can be composed.
+		if (!Number.isInteger(vcpus) || !Number.isInteger(ram_mb) || composition?.gpu_profile_id !== null || composition?.gpu_count !== 0) return mockUnsupported();
+		const cores = vcpus as number;
+		const ramMb = ram_mb as number;
+		if (cores < 2 || cores > 8 || cores % 2 !== 0 || ramMb < 1024 || ramMb > 65536 || ramMb % 1024 !== 0) return mockUnsupported();
+		const flavor = mockComposedFlavor({ vcpus: cores, ram_mb: ramMb, gpu_profile_id: null, gpu_count: 0 }, `mock-flavor-composed-${cores}c-${ramMb}m`);
+		state.composedFlavors = [flavor as FlavorOption, ...state.composedFlavors.filter(item => item.id !== flavor.id)];
+		return flavor;
+	}
 	if (method === 'GET' && (pathname === '/api/v1/flavors' || pathname === '/api/v1/admin/instances/flavors-for-project')) {
 		return [
 			{ id: 'mock-flavor-cpu4', name: 'cpu.4c_8g', vcpus: 4, ram: 8192, disk: 80, is_public: true, extra_specs: {} },
@@ -1283,7 +1324,8 @@ export function maybeMockInstanceCreateStream(path: string, body: unknown): Asyn
 	const state = getMockupState();
 	const payload = body as { name?: string | null; flavor_id?: string; image_id?: string; network_id?: string; key_name?: string | null } | null;
 	const id = nextMockId(state.instances.map((item) => item.id), 'mock-instance');
-	const flavorName = payload?.flavor_id === 'mock-flavor-gpu' ? 'gpu.8c_64g_a10' : 'cpu.4c_8g';
+	const composed = payload?.flavor_id?.match(/^mock-flavor-composed-(\d+)c-(\d+)m$/);
+	const flavorName = composed ? `cpu.${composed[1]}c_${Number(composed[2]) / 1024}g` : payload?.flavor_id === 'mock-flavor-gpu' ? 'gpu.8c_64g_a10' : 'cpu.4c_8g';
 	const octet = 100 + state.instances.length;
 	state.instances.unshift({
 		id,
