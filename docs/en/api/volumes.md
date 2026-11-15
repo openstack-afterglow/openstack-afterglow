@@ -271,6 +271,8 @@ If reset succeeds but deletion fails, `failed` preserves the successful reset an
 
 If creation-origin force-delete returns a present non-deleting state such as `available`, the result is `failed`, with `creation_delete_state_changed:<status>` and refreshed diagnosis—not success or pending deletion. Data may be incomplete. No further reset occurs. Check the owning service, wait for watchers to disappear, and re-diagnose; ordinary admin deletion is possible when `available`.
 
+A failed Cinder lookup, missing status, or unknown/contradictory all-project listing after GET404 is not evidence of a provider state change. These cases retain `delete_submitted` (verification incomplete), without a state-change danger warning or a claim of completed deletion.
+
 ---
 
 ## 4. Volume Transfer

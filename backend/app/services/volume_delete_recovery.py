@@ -1586,6 +1586,13 @@ def recover_delete_volume(
         verify_timeout_seconds,
         poll_interval_seconds,
     )
+    creation_state_changed = (
+        creation_stage
+        and not verified
+        and last_status is not None
+        and last_status != "deleting"
+        and not last_status.startswith("lookup_unknown:")
+    )
     if verified:
         try:
             if any(
@@ -1597,7 +1604,6 @@ def recover_delete_volume(
         except Exception as exc:
             verified = False
             last_status = f"list_all_projects_unknown:{_safe_detail(exc)}"
-    creation_state_changed = creation_stage and not verified and last_status != "deleting"
     steps.append(
         VolumeDeleteRecoveryStep(
             action="verify_after_force_delete",

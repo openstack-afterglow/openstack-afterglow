@@ -26,6 +26,8 @@ Kolla의 `afterglow-kolla` Python distribution은 role·aggregate playbook·inst
 
 **생성 단계 볼륨 복구 (source/local):** 관리자 전체 볼륨 상세의 기존 삭제 진단이 `creating`/`downloading`도 자동 조회한다. 기존 Cinder/Nova 종속성·Ceph tri-state 검사를 유지하고 `creating`30분/`downloading`6시간의 모듈 상수와 RBD watcher liveness 차단을 합성한다. 나이는 작업 종료 증명이 아니다. `recover-delete`의 `recover`는 정확한 ID/관측 상태 확인과 전체 재진단 뒤 `os-reset_status(error)`를 검증하고 `state_reset`으로 멈춘다. `force_delete`는 생성 상태를 같은 방식으로 복구한 뒤 기존 mapping/force-delete/backend/quota 파이프라인을 재사용하며 destructive call 직전 종속성·watcher를 재조회한다. 생성 유래 경로는 attached-status reset 우회를 하지 않는다. 두 모드가 기존 fresh admin·Redis lock·mode/이전 상태 감사·부분 쓰기 cache 무효화를 공유한다. Ceph 미설정은 backend 미검증, watcher unknown은 차단이며 Palimpsest/c-vol 작업 취소·direct image 삭제·원자적 provider lock은 제공하지 않는다. Schema·migration·설정·배포 topology 변화는 없으며 운영 쓰기를 하지 않는다. 상세 계약은 `docs/api/volumes.md`와 OpenSpec `add-stuck-creating-volume-recovery`에 기록한다.
 
+생성 유래 force-delete의 상태 변경 경고는 absence polling에서 실제 관측한 non-deleting 상태에만 적용한다. 조회 오류·status 부재와 GET404 뒤 전체 목록의 unknown/contradiction은 현재 상태 변경의 증거가 아니므로 기존 `delete_submitted` 검증 미완료 경로를 유지한다. 안전 조건·native 쓰기 횟수·UI/API schema에는 추가 변화가 없다.
+
 **프로젝트 quota·시스템 정보 (source/local):** 저장된 enrollment singleton이 없는 경우 신규 개인 프로젝트의 제공 기본 보안 그룹10개·규칙200개로 여유를 넓힌다. 별도 native 예약은 아니며 기존 관리자 template, 동결 intent, 기존 프로젝트 및 조직 프로젝트의 native 기본값은 변경하지 않는다. 관리자 버전 정보는 기존 보호된 API와 검증된 관리자 경계를 유지한 채 메인에서 `/admin/system-info`로 옮긴다. 운영 배포·quota 변경은 없다.
 
 **Drover 작업 추적 (source/local):** 초기 progress track은 전체 너비를 사용한다. 표시 퍼센트는 관측된 단계의 추정치이며 native 보고값은 별도로 남긴다. 전역 dock은 사용자·도메인·프로젝트에 묶인 tab-local operation ID를 사용하여 GET으로만 계속 조회하고, 완료 전 최소화는 허용하되 닫지 않는다. Stream EOF·전송 오류·미확인 결과는 terminal이 아니며 operation ID 수신 전 유실은 재전송하지 않고 unknown으로 남는다. 확인된 pre-admission quota 거절만 marker로 구분한다. 이 source는 운영 반영이나 provider 준비를 뜻하지 않는다.
@@ -2144,9 +2146,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "756cad64558532ad70967aa0545baa2a4a6184e72ca18aa334f4a5ddc0679e61",
-  "reviewed_at": "2026-11-15T04:14:02Z",
-  "summary": "생성 단계 볼륨의 30분/6시간 gate와 watcher liveness, 두 모드 exact 확인·상태 reset·삭제 재검사 및 부분 실패 UI/audit; 최초 상태 변경409와 auth unknown 보존. schema·설정·배포 구조 변화 없음"
+  "source_sha256": "ccf28580f0f3f33cf5850739b2a7c35fb67b9576561dc6ff8e0b3323c88adf85",
+  "reviewed_at": "2026-11-15T04:29:52Z",
+  "summary": "생성 유래 force-delete의 실제 관측 상태와 lookup/list unknown을 구분하고 unknown은 기존 delete_submitted로 유지; owner marker 문서 동기화. API·schema·native 쓰기·UI 구조 변화 없음"
 }
 ```
 <!-- architecture-review:end -->

@@ -277,6 +277,8 @@ reset 성공 후 제거가 실패하면 `failed`와 수행한 steps를 반환하
 
 생성 유래 강제 제거 후 Cinder가 `available` 등 `deleting`이 아닌 상태를 반환하면 성공/대기가 아니라 `failed`와 `creation_delete_state_changed:<status>` 단계, 최신 진단을 반환합니다. 불완전한 이미지일 수 있으며 추가 reset은 하지 않습니다. 소유 서비스와 watcher 해제를 확인하고 재진단하세요. `available`이면 일반 관리자 삭제를 선택할 수 있습니다.
 
+Cinder 조회 실패나 status 부재, GET404 뒤 전체 목록 조회 실패·상충은 실제 상태 변경의 증거가 아닙니다. 이런 경우는 기존 `delete_submitted`(검증 미완료)를 유지하며 provider가 상태를 바꿨다고 경고하거나 삭제 완료를 주장하지 않습니다.
+
 ---
 
 ## 4. 볼륨 이전 (Transfer)

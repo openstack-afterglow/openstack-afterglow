@@ -22,6 +22,14 @@ nav_order: 8
 - 최종 gate 계층별 결과: backend unit **14906passed/106skipped**(xdist4·worksteal), frontend **591files/7948passed** 및 runner9passed, contract **262passed**, 실제 disposable MariaDB/PostgreSQL/Redis functional **289passed/46skipped/131deselected**, Ruff check와 format **896files** 통과. JS orchestration274passed/기존1TODO, Kolla29passed와 Python13+3passed, CLI20passed/PowerShell36skipped도 포함한다. 기존 Lumen `.env` 격리 TODO와 미설치 PowerShell 검증 공백은 해소했다고 주장하지 않는다.
 - Gate runner가 소유한 세 datastore와 전용 network를 제거한 실제 종료 로그를 확인했다. 전체 gate raw log는 위 proof 디렉터리의 `test-gate.log`에 보존했다. 격리 tree 검증은 운영 배포·production API/DB 또는 실제 Cinder/Ceph mutation 수용이 아니다.
 
+### 후속: 미확인 검증과 실제 상태 변경 구분
+
+- 초기 commit `4f692f0e`의 `last_status != deleting` 조건은 lookup/list unknown marker와 status 부재도 상태 변경으로 분류했다. 실제 Cinder 상태 관측 여부를 `_wait_volume_absent` 직후에 판정하도록 고쳤다. GET404 뒤 전체 목록 검증이 실패하거나 상충하면 기존 `delete_submitted` 경로를 유지한다.
+- 같은 targeted/order 명령은 **340passed**, 기존 경고287,3.61초로 통과했다. 추가5조건은 force-delete 뒤 lookup 실패, status 부재, GET404→list 실패, GET404→목록에 계속 표시, 정상 `deleting` 대기다. 모두 reset과 force-delete는 각1회이며 허위 provider-state-change 경고를 내보내지 않는다. 실제 `available` 전환 실패 회귀는 그대로 통과했다.
+- 후속 source `ccf28580f0f3f33cf5850739b2a7c35fb67b9576561dc6ff8e0b3323c88adf85`/4329files에 같은 격리 canonical `npm run test:gate`를 다시 실행해 **exit0/291.10초**를 확인했다. Backend **14911passed/106skipped**, frontend **591files/7948passed**, contract **262passed**, functional **289passed/46skipped/131deselected**, Ruff **896files** 통과다. 전용 datastore3개와 network가 제거됐으며 raw log는 proof 디렉터리의 `test-gate-inconclusive-followup.log`에 보존한다. Frontend code는 바꾸지 않아 기존46+2 browser proof를 재사용하며 새 browser 검증을 주장하지 않는다.
+- Archived design의 Afterglow owner marker에 `afterglow_managed_by`와 `afterglow_layer_*`도 동기화했다. API/schema·UI code·native 쓰기 횟수는 바꾸지 않았다.
+
+
 
 ## 대기 화면 마우스 반응·생성 화면 사용 기간 수정과 운영 관측 (2026-11-09, source/local, 원인 미확정)
 

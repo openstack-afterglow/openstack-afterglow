@@ -944,3 +944,67 @@ def test_confirmation_does_not_turn_native_auth_failure_into_state_conflict(
     assert result.diagnostic.root_cause_code == root
     reset.assert_not_called()
     delete.assert_not_called()
+
+
+@pytest.mark.parametrize("observation", ["lookup_error", "no_status", "list_error", "listed", "deleting"])
+def test_inconclusive_creation_delete_verification_does_not_report_provider_state_change(observation: str) -> None:
+    conn = make_mock_conn()
+    volume = _volume("creating")
+    force_started = False
+
+    def get_volume(_id):
+        if force_started:
+            if observation == "lookup_error":
+                raise TimeoutError("synthetic lookup timeout")
+            if observation in {"list_error", "listed"}:
+                raise ResourceNotFound()
+        return volume
+
+    def reset(_conn, _id, status):
+        volume.status = status
+
+    def force(_conn, _id):
+        nonlocal force_started
+        force_started = True
+        volume.status = None if observation == "no_status" else "deleting"
+
+    def list_volumes(*, details, all_projects):
+        assert all_projects is True
+        if not details:
+            if observation == "list_error":
+                raise TimeoutError("synthetic all-projects timeout")
+            if observation == "listed":
+                return [SimpleNamespace(id=VOLUME_ID)]
+        return []
+
+    conn.block_storage.get_volume.side_effect = get_volume
+    with (
+        _safe_queries(conn),
+        patch("app.services.volume_delete_recovery.cinder.reset_volume_status", side_effect=reset) as reset_call,
+        patch("app.services.volume_delete_recovery.cinder.force_delete_volume", side_effect=force) as force_call,
+        patch("app.services.volume_delete_recovery.cinder.get_volume_quota", side_effect=RuntimeError()),
+    ):
+        conn.block_storage.volumes.side_effect = list_volumes
+        result = volume_delete_recovery.recover_delete_volume(
+            conn,
+            VOLUME_ID,
+            verify_timeout_seconds=0,
+            mode="force_delete",
+            confirm_volume_id=VOLUME_ID,
+            expected_status="creating",
+        )
+
+    assert result.status == "delete_submitted"
+    assert not result.verified_deleted
+    assert result.previous_status == "creating"
+    assert not any((step.detail or "").startswith("creation_delete_state_changed:") for step in result.steps)
+    expected = {
+        "lookup_error": "lookup_unknown:TimeoutError: synthetic lookup timeout",
+        "no_status": None,
+        "list_error": "list_all_projects_unknown:TimeoutError: synthetic all-projects timeout",
+        "listed": "listed_all_projects",
+        "deleting": "deleting",
+    }
+    assert result.final_status == expected[observation]
+    reset_call.assert_called_once_with(conn, VOLUME_ID, "error")
+    force_call.assert_called_once_with(conn, VOLUME_ID)
