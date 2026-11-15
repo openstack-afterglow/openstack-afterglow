@@ -111,7 +111,6 @@ export const MOTION_CSS_VAR = {
 	durationShimmer: 'var(--motion-duration-shimmer)',
 	durationStagger: 'var(--motion-duration-stagger)',
 	easeEmphasized: 'var(--motion-ease-emphasized)',
-	easeOvershoot: 'var(--motion-ease-overshoot)',
 	sheen: 'var(--motion-sheen)',
 } as const;
 
@@ -127,7 +126,6 @@ export const MOTION_DURATION_MS = {
 /** Web Animations take an easing string, not a CSS variable; these mirror the layout.css curves. */
 export const MOTION_EASING = {
 	emphasized: 'cubic-bezier(0.2, 0, 0, 1)',
-	overshoot: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
 } as const;
 
 /** `.motion-stagger` and `staggerDelay()` stop adding delay after this many items. */

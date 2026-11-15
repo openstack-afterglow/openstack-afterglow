@@ -123,16 +123,16 @@
 			<LoadingState variant="section" label={t('loading')} />
 		{/if}
 		{#if error}
-			<Alert tone="danger" title={t('loadFailed')}>
+			<Alert flat tone="danger" title={t('loadFailed')}>
 				{#if error !== t('loadFailed')}<p class="break-words">{error}</p>{/if}
 			</Alert>
 		{/if}
 		{#if reminders.length > 0 || rowErrors.length > 0}
 			<p class="text-xs text-ink-2">{t('timezone', { zone })}</p>
-			<ul class="space-y-3">
+			<ul class="divide-y divide-[var(--color-line)]">
 				{#each rowErrors as row}
-					<li>
-						<Alert tone="danger" title={t('attention')}>
+					<li class="py-3 first:pt-0 last:pb-0">
+						<Alert flat tone="danger" title={t('attention')}>
 							<p class="font-medium break-words">{row.instance_name || row.instance_id}</p>
 							<p class="text-xs break-all">{row.instance_id}</p>
 							<p class="mt-1 break-words">{row.message}</p>
@@ -141,8 +141,8 @@
 					</li>
 				{/each}
 				{#each reminders as { schedule, urgency }}
-					<li>
-						<Alert tone={urgency === 'expired' || urgency === 'attention' ? 'danger' : 'warning'} title={t(urgency!)}>
+					<li class="py-3 first:pt-0 last:pb-0">
+						<Alert flat tone={urgency === 'expired' || urgency === 'attention' ? 'danger' : 'warning'} title={t(urgency!)}>
 							<p class="font-medium break-words">{schedule.instance_name || schedule.server_name || schedule.instance_id}</p>
 							<p class="text-xs break-all">{schedule.instance_id}</p>
 							<p class="mt-1 tabular-nums break-words">{t('expires')}: <time datetime={schedule.expires_at} title={schedule.expires_at}>{formatExpiry(schedule.expires_at)}</time></p>

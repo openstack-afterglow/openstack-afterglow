@@ -25,6 +25,16 @@ nav_order: 8
 - Representative fake dry-run은 DMSLAB 형태의 `gigabytes=10868`, `backup_gigabytes=1000`, policy1개·시스템 계정 부재에서 account/options 생성, exact project member 부여, capacity **1000→32604**를 보고했다. Redis writes0/native writes0이며 `~/.local/share/afterglow-proofs/backup-system-account-20261115/dry-run.json`에 저장했다. `backups` COUNT20과 typed quota는 유지한다. 실제 운영 전체 프로젝트 보고서를 실행한 것은 아니다.
 - 운영 활성화는 기본false flag와 별도 owner 승인·원래 key/authoritative Redis 복구·완전 native inventory·권한/retention count 검토 뒤에만 수행한다. Scoped401은 password reset 근거가 아니며 native 장애·unsupported group/domain/system/inherited drift·900초 password backoff는 자동 복구를 지연/차단할 수 있다. 실제 backup 완료·guest/volume restore와 production recovery는 미검증이다. 구체적인 순서는 `docs/deployment.md`의 자동 백업 활성화 계획을 따른다.
 
+## 프로젝트 개요 시각 결함 정리 (2026-11-15, source/local)
+
+- 기준 source `bf81601f`(1.32.16), 작업 branch `ux/dashboard-slop-pass`, OpenSpec `reduce-dashboard-slop`. 비교 기준은 같은 환경이다: dev HEAD의 로컬 Vite(`/dashboard?tutorial=on`)를 격리 Chromium에서 1440x900과 390x844로 열고 `impeccable detect --cdp`로 렌더링 DOM을 스캔했다. 운영 1.32.15(실데이터) 스캔(데스크톱 2건, 모바일 5건)은 현 상태 참고일 뿐 전후 비교에 쓰지 않는다. 렌더링 결함 수는 데이터에 따라 달라진다(같은 운영 페이지가 데스크톱 1·2건, 모바일 4·5건으로 달랐다).
+- 로컬 전: 데스크톱 4건(low-contrast 1, nested-cards 2, bounce-easing 1), 모바일 11건(low-contrast 1, nested-cards 9: 카드 안 표·압축 카드 8, 알림 1, bounce-easing 1). 로컬 후: 데스크톱 0, 모바일 0.
+- `agent-desktop`으로 같은 시나리오(24h/7d/14d 토글, 차트 데이터·텔레메트리 공개, NAME 정렬, 지금 새로고침, 검색 단추)를 전후로 실행해 접근성 ref 클릭과 애니메이션(`document.getAnimations`)을 기록했다. 토글 전환은 150ms 색 전환이고 7d 전환만 세 카드의 200ms `motion-enter`를 다시 재생한다. ⌘K 팔레트는 튜토리얼 모드에서 클릭·cmd+k 모두 열리지 않아 팝 애니메이션은 해당 경로로 실제 재생을 관측하지 못했다. 대신 `.motion-pop` 프로브의 계산된 곡선이 `cubic-bezier(0.2, 0, 0, 1)`이고 `--motion-ease-overshoot`가 제거됐음을 확인했다.
+- 대비 측정(계산된 스타일): 비선택 토글 글자 라이트 `#575b64` on `#eeeff3` = 5.92:1(전 4.1:1), 다크 `#999ca5` on `#242529` = 5.58:1. 선택 항목의 대비는 이번에 측정하지 않았다.
+- 표적 검증: 관련 vitest 66 files/565 tests 통과, `designSystemRules`는 새 "overshoot 곡선 금지" 테스트를 포함해 10개 통과하며 이 테스트는 이전 곡선을 `layout.css`에 되돌리면 실패함을 확인했다. `npm run check`는 3118 files, 0 errors, 기존 15 warnings. 정적 `impeccable detect`는 변경 파일에서 기존 `layout.css:748` 규칙 1건만 보고한다(이번 변경과 무관).
+- 전체 gate: `bf81601f` detached worktree에 변경분(tracked 14개와 OpenSpec 디렉터리)을 덮어쓰고 `AFTERGLOW_TEST_PROJECT_NAME=afterglow-slop-gate-20261115 npm run test:gate`를 실행해 exit 0(319.99초): backend 15,024 passed/106 skipped, frontend 591 files/7,956 tests, contract 262, functional 292 passed/46 skipped/131 deselected, Ruff 901 files, architecture 4,334 files, orchestration 274 passed. 첫 실행은 기본 `python3` 3.9에 `tomllib`가 없어 `scripts/local-services-config.test.js` 9건이 실패했고(환경 오류), Python 3.12 PATH를 앞에 두고 전체를 다시 돌려 통과했다. 변경 유래 실패는 없었다.
+- 같은 고친 빌드로 다른 개요 외 경로를 튜토리얼 모드에서 스캔한 남은 결함(후속 후보, 이번에 고치지 않음): `compute/instances` 데스크톱 text-occlusion 1, `networks` cramped-padding 데스크톱·모바일 각 1, `drover` 모바일 straggler 1, `usage` 모바일 nested-cards 5, `project-settings` 데스크톱 low-contrast 1·nested-cards 3·skipped-heading 1(모바일 nested-cards 3·skipped-heading 1). `volumes`, `iam`, `activity`는 0건이다.
+- 산출물은 `~/.local/share/afterglow-proofs/slop-audit-20261115/`(JSON 스캔, 전후 캡처, `sweep/`·`sweep-after/` 단계별 캡처와 녹화)에 있다. 한계: 튜토리얼 목업 데이터이고 운영 화면·실제 인증·실제 백엔드 응답은 검증하지 않았다. 운영에는 별도 배포 전까지 반영되지 않는다.
 
 ## 인증 권위 해석 지연 축소 (2026-11-15, source/local)
 

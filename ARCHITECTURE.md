@@ -2185,9 +2185,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "e4659f465d0ad3cbdfdb8c2715f36b1f234aefe92bf00f2314c23600ba507084",
-  "reviewed_at": "2026-11-15T09:03:09Z",
-  "summary": "전용 백업 identity·AEAD·unscoped-only 복구와 leader/work/stable mutation lease, exact native metadata 재사용·IAM/Personal 보호,3배 quota·9locale UI와 config/catalog를 검토했다. Native credential wire fixture도 필수 name을 제공하도록 동기화했다. 공용 operator/Trove·SQL·typed/count quota는 유지한다."
+  "source_sha256": "eb4ec82ca3c96515cb4554e1a8950c78fcd981d39811f31ae035922ee8a08494",
+  "reviewed_at": "2026-11-15T12:15:17Z",
+  "summary": "Integrated automatic backup system account (derived backup quota, IAM protection) with dashboard overview slop pass; no new runtime surface beyond the two reviewed branches."
 }
 ```
 <!-- architecture-review:end -->

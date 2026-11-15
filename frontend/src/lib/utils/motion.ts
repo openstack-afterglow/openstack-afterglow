@@ -1,5 +1,5 @@
 import { flip } from 'svelte/animate';
-import { backOut, cubicOut } from 'svelte/easing';
+import { cubicOut } from 'svelte/easing';
 import type { AnimationConfig } from 'svelte/animate';
 import type { TransitionConfig } from 'svelte/transition';
 import { MOTION_DURATION_MS, MOTION_STAGGER_LIMIT, REDUCED_MOTION_QUERY } from '$lib/design/tokens';
@@ -62,7 +62,7 @@ export interface PopParams {
 	start?: number;
 }
 
-/** Fade + scale transition with a slight overshoot, for things that appear in place. */
+/** Fade + scale transition that decelerates into place, for things that appear in place. */
 export function pop(
 	node: Element,
 	{ delay = 0, duration = MOTION_DURATION_MS.panel, start = 0.94 }: PopParams = {},
@@ -71,7 +71,7 @@ export function pop(
 	return {
 		delay,
 		duration,
-		easing: backOut,
+		easing: cubicOut,
 		css: (t) => `opacity: ${Math.min(1, t)}; transform: scale(${start + (1 - start) * t});`,
 	};
 }

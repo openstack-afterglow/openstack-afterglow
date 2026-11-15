@@ -107,7 +107,7 @@
 			<summary class="w-fit cursor-pointer rounded-sm py-2 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]">{t('chart.data')}</summary>
 				<ObservationTable model={chartDataView}>
 {#snippet children(tableView)}
-<ResponsiveTable>
+<ResponsiveTable embedded>
 					{#snippet cards()}
 						{#each tableView.rows as row}
 							{#snippet remainingSeries()}<dl>{#each seriesSpec.series.slice(2) as series}<div><dt>{series.label}</dt><dd>{number(row[series.key])}</dd></div>{/each}</dl>{/snippet}

@@ -35,7 +35,7 @@
 			aria-pressed={value === opt.value}
 			class="px-2.5 py-1 text-xs font-medium rounded-md transition-colors {value === opt.value
 				? 'bg-surface-selected text-[var(--color-ink-0)]'
-				: 'text-[var(--color-ink-3)] hover:text-[var(--color-ink-1)]'}"
+				: 'text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)]'}"
 			onclick={() => onchange(opt.value)}
 			onkeydown={(e) => handleKeydown(e, idx)}
 		>

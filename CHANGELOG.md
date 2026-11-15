@@ -13,7 +13,8 @@
 
 ### Changed
 - 프로젝트 전역 볼륨 용량 쿼터의3배를 `backup_gigabytes` 한도로 적용한다(`-1`은 무제한). 새 프로젝트·기존 Afterglow quota writer와 opt-in reconciler가 같은 규칙을 사용하며 typed quota와 백업 개수 제한은 변경하지 않는다. 운영 적용·native 쓰기는 별도 승인이 필요하다.
-
+- 프로젝트 개요의 시각 결함을 같은 로컬 환경(dev `bf81601f`, 튜토리얼 모드)의 전후 렌더링 스캔으로 줄였다(데스크톱 4→0, 모바일 11→0). 14d/7d/24h 선택 토글의 비선택 글자 대비를 라이트 4.1:1에서 5.92:1로 올리고(다크 5.58:1), 카드 안 표·압축 카드·알림이 두 번째 테두리 상자를 만들지 않도록 `ResponsiveTable embedded`와 `Alert flat`를 추가해 최근 인스턴스·차트 데이터 표·사용 기간 알림에 적용했다. 최근 인스턴스 표와 검색 안내 사이 여백을 넓혔다.
+- 탄성(overshoot) 이징을 제거했다. `--motion-ease-overshoot`, `MOTION_CSS_VAR.easeOvershoot`, `MOTION_EASING.overshoot`를 삭제하고 `.motion-pop`과 `pop()`이 단일 감속 곡선 `--motion-ease-emphasized`를 쓴다. 제어점이 0..1을 벗어나는 `cubic-bezier`를 거부하는 디자인 규칙 테스트를 추가했다. 운영(1.32.15) 화면에는 별도 배포 전까지 반영되지 않는다.
 
 ## [1.32.16] - 2026-11-15
 
