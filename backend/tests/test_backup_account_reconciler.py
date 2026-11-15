@@ -132,7 +132,7 @@ class Native:
             roles=lambda: [{"id": "member1", "name": "member", "domain_id": None}],
             domains=lambda **kwargs: [{"id": "domain1", "name": "Default"}],
             users=lambda **kwargs: [self.user] if self.user else [],
-            user_groups=lambda user_id: list(self.groups),
+            get=self.identity_get,
             role_assignments=self.assignments,
             assign_project_role_to_user=self.grant,
             unassign_project_role_from_user=self.revoke,
@@ -140,6 +140,10 @@ class Native:
         self.block_storage = SimpleNamespace(get_endpoint=lambda: "http://cinder/v3/admin")
         self.session = SimpleNamespace(get=self.get, put=self.put)
         self.close = MagicMock()
+
+    def identity_get(self, url):
+        assert url == "/users/machine1/groups"
+        return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"groups": list(self.groups), "links": {}})
 
     def assignments(self, *, user_id):
         return [
@@ -764,3 +768,12 @@ async def test_malformed_persisted_policy_prevents_other_project_revoke(setup, m
     assert native.grants["p2"] == {"member1"}
     assert not native.mutations
     account.ensure_account.assert_not_awaited()
+
+
+def test_fake_identity_surface_exists_on_the_real_sdk_proxy():
+    # The fake once offered `user_groups`, which the real SDK proxy lacks; every fake-backed test passed
+    # while the production inventory raised AttributeError. A fake method must exist on the real proxy.
+    from openstack.identity.v3._proxy import Proxy
+
+    for name in vars(Native().identity):
+        assert hasattr(Proxy, name), name

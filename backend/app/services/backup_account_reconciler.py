@@ -277,9 +277,20 @@ def _member_role(admin) -> str:
     return _identifier(_field(roles[0], "id"))
 
 
+def _user_groups(admin, user_id: str) -> list:
+    # The SDK identity proxy has no user-groups helper; use the Keystone API (same pattern as _quota).
+    response = admin.identity.get(f"/users/{user_id}/groups")
+    response.raise_for_status()
+    payload = response.json()
+    groups = payload.get("groups") if isinstance(payload, dict) else None
+    if not isinstance(groups, list):
+        raise InventoryUnavailable("malformed_user_groups")
+    return groups
+
+
 def _direct_roles(admin, user_id: str, project_ids: set[str]) -> dict[str, set[str]]:
     # Even a group with no present grants is foreign authority we must not edit.
-    if list(admin.identity.user_groups(user_id)):
+    if _user_groups(admin, user_id):
         raise InventoryUnavailable("unsupported_group_authority")
     result = {project_id: set() for project_id in project_ids}
     for assignment in admin.identity.role_assignments(user_id=user_id):
