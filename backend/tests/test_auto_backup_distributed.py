@@ -119,6 +119,8 @@ class ProviderConnection:
         self.participant = participant
         self.block_storage = self
         self.closed = 0
+        access = SimpleNamespace(project_id=provider.project, project_scoped=True, system_scoped=False)
+        self.session = SimpleNamespace(auth=SimpleNamespace(get_access=lambda _: access))
 
     def get_volume(self, volume_id):
         with self.provider.lock:
