@@ -6,6 +6,17 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 운영 1.32.22 릴리스·롤아웃 (2026-11-16 09:15–09:35 UTC / 18:15–18:35 KST)
+
+- 발행: `dev` `23fe4410`의 exact-SHA CI(backend·frontend 2분할·contract·disposable DB functional·version/orchestration)가 통과한 뒤 같은 commit에 불변 tag `1.32.22`를 붙였다. 이미지(api `sha256:b0067f6d…`, frontend `sha256:66eb8ae6…`, worker `sha256:e3a3d8db…`)는 amd64 전용이며 `1.32.22`와 `latest`가 같은 digest, revision 라벨은 `23fe4410`이다. Helm `1.32.22`와 한국어·영어 GitHub Release를 게시했다. 릴리스 노트에 삭제·변경 기능(인스턴스 상세 두 섹션, `POST …/auto-snapshot/configs`→`GET`)과 새 Redis 키를 정확히 적었다.
+- 사전 점검(읽기 전용): 컨트롤러 3대의 afterglow·lumen·waygate·drover·palimpsest 컨테이너 33개의 Config.Image digest가 `/etc/kolla/globals.d`의 고정 digest 14개와 모두 일치해 sibling 이미지 변경은 없었다. 설정 파일만 바뀌는 재시작은 읽기 전용으로 예측할 수 없어 실행 전후 StartedAt을 비교했다.
+- 백업: `/etc/kolla/.afterglow-rollout-backups/1.32.22-20261116T092447Z`(pyproject·uv.lock·globals.d·운영자 afterglow.conf, 700). 변경: `afterglow-kolla` tag, `uv lock --refresh-package afterglow-kolla`, `uv sync --inexact --no-install-package waygate`(afterglow-kolla만 교체), `90-openstack-afterglow-globals.yml`의 4줄(tag·api·frontend·worker digest).
+- 실행: `kolla-ansible pull`·`prechecks -i multinode --limit control --tags afterglow` rc0. 가이드(`docs/agent-development-guide.md`)의 두 reconfigure 중 1단계는 **의도적으로 가이드와 다르게** `--limit compute --tags afterglow,lumen,waygate,drover,palimpsest`로 실행했다. 이번 릴리스는 앱 전용이고 `afterglow` 그룹이 control뿐이라 12개 compute 호스트 전체의 native 서비스를 다시 설정하는 것은 범위 밖이라고 판단했으며, 결과는 rc0·14초·모든 호스트 `changed=0`이다. 2단계는 가이드 그대로 `--limit control --tags afterglow,lumen,waygate,drover,palimpsest`, rc0·5분 2초, controller1 `changed=11`·controller2/3 `changed=6`, failed·unreachable 0이다.
+- 결과 관측: afterglow backend·frontend·notion_worker 9개 컨테이너가 09:31:09–09:31:18 UTC에 세 컨트롤러에서 거의 동시에 재시작되어 짧은 중단이 있었다(rolling이 아님). 실행 중 digest는 세 컨트롤러 모두 새 pin과 일치한다. 기준선 247개 컨테이너 중 StartedAt·RestartCount가 바뀐 것은 이 9개뿐이며 haproxy·keystone·nova_api·cinder_api·mariadb·valkey·lumen·waygate·drover·palimpsest는 그대로다(lumen·waygate·drover 2–3일, palimpsest 20시간 가동). 공개 `/api/v1/health` `{"status":"ok"}`, `/login` 200, 공개 `_app/version.json`이 세 frontend 컨테이너의 빌드와 같다. 비인증 요청은 새 경로(`profile/activity`, `ssh-key-preference`, `auto-snapshot/configs`, `volumes/backups`)에서 401이다.
+- 활동 쿼리 운영 측정(읽기 전용 `EXPLAIN`·SELECT): `activity_logs` 약 14만 행(데이터 45MB·인덱스 20MB). 기록이 적은 사용자(168행)는 `idx_activity_user_created`를 쓰고 약 5–9ms다. 기록이 많은 사용자(7만 9천 행, 조건에 맞는 행 35개로 한도 50 미충족)는 조기 종료가 안 되어 기본 키를 역방향으로 훑고 새 코드로 약 240–280ms(실행 전 SQL로는 첫 실행 1.57초)다. 7만 9천 건 규모 이하에서는 문제 없지만 증가하면 느려지므로 `(user_id, id)` 복합 인덱스 마이그레이션이 후속 과제다(이번 릴리스에는 없음).
+- 관측한 경고(원인 미조사): controller1 backend의 `flavor_discovery`가 18개 shape 중 2개를 읽지 못했다는 incomplete 경고를 약 14초마다 남긴다(이번 릴리스가 바꾸지 않은 모듈). controller2에서 재시작 직후 트래픽 집계 Redis timeout 1건과 `/monitoring/traffic/events` 503 1건이 있었다.
+- 실행하지 못한 검증: 인증된 사용자 화면(로그인 자격이 없어 계정 활동·세션·SSH 키·백업 화면·인스턴스 기간 연장 modal을 운영에서 보지 못했다), 운영 GeoIP, 증분 백업 체인(다음 예약 슬롯 03:00 KST 이후), MCP 프로젝트별 권한이 막는 쓰기의 운영 확인. 운영자 TOML 설정은 변경하지 않았다.
+
 ## 인스턴스 사용 기간 modal·계정 페이지·볼륨 복구 화면·증분 자동 백업 (2026-11-16, source/local)
 
 - 범위: 인스턴스 상세 사용 기간 modal과 조회 실패 재시도, 로그인 작업 공간 기본값·고정 선택, 기본 SSH 키, 세션 브라우저·국가, 계정 활동 의도 필터, 작업 공간 역할 catalog 병렬 조회, 볼륨 백업·스냅샷 원본 볼륨별 화면, 자동 백업 일별 증분 체인과 보관 drain. 8개 브랜치를 로컬 `dev`에 병합했다.

@@ -2215,8 +2215,8 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 {
   "schema_version": 1,
   "source_sha256": "57d0e15e53d217addc4f734e40f70212df698c603da6280f6ca18bab735fae1c",
-  "reviewed_at": "2026-11-16T09:05:56Z",
-  "summary": "Release 1.32.22: MCP per-project operations, account page defaults/sessions/activity, instance usage modal, volume recovery views and incremental auto backup; version bump and changelog."
+  "reviewed_at": "2026-11-16T09:36:25Z",
+  "summary": "Release 1.32.22 production rollout receipt in docs/testing.md; no source change after tag."
 }
 ```
 <!-- architecture-review:end -->
