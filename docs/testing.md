@@ -6,6 +6,13 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## MCP 볼륨 백업 도구의 member·reader 소유자 숨김 대응 (2026-11-17, source/local + 운영 읽기 전용 재현)
+
+- 재현(운영, 읽기 전용): 소유자 MCP 연결로 `afterglow_volume_backup_list`를 DMSLAB에 호출하면 `MCP volume backup data is unavailable`이었다. 운영 `afterglow_backend` 컨테이너에서 자동 백업 관리 계정(member·reader)으로 `storage._list_backups`를 호출하면 `McpStorageError: Cinder backup ownership cannot be proven`, `_list_snapshots`는 5건을 돌려줬다(스냅샷은 소유자 속성이 보인다). 쓰기와 비밀 출력은 없었다.
+- 수정: `storage._backup_owner`가 소유자가 보이지 않을 때만 `conn._afterglow_authenticated_project_id`가 요청 프로젝트와 같으면 그 프로젝트로 인정하고(부모 볼륨의 프로젝트 소유 확인은 그대로), `connection._build_connection`이 토큰의 프로젝트가 grant 대상과 같음을 확인한 뒤 이 속성을 설정한다.
+- 테스트: `tests/test_mcp_storage.py`가 실제 SDK HTTP로 숨겨진 소유자의 list·get 성공(응답 필드 고정), 증명 없음·다른 프로젝트 증명 거부, 부모 볼륨이 다른 프로젝트인 경우 거부, 보이는 다른 소유자는 증명이 있어도 거부, member 삭제 미리보기·요청의 호출 순서와 `force=False`를 검증한다. 이전의 "default policy missing-owner 거부" 테스트는 증명 없는 연결의 거부로 범위를 좁혔다. `tests/test_mcp_consumer_auth.py`는 소비자 연결의 인증 프로젝트 속성을 확인한다. MCP backend 테스트 1532 passed.
+- 실행하지 못한 검증: 수정본의 운영 배포와 소유자 MCP 연결을 통한 재호출(릴리스 승인 필요), reader 키로 만든 실제 grant의 호출. reader 경로는 member와 같은 코드(숨겨진 owner + 인증 프로젝트 증명)이며 별도 역할 분기가 없다.
+
 ## 운영 1.32.23 릴리스·롤아웃 (2026-11-16 14:04–14:12 UTC / 23:04–23:12 KST)
 
 - 발행: `dev` `0d114029`의 exact-SHA CI에서 backend 단위 테스트 15,445개 중 1개(`tests/test_native_vm.py::test_real_signal_stops_graceful_and_stubborn_children[15]`, 실제 프로세스 signal 대기의 `subprocess.TimeoutExpired`)가 실패했다. 이 릴리스가 바꾸지 않은 테스트라서 같은 SHA에서 실패한 job만 다시 실행했고 backend·frontend 2분할·contract·disposable DB functional·version 확인 job이 모두 성공했으며 `dev` 이미지 빌드도 통과했다. 같은 commit에 불변 annotated tag `1.32.23`을 붙였고 이미지(api `sha256:ff55e80b…`, frontend `sha256:30387dd5…`, worker `sha256:84ccb499…`)는 amd64 전용이며 `1.32.23`과 `latest`가 같은 digest, revision 라벨은 `0d114029`다. Helm `1.32.23`과 한국어·영어 GitHub Release를 게시했다. DB 스키마·새 Redis 키는 없다.

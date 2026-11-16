@@ -108,6 +108,7 @@ def test_consumer_credential_authenticates_only_its_original_owner_and_project(
             assert connection.authorize() == "synthetic-cloud-token"
             assert connection.current_project_id == "project-a"
             assert connection.session.get_user_id() == "user-a"
+            assert connection._afterglow_authenticated_project_id == "project-a"
         finally:
             connection.close()
 

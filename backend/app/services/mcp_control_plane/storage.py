@@ -195,9 +195,22 @@ def _get_snapshot(conn: Any, *, project_id: str, snapshot_id: str) -> dict[str, 
     return _safe_snapshot(conn, snapshot, project_id=project_id)
 
 
-def _safe_backup(conn: Any, resource: Any, *, project_id: str) -> dict[str, str | int | None]:
+def _backup_owner(conn: Any, resource: Any, *, project_id: str) -> str | None:
+    """Return the proven owner of a backup, filling Cinder's hidden owner only from the token's own project.
+
+    `backup:backup_project_attribute` defaults to `rule:admin_api`, so member and reader sessions never see
+    `project_id` on their own backups. A project-scoped token without all-tenants can only read its own
+    project's backups, so the exact project the credential was authenticated for stands in for the hidden
+    owner; a visible owner always wins and the parent volume check below still has to pass.
+    """
     owner_project_id = _field(resource, "project_id") or _field(resource, "os-backup-project-attr:project_id")
-    if owner_project_id != project_id:
+    if owner_project_id is None and getattr(conn, "_afterglow_authenticated_project_id", None) == project_id:
+        return project_id
+    return owner_project_id
+
+
+def _safe_backup(conn: Any, resource: Any, *, project_id: str) -> dict[str, str | int | None]:
+    if _backup_owner(conn, resource, project_id=project_id) != project_id:
         raise McpStorageError("Cinder backup ownership cannot be proven")
     volume_id = _required_string(resource, "volume_id")
     parent = conn.block_storage.get_volume(volume_id)

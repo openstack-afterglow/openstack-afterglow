@@ -265,9 +265,14 @@ async def test_cinder_lists_return_empty_provider_result(cinder_list_http):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("cinder_list_http", ["backup"], indirect=True)
 @pytest.mark.parametrize("operation", ["list", "get"])
-async def test_cinder_default_backup_policy_keeps_missing_owner_fail_closed(cinder_list_http, operation):
+@pytest.mark.parametrize("proven_project", [None, "project-b"], ids=["no-scope-proof", "other-project-proof"])
+async def test_cinder_hidden_backup_owner_stays_fail_closed_without_exact_scope_proof(
+    cinder_list_http, operation, proven_project
+):
     conn, state = cinder_list_http
     state.expose_backup_owner = False
+    if proven_project is not None:
+        conn._afterglow_authenticated_project_id = proven_project
 
     with pytest.raises(McpStorageError, match="Cinder backup ownership cannot be proven"):
         if operation == "list":
@@ -278,6 +283,98 @@ async def test_cinder_default_backup_policy_keeps_missing_owner_fail_closed(cind
     path = "/v3/backups/detail" if operation == "list" else "/v3/backups/backup-a"
     assert [(request_path, query) for request_path, query, _version in state.requests] == [(path, {})]
     assert tuple(map(int, state.requests[0][2].split()[-1].split("."))) >= (3, 18)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cinder_list_http", ["backup"], indirect=True)
+@pytest.mark.parametrize("operation", ["list", "get"])
+async def test_cinder_hidden_backup_owner_is_proven_by_the_credentials_own_project(cinder_list_http, operation):
+    """Member and reader sessions never see backup:backup_project_attribute; their token scope proves ownership."""
+    conn, state = cinder_list_http
+    state.expose_backup_owner = False
+    conn._afterglow_authenticated_project_id = "project-a"
+    expected = {
+        "id": "backup-a",
+        "name": "data-a",
+        "status": "available",
+        "source_volume_id": "volume-a",
+        "size_gb": 20,
+        "created_at": "2026-07-27T00:00:00Z",
+    }
+
+    if operation == "list":
+        assert await list_project_backups(conn, project_id="project-a", limit=50) == [expected]
+    else:
+        assert await get_project_backup(conn, project_id="project-a", backup_id="backup-a") == expected
+
+    # The parent volume is still read, so a backup of another project's volume cannot pass on scope alone.
+    assert state.requests[-1][0] == "/v3/volumes/volume-a"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cinder_list_http", ["backup"], indirect=True)
+async def test_cinder_hidden_backup_owner_still_requires_the_parent_volume_in_the_project(cinder_list_http):
+    conn, state = cinder_list_http
+    state.expose_backup_owner = False
+    conn._afterglow_authenticated_project_id = "project-a"
+    state.parent["os-vol-tenant-attr:tenant_id"] = "project-b"
+
+    with pytest.raises(McpStorageError, match="Cinder volume ownership cannot be proven"):
+        await list_project_backups(conn, project_id="project-a", limit=50)
+
+
+@pytest.mark.asyncio
+async def test_visible_foreign_backup_owner_is_never_overridden_by_scope_proof():
+    class BlockStorage:
+        def get_backup(self, _backup_id):
+            return SimpleNamespace(
+                id="backup-a",
+                name="daily-a",
+                status="available",
+                size=20,
+                volume_id="volume-a",
+                project_id="project-b",
+            )
+
+    conn = SimpleNamespace(block_storage=BlockStorage(), _afterglow_authenticated_project_id="project-a")
+    with pytest.raises(McpStorageError, match="ownership"):
+        await get_project_backup(conn, project_id="project-a", backup_id="backup-a")
+
+
+@pytest.mark.asyncio
+async def test_member_backup_delete_with_hidden_owner_revalidates_scope_and_parent_without_force():
+    calls: list[tuple[str, object]] = []
+
+    class BlockStorage:
+        def get_backup(self, backup_id):
+            calls.append(("get_backup", backup_id))
+            return SimpleNamespace(id=backup_id, name="backup-a", status="available", size=20, volume_id="volume-a")
+
+        def get_volume(self, volume_id):
+            calls.append(("get_volume", volume_id))
+            return SimpleNamespace(id=volume_id, name="data-a", status="available", size=20, project_id="project-a")
+
+        def delete_backup(self, backup_id, **kwargs):
+            calls.append(("delete_backup", (backup_id, kwargs)))
+
+    unproven = SimpleNamespace(block_storage=BlockStorage())
+    with pytest.raises(McpStorageError, match="ownership"):
+        await preview_project_backup_delete(unproven, project_id="project-a", backup_id="backup-a")
+    assert calls == [("get_backup", "backup-a")]
+
+    calls.clear()
+    conn = SimpleNamespace(block_storage=BlockStorage(), _afterglow_authenticated_project_id="project-a")
+    preview = await preview_project_backup_delete(conn, project_id="project-a", backup_id="backup-a")
+    result = await request_project_backup_delete(conn, project_id="project-a", backup_id="backup-a")
+
+    assert preview["requested_action"] == result["requested_action"] == "delete"
+    assert calls == [
+        ("get_backup", "backup-a"),
+        ("get_volume", "volume-a"),
+        ("get_backup", "backup-a"),
+        ("get_volume", "volume-a"),
+        ("delete_backup", ("backup-a", {"ignore_missing": False, "force": False})),
+    ]
 
 
 @pytest.mark.asyncio

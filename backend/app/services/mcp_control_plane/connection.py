@@ -159,6 +159,8 @@ def _build_connection(application_credential_id: str, application_credential_sec
         session.session.close()
         raise
     conn._afterglow_project_id = principal.project_id
+    # The credential's token was just verified to be scoped to exactly this project (checked above).
+    conn._afterglow_authenticated_project_id = access.project_id
     conn._afterglow_user_id = principal.user_id
     conn._afterglow_domain_id = domain_id
     conn._afterglow_identity_domain_id = identity_domain_id

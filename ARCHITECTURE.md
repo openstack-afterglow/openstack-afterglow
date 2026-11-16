@@ -295,6 +295,8 @@ Resampled counter/vCPU는 bounded native-granularity window로 내부 reset/gap/
 
 자동/수동 분류는 소유 프로젝트를 요구한다. DMS Lab Cinder는 `backup:backup_project_attribute`(기본 `rule:admin_api`)로 멤버 세션에서 백업의 `project_id`를 숨기므로, `cinder._recovery_origin`은 `all_projects` 없는 읽기(`list_*`/`get_*`/`create_*`)에서 보이지 않는 `project_id`만 토큰이 실제로 범위를 갖는 `conn._afterglow_authenticated_project_id`로 채워 분류한다. 논리 workspace인 `_afterglow_project_id`는 admin-target 세션에서 이 값과 다르므로 증명으로 쓰지 않는다. 보이는 소유자는 항상 우선하며 `all_projects` 읽기와 인증 프로젝트 증명이 없는 연결은 채우지 않아 수동으로 남는다. 이 보정 전에는 멤버에게 모든 자동 백업이 `수동`으로 표시됐다.
 
+MCP 볼륨 백업 도구(`afterglow_volume_backup_get`·`_list`와 삭제 미리보기·요청)는 별도 어댑터(`mcp_control_plane/storage._safe_backup`)가 같은 Cinder 정책 때문에 member·reader 키에서 `project_id`가 비어 있으면 "소유권을 증명할 수 없음"으로 모두 거부했다(스냅샷은 소유자 속성이 보여 영향이 없었다). `_backup_owner`는 소유자가 보이지 않을 때만, 연결이 인증된 정확한 프로젝트(`conn._afterglow_authenticated_project_id`, MCP 소비자 연결 `_build_connection`이 토큰의 `project_id`가 grant 대상 프로젝트와 같음을 확인한 뒤 설정)가 요청 프로젝트와 같으면 그 프로젝트를 소유자로 인정한다. 이 증명이 없거나 다른 프로젝트이면, 보이는 소유자가 다르면, 부모 볼륨이 해당 프로젝트 소유로 증명되지 않으면 이전처럼 거부한다. 삭제는 기존처럼 write 역할과 부모 볼륨·`available` 상태를 다시 확인하고 `force` 없이 보낸다.
+
 볼륨 목록 요약(`VolumeSummaryCards`)은 볼륨 용량·개수·연결·할당량에 더해 스냅샷 개수·용량과 백업 개수·용량을 보인다. 백업은 `volumesController`가 `GET /api/v1/volumes/backups`를 새 요청 seq로 읽으며(`fetchBackups`, 프로젝트 전환 시 리셋) 실패하면 `page.backupsUnavailable`과 `—`로 표시한다. Cinder의 백업·스냅샷 `size`는 원본 볼륨 크기이므로 합계는 실제 소비량이 아니며 title로 안내한다.
 
 표 새로고침은 전체 목록을 다시 불러오는 것이 아니라 바뀐 행만 갱신하는 계약이다. 새로고침 경로는 이미 목록이 있으면 loader로 바꾸지 않아야 하며(`admin/floating-ips`·사용자 활동 패널을 이 기준으로 고쳤다) 범위(domain/project) 전환만 비운다. 키가 있는 `{#each}`의 행 루트에는 `$lib/utils/rowMotion`을 둔다: 표 행 `<tr>`은 `in:rowEnter out:rowExit use:rowChanged={row}`, `display: grid` 블록 행은 여기에 `animate:rowReflow`를 더한다. 새 행 fade-in, 사라진 행 fade-out, (grid 행만) 나머지 형제 FLIP 이동, 값(JSON signature)이 바뀐 행 1회 배경 강조다. `<tr>`에는 `animate:`를 쓰지 않는다: Svelte가 퇴장 행을 `position: absolute`로 고정해 table layout에서 빠지고 셀 폭이 내용 폭으로 무너지는 것을 실제 브라우저에서 관측했다(grid 행은 폭·열이 유지됨). Svelte 전환은 로컬이라 첫 렌더는 움직이지 않고, 지연(deferred) 전환이 같은 업데이트의 모든 행이 등록된 뒤 평가되는 점을 이용해 한 번에 `ROW_MOTION_BATCH_LIMIT`(6)행을 넘는 교체(페이지 이동·필터·scope 전환)는 모션 없이 즉시 바뀌어 표가 잠시 두 배가 되지 않는다. 모션 줄이기·Web Animations 부재 환경은 즉시 전환이다. 모바일 카드, 형제 행이 있는 행(`HostHealthPanel`), 안정 키가 없는 목록은 적용하지 않는다. 토큰 갱신이 사용자·프로젝트 소유자 키를 바꾸는 일부 페이지(`$auth` 원본을 추적하는 effect)는 의도된 소유권 fence로 이번 변경 범위 밖이다.
@@ -2222,9 +2224,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "7c4a8eb13634681b2482ae3c42b73550cdbb844acbaa9c3a7aade1523a36fb7e",
-  "reviewed_at": "2026-11-16T14:16:58Z",
-  "summary": "Record managed-account member probe; archive volume-recovery-list-and-owner-fix."
+  "source_sha256": "75009b3feae1145da3fb0212a53de4c8fe0578cdeb87abc6ac590c649b017057",
+  "reviewed_at": "2026-11-16T16:22:39Z",
+  "summary": "MCP volume backup tools accept a hidden backup owner for member/reader credentials via exact token-scope proof."
 }
 ```
 <!-- architecture-review:end -->
