@@ -2227,8 +2227,8 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 {
   "schema_version": 1,
   "source_sha256": "7ad167fd81d955b70cab825628af712bba6562baa56b6619e17a8ae019b54e2d",
-  "reviewed_at": "2026-11-16T17:17:27Z",
-  "summary": "Release 1.32.24: MCP backup hidden-owner proof, consent domain/read fixes; version bump and changelog."
+  "reviewed_at": "2026-11-16T19:01:37Z",
+  "summary": "Record 1.32.24 and Palimpsest 0.3.30 production rollout receipts; archive mcp-backup-hidden-owner"
 }
 ```
 <!-- architecture-review:end -->

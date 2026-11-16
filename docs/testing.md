@@ -6,6 +6,15 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 운영 1.32.24 릴리스·롤아웃과 Palimpsest 0.3.30 (2026-11-17 KST, UTC 2026-11-16 18:05–18:59)
+
+- Afterglow 1.32.24: `dev` `698e1276`의 exact-SHA CI 통과 뒤 불변 annotated tag `1.32.24`를 붙였고 이미지(api `sha256:4104ae73…`, frontend `sha256:e933e9fb…`, worker `sha256:5573a13b…`)는 amd64 전용, `1.32.24`와 `latest`가 같은 digest, revision 라벨 `698e1276`이다. Helm과 한국어·영어 GitHub Release를 게시했고 릴리스 노트의 검증 문구는 운영에서 재현한 것이 이전 코드의 실패뿐이라고 정정했다. DB 스키마·Redis 키 변경은 없다.
+- 롤아웃(wireguard-dmslab): 백업 `/etc/kolla/.afterglow-rollout-backups/1.32.24-20261116T180347Z`(pyproject·uv.lock·globals.d·운영자 afterglow.conf·롤아웃 전 컨테이너 목록), `afterglow-kolla` tag·`uv lock --refresh-package afterglow-kolla`·`uv sync --inexact --no-install-package waygate`(afterglow-kolla만 교체)·globals 4줄. `pull`·`prechecks` rc0, reconfigure compute(`--tags afterglow,lumen,waygate,drover,palimpsest`) rc0·전 호스트 `changed=0`, control 분리 실행 rc0·약 5분·changed 11/6/6·failed 0. afterglow 컨테이너 9개만 18:08 UTC 무렵 재시작(33개 전후 비교 18행 차이), 세 컨트롤러 digest 일치, 재시작 후 backend 로그 Traceback·5xx 0, `/login` 200, 공개 `_app/version.json`은 `1794849877609`(frontend 빌드 해시와의 대조는 하지 않았다).
+- 운영 검증: 1.32.23에서 `MCP volume backup data is unavailable`로 실패하던 같은 MCP 연결의 `afterglow_volume_backup_list`(DMSLAB)와 `afterglow_volume_backup_get`이 롤아웃 뒤 백업 2개(`768d98ab` 18:00Z, `d9c2df13` 11-15)를 정상 반환했다. 이는 사람 멤버 브라우저가 아니라 소유자 MCP 연결(롤은 확인하지 않음)의 결과이며, 멤버 키 경로는 소스 테스트와 앞의 관리 계정 프로브가 근거다.
+- 예약 백업 전환 확인(읽기 전용): 18:00Z 슬롯의 백업 `768d98ab`는 롤아웃 재시작(18:08Z)이 겹친 상태에서 `creating`이었고 이후 Cinder `available`이 되었다. 자동 백업 저널은 `active`/`slot` 모두 `backup_id=768d98ab`·`status=available`, `last_error=null`, `next_run_at=2026-11-17T18:00:00Z`이며 `retry` 키는 없다. 슬롯이 분실되지 않았다. 이 슬롯이 증분 체인인지 전체인지는 이번에 확인하지 않았다.
+- Palimpsest 0.3.30(별도 저장소, PR #117 → `ab8d79d5`): member가 자기 패키지 키를 발급·회수(`keys:issue`·`keys:revoke` member 등급)한다. 운영 `policy.yaml`은 세 컨트롤러 모두 `{}`이고 `policy.d`가 없어 기본값이 적용된다. 롤아웃 전 member 계정 capability는 Drover 6, Waygate 7, Palimpsest 3, 롤아웃 후 6, 7, 5(`keys_editor`·`keys_admin` 포함)다. 컨테이너 7개 0.3.30, restarts 0, 5xx·non-INFO 0, `/v1/ready` 200. 백업 `/var/backups/palimpsest-pre-0.3.30-20261116T185316Z`(30 tables, 247 CAS entries, restore test 없음). 자세한 수신증은 Palimpsest `docs/development-handoff.md`(PR #118)에 있다.
+- 실행하지 못한 검증: reader 전용 토큰의 운영 확인(없음), member가 실제로 패키지 키를 발급하는 CLI·대시보드 호출, 동의 화면(연결 도메인 기본 선택·in-place 전환·read 자동 포함)의 실제 브라우저 확인(Chrome relay 미연결; 소스·컴포넌트 테스트만 근거), 사람 멤버 세션으로 본 MCP 백업 도구.
+
 ## MCP 볼륨 백업 도구의 member·reader 소유자 숨김 대응 (2026-11-17, source/local + 운영 읽기 전용 재현)
 
 - 재현(운영, 읽기 전용): 소유자 MCP 연결로 `afterglow_volume_backup_list`를 DMSLAB에 호출하면 `MCP volume backup data is unavailable`이었다. 운영 `afterglow_backend` 컨테이너에서 자동 백업 관리 계정(member·reader)으로 `storage._list_backups`를 호출하면 `McpStorageError: Cinder backup ownership cannot be proven`, `_list_snapshots`는 5건을 돌려줬다(스냅샷은 소유자 속성이 보인다). 쓰기와 비밀 출력은 없었다.
