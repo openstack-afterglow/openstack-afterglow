@@ -1,4 +1,4 @@
-"""Opt-in landing hints in the existing Redis session store, never authority."""
+"""Actor-bound landing hints in the existing Redis session store, never authority."""
 
 import hashlib
 import json
@@ -20,11 +20,11 @@ async def read(user_id, identity_domain_id):
         redis = await cache._get_redis()
         raw = await redis.get(_key(user_id, identity_domain_id))
         if raw is None:
-            return {"remember_last_workspace": False}
+            return {"remember_last_workspace": True}
         value = json.loads(raw)
         if not isinstance(value, dict) or type(value.get("remember_last_workspace")) is not bool:
             raise ValueError("Invalid preference")
-        if value["remember_last_workspace"] and any(
+        if (value["remember_last_workspace"] or "domain_id" in value or "project_id" in value) and any(
             not isinstance(value.get(key), str) or not value[key] or len(value[key]) > 255
             for key in ("domain_id", "project_id")
         ):
@@ -35,11 +35,9 @@ async def read(user_id, identity_domain_id):
 
 
 async def save(user_id, identity_domain_id, enabled, *, domain_id="", project_id=""):
-    if enabled and (not domain_id or not project_id):
-        raise HTTPException(409, "Select an authorized project before enabling workspace reconnect")
-    value = {"remember_last_workspace": enabled}
-    if enabled:
-        value.update(domain_id=domain_id, project_id=project_id)
+    if not domain_id or not project_id:
+        raise HTTPException(409, "Select an authorized default domain and project")
+    value = {"remember_last_workspace": enabled, "domain_id": domain_id, "project_id": project_id}
     try:
         redis = await cache._get_redis()
         await redis.set(_key(user_id, identity_domain_id), json.dumps(value, separators=(",", ":")))
@@ -49,7 +47,7 @@ async def save(user_id, identity_domain_id, enabled, *, domain_id="", project_id
 
 
 async def record(user_id, identity_domain_id, domain_id, project_id):
-    """A successful continuation may update an enabled hint, never enable it.
+    """A successful continuation updates the default hint unless explicitly opted out.
 
     Atomic compare/update prevents an in-flight switch from undoing opt-out.
     Preference failure must not undo an already published authenticated session.
@@ -60,9 +58,11 @@ async def record(user_id, identity_domain_id, domain_id, project_id):
         redis = await cache._get_redis()
         await redis.eval(
             "local raw = redis.call('GET', KEYS[1]); "
-            "if not raw then return 0 end; "
-            "local ok, value = pcall(cjson.decode, raw); "
-            "if not ok or value.remember_last_workspace ~= true then return 0 end; "
+            "local value = {remember_last_workspace = true}; "
+            "if raw then "
+            "local ok; ok, value = pcall(cjson.decode, raw); "
+            "if not ok or type(value) ~= 'table' or value.remember_last_workspace ~= true then return 0 end; "
+            "end; "
             "value.domain_id = ARGV[1]; value.project_id = ARGV[2]; "
             "redis.call('SET', KEYS[1], cjson.encode(value)); return 1",
             1,

@@ -334,7 +334,7 @@ async def _exchange_native_scope(token: str, project_id: str, *, operation=None)
 
 
 async def _prepare_initial_session(data: dict, *, operation=None) -> dict:
-    """Choose a human's project-only personal landing without changing native identity."""
+    """Choose a freshly authorized saved workspace or the human's personal landing."""
     from app.api.deps import _load_backup_system_identity
     from app.services import backup_system_account
 
@@ -361,7 +361,7 @@ async def _prepare_initial_session(data: dict, *, operation=None) -> dict:
         from app.services import login_preferences
 
         preference = await login_preferences.read(data["user_id"], data["identity_domain_id"])
-        if preference["remember_last_workspace"]:
+        if preference.get("domain_id") and preference.get("project_id"):
             did, pid = preference["domain_id"], preference["project_id"]
             try:
                 await operation.run(_workspace_context, data["user_id"], did, operation=operation)

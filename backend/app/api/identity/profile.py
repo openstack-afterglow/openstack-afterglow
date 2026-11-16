@@ -100,6 +100,8 @@ async def upload_profile_image(
 class LoginPreferenceRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     remember_last_workspace: bool = Field(strict=True)
+    domain_id: str | None = Field(default=None, min_length=1, max_length=255)
+    project_id: str | None = Field(default=None, min_length=1, max_length=255)
 
 
 @router.get("/login-preference")
@@ -120,13 +122,18 @@ async def update_login_preference(
     response.headers["Cache-Control"] = "private, no-store"
     async with NativeOperation() as operation:
         uid, home = token_info["user_id"], token_info["identity_domain_id"]
-        did, pid = token_info["domain_id"], token_info.get("project_id", "")
         if req.remember_last_workspace:
-            context = await operation.run(domain_scope.domain_context, uid, did, operation=operation)
-            await operation.run(domain_projects.assert_membership, uid, did, operation=operation)
-            domain_scope.assert_domain_resource(home, context["identity_domain_id"])
-            await operation.run(domain_scope.assert_project_domain, did, pid, operation=operation)
-            await operation.run(domain_projects.assert_project_membership, uid, pid, operation=operation)
+            # Remember mode always starts from the authenticated current workspace.
+            did, pid = token_info["domain_id"], token_info.get("project_id", "")
+        else:
+            did, pid = req.domain_id, req.project_id
+        if not did or not pid:
+            raise HTTPException(409, "Select an authorized default domain and project")
+        context = await operation.run(domain_scope.domain_context, uid, did, operation=operation)
+        await operation.run(domain_projects.assert_membership, uid, did, operation=operation)
+        domain_scope.assert_domain_resource(home, context["identity_domain_id"])
+        await operation.run(domain_scope.assert_project_domain, did, pid, operation=operation)
+        await operation.run(domain_projects.assert_project_membership, uid, pid, operation=operation)
         return await login_preferences.save(uid, home, req.remember_last_workspace, domain_id=did, project_id=pid)
 
 
