@@ -2,7 +2,8 @@
 
 Policies and operation journals are authoritative Redis data, not expiring cache.
 A slot is claimed before contacting Cinder and is never replayed after an ambiguous
-submission. All scheduled backups are full; retention runs only after completion.
+submission. Daily backups extend Cinder's chain when a full base is available;
+weekly/monthly backups are full. Retention runs only after completion.
 """
 
 from __future__ import annotations
@@ -555,6 +556,13 @@ async def _result(redis, lease, project_id, volume_id, operation, *, done=False)
                 **{f"last_{_id_field()}": operation.get(_id_field())},
                 last_error=operation.get("error"),
             )
+            if _resource() == "backup":
+                config.update(
+                    last_backup_method=operation.get("backup_method"),
+                    last_full_fallback=operation.get("full_fallback", False),
+                )
+                if "retained_over_limit" in operation:
+                    config["retained_over_limit"] = operation["retained_over_limit"]
         if await redis.eval(
             _RESULT,
             5,
@@ -686,8 +694,7 @@ def _source_owned(source, project_id):
 def _safe_completed(backup: dict) -> bool:
     return (
         backup.get("status") == "available"
-        and (_resource() == "snapshot" or backup.get("is_incremental") is False)
-        and (_resource() == "snapshot" or backup.get("has_dependent_backups") is False)
+        and (_resource() == "snapshot" or isinstance(backup.get("is_incremental"), bool))
         and bool(backup.get("id"))
         and _created_time(backup) is not None
     )
@@ -698,7 +705,79 @@ async def _invalidate_backups(project_id):
     await invalidation.invalidate_mutation_count("cinder", project_id)
 
 
+async def _daily_incremental(conn, project_id, volume_id):
+    """Cinder selects the latest available parent, including manual backups.
+
+    Parent selection is native (by data_timestamp), not the policy's last ID.
+    The API does not expose the parent graph. Require an available full base
+    for this exact volume/project; never guess a parent from managed names.
+    Cinder revalidates the chain on POST, so a concurrent change may reject it.
+    A rejection is terminal for this slot, never a second full-backup POST.
+    """
+    backups = _scoped(conn, project_id, await _sdk(cinder.list_backups, conn, volume_id=volume_id))
+    return any(
+        _owned(point, project_id, volume_id) and _safe_completed(point) and point.get("is_incremental") is False
+        for point in backups
+    )
+
+
+async def _prune_backups(conn, lease, project_id, volume_id, config):
+    backups = _scoped(conn, project_id, await _sdk(cinder.list_backups, conn, volume_id=volume_id))
+    candidates = []
+    for tier in ("monthly", "weekly", "daily"):
+        count = config[f"max_{tier}"]
+        if count == 0:
+            continue  # A disabled tier is not consent to delete its recovery points.
+        completed = [
+            point for point in backups if _tier(point, project_id, volume_id) == tier and _safe_completed(point)
+        ]
+        completed.sort(key=_created_time, reverse=True)
+        candidates.extend(completed[count:])
+    # Children are created after their parents, including chains across tiers.
+    # Cinder exposes only a dependency flag, not parent IDs. Freshly read that
+    # flag before every DELETE; a manual child must protect its managed parent.
+    candidates.sort(key=_created_time, reverse=True)
+    retained = {point["id"] for point in candidates}
+    while candidates:
+        deleted = set()
+        blocked = []
+        for old in candidates:
+            fresh = _scoped(conn, project_id, await _sdk(cinder.get_backup, conn, old["id"]))
+            if _tier(fresh, project_id, volume_id) != _tier(old, project_id, volume_id) or not _safe_completed(fresh):
+                continue
+            if fresh.get("has_dependent_backups") is not False:
+                blocked.append(old)
+                continue
+            source = await _sdk(conn.block_storage.get_volume, volume_id)
+            if not _source_owned(source, project_id) or not await lease.current(
+                project_id, volume_id, config["revision"]
+            ):
+                return sorted(retained)
+            try:
+                await _sdk(cinder.delete_backup, conn, old["id"])
+            except HttpException as exc:
+                if exc.status_code not in (400, 409):
+                    raise
+                # A manual incremental can appear between our GET and DELETE.
+                fresh = _scoped(conn, project_id, await _sdk(cinder.get_backup, conn, old["id"]))
+                if fresh.get("has_dependent_backups") is not True:
+                    raise
+                blocked.append(old)
+                continue
+            deleted.add(old["id"])
+            retained.discard(old["id"])
+            await _invalidate_backups(project_id)
+        if not deleted:
+            break
+        # Immediate provider deletions can release parents in this cycle.
+        # Asynchronous deletions keep parents over limit until a later cycle.
+        candidates = blocked
+    return sorted(retained)
+
+
 async def _prune(conn, redis, lease, project_id, volume_id, config):
+    if _resource() == "backup":
+        return await _prune_backups(conn, lease, project_id, volume_id, config)
     backups = _scoped(conn, project_id, await _sdk(_provider("list"), conn, volume_id=volume_id))
     for tier in ("monthly", "weekly", "daily"):
         count = config[f"max_{tier}"]
@@ -774,7 +853,9 @@ async def _reconcile(conn, redis, lease, project_id, volume_id, operation):
     if operation["status"] == "available" and _safe_completed(backup):
         config = await get_auto_backup_config(project_id, volume_id)
         if config and await lease.current(project_id, volume_id, operation["revision"]):
-            await _prune(conn, redis, lease, project_id, volume_id, config)
+            retained = await _prune(conn, redis, lease, project_id, volume_id, config)
+            if _resource() == "backup":
+                operation["retained_over_limit"] = retained
     if operation["status"] in ("available", "error"):
         await _result(redis, lease, project_id, volume_id, operation, done=True)
 
@@ -837,6 +918,12 @@ async def _cycle(conn, redis, lease, project_id, volume_id, now):
         "status": "skipped" if reason else "unknown",
         "error": reason,
     }
+    if _resource() == "backup":
+        incremental = not reason and tier == "daily" and await _daily_incremental(conn, project_id, volume_id)
+        operation.update(
+            backup_method="incremental" if incremental else "full",
+            full_fallback=bool(not reason and tier == "daily" and not incremental),
+        )
     advanced = dict(config)
     advanced["next_run_at"], advanced["next_tier"] = next_event(config, now)
     advanced.update(
@@ -871,14 +958,14 @@ async def _cycle(conn, redis, lease, project_id, volume_id, now):
         options = (
             {"metadata": _snapshot_metadata(project_id, volume_id, operation)}
             if _resource() == "snapshot"
-            else {"incremental": False}
+            else {"incremental": operation["backup_method"] == "incremental"}
         )
         backup = await _sdk(
             _provider("create"),
             conn,
             volume_id,
             operation["name"],
-            f"Scheduled {'full backup' if _resource() == 'backup' else 'snapshot'} ({tier})",
+            f"Scheduled {operation['backup_method'] + ' backup' if _resource() == 'backup' else 'snapshot'} ({tier})",
             force=config["force"],
             **options,
         )
