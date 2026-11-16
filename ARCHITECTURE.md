@@ -2226,9 +2226,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "667bf1b3f12e18addf67b6c0a4236aa1656f8810efb7befb4aa75c479452dcbb",
-  "reviewed_at": "2026-11-16T17:03:55Z",
-  "summary": "Consent inline refresh failure falls back to the load error with retry."
+  "source_sha256": "7ad167fd81d955b70cab825628af712bba6562baa56b6619e17a8ae019b54e2d",
+  "reviewed_at": "2026-11-16T17:17:27Z",
+  "summary": "Release 1.32.24: MCP backup hidden-owner proof, consent domain/read fixes; version bump and changelog."
 }
 ```
 <!-- architecture-review:end -->
