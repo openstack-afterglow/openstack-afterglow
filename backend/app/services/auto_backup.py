@@ -34,6 +34,7 @@ _ALL_KEY = f"{_PREFIX}:all_configs"
 _POLL_SECONDS = 15
 _LEASE_SECONDS = 90
 _FAILURE_BACKOFF_SECONDS = 300
+_RETENTION_DRAIN_SECONDS = 300
 _AUTH_ERROR = "Scheduled protection cannot authenticate to this project; operator authorization is required."
 
 
@@ -801,10 +802,13 @@ async def _prune_backups(conn, lease, project_id, volume_id, config):
         candidates = blocked
     if submitted:
         backups = _scoped(conn, project_id, await _sdk(cinder.list_backups, conn, volume_id=volume_id))
-    pending = any(
-        _tier(point, project_id, volume_id) is not None and point.get("status") == "deleting" for point in backups
-    )
-    return sorted(retained), pending
+    pending = [
+        point["id"]
+        for point in backups
+        if _tier(point, project_id, volume_id) is not None and point.get("status") == "deleting"
+    ]
+    retained.update(pending)  # Accepted DELETE is not observed disappearance.
+    return sorted(retained), bool(pending)
 
 
 async def _prune(conn, redis, lease, project_id, volume_id, config):
@@ -847,7 +851,7 @@ async def _prune(conn, redis, lease, project_id, volume_id, config):
             await _invalidate_backups(project_id)
 
 
-async def _reconcile(conn, redis, lease, project_id, volume_id, operation):
+async def _reconcile(conn, redis, lease, project_id, volume_id, operation, now):
     try:
         if operation.get(_id_field()):
             backup = _scoped(conn, project_id, await _sdk(_provider("get"), conn, operation[_id_field()]))
@@ -890,6 +894,8 @@ async def _reconcile(conn, redis, lease, project_id, volume_id, operation):
             if _resource() == "backup":
                 retained, prune_pending = retained
                 operation["retained_over_limit"] = retained
+                if prune_pending:
+                    operation.setdefault("retention_started_at", now.isoformat())
     if operation["status"] in ("available", "error"):
         await _result(redis, lease, project_id, volume_id, operation, done=not prune_pending)
 
@@ -907,7 +913,21 @@ def _peer_active_key(project_id: str, volume_id: str) -> str:
 async def _cycle(conn, redis, lease, project_id, volume_id, now):
     active = _text(await redis.get(_key("active", project_id, volume_id)))
     if active:
-        return await _reconcile(conn, redis, lease, project_id, volume_id, json.loads(active))
+        operation = json.loads(active)
+        if _resource() == "backup" and operation["status"] == "available" and operation.get("retention_started_at"):
+            deadline = _time(operation["retention_started_at"]) + timedelta(seconds=_RETENTION_DRAIN_SECONDS)
+            config = await get_auto_backup_config(project_id, volume_id, now=now)
+            if config and config.get("next_run_at"):
+                deadline = min(deadline, _time(config["next_run_at"]))
+            if now >= deadline:
+                # Housekeeping must not block protection forever. Keep the
+                # over-limit receipt; a later completed backup rechecks Cinder.
+                if not await _result(redis, lease, project_id, volume_id, operation, done=True):
+                    return
+            else:
+                return await _reconcile(conn, redis, lease, project_id, volume_id, operation, now)
+        else:
+            return await _reconcile(conn, redis, lease, project_id, volume_id, operation, now)
     config = await get_auto_backup_config(project_id, volume_id, now=now)
     if not config or not config["enabled"] or _time(config["next_run_at"]) > now:
         return

@@ -7,8 +7,10 @@ import pytest
 from openstack.exceptions import HttpException
 
 from app.services import auto_backup as ab
-from tests.test_auto_backup import PROJECT, VOLUME, BackupCloud, current, due, save
+from app.services import auto_snapshot as snapshots
+from tests.test_auto_backup import PROJECT, START, VOLUME, BackupCloud, current, due, save
 from tests.test_auto_backup import policy_redis as policy_redis
+from tests.test_auto_snapshot import SnapshotCloud
 
 
 class ChainCloud(BackupCloud):
@@ -198,7 +200,7 @@ async def test_async_child_deletion_keeps_parent_until_native_dependencies_clear
     await complete(cloud, config)
     assert cloud.deleted == ["leaf"]
     assert cloud.records["base"].has_dependent_backups is True
-    assert (await current())["retained_over_limit"] == ["base"]
+    assert (await current())["retained_over_limit"] == ["base", "leaf"]
     assert await policy_redis.exists(ab._key("active", PROJECT, VOLUME))
     # Another tick before provider completion must not replay the leaf DELETE.
     await ab.run_backup_cycle(cloud, PROJECT, VOLUME, now=due(config))
@@ -340,3 +342,58 @@ async def test_new_full_recovers_incrementals_after_old_manual_or_failed_point(p
     assert cloud.submissions[-1]["is_incremental"] is True
     assert cloud.parents["submitted-2"] == "submitted-1"
     assert "old-interruption" in cloud.records
+
+
+class SnapshotChainCloud(ChainCloud, SnapshotCloud):
+    """Both real provider lanes share one simulated source volume."""
+
+
+@pytest.mark.asyncio
+async def test_stuck_retention_window_releases_snapshot_and_future_backup(policy_redis, monkeypatch):
+    prefix = ab._PREFIX + ":snapshots"
+    monkeypatch.setattr(snapshots, "_PREFIX", prefix)
+    monkeypatch.setattr(snapshots, "_ALL_KEY", prefix + ":all_configs")
+    cloud = SnapshotChainCloud()
+    cloud.managed("base", "monthly", 1)
+    cloud.managed("leaf", "daily", 2, parent="base")
+    cloud.managed("kept-daily", "daily", 3)
+    cloud.defer_deletion = True
+    config = await save(max_daily=1, max_weekly=0, max_monthly=1)
+    await snapshots.enable_auto_snapshot(PROJECT, VOLUME, 1, 0, 0, now=START)
+    await complete(cloud, config)
+    await snapshots.run_snapshot_cycle(cloud, PROJECT, VOLUME, now=due(config))
+    assert cloud.snapshot_posts == []
+    assert await policy_redis.exists(ab._key("active", PROJECT, VOLUME))
+    expiry = due(config) + timedelta(seconds=ab._RETENTION_DRAIN_SECONDS)
+    await ab.run_backup_cycle(cloud, PROJECT, VOLUME, now=expiry)
+    assert not await policy_redis.exists(ab._key("active", PROJECT, VOLUME))
+    assert cloud.records["leaf"].status == "deleting"
+    assert (await current())["retained_over_limit"] == ["base", "leaf"]
+    await snapshots.run_snapshot_cycle(cloud, PROJECT, VOLUME, now=expiry)
+    assert len(cloud.snapshot_posts) == 1
+    cloud.snapshot_records["new-snapshot"].status = "available"
+    await snapshots.run_snapshot_cycle(cloud, PROJECT, VOLUME, now=expiry)
+    next_config = await current()
+    await ab.run_backup_cycle(cloud, PROJECT, VOLUME, now=due(next_config))
+    assert len(cloud.submissions) == 2
+    assert cloud.deleted.count("leaf") == 1
+    assert cloud.records["leaf"].status == "deleting"
+
+
+@pytest.mark.asyncio
+async def test_due_backup_slot_ends_retention_before_long_drain_deadline(policy_redis, monkeypatch):
+    monkeypatch.setattr(ab, "_RETENTION_DRAIN_SECONDS", 2 * 86400)
+    cloud = ChainCloud()
+    cloud.managed("old", "daily", 1)
+    cloud.defer_deletion = True
+    config = await save(max_daily=1, max_weekly=0, max_monthly=0)
+    await complete(cloud, config)
+    assert await policy_redis.exists(ab._key("active", PROJECT, VOLUME))
+    next_config = await current()
+    assert due(next_config) < due(config) + timedelta(seconds=ab._RETENTION_DRAIN_SECONDS)
+    await ab.run_backup_cycle(cloud, PROJECT, VOLUME, now=due(next_config))
+    assert len(cloud.submissions) == 2
+    assert (await current())["last_status"] == "creating"
+    assert (await current())["retained_over_limit"] == ["old"]
+    assert cloud.deleted == ["old"]
+    assert cloud.records["old"].status == "deleting"
