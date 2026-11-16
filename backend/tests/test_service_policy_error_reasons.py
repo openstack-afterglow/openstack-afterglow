@@ -109,3 +109,40 @@ async def test_snapshot_reports_native_denial_as_reason_not_generic(monkeypatch)
 
     assert permissions == {"drover": []}
     assert errors == {"drover": "policy_forbidden"}
+
+
+def _patch_palimpsest(monkeypatch, payload):
+    from types import SimpleNamespace
+
+    _patch_native(monkeypatch, response=_Response(200, payload))
+    monkeypatch.setattr(service_proxy, "_configured_internal_endpoint", lambda _service: "https://palimpsest.internal")
+    monkeypatch.setattr(service_proxy, "get_settings", lambda: SimpleNamespace(os_cacert=None, ssl_verify=True))
+
+
+@pytest.mark.asyncio
+async def test_palimpsest_action_only_policy_projects_capability_leaves(monkeypatch):
+    # Palimpsest 0.3.13+ (role-based policy) returns actions without capability leaves.
+    member_actions = sorted(
+        ["cache:read", "cache:write", "keys:list", "keys:revoke_own", "packages:inventory"]
+        + ["packages:manage_own", "packages:read", "packages:write"]
+    )
+    _patch_palimpsest(monkeypatch, {"service": "palimpsest", "actions": member_actions})
+
+    payload = await service_proxy.get_policy_capabilities("palimpsest", TOKEN)
+
+    assert payload["actions"] == member_actions
+    assert payload["capabilities"] == [
+        "palimpsest-download_user",
+        "palimpsest-inventory_reader",
+        "palimpsest-publish_editor",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_palimpsest_action_only_policy_still_rejects_malformed_actions(monkeypatch):
+    _patch_palimpsest(monkeypatch, {"service": "palimpsest", "actions": ["packages:read", 7]})
+
+    with pytest.raises(service_proxy.NativePolicyError) as info:
+        await service_proxy.get_policy_capabilities("palimpsest", TOKEN)
+
+    assert info.value.reason == "policy_invalid_response"

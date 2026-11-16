@@ -12,7 +12,7 @@ import base64
 import hashlib
 import hmac
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
@@ -140,6 +140,28 @@ def _validate_access_level(value: str) -> str:
 def grant_scopes(access_level: str) -> tuple[str, ...]:
     _validate_access_level(access_level)
     return ("mcp:read",) if access_level == "read" else ("mcp:read", "mcp:write")
+
+
+# `update` covers changing and deleting existing resources.
+MCP_OPERATIONS = ("read", "create", "update")
+MCP_WRITE_OPERATIONS = frozenset({"create", "update"})
+
+
+def default_project_operations(access_level: str, can_write: bool) -> tuple[str, ...]:
+    """Operations implied by a grant-wide access level, including grants saved before per-project selection."""
+    _validate_access_level(access_level)
+    return MCP_OPERATIONS if access_level == "manage" and can_write else ("read",)
+
+
+def validate_project_operations(value: object) -> tuple[str, ...]:
+    if (
+        not isinstance(value, list | tuple)
+        or not value
+        or any(not isinstance(item, str) or item not in MCP_OPERATIONS for item in value)
+        or len(set(value)) != len(value)
+    ):
+        raise McpAuthorityError("project operations must be a non-empty subset of read, create and update")
+    return tuple(operation for operation in MCP_OPERATIONS if operation in value)
 
 
 def default_grant_lifetime() -> timedelta:
@@ -274,7 +296,16 @@ def _approved_project_authority(grant: McpDelegatedGrant) -> list[dict[str, obje
     saved = getattr(grant, "approved_projects", None)
     if saved is None:
         project_id = grant.owner_project_id
-        return [{"id": project_id, "name": project_id, "roles": [], "can_write": grant.access_level == "manage"}]
+        can_write = grant.access_level == "manage"
+        return [
+            {
+                "id": project_id,
+                "name": project_id,
+                "roles": [],
+                "can_write": can_write,
+                "operations": list(default_project_operations(grant.access_level, can_write)),
+            }
+        ]
     if not isinstance(saved, list) or not saved:
         raise McpGrantStateError("MCP approved projects are invalid")
     result = []
@@ -291,9 +322,24 @@ def _approved_project_authority(grant: McpDelegatedGrant) -> list[dict[str, obje
             or not isinstance(item.get("can_write"), bool)
         ):
             raise McpGrantStateError("MCP approved projects are invalid")
+        if "operations" in item:
+            try:
+                operations = validate_project_operations(item["operations"])
+            except McpAuthorityError as exc:
+                raise McpGrantStateError("MCP approved projects are invalid") from exc
+            if MCP_WRITE_OPERATIONS & set(operations) and (grant.access_level != "manage" or not item["can_write"]):
+                raise McpGrantStateError("MCP approved projects are invalid")
+        else:
+            operations = default_project_operations(grant.access_level, item["can_write"])
         seen.add(item["id"])
         result.append(
-            {"id": item["id"], "name": item["name"], "roles": list(item["roles"]), "can_write": item["can_write"]}
+            {
+                "id": item["id"],
+                "name": item["name"],
+                "roles": list(item["roles"]),
+                "can_write": item["can_write"],
+                "operations": list(operations),
+            }
         )
     return result
 
@@ -303,7 +349,12 @@ def approved_project_metadata(grant: McpDelegatedGrant) -> list[dict[str, str]]:
     return [{"id": project["id"], "name": project["name"]} for project in _approved_project_authority(grant)]
 
 
-def validate_grant_project(grant: McpDelegatedGrant, project_id: str, *, write: bool = False) -> dict[str, object]:
+def validate_grant_project(
+    grant: McpDelegatedGrant, project_id: str, *, operation: str | None = None
+) -> dict[str, object]:
+    """Require approved membership and, when given, the exact approved operation."""
+    if operation is not None and operation not in MCP_OPERATIONS:
+        raise McpGrantStateError("MCP operation is invalid")
     for metadata in _approved_project_authority(grant):
         if metadata["id"] == project_id:
             from app.services.domain_projects import is_reserved_default_name
@@ -311,8 +362,9 @@ def validate_grant_project(grant: McpDelegatedGrant, project_id: str, *, write: 
             if is_reserved_default_name(metadata["name"]):
                 # Saved real names catch grants issued before the Default exclusion.
                 raise McpGrantStateError("MCP cannot use a domain's Default project")
-            if write and (grant.access_level != "manage" or not metadata["can_write"]):
-                raise McpGrantStateError("MCP project does not allow management")
+            if operation is not None and operation not in metadata["operations"]:
+                kind = "management" if operation in MCP_WRITE_OPERATIONS else "read access"
+                raise McpGrantStateError(f"MCP project does not allow {kind} ({operation})")
             ceiling = getattr(grant, "issued_role_ceiling", None)
             if ceiling is not None and (
                 not isinstance(ceiling, dict)
@@ -366,6 +418,7 @@ class ApprovedProject:
     can_write: bool
     conn: Any
     owns_connection: bool = True
+    operations: tuple[str, ...] = ("read",)
 
     def metadata(self) -> dict[str, object]:
         return {
@@ -373,6 +426,7 @@ class ApprovedProject:
             "name": self.name,
             "roles": [role["name"] for role in self.roles],
             "can_write": self.can_write,
+            "operations": list(self.operations),
         }
 
 
@@ -406,7 +460,7 @@ async def prepare_project_authority(
         raise
     for project in projects:
         if project.conn is conn:
-            return [ApprovedProject(p.id, p.name, p.roles, p.can_write, p.conn, True) for p in projects]
+            return [replace(p, owns_connection=True) for p in projects]
     await asyncio.to_thread(conn.close)
     return projects
 
@@ -419,7 +473,15 @@ async def _prepare_connection_projects(
     project_scope: str,
     project_ids: list[str] | None,
     access_level: str,
+    operations: dict[str, tuple[str, ...]] | None = None,
 ) -> list[ApprovedProject]:
+    """Prepare scoped project authority.
+
+    Without ``operations`` every project receives the operations implied by
+    ``access_level``. With ``operations`` (project id -> validated operations)
+    each project receives exactly its own set, and write operations require a
+    native write role on that project.
+    """
     from app.services.domain_projects import is_reserved_default_name
     from app.services.mcp_control_plane.projects import (
         DEFAULT_PROJECT_NOT_CONNECTABLE,
@@ -439,13 +501,21 @@ async def _prepare_connection_projects(
                 raise McpAuthorityError(DEFAULT_PROJECT_NOT_CONNECTABLE)
             role_snapshot = scoped._afterglow_roles
             can_write = bool({role["name"].casefold() for role in role_snapshot} & PROJECT_WRITE_ROLE_NAMES)
-            if access_level == "manage" and not can_write and project_scope != "all":
+            if operations is None:
+                denied = access_level == "manage" and not can_write and project_scope != "all"
+                chosen = default_project_operations(access_level, can_write)
+            else:
+                chosen = operations[project["id"]]
+                denied = bool(MCP_WRITE_OPERATIONS & set(chosen)) and not can_write
+            if denied:
                 if scoped is not conn:
                     await asyncio.to_thread(scoped.close)
                 raise McpGrantPrivilegeError("selected project does not allow management")
             project_name = scoped._afterglow_project_name if project_scope == "current" else project["name"]
             result.append(
-                ApprovedProject(project["id"], project_name, role_snapshot, can_write, scoped, scoped is not conn)
+                ApprovedProject(
+                    project["id"], project_name, role_snapshot, can_write, scoped, scoped is not conn, chosen
+                )
             )
         return result
     except BaseException:

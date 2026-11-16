@@ -16,6 +16,7 @@ from app.models.mcp_authority import (
     McpToolInvocation,
 )
 from app.services.mcp_control_plane.authority import (
+    MCP_WRITE_OPERATIONS,
     McpAuthorityError,
     McpGrantNotFoundError,
     McpGrantStateError,
@@ -66,8 +67,13 @@ def _factory() -> async_sessionmaker:
     return factory
 
 
-async def lock_principal_grant(session, principal: McpPrincipal, *, write: bool = False):
-    """Fence saved authority before any target dispatch or secret loading."""
+async def lock_principal_grant(session, principal: McpPrincipal, *, operation: str | None = None):
+    """Fence saved authority before any target dispatch or secret loading.
+
+    ``operation`` (read, create or update) must be approved for the target
+    project; None checks approved membership only.
+    """
+    write = operation in MCP_WRITE_OPERATIONS
     owner_lock = await lock_owner(
         session, owner_user_id=principal.user_id, owner_project_id=principal.anchor_project_id
     )
@@ -165,17 +171,17 @@ async def lock_principal_grant(session, principal: McpPrincipal, *, write: bool 
         )
         if token is None or token.revoked_at is not None:
             raise McpAuthenticationError("MCP personal token is no longer active")
-    validate_grant_project(grant, principal.project_id, write=write)
+    validate_grant_project(grant, principal.project_id, operation=operation)
     return grant
 
 
 async def resolve_principal_target(
-    principal: McpPrincipal, project_id: str | None = None, *, write: bool = False
+    principal: McpPrincipal, project_id: str | None = None, *, operation: str | None = None
 ) -> McpPrincipal:
     target = principal.project_id if project_id is None else project_id
     resolved = replace(principal, project_id=target, owner_project_id=principal.anchor_project_id)
     async with _factory()() as session, session.begin():
-        await lock_principal_grant(session, resolved, write=write)
+        await lock_principal_grant(session, resolved, operation=operation)
     return resolved
 
 

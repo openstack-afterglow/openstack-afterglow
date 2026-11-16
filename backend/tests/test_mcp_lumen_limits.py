@@ -58,7 +58,7 @@ async def bridge(monkeypatch):
     async def redis_client():
         return redis
 
-    async def resolve_target(principal, project_id=None, *, write=False):
+    async def resolve_target(principal, project_id=None, *, operation=None):
         return principal
 
     async def read_provider(context, arguments):

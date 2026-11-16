@@ -194,7 +194,9 @@ async def test_external_identity_account_uses_native_memberships_in_working_doma
     discovered = await projects.caller_membership_projects(provider.conn, provider.user)
     assert {row["id"] for row in discovered} == {provider.a, provider.b}
     scope = await projects.resolve_project_scope(provider.conn, provider.user, provider.a, ["member"])
-    assert scope == [{"id": provider.a, "name": provider.a, "roles": ["member"], "can_write": True}]
+    assert scope == [
+        {"id": provider.a, "name": provider.a, "roles": ["member"], "can_write": True, "operations": ["read"]}
+    ]
     provider.conn._afterglow_identity_domain_id = "forged-home"
     with pytest.raises(authority.McpAuthorityError):
         await projects.caller_membership_projects(provider.conn, provider.user)
@@ -230,8 +232,8 @@ async def test_actual_memberships_and_target_token_roles_ignore_system_admin(pro
         access_level="read",
     )
     assert metadata == [
-        {"id": provider.a, "name": "A", "roles": ["member"], "can_write": True},
-        {"id": provider.b, "name": "B", "roles": ["reader"], "can_write": False},
+        {"id": provider.a, "name": "A", "roles": ["member"], "can_write": True, "operations": ["read"]},
+        {"id": provider.b, "name": "B", "roles": ["reader"], "can_write": False, "operations": ["read"]},
     ]
     assert provider.rescopes == [("scoped-token-" + provider.a, provider.b)]
     assert not provider.conn.closed
@@ -289,6 +291,7 @@ async def test_logical_current_project_rescopes_authenticated_home_token(project
                 "name": "B" if scope == "selected" else provider.b,
                 "roles": ["reader"],
                 "can_write": False,
+                "operations": ["read"],
             }
         ]
         assert provider.rescopes == [("scoped-token-" + provider.a, provider.b)]
@@ -328,19 +331,24 @@ async def test_all_scope_is_frozen_and_read_subset_never_allows_writes_or_new_pr
     for project_id in (provider.a, provider.b):
         assert authority.validate_grant_project(grant, project_id)["id"] == project_id
         with pytest.raises(authority.McpGrantStateError, match="management"):
-            authority.validate_grant_project(grant, project_id, write=True)
+            authority.validate_grant_project(grant, project_id, operation="update")
     with pytest.raises(authority.McpGrantStateError, match="outside"):
         authority.validate_grant_project(grant, provider.c)
+    # Saved operations are authoritative; raising the grant level never widens them.
     grant.access_level = "manage"
-    authority.validate_grant_project(grant, provider.a, write=True)
     with pytest.raises(authority.McpGrantStateError, match="management"):
-        authority.validate_grant_project(grant, provider.b, write=True)
+        authority.validate_grant_project(grant, provider.a, operation="update")
+    # Rows saved before per-project operations derive them from the grant level.
+    grant.approved_projects = [{key: value for key, value in row.items() if key != "operations"} for row in metadata]
+    authority.validate_grant_project(grant, provider.a, operation="update")
+    with pytest.raises(authority.McpGrantStateError, match="management"):
+        authority.validate_grant_project(grant, provider.b, operation="update")
 
 
 async def test_legacy_null_snapshot_never_expands():
     grant = SimpleNamespace(owner_project_id="A", access_level="manage", approved_projects=None)
     assert authority.approved_project_metadata(grant) == [{"id": "A", "name": "A"}]
-    authority.validate_grant_project(grant, "A", write=True)
+    authority.validate_grant_project(grant, "A", operation="update")
     with pytest.raises(authority.McpGrantStateError, match="outside"):
         authority.validate_grant_project(grant, "B")
 
@@ -832,17 +840,23 @@ async def test_all_manage_retains_mixed_project_write_ceilings(project_provider)
         provider.conn, provider.user, provider.a, ["admin"], project_scope="all", access_level="manage"
     )
     assert metadata == [
-        {"id": provider.a, "name": "A", "roles": ["member"], "can_write": True},
-        {"id": provider.b, "name": "B", "roles": ["reader"], "can_write": False},
+        {
+            "id": provider.a,
+            "name": "A",
+            "roles": ["member"],
+            "can_write": True,
+            "operations": ["read", "create", "update"],
+        },
+        {"id": provider.b, "name": "B", "roles": ["reader"], "can_write": False, "operations": ["read"]},
     ]
     grant = SimpleNamespace(approved_projects=metadata, owner_project_id=provider.a, access_level="manage")
-    authority.validate_grant_project(grant, provider.a, write=True)
+    authority.validate_grant_project(grant, provider.a, operation="update")
     authority.validate_grant_project(grant, provider.b)
     with pytest.raises(authority.McpGrantStateError, match="management"):
-        authority.validate_grant_project(grant, provider.b, write=True)
+        authority.validate_grant_project(grant, provider.b, operation="update")
     grant.access_level = "read"
-    with pytest.raises(authority.McpGrantStateError, match="management"):
-        authority.validate_grant_project(grant, provider.a, write=True)
+    with pytest.raises(authority.McpGrantStateError, match="invalid"):
+        authority.validate_grant_project(grant, provider.a, operation="update")
 
 
 @pytest.fixture(scope="module")
@@ -981,10 +995,10 @@ async def test_manage_all_issues_reader_credential_without_promoting_its_saved_a
         grant = await authority.resolve_personal_token(session, issued.token)
         assert grant.access_level == "manage"
         assert authority.grant_scopes(grant.access_level) == ("mcp:read", "mcp:write")
-        assert authority.validate_grant_project(grant, owner.a, write=True)["can_write"] is True
+        assert authority.validate_grant_project(grant, owner.a, operation="update")["can_write"] is True
         assert authority.validate_grant_project(grant, owner.b)["roles"] == ["reader"]
         with pytest.raises(authority.McpGrantStateError, match="management"):
-            authority.validate_grant_project(grant, owner.b, write=True)
+            authority.validate_grant_project(grant, owner.b, operation="update")
         credential = await session.get(McpProjectCredential, {"grant_id": grant.id, "project_id": owner.b})
         assert owner.remote[credential.application_credential_id].roles == [{"id": "role-reader", "name": "reader"}]
     assert len(owner.created) == 2
@@ -1368,7 +1382,15 @@ async def test_manage_uses_target_roles_not_current_roles_or_admin_flag(project_
         project_ids=[provider.b],
         access_level="manage",
     )
-    assert metadata == [{"id": provider.b, "name": "B", "roles": ["member"], "can_write": True}]
+    assert metadata == [
+        {
+            "id": provider.b,
+            "name": "B",
+            "roles": ["member"],
+            "can_write": True,
+            "operations": ["read", "create", "update"],
+        }
+    ]
 
 
 async def test_mcp_access_level_has_no_manager_tier(project_provider):
@@ -1422,7 +1444,7 @@ def test_existing_grant_on_a_domain_default_project_is_refused_at_use():
             approved_projects=[{"id": "project-1", "name": name, "roles": ["member"], "can_write": True}],
         )
 
-    assert authority.validate_grant_project(grant("Ordinary"), "project-1", write=True)["id"] == "project-1"
+    assert authority.validate_grant_project(grant("Ordinary"), "project-1", operation="update")["id"] == "project-1"
     for name in ("Default", "default", " Default "):
         with pytest.raises(authority.McpGrantStateError, match="Default project"):
             authority.validate_grant_project(grant(name), "project-1")
@@ -1495,7 +1517,9 @@ async def test_current_scope_reuses_verified_token_and_saves_real_project_name(p
     provider = project_provider
     provider.conn.access.project_name = "Current project"
     metadata = await projects.resolve_project_scope(provider.conn, provider.user, provider.a, ["foreign-role"])
-    assert metadata == [{"id": provider.a, "name": "Current project", "roles": ["member"], "can_write": True}]
+    assert metadata == [
+        {"id": provider.a, "name": "Current project", "roles": ["member"], "can_write": True, "operations": ["read"]}
+    ]
     assert provider.rescopes == [] and provider.discoveries == []
     assert not provider.conn.closed
 
@@ -1632,3 +1656,117 @@ async def test_cancelled_project_lookup_waits_for_role_directory_before_closing(
     with pytest.raises(asyncio.CancelledError):
         await task
     assert target.closed
+
+
+async def test_per_project_operations_bind_each_project_to_its_own_selection(project_provider):
+    provider = project_provider
+    prepared = await authority._prepare_connection_projects(
+        provider.conn,
+        provider.user,
+        provider.a,
+        ["member"],
+        "selected",
+        [provider.a, provider.b],
+        "manage",
+        {provider.a: ("create",), provider.b: ("read",)},
+    )
+    try:
+        metadata = [project.metadata() for project in prepared]
+    finally:
+        await authority.close_project_authority(prepared)
+    assert [(row["id"], row["operations"]) for row in metadata] == [(provider.a, ["create"]), (provider.b, ["read"])]
+    grant = SimpleNamespace(approved_projects=metadata, owner_project_id=provider.a, access_level="manage")
+    authority.validate_grant_project(grant, provider.a, operation="create")
+    with pytest.raises(authority.McpGrantStateError, match="read access"):
+        authority.validate_grant_project(grant, provider.a, operation="read")
+    with pytest.raises(authority.McpGrantStateError, match="management"):
+        authority.validate_grant_project(grant, provider.a, operation="update")
+    authority.validate_grant_project(grant, provider.b, operation="read")
+    with pytest.raises(authority.McpGrantStateError, match="management"):
+        authority.validate_grant_project(grant, provider.b, operation="create")
+    # Credential loading checks membership only and never needs an operation.
+    assert authority.validate_grant_project(grant, provider.a)["id"] == provider.a
+
+
+async def test_per_project_write_operation_requires_native_write_role(project_provider):
+    provider = project_provider
+    with pytest.raises(authority.McpGrantPrivilegeError, match="management"):
+        await authority._prepare_connection_projects(
+            provider.conn,
+            provider.user,
+            provider.a,
+            ["member"],
+            "selected",
+            [provider.a, provider.b],
+            "manage",
+            {provider.a: ("read",), provider.b: ("update",)},
+        )
+    assert provider.created == []
+    assert all(connection.closed for connection in provider.connections if connection is not provider.conn)
+
+
+@pytest.mark.parametrize(
+    ("operations", "can_write", "access_level"),
+    [
+        ([], True, "manage"),
+        (["delete"], True, "manage"),
+        (["read", "read"], True, "manage"),
+        ("read", True, "manage"),
+        ([1], True, "manage"),
+        (["read", "create"], False, "manage"),
+        (["read", "update"], True, "read"),
+    ],
+)
+async def test_saved_project_operations_fail_closed_when_inconsistent(operations, can_write, access_level):
+    grant = SimpleNamespace(
+        owner_project_id="A",
+        access_level=access_level,
+        approved_projects=[
+            {"id": "A", "name": "A", "roles": ["member"], "can_write": can_write, "operations": operations}
+        ],
+    )
+    with pytest.raises(authority.McpGrantStateError, match="invalid"):
+        authority.validate_grant_project(grant, "A")
+
+
+async def test_consent_operations_derive_access_level_and_require_exact_selection():
+    from app.services.mcp_control_plane.oauth_authority import McpOAuthAuthorityError, _consent_operations
+
+    ids, level, chosen = _consent_operations("selected", None, None, {"A": ["update", "read"], "B": ["read"]})
+    assert (ids, level, chosen) == (["A", "B"], "manage", {"A": ("read", "update"), "B": ("read",)})
+    assert _consent_operations("selected", ["B"], "read", {"B": ["read"]})[1] == "read"
+    for args in (
+        ("all", None, None, {"A": ["read"]}),
+        ("selected", ["A", "B"], None, {"A": ["read"]}),
+        ("selected", ["A", "A"], None, {"A": ["read"]}),
+        ("selected", None, "read", {"A": ["create"]}),
+        ("selected", None, None, {}),
+        ("selected", None, None, {"A": ["delete"]}),
+        ("selected", None, None, {"A": []}),
+    ):
+        with pytest.raises(McpOAuthAuthorityError):
+            _consent_operations(*args)
+
+
+async def test_every_tool_declares_its_consent_operation():
+    from app.services.mcp_control_plane.registry import registry_entries
+
+    operations = {entry.name: entry.operation for entry in registry_entries()}
+    assert {name for name, operation in operations.items() if operation == "create"} == {
+        "afterglow_network_create",
+        "afterglow_subnet_create",
+        "afterglow_port_create",
+        "afterglow_vm_create",
+        "afterglow_volume_create",
+    }
+    assert {name for name, operation in operations.items() if operation is None} == {
+        "afterglow_projects_list",
+        "afterglow_capabilities_get",
+        "afterglow_operation_get",
+    }
+    for entry in registry_entries():
+        if entry.effect == "read":
+            assert entry.operation in {"read", None}
+        else:
+            assert entry.operation in {"create", "update"}
+    assert operations["afterglow_vm_delete"] == operations["afterglow_volume_extend"] == "update"

@@ -56,6 +56,8 @@ class OAuthConsentApproval(BaseModel):
     project_ids: list[str] | None = None
     access_level: str | None = Field(default=None, pattern="^(read|manage)$")
     ongoing: StrictBool = False
+    # Project ID -> subset of read/create/update; implies the grant access level.
+    project_operations: dict[str, list[str]] | None = Field(default=None, max_length=200)
 
 
 def _require_enabled() -> None:
@@ -433,6 +435,7 @@ async def approve_oauth_consent(
             project_ids=body.project_ids if body is not None else None,
             access_level=body.access_level if body is not None else None,
             ongoing=body.ongoing if body is not None else False,
+            project_operations=body.project_operations if body is not None else None,
         )
     except (McpOAuthAuthorityError, McpAuthorityError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

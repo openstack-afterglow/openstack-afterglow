@@ -214,7 +214,9 @@ async def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         await emit_experience(
             experience, "stage.started", stage="mcp.dispatch", status="running", operation_id=claim.invocation_id
         )
-        principal = await authorize_mutation_dispatch(principal, invocation_id=claim.invocation_id)
+        principal = await authorize_mutation_dispatch(
+            principal, invocation_id=claim.invocation_id, operation=entry.operation
+        )
     except McpMutationAuthorizationDenied:
         await fail_pre_dispatch(
             principal,

@@ -237,7 +237,7 @@ async def test_vm_create_dispatch_forwards_public_serialized_schedule_unchanged(
 def isolated_authority(monkeypatch):
     """Isolate storage in registry units; runtime scope is tested behaviorally."""
 
-    async def resolve(principal, project_id=None, *, write=False):
+    async def resolve(principal, project_id=None, *, operation=None):
         return replace(
             principal, project_id=project_id or principal.project_id, owner_project_id=principal.anchor_project_id
         )

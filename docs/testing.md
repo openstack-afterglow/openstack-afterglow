@@ -6,6 +6,14 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## MCP 프로젝트별 작업 동의·도메인 목록·Palimpsest 정책 호환 (2026-11-16, source/local)
+
+- 운영 관측(읽기 전용): 재연결한 omp OAuth grant로 BIO·DMSLAB·SYSTEM·agent 4개 프로젝트에서 VM·볼륨·네트워크·K3s·Waygate·DB·쿼터·Swift·백업 목록 9종을 순차 호출해 36건 모두 성공했다. 같은 36건을 동시에 보내면 32건이 `HTTP 429 MCP request limit exceeded`였고 이는 grant별 요청 제한의 정상 동작이다.
+- 원인: Palimpsest 0.3.13(`f54a0d1`)부터 `/v1/policy/capabilities`가 `capabilities` 없이 `actions`만 반환해 Afterglow가 `policy_invalid_response`로 거부했다. Drover·Waygate 기본 정책은 이미 `member`에게 모든 capability, `reader`에게 조회 capability를 준다(`drover/policy.py`, `waygate/policy.py`).
+- 실행한 검증: MCP·서비스 정책·Palimpsest 관련 backend 모듈 2146 passed / 225 skipped(DB lane skip). 전체 backend unit 15233 passed / 1 failed / 106 skipped — 실패한 `tests/test_native_vm.py::test_failed_installer_keeps_partial_state_and_refuses_retry`(`getpwuid(): uid not found: 501`)는 변경 전 `dev` `e64c6a2b`에서도 같은 명령으로 재현되는 sandbox 환경 실패다. Contract 262 passed. Frontend 592 files / 8015 tests passed. `svelte-check` 0 errors / 15 기존 warnings. i18n check 0 errors. Ruff check·format 통과. Experience catalog 재생성 후 check 통과.
+- 실행하지 못한 검증: `test:target:js`의 `scripts/local-services-config.test.js`는 변경 전 `dev`에서도 같은 실패가 재현되는 환경 문제(Docker 미기동)로 멈췄다. DB lane(`test:functional`, 새 `test_oauth_project_operations_save_each_project_selection` 포함)은 MariaDB/Docker가 없어 실행하지 않았다. 동의 화면의 실제 브라우저 확인은 이 실행 환경에서 Chromium·WebKit·Firefox가 모두 기동하지 못해(`bootstrap_check_in ... 141`) 하지 못했다.
+- 클라이언트 호환: Hermes Agent 0.19.0(`hermes-agent[mcp]`, mcp 1.26.0)과 OpenClaw 2026.11.4를 임시 경로에 설치해 Afterglow 검증 함수를 그대로 쓰는 loopback mock에 연결했다. 두 클라이언트 모두 public client(`token_endpoint_auth_method: none`, `authorization_code`+`refresh_token`)로 등록하고 `mcp:read mcp:write`, S256 PKCE, 정확한 resource를 보냈으며 모든 검사를 통과했다. 운영 `https://cloud.dmslab.re.kr/mcp`에도 두 클라이언트의 동적 등록이 성공해 승인 URL을 받았지만, 사용자 승인 단계가 이뤄지지 않아 토큰 교환과 도구 호출은 확인하지 못했다.
+
 ## 튜토리얼 가용성 수정과 대시보드 slop 2차 병합 (2026-11-16, source/local)
 
 - 배경: 다른 세션이 끝내고 커밋하지 않은 튜토리얼 시작 버튼 가용성 수정(`fix-tutorial-start-button-visibility`, 모든 task 완료·집중 테스트 통과)이 공유 checkout에 이틀째 남아 운영에 반영되지 않았다. 소유자 지시로 그대로 커밋 `a0549e4b`로 보존하고 slop 2차(`ux/slop-pass-2`)와 병합했다. 두 변경이 `TutorialStartButton.svelte`의 같은 마크업을 건드려 충돌했고, 가용성 gate(`{#if tutorialViewport.current && $tourAvailable}`)와 slop 쪽 inline 초대 마크업(`div.tutorial-start`)을 함께 남겨 해결했다.

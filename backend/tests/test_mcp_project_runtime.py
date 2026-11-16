@@ -280,7 +280,9 @@ async def test_lumen_consent_is_rechecked_at_locked_mutation_dispatch(runtime):
     )
     runtime.grant.consented_at = None
     with pytest.raises(ledger.McpInvocationError):
-        await ledger.authorize_mutation_dispatch(frozen, invocation_id=claim.invocation_id, source="lumen")
+        await ledger.authorize_mutation_dispatch(
+            frozen, invocation_id=claim.invocation_id, operation="update", source="lumen"
+        )
     assert runtime.invocations[0].status == "claimed"
 
 
@@ -295,7 +297,7 @@ async def test_consented_internal_lumen_cannot_target_another_project(runtime):
     principal = await lumen.resolve_lumen_principal(snapshot)
     assert principal.project_id == principal.anchor_project_id == principal.selection_project_id == "a"
     with pytest.raises(authentication.McpAuthenticationError, match="consent"):
-        await authentication.resolve_principal_target(principal, "b", write=True)
+        await authentication.resolve_principal_target(principal, "b", operation="update")
     with pytest.raises(connection.McpConsumerConnectionError):
         await connection._load_credential(replace(principal, project_id="b"))
     assert runtime.credential_reads == []
@@ -330,13 +332,13 @@ async def test_selected_scope_rejects_unapproved_target_before_preview_dispatch_
 async def test_read_token_and_saved_read_project_reject_mutation(runtime):
     read = replace(runtime.principal, scopes=frozenset({"mcp:read"}))
     with pytest.raises(authentication.McpAuthenticationError):
-        await authentication.resolve_principal_target(read, "b", write=True)
+        await authentication.resolve_principal_target(read, "b", operation="update")
     runtime.grant.approved_projects[1]["can_write"] = False
     with pytest.raises(authority.McpGrantStateError, match="management"):
-        await authentication.resolve_principal_target(runtime.principal, "b", write=True)
+        await authentication.resolve_principal_target(runtime.principal, "b", operation="update")
     runtime.grant.access_level = "read"
     with pytest.raises(authority.McpGrantStateError, match="management"):
-        await authentication.resolve_principal_target(runtime.principal, "a", write=True)
+        await authentication.resolve_principal_target(runtime.principal, "a", operation="update")
 
 
 @pytest.mark.asyncio
@@ -609,7 +611,7 @@ async def test_mutation_default_target_replays_but_other_project_cannot(runtime)
     claim = await ledger.claim_mutation(
         runtime.principal, entry=entry, arguments={"action": "stop"}, idempotency_key="same-key"
     )
-    await ledger.authorize_mutation_dispatch(runtime.principal, invocation_id=claim.invocation_id)
+    await ledger.authorize_mutation_dispatch(runtime.principal, invocation_id=claim.invocation_id, operation="update")
     await ledger.complete_mutation(runtime.principal, invocation_id=claim.invocation_id, result={"status": "accepted"})
     replay = await ledger.claim_mutation(
         runtime.principal, entry=entry, arguments={"action": "stop", "project_id": "a"}, idempotency_key="same-key"
@@ -644,7 +646,9 @@ async def test_internal_lumen_without_pat_fences_selection_at_connection_and_led
     with pytest.raises(connection.McpConsumerConnectionError):
         await connection._load_credential(principal)
     with pytest.raises(ledger.McpInvocationError):
-        await ledger.authorize_mutation_dispatch(principal, invocation_id=claim.invocation_id, source="lumen")
+        await ledger.authorize_mutation_dispatch(
+            principal, invocation_id=claim.invocation_id, operation="update", source="lumen"
+        )
     assert runtime.invocations[0].status == "claimed"
 
 
@@ -835,7 +839,7 @@ async def test_revoked_grant_cannot_replay_completed_mutation(runtime):
     claim = await ledger.claim_mutation(
         runtime.principal, entry=mutation_entry(), arguments={"action": "stop"}, idempotency_key="revoked-key"
     )
-    await ledger.authorize_mutation_dispatch(runtime.principal, invocation_id=claim.invocation_id)
+    await ledger.authorize_mutation_dispatch(runtime.principal, invocation_id=claim.invocation_id, operation="update")
     await ledger.complete_mutation(runtime.principal, invocation_id=claim.invocation_id, result={"status": "accepted"})
     runtime.grant.status = "revoked"
     with pytest.raises(ledger.McpInvocationError):

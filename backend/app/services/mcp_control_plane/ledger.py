@@ -19,6 +19,7 @@ from app.database import get_session_factory
 from app.models.mcp_authority import McpToolInvocation
 from app.services.mcp_control_plane.authentication import McpAuthenticationError, McpPrincipal, lock_principal_grant
 from app.services.mcp_control_plane.authority import (
+    MCP_WRITE_OPERATIONS,
     McpAuthorityError,
     McpGrantStateError,
     _as_utc,
@@ -163,7 +164,7 @@ async def _claim_mutation(
     try:
         async with _factory()() as session, session.begin():
             checked = replace(principal, oauth_admitted_invocation_id=None)
-            grant = await lock_principal_grant(session, checked, write=True)
+            grant = await lock_principal_grant(session, checked, operation=entry.operation)
             _validate_active_write_grant(grant, principal)
             existing = await session.scalar(
                 select(McpToolInvocation)
@@ -268,17 +269,23 @@ async def fail_pre_dispatch(
 
 
 async def authorize_mutation_dispatch(
-    principal: McpPrincipal, *, invocation_id: str, source: Literal["mcp", "lumen"] = "mcp"
+    principal: McpPrincipal,
+    *,
+    invocation_id: str,
+    operation: str,
+    source: Literal["mcp", "lumen"] = "mcp",
 ) -> McpPrincipal:
-    """Cross the no-retry send boundary only while the current grant remains valid."""
+    """Cross the no-retry send boundary only while the current grant still allows ``operation``."""
     invocation_source = _invocation_source(source)
+    if operation not in MCP_WRITE_OPERATIONS:
+        raise McpInvocationError("MCP mutation operation is invalid")
     expired_before_dispatch = False
     try:
         async with _factory()() as session, session.begin():
             try:
                 # An earlier admission receipt cannot authorize a new send.
                 checked = replace(principal, oauth_admitted_invocation_id=None)
-                grant = await lock_principal_grant(session, checked, write=True)
+                grant = await lock_principal_grant(session, checked, operation=operation)
                 _validate_active_write_grant(grant, checked)
             except (McpAuthenticationError, McpGrantStateError, McpInvocationError) as exc:
                 raise McpMutationAuthorizationDenied("MCP mutation authority denied before authorization") from exc

@@ -45,7 +45,7 @@ from app.services.mcp_control_plane.waygate import (
 def isolated_authority(monkeypatch):
     from dataclasses import replace
 
-    async def resolve(principal, project_id=None, *, write=False):
+    async def resolve(principal, project_id=None, *, operation=None):
         return replace(
             principal, project_id=project_id or principal.project_id, owner_project_id=principal.anchor_project_id
         )

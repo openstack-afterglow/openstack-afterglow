@@ -214,6 +214,9 @@ class ConsumerCloudContext:
             yield conn
 
 
+_GRANT_METADATA_TOOLS = frozenset({"afterglow_projects_list", "afterglow_capabilities_get", "afterglow_operation_get"})
+
+
 @dataclass(frozen=True)
 class RegistryEntry:
     name: str
@@ -237,6 +240,19 @@ class RegistryEntry:
             raise ValueError("Read-only MCP tools cannot define a mutation preview")
         if self.effect == "read" and self.destructive:
             raise ValueError("Read-only MCP tools cannot be destructive")
+
+    @property
+    def operation(self) -> Literal["read", "create", "update"] | None:
+        """Per-project consent operation; `update` covers changing and deleting existing resources.
+
+        Grant metadata tools (approved projects, enabled domains, this grant's
+        own invocation status) read no project resource and need membership only.
+        """
+        if self.name in _GRANT_METADATA_TOOLS:
+            return None
+        if self.effect == "read":
+            return "read"
+        return "create" if self.name.endswith("_create") else "update"
 
     def mcp_input_schema(self) -> dict[str, Any]:
         """External MCP mutations add the envelope key without widening the domain model."""
@@ -3894,9 +3910,7 @@ async def bind_entry_target(
 ) -> tuple[McpPrincipal, McpDomainArguments]:
     if not entry.allowed_for(principal):
         raise ValueError("MCP tool is unavailable")
-    resolved = await resolve_principal_target(
-        principal, arguments.project_id, write=entry.effect == "external_mutation"
-    )
+    resolved = await resolve_principal_target(principal, arguments.project_id, operation=entry.operation)
     return resolved, arguments.model_copy(update={"project_id": resolved.project_id})
 
 

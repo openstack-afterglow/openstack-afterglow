@@ -26,7 +26,7 @@ _SERVER_ID = "12345678-1234-1234-1234-123456789abc"
 
 @pytest.fixture(autouse=True)
 def isolated_authority(monkeypatch):
-    async def resolve(principal, project_id=None, *, write=False):
+    async def resolve(principal, project_id=None, *, operation=None):
         return replace(
             principal, project_id=project_id or principal.project_id, owner_project_id=principal.anchor_project_id
         )

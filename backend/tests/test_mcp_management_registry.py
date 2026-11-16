@@ -224,7 +224,8 @@ def management_runtime(monkeypatch):
     )
     state = SimpleNamespace(principal=principal, connection=object(), resolutions=[], connections=[])
 
-    async def resolve(current, project_id=None, *, write=False):
+    async def resolve(current, project_id=None, *, operation=None):
+        write = operation in {"create", "update"}
         target = project_id or current.project_id
         state.resolutions.append((target, write))
         if target not in {"project-a", "project-b", "reader-project"} or (write and target == "reader-project"):
