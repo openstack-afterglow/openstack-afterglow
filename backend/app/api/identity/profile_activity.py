@@ -18,7 +18,7 @@ async def list_my_activity(
     resource_type: str | None = Query(None),
     action: str | None = Query(None),
 ) -> list[dict]:
-    """본인 활동 로그 (cross-project, user_id 기준)."""
+    """본인의 의도적인 리소스 변경·세션 보안 활동만 조회 (cross-project)."""
     return await svc.list_for_user(
         token_info["user_id"],
         limit=limit,
