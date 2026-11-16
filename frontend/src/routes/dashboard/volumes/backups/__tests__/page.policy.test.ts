@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { writable, type Writable } from 'svelte/store';
 import { tick } from 'svelte';
+import { SvelteURL } from 'svelte/reactivity';
 import type { Volume } from '$lib/types/volume';
 import type { VolumeBackupPolicy, VolumeBackupPolicyInput } from '$lib/types/volumeBackupPolicy';
 
@@ -11,7 +12,8 @@ vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token-a', projectI
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: confirm }));
 vi.mock('$lib/i18n/ns/volume', () => ({ t: (key: string, values?: Record<string, unknown>) => values?.name ? `${key}:${values.name}` : key }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({ createAutoRefresh: () => ({ active: false, intervalSeconds: 15, intervalOptions: [10, 15, 30, 60] }) }));
-vi.mock('$app/state', () => ({ page: { url: new URL('http://localhost/dashboard/volumes/backups') } }));
+vi.mock('$app/state', () => ({ page: { url: new SvelteURL('http://localhost/dashboard/volumes/backups?volume=volume-a') } }));
+vi.mock('$app/navigation', () => ({ goto: vi.fn(async (url: URL) => { page.url.search = url.search; }) }));
 
 import { auth, canWrite, projectSwitching } from '$lib/stores/auth';
 import { page } from '$app/state';
@@ -47,7 +49,7 @@ async function openSettings() {
 beforeEach(() => {
 	actor.set({ token: 'token-a', projectId: 'project-a', userId: 'member' });
 	writableAccess.set(true); projectSwitching.set(false);
-	page.url.search = '';
+	page.url.search = '?volume=volume-a';
 	get.mockReset(); post.mockReset(); remove.mockReset(); confirm.mockReset();
 	get.mockImplementation((path: string) => Promise.resolve(path === '/api/v1/volumes' ? [available, other] : []));
 	post.mockImplementation((path: string, body: VolumeBackupPolicyInput) => Promise.resolve(saved({ ...body, volume_id: decodeURIComponent(path.split('/').at(-1)!) })));
@@ -185,14 +187,16 @@ describe('scheduled backup settings', () => {
 		] : path === '/api/v1/volumes' ? [available] : []));
 		render(Page);
 		await screen.findByText('Saved policy needs repair.');
-		expect(screen.getByText('Source volume no longer exists.')).toBeTruthy();
+		page.url.search = '?volume=orphan-volume';
+		await screen.findByText('Source volume no longer exists.');
 		expect((screen.getByRole('button', { name: 'autoPolicy.resume:orphan-volume' }) as HTMLButtonElement).disabled).toBe(true);
 		const removeOrphan = screen.getByRole('button', { name: 'autoPolicy.remove:orphan-volume' }) as HTMLButtonElement;
 		expect(removeOrphan.disabled).toBe(false);
 		await fireEvent.click(removeOrphan);
 		await waitFor(() => expect(screen.queryByText('Source volume no longer exists.')).toBeNull());
 		expect(remove).toHaveBeenCalledWith(`${base}/orphan-volume`, 'token-a', 'project-a');
-		expect(screen.getByText('Saved policy needs repair.')).toBeTruthy();
+		page.url.search = '?volume=volume-a';
+		expect(await screen.findByText('Saved policy needs repair.')).toBeTruthy();
 	});
 
 });
@@ -222,7 +226,7 @@ describe('policy project/auth transitions', () => {
 		await screen.findByText('autoPolicy.empty'); pending.resolve(saved({ last_backup_id: 'old-save-result' })); await tick();
 		expect(screen.queryByText('old-save-result')).toBeNull();
 		await openSettings();
-		expect((editor().getByLabelText('autoPolicy.source') as HTMLSelectElement).value).toBe('');
+		expect((editor().getByLabelText('autoPolicy.source') as HTMLSelectElement).value).toBe('volume-a');
 		expect((editor().getByLabelText('autoPolicy.force') as HTMLInputElement).checked).toBe(false);
 	});
 });

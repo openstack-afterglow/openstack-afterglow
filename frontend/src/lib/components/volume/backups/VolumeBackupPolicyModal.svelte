@@ -1,20 +1,22 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
 	import { auth, canWrite } from '$lib/stores/auth';
-	import { t } from '$lib/i18n/ns/volume';
+	import { recoveryPolicyText } from '../recoveryPolicyText';
 	import { Alert, Button, Field, FormModal, SelectInput, TextInput } from '$lib/components/ui';
 	import type { Volume } from '$lib/types/volume';
 	import type { VolumeBackupPolicy, VolumeBackupPolicyInput } from '$lib/types/volumeBackupPolicy';
 	import { policyInput } from '$lib/types/volumeBackupPolicy';
 
-	let { volumes, policies, initialVolumeId = '', resume = false, onSave, onclose }: {
+	let { volumes, policies, initialVolumeId = '', resource = 'backup', resume = false, onSave, onclose }: {
 		volumes: Volume[];
 		policies: VolumeBackupPolicy[];
 		initialVolumeId?: string;
+		resource?: 'backup' | 'snapshot';
 		resume?: boolean;
 		onSave: (volumeId: string, input: VolumeBackupPolicyInput) => Promise<true | string>;
 		onclose: () => void;
 	} = $props();
+	const t = (key: Parameters<typeof recoveryPolicyText>[1], params?: Parameters<typeof recoveryPolicyText>[2]) => recoveryPolicyText(resource, key, params);
 
 	function defaults(): VolumeBackupPolicyInput {
 		let timezone = 'UTC';
@@ -79,7 +81,7 @@
 <FormModal open={true} title={t('autoPolicy.settings')} onClose={close} submitting={saving}>
 	<div class="space-y-4" data-testid="auto-backup-policy-editor">
 		<p class="text-sm text-ink-2">{t('backupPolicy.description')}</p>
-		<Alert tone="info">{t('backupPolicy.chainHelp')}</Alert>
+		<Alert tone="info">{resource === 'snapshot' ? t('snapshotGroups.methodHelp') : t('backupPolicy.chainHelp')}</Alert>
 		{#if !$canWrite}<Alert tone="info">{t('autoPolicy.reader')}</Alert>{/if}
 		<Field label={t('autoPolicy.source')} for={`${componentId}-source`}>
 			<SelectInput id={`${componentId}-source`} bind:value={source} onchange={changeSource} disabled={saving || !$canWrite}>

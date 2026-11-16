@@ -632,6 +632,15 @@ def _tier(backup: dict, project_id: str, volume_id: str) -> str | None:
     return None
 
 
+def classify_recovery_point(point: dict, project_id: str, *, resource: str = "backup") -> str | None:
+    """Return an automatic tier only after the scheduler's exact ownership proof."""
+    if resource not in ("backup", "snapshot"):
+        raise ValueError("Unsupported recovery point resource")
+    prefix = "afterglow:auto_snapshot" if resource == "snapshot" else _PREFIX
+    with using_engine(RecoveryPointEngine(prefix, resource)):
+        return _tier(point, project_id, point.get("volume_id") or "")
+
+
 def _created_time(backup: dict) -> datetime | None:
     value = backup.get("created_at")
     if not isinstance(value, str):

@@ -2,19 +2,19 @@ import { untrack } from 'svelte';
 import { derived, get } from 'svelte/store';
 import { auth, canWrite, projectSwitching } from '$lib/stores/auth';
 import { api, ApiError } from '$lib/api/client';
-import { t } from '$lib/i18n/ns/volume';
+import { recoveryPolicyText } from '$lib/components/volume/recoveryPolicyText';
 import type { Volume } from '$lib/types/volume';
 import type { VolumeBackupPolicy, VolumeBackupPolicyInput } from '$lib/types/volumeBackupPolicy';
 import { policyInput } from '$lib/types/volumeBackupPolicy';
 import { confirmDialog } from '$lib/stores/confirm.svelte';
 import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, type ExperienceContext } from '$lib/utils/experience';
 
-const base = '/api/v1/volumes/backups/auto-backup';
 
 export interface VolumeBackupPoliciesController {
 	readonly policies: VolumeBackupPolicy[];
 	readonly volumes: Volume[];
 	readonly loading: boolean;
+	readonly settled: boolean;
 	readonly error: string;
 	readonly volumesError: string;
 	readonly mutationError: string;
@@ -37,10 +37,13 @@ interface PolicyRequestScope {
 	generation: number;
 }
 
-export function createVolumeBackupPoliciesController(): VolumeBackupPoliciesController {
+export function createVolumeBackupPoliciesController(resource: 'backup' | 'snapshot' = 'backup', enabled: () => boolean = () => true): VolumeBackupPoliciesController {
+	const base = resource === 'snapshot' ? '/api/v1/volume-snapshots/auto-snapshot' : '/api/v1/volumes/backups/auto-backup';
+	const t = (key: Parameters<typeof recoveryPolicyText>[1], params?: Parameters<typeof recoveryPolicyText>[2]) => recoveryPolicyText(resource, key, params);
 	let policies = $state<VolumeBackupPolicy[]>([]);
 	let volumes = $state<Volume[]>([]);
 	let loading = $state(false);
+	let settled = $state(false);
 	let error = $state('');
 	let volumesError = $state('');
 	let mutationError = $state('');
@@ -56,7 +59,7 @@ export function createVolumeBackupPoliciesController(): VolumeBackupPoliciesCont
 	}
 	function current(s: PolicyRequestScope) {
 		const now = get(auth);
-		return !get(projectSwitching) && s.generation === generation && s.token === now.token && s.projectId === now.projectId && s.userId === now.userId;
+		return enabled() && !get(projectSwitching) && s.generation === generation && s.token === now.token && s.projectId === now.projectId && s.userId === now.userId;
 	}
 
 	function refresh() {
@@ -64,7 +67,7 @@ export function createVolumeBackupPoliciesController(): VolumeBackupPoliciesCont
 	}
 	async function refreshAttempt(parentExperience?: ExperienceContext) {
 		const s = scope();
-		if (!s.token || !s.projectId || get(projectSwitching) || busy) return;
+		if (!enabled() || !s.token || !s.projectId || get(projectSwitching) || busy) return;
 		const sequence = ++loadSequence;
 		const experience = parentExperience ?? beginExperienceLoad('monitoring', 'resource.list');
 		const owns = () => current(s) && sequence === loadSequence;
@@ -89,6 +92,7 @@ export function createVolumeBackupPoliciesController(): VolumeBackupPoliciesCont
 		]);
 		if (owns()) {
 			loading = false;
+			settled = true;
 			experienceState(experience, error || volumesError ? 'error' : policies.length ? 'ready' : 'empty');
 			// The controller has no mounted-result fence; publication is known, DOM commitment is not.
 			void experienceApplied(experience);
@@ -96,6 +100,7 @@ export function createVolumeBackupPoliciesController(): VolumeBackupPoliciesCont
 	}
 
 	$effect(() => {
+		const active = enabled();
 		let previous = '';
 		return derived([auth, projectSwitching, canWrite], ([value, switching, writable]) => ({ value, switching, writable })).subscribe(({ value, switching, writable }) => {
 			const key = JSON.stringify([value.token, value.projectId, value.userId, switching, writable]);
@@ -105,8 +110,9 @@ export function createVolumeBackupPoliciesController(): VolumeBackupPoliciesCont
 				generation++;
 				loadSequence++;
 				policies = []; volumes = []; error = ''; volumesError = ''; mutationError = '';
+				settled = false;
 				busy = false; editor = null; loading = Boolean(value.projectId && value.token);
-				if (value.projectId && value.token && !switching) void refreshAttempt();
+				if (active && value.projectId && value.token && !switching) void refreshAttempt();
 			});
 		});
 	});
@@ -186,6 +192,7 @@ export function createVolumeBackupPoliciesController(): VolumeBackupPoliciesCont
 	return {
 		get policies() { return policies; }, get volumes() { return volumes; },
 		get loading() { return loading; }, get error() { return error; }, get volumesError() { return volumesError; },
+		get settled() { return settled; },
 		get mutationError() { return mutationError; }, get busy() { return busy; }, get generation() { return generation; },
 		get resuming() { return resuming; },
 		get editor() { return editor; }, close() { editor = null; }, refresh, open, save, setEnabled, remove,
