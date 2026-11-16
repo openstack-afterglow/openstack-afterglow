@@ -25,6 +25,7 @@ from app.models.mcp_authority import (
     McpProjectCredential,
 )
 from app.services.mcp_control_plane.authority import (
+    MCP_WRITE_OPERATIONS,
     PENDING_ORPHAN_RECOVERY_GRACE,
     McpAuthorityError,
     _as_utc,
@@ -42,6 +43,7 @@ from app.services.mcp_control_plane.authority import (
     max_grant_lifetime,
     recover_stale_pending_orphans,
     schedule_grant_cleanup,
+    validate_project_operations,
 )
 from app.services.mcp_control_plane.oauth import (
     McpOAuthError,
@@ -203,6 +205,28 @@ def _consent_scopes(requested: object, access_level: str | None) -> tuple[str, t
     if not set(approved).issubset(scopes):
         raise McpOAuthAuthorityError("consent may not expand the requested scopes")
     return chosen, approved
+
+
+def _consent_operations(
+    project_scope: str, project_ids: list[str] | None, access_level: str | None, project_operations: object
+) -> tuple[list[str], str, dict[str, tuple[str, ...]]]:
+    """Validate per-project operations; the grant access level follows from them."""
+    if not isinstance(project_operations, dict) or not project_operations:
+        raise McpOAuthAuthorityError("project operations must select at least one project")
+    if project_scope != "selected":
+        raise McpOAuthAuthorityError("project operations require selected projects")
+    if any(not isinstance(project_id, str) or not project_id for project_id in project_operations):
+        raise McpOAuthAuthorityError("project operations must use project IDs")
+    try:
+        chosen = {project_id: validate_project_operations(ops) for project_id, ops in project_operations.items()}
+    except McpAuthorityError as exc:
+        raise McpOAuthAuthorityError(str(exc)) from exc
+    if project_ids is not None and (len(set(project_ids)) != len(project_ids) or set(project_ids) != set(chosen)):
+        raise McpOAuthAuthorityError("project operations must match the selected projects")
+    derived = "manage" if any(MCP_WRITE_OPERATIONS & set(ops) for ops in chosen.values()) else "read"
+    if access_level is not None and access_level != derived:
+        raise McpOAuthAuthorityError("access level does not match the project operations")
+    return list(chosen), derived, chosen
 
 
 def _db_time(value):
@@ -471,6 +495,7 @@ async def approve_consent_ticket(
     project_ids: list[str] | None = None,
     access_level: str | None = None,
     ongoing: bool = False,
+    project_operations: dict[str, list[str]] | None = None,
 ) -> AuthorizationCodeResult:
     """Commit an OAuth grant and one code only after the restricted credential is durable."""
     if type(ongoing) is not bool:
@@ -504,6 +529,11 @@ async def approve_consent_ticket(
         or hint.owner_project_id != owner_project_id
     ):
         raise McpOAuthAuthorityError("authorization ticket is not available")
+    operations = None
+    if project_operations is not None:
+        project_ids, access_level, operations = _consent_operations(
+            project_scope, project_ids, access_level, project_operations
+        )
     chosen_access_level, approved_scopes = _consent_scopes(hint.scopes, access_level)
 
     projects = await _prepare_connection_projects(
@@ -514,6 +544,7 @@ async def approve_consent_ticket(
         project_scope,
         project_ids,
         chosen_access_level,
+        operations,
     )
     grant_id = str(uuid4())
     credentials_ready = False

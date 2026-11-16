@@ -550,16 +550,19 @@ async def test_policy_capabilities_reject_malformed_or_unregistered_native_respo
     client_type = httpx.AsyncClient
     client = client_type(transport=httpx.MockTransport(lambda _: response))
     monkeypatch.setattr("app.services.service_proxy.httpx.AsyncClient", lambda **_: client)
+    subject = {
+        "token": "original-subject",
+        "project_id": "project",
+        "roles": ["project_owner", "member", f"{service}_admin", f"{service}-inventory_reader"],
+        "service_permissions": {service: [f"{service}-inventory_reader"]},
+    }
+    if (service, invalid) == ("palimpsest", "missing-capabilities"):
+        # Palimpsest 0.3.13+ reports only actions; actions outside its fixed table grant nothing.
+        assert (await get_policy_capabilities(service, subject))["capabilities"] == []
+        assert client.is_closed
+        return
     with pytest.raises(HTTPException) as failure:
-        await get_policy_capabilities(
-            service,
-            {
-                "token": "original-subject",
-                "project_id": "project",
-                "roles": ["project_owner", "member", f"{service}_admin", f"{service}-inventory_reader"],
-                "service_permissions": {service: [f"{service}-inventory_reader"]},
-            },
-        )
+        await get_policy_capabilities(service, subject)
     assert failure.value.status_code == 502
     assert failure.value.detail == "Invalid native policy response"
     assert client.is_closed

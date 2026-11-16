@@ -68,7 +68,7 @@ def running_mcp(monkeypatch):
     monkeypatch.setattr(transport, "grant_call_slot", no_redis_slot)
     monkeypatch.setattr(transport, "record_read_invocation", no_database_audit)
 
-    async def resolve(principal, project_id=None, *, write=False):
+    async def resolve(principal, project_id=None, *, operation=None):
         from dataclasses import replace
 
         return replace(

@@ -285,12 +285,12 @@ async def test_member_preview_and_mixed_manage_reuse_native_catalog_without_toke
             conn, "owner", "member-project", ["reader"], project_scope="all", access_level="manage"
         )
         grant = SimpleNamespace(approved_projects=metadata, owner_project_id="member-project", access_level="manage")
-        authority.validate_grant_project(grant, "member-project", write=True)
+        authority.validate_grant_project(grant, "member-project", operation="update")
         with pytest.raises(authority.McpGrantStateError, match="management"):
-            authority.validate_grant_project(grant, "reader-project", write=True)
+            authority.validate_grant_project(grant, "reader-project", operation="update")
         grant.access_level = "read"
-        with pytest.raises(authority.McpGrantStateError, match="management"):
-            authority.validate_grant_project(grant, "member-project", write=True)
+        with pytest.raises(authority.McpGrantStateError, match="invalid"):
+            authority.validate_grant_project(grant, "member-project", operation="update")
     finally:
         await connection.aclose()
         server.shutdown()

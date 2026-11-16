@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
-	import { derived } from 'svelte/store';
+	import { derived, get } from 'svelte/store';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { api, ApiError } from '$lib/api/client';
-	import { auth, projectSwitching } from '$lib/stores/auth';
+	import { auth, projectSwitching, setAuth } from '$lib/stores/auth';
+	import type { SessionTokenResponse } from '$lib/types/auth';
+	import { domainAuthState } from '$lib/utils/authSession';
 	import {
 		clearMcpConsentTicket,
 		pendingMcpConsentTicket,
@@ -22,7 +24,10 @@
 	import { t as commonT } from '$lib/i18n/ns/common';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import McpPermissionPreview from '$lib/components/account/McpPermissionPreview.svelte';
-	import type { McpConsentProject } from '$lib/utils/mcpConsentPermissions';
+	import {
+		canChooseWrite, isWriteOperation, MCP_OPERATIONS, nativeCloudAccess,
+		type McpConsentProject, type McpOperation,
+	} from '$lib/utils/mcpConsentPermissions';
 	import { beginAuthExperience, observedAuthText, createAuthNoticePresenter, type AuthExperience } from '$lib/components/auth/authExperience';
 	import { recordExperience } from '$lib/utils/experience';
 
@@ -59,24 +64,66 @@
 	let decisionUnconfirmed = $state(false);
 	let consent = $state<ConsentDetails | null>(null);
 	let projects = $state<McpConsentProject[]>([]);
-	let accessLevel = $state<'read' | 'manage'>('read');
-	let projectScope = $state<'selected' | 'all'>('selected');
-	let selectedProjectIds = $state<string[]>([]);
+	// Project ID -> chosen operations; a project is approved only when it has at least one.
+	let operations = $state<Record<string, McpOperation[]>>({});
 	let ongoing = $state(true);
 	let reviewStep = $state<'client' | 'permissions'>('client');
 	let heading = $state<HTMLHeadingElement>();
+	let domainTarget = $state('');
+	let domainSwitching = $state(false);
+	let domainError = $state('');
 	const ongoingSupported = $derived(consent?.ongoing_supported === true);
-	const previewProjects = $derived(projectScope === 'all' ? projects
-		: projects.filter((project) => selectedProjectIds.includes(project.id)));
-	const unknownWrite = $derived(accessLevel === 'manage'
-		&& previewProjects.some((project) => typeof project.can_write !== 'boolean'));
-	const selectedReadOnly = $derived(accessLevel === 'manage' && projectScope === 'selected'
-		&& previewProjects.some((project) => project.can_write === false));
-	const canApprove = $derived(!loading && !deciding && consent !== null && reviewStep === 'permissions'
-		&& previewProjects.length > 0 && !unknownWrite && !selectedReadOnly && !decisionUnconfirmed);
+	const requestsManage = $derived(consent?.scopes.includes('mcp:write') === true);
+	const previewProjects = $derived(projects.filter((project) => (operations[project.id]?.length ?? 0) > 0));
+	const accessLevel = $derived<'read' | 'manage'>(
+		previewProjects.some((project) => operations[project.id].some(isWriteOperation)) ? 'manage' : 'read');
+	const otherDomains = $derived(($auth.availableDomains ?? []).filter((domain) => domain.id !== consent?.domain_id));
+	const loopbackRedirect = $derived(consent !== null && isLoopback(consent.redirect_uri));
+	const canApprove = $derived(!loading && !deciding && !domainSwitching && consent !== null && reviewStep === 'permissions'
+		&& previewProjects.length > 0 && !decisionUnconfirmed);
 	function message(error: unknown, fallback: string, observation: AuthExperience) {
 		if (error instanceof ApiError) { observation.unknownMessage(); return error.message; }
 		return fallback;
+	}
+
+	function isLoopback(uri: string) {
+		try {
+			const { protocol, hostname } = new URL(uri);
+			return protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(hostname);
+		} catch {
+			return false;
+		}
+	}
+
+	function allowed(project: McpConsentProject, operation: McpOperation) {
+		return !isWriteOperation(operation) || (requestsManage && canChooseWrite(project));
+	}
+	function chosen(project: McpConsentProject, operation: McpOperation) {
+		return operations[project.id]?.includes(operation) === true;
+	}
+	function withOperation(current: McpOperation[], operation: McpOperation, enabled: boolean): McpOperation[] {
+		return MCP_OPERATIONS.filter((candidate) => candidate === operation ? enabled : current.includes(candidate));
+	}
+	function toggle(project: McpConsentProject, operation: McpOperation) {
+		if (deciding || !allowed(project, operation)) return;
+		operations = { ...operations, [project.id]: withOperation(operations[project.id] ?? [], operation, !chosen(project, operation)) };
+		observeChoice();
+	}
+	function columnProjects(operation: McpOperation) {
+		return projects.filter((project) => allowed(project, operation));
+	}
+	function columnState(operation: McpOperation) {
+		const eligible = columnProjects(operation);
+		const count = eligible.filter((project) => chosen(project, operation)).length;
+		return { all: eligible.length > 0 && count === eligible.length, some: count > 0 && count < eligible.length, eligible: eligible.length };
+	}
+	function toggleColumn(operation: McpOperation) {
+		if (deciding) return;
+		const enable = !columnState(operation).all;
+		const next = { ...operations };
+		for (const project of columnProjects(operation)) next[project.id] = withOperation(next[project.id] ?? [], operation, enable);
+		operations = next;
+		observeChoice();
 	}
 
 	function observeChoice() {
@@ -87,8 +134,7 @@
 		void observation.applied();
 	}
 	function recordChoice(observation: AuthExperience) {
-		const selection = previewProjects.length === 0 ? 'none'
-			: projectScope === 'all' || previewProjects.length === projects.length ? 'all' : 'some';
+		const selection = previewProjects.length === 0 ? 'none' : previewProjects.length === projects.length ? 'all' : 'some';
 		recordExperience(observation.context, 'view.state_changed', {
 			state: 'ready', step: reviewStep === 'client' ? 0 : 1,
 			access: selection === 'none' ? 'none' : accessLevel, selection,
@@ -106,9 +152,6 @@
 		const empty = visible && reviewStep === 'permissions' && !previewProjects.length ? 'mcpConsent.projects.empty' : null;
 		if (empty) t(empty);
 		presentNotice('empty', reviewExperience, 'public-entry', empty, 'warning');
-		const warning = !visible || reviewStep !== 'permissions' ? null : unknownWrite ? 'mcpConsent.preview.unknownWrite' : selectedReadOnly ? 'mcpConsent.preview.selectedReadOnly' : null;
-		if (warning) t(warning);
-		presentNotice('authority', reviewExperience, 'public-entry', warning, 'warning');
 	});
 
 	function formatDeadline(value: string) {
@@ -134,9 +177,7 @@
 		activeRequest = null;
 		consent = null;
 		projects = [];
-		selectedProjectIds = [];
-		accessLevel = 'read';
-		projectScope = 'selected';
+		operations = {};
 		ongoing = true;
 		reviewStep = 'client';
 		deciding = false;
@@ -180,8 +221,9 @@
 			consent = details;
 			ongoing = details.ongoing_supported === true;
 			projects = availableProjects;
-			selectedProjectIds = availableProjects.some((project) => project.id === request.projectId)
-				? [request.projectId] : [];
+			operations = availableProjects.some((project) => project.id === request.projectId)
+				? { [request.projectId]: ['read'] } : {};
+			domainTarget = '';
 			request.experience.state(availableProjects.length ? 'ready' : 'empty', 0);
 			reviewExperience = request.experience;
 			recordChoice(request.experience);
@@ -199,20 +241,45 @@
 		}
 	}
 
+	// Re-scope only the working domain; the same ticket is reloaded for the new session project.
+	async function switchDomain() {
+		const current = get(auth);
+		const target = domainTarget;
+		if (!target || deciding || domainSwitching || get(projectSwitching) || !current.token
+			|| !otherDomains.some((domain) => domain.id === target)) return;
+		domainSwitching = true;
+		domainError = '';
+		projectSwitching.set(true);
+		try {
+			const response = await api.post<SessionTokenResponse>('/api/v1/auth/token/domain', { domain_id: target }, current.token, undefined,
+				{ replayOnUnauthorized: false, suppressAuthRedirect: true, cache: 'no-store' });
+			setAuth(domainAuthState(response, current, target));
+		} catch {
+			domainError = t('mcpConsent.domain.switchFailed');
+		} finally {
+			domainSwitching = false;
+			projectSwitching.set(false);
+		}
+	}
+
 	async function decide(decision: 'approve' | 'deny') {
 		const request = activeRequest;
 		if (!request || !isCurrent(request) || !consent || loading || deciding || decisionUnconfirmed) return;
 		const epoch = ownerEpoch;
 		const observation = beginAuthExperience('mcp.consent', decision, () => mounted && epoch === ownerEpoch, 'mcp');
 		const text = observedAuthText(observation, 'public-entry', t);
-		if (decision === 'approve' && (!canApprove || (ongoing && !ongoingSupported)
-			|| (accessLevel === 'manage' && !consent.scopes.includes('mcp:write')))) { observation.validation('authority'); return; }
+		const unauthorizedWrite = previewProjects.some((project) => operations[project.id].some((operation) => !allowed(project, operation)));
+		if (decision === 'approve' && (!canApprove || (ongoing && !ongoingSupported) || unauthorizedWrite)) { observation.validation('authority'); return; }
 		observation.state('loading', reviewStep === 'client' ? 0 : 1);
 		const requestedOngoing = decision === 'approve' && ongoing;
+		// Uniform all-read or all-operation selections keep the pre-operation wire body, so an
+		// older backend in a rolling upgrade still accepts them; mixed selections need the map.
+		const uniform = previewProjects.every((project) => operations[project.id].length === (accessLevel === 'manage' ? MCP_OPERATIONS.length : 1));
 		const body = decision === 'deny' ? {} : {
 			access_level: accessLevel,
-			project_scope: projectScope,
-			project_ids: projectScope === 'all' ? [] : [...selectedProjectIds],
+			project_scope: 'selected',
+			project_ids: previewProjects.map((project) => project.id),
+			...(uniform ? {} : { project_operations: Object.fromEntries(previewProjects.map((project) => [project.id, [...operations[project.id]]])) }),
 			...(ongoing ? { ongoing: true } : {}),
 		};
 		const controller = new AbortController();
@@ -330,10 +397,14 @@
 				{#snippet children()}{error}{/snippet}
 			</Alert>
 		{/if}
+		{#if domainError}
+			<Alert tone="danger">
+				{#snippet children()}{domainError}{/snippet}
+			</Alert>
+		{/if}
 		{#if loading}
-			<LoadingState variant="section" label={t('mcpConsent.loading')} />
+			<LoadingState variant="section" label={t(domainSwitching ? 'mcpConsent.domain.switching' : 'mcpConsent.loading')} />
 		{:else if consent && !decisionUnconfirmed}
-			{@const requestsManage = consent.scopes.includes('mcp:write')}
 			{#if reviewStep === 'client'}
 				<dl aria-label={t('mcpConsent.details.client')} class="consent-details">
 					<div><dt>{t('mcpConsent.details.client')}</dt><dd><strong>{consent.client_name}</strong></dd></div>
@@ -357,55 +428,74 @@
 				<code>{consent.client_id}</code>
 				<p class="consent-domain"><span>{t('mcpConsent.details.domain')}</span> <strong>{consent.domain_name ?? ''}</strong> <code>{consent.domain_id ?? ''}</code></p>
 				<p class="consent-domain-help">{t('mcpConsent.domain.help')}</p>
-				{#if ($auth.availableDomains?.length ?? 0) > 1}
-					<Button variant="secondary" onclick={() => void goto('/select-domain')} disabled={deciding}>{t('mcpConsent.domain.change')}</Button>
+				{#if otherDomains.length > 0}
+					<div class="domain-switch">
+						<Field label={t('mcpConsent.domain.label')} for="mcp-consent-domain">
+							<SelectInput id="mcp-consent-domain" value={domainTarget} disabled={deciding || domainSwitching}
+								onchange={(event) => { domainTarget = (event.target as HTMLSelectElement).value; }}>
+								<option value="">{t('mcpConsent.domain.placeholder')}</option>
+								{#each otherDomains as domain (domain.id)}
+									<option value={domain.id}>{domain.name}</option>
+								{/each}
+							</SelectInput>
+						</Field>
+						<Button variant="secondary" onclick={() => void switchDomain()} disabled={!domainTarget || deciding || domainSwitching}>{t('mcpConsent.domain.change')}</Button>
+					</div>
 				{/if}
 			</div>
-			<div class="choices auth-flow-fields">
-				<Field label={t('mcpConsent.access.label')} for="mcp-consent-access" help={requestsManage ? t('mcpConsent.access.help') : t('mcpConsent.access.manageUnavailable')}>
-					<SelectInput id="mcp-consent-access" value={accessLevel} disabled={deciding}
-						onchange={(event) => { accessLevel = (event.target as HTMLSelectElement).value === 'manage' && requestsManage ? 'manage' : 'read'; observeChoice(); }}>
-						<option value="read">{t('mcpConsent.access.read')}</option>
-						<option value="manage" disabled={!requestsManage}>{t('mcpConsent.access.manage')}</option>
-					</SelectInput>
-				</Field>
-				<Field label={t('mcpConsent.projects.label')} for="mcp-consent-project-scope" help={t('mcpConsent.projects.help')}>
-					<SelectInput id="mcp-consent-project-scope" value={projectScope} disabled={deciding || projects.length === 0}
-						onchange={(event) => { projectScope = (event.target as HTMLSelectElement).value === 'all' ? 'all' : 'selected'; observeChoice(); }}>
-						<option value="selected">{t('mcpConsent.projects.selected')}</option>
-						<option value="all">{t('mcpConsent.projects.all')}</option>
-					</SelectInput>
-				</Field>
-			</div>
-			{#if projectScope === 'selected'}
-				<fieldset class="project-options" disabled={deciding}>
-					<legend>{t('mcpConsent.projects.choose')}</legend>
-					{#each projects as project (project.id)}
-						<div class="project-option">
-							<SelectionCheckbox ariaLabel={`${project.name} ${project.id}`} checked={selectedProjectIds.includes(project.id)} disabled={deciding}
-								onclick={() => {
-									if (deciding) return;
-									selectedProjectIds = selectedProjectIds.includes(project.id)
-										? selectedProjectIds.filter((id) => id !== project.id) : [...selectedProjectIds, project.id];
-									observeChoice();
-								}} />
-							<span>{project.name}<code>{project.id}</code></span>
-						</div>
-					{/each}
-				</fieldset>
-			{/if}
-			{#if projects.length === 0 || (projectScope === 'selected' && selectedProjectIds.length === 0)}
+			<section class="operation-section" aria-labelledby="mcp-consent-operations">
+				<h2 id="mcp-consent-operations" class="operation-heading">{t('mcpConsent.operations.label')}</h2>
+				<p class="duration-help">{t(requestsManage ? 'mcpConsent.operations.help' : 'mcpConsent.operations.readOnlyClient')}</p>
+				{#if projects.length > 0}
+					<div class="operation-table-scroll">
+						<table class="operation-table" aria-labelledby="mcp-consent-operations">
+							<thead>
+								<tr>
+									<th scope="col">{t('mcpConsent.operations.project')}</th>
+									{#each MCP_OPERATIONS as operation (operation)}
+										{@const column = columnState(operation)}
+										<th scope="col">
+											<span class="operation-column">
+												<SelectionCheckbox ariaLabel={t('mcpConsent.operations.selectAll', { operation: t(`mcpConsent.operations.${operation}`) })}
+													checked={column.all} indeterminate={column.some} disabled={deciding || column.eligible === 0}
+													onclick={() => toggleColumn(operation)} />
+												<span>{t(`mcpConsent.operations.${operation}`)}</span>
+											</span>
+											<small>{t(`mcpConsent.operations.${operation}Help`)}</small>
+										</th>
+									{/each}
+								</tr>
+							</thead>
+							<tbody>
+								{#each projects as project (project.id)}
+									{@const ceiling = nativeCloudAccess(project)}
+									<tr>
+										<th scope="row">
+											<span class="project-label">{project.name}<code>{project.id}</code></span>
+											{#if ceiling !== 'manage'}
+												<small class="project-ceiling">{t(`mcpConsent.operations.ceiling.${ceiling}`)}</small>
+											{/if}
+										</th>
+										{#each MCP_OPERATIONS as operation (operation)}
+											<td>
+												<SelectionCheckbox ariaLabel={`${project.name} ${project.id} ${t(`mcpConsent.operations.${operation}`)}`}
+													checked={chosen(project, operation)} disabled={deciding || !allowed(project, operation)}
+													onclick={() => toggle(project, operation)} />
+											</td>
+										{/each}
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+				{/if}
+			</section>
+			{#if previewProjects.length === 0}
 				<Alert tone="warning">
 					{#snippet children()}{t('mcpConsent.projects.empty')}{/snippet}
 				</Alert>
-			{/if}
-			{#if previewProjects.length > 0}
-				<McpPermissionPreview projects={previewProjects} {accessLevel} />
-			{/if}
-			{#if unknownWrite || selectedReadOnly}
-				<Alert tone="warning">
-					{#snippet children()}{t(unknownWrite ? 'mcpConsent.preview.unknownWrite' : 'mcpConsent.preview.selectedReadOnly')}{/snippet}
-				</Alert>
+			{:else}
+				<McpPermissionPreview projects={previewProjects} {operations} />
 			{/if}
 			<Alert tone={accessLevel === 'manage' ? 'warning' : 'info'} title={accessLevel === 'manage' ? t('mcpConsent.manage.title') : t('mcpConsent.read.title')}>
 				{#snippet children()}{accessLevel === 'manage' ? t('mcpConsent.manage.body') : t('mcpConsent.read.body')}{/snippet}
@@ -423,6 +513,9 @@
 				</Alert>
 				<p id="mcp-consent-revocation-help" class="duration-help">{t('mcpConsent.duration.revocation')}</p>
 			</fieldset>
+			{#if loopbackRedirect}
+				<p class="duration-help">{t('mcpConsent.remote.help')}</p>
+			{/if}
 			<div class="auth-flow-actions">
 				{#if deciding}
 					<LoadingState variant="inline" label={t('mcpConsent.actions.processing')} class="decision-activity" />
@@ -451,14 +544,21 @@
 	.consent-client-summary { display: grid; gap: 0.25rem; min-width: 0; padding-bottom: 0.75rem; border-bottom: 1px solid var(--color-line); }
 	.consent-client-summary strong { font-size: var(--type-body); font-weight: 500; }
 	.consent-client-summary code { color: var(--color-ink-2); }
-	.choices { grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); }
-	.choices :global(.field), .choices :global(select) { min-width: 0; }
-	.project-options { display: grid; gap: 0.5rem; min-width: 0; margin: 0; padding: 0; border: 0; }
-	.project-options legend { margin-bottom: 0.5rem; color: var(--color-ink-1); font-size: var(--type-body); }
-	.project-option { display: flex; align-items: flex-start; gap: 0.5rem; min-width: 0; padding-block: 0.5rem; color: var(--color-ink-0); font-size: var(--type-body); overflow-wrap: anywhere; }
-	.project-option :global(.selection-checkbox) { flex-shrink: 0; }
-	.project-options span { min-width: 0; }
-	.project-options code { display: block; color: var(--color-ink-2); font-size: var(--type-identifier); }
+	.domain-switch { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.5rem 0.75rem; margin-top: 0.5rem; }
+	.domain-switch :global(.field) { flex: 1 1 14rem; min-width: 0; }
+	.domain-switch :global(select) { min-width: 0; }
+	.operation-section { display: grid; gap: 0.5rem; min-width: 0; }
+	.operation-heading { margin: 0; color: var(--color-ink-0); font-size: 1rem; font-weight: 600; }
+	.operation-table-scroll { min-width: 0; overflow-x: auto; }
+	.operation-table { width: 100%; border-collapse: collapse; font-size: var(--type-support); }
+	.operation-table th, .operation-table td { padding: 0.5rem 0.375rem; border-bottom: 1px solid var(--color-line); vertical-align: top; text-align: left; }
+	.operation-table thead th { color: var(--color-ink-1); font-weight: 500; }
+	.operation-table thead th:not(:first-child), .operation-table td { width: 5.5rem; text-align: center; }
+	.operation-table small { display: block; margin-top: 0.125rem; color: var(--color-ink-2); font-size: var(--type-identifier); font-weight: 400; }
+	.operation-column { display: inline-flex; align-items: center; gap: 0.25rem; }
+	.operation-table tbody th { min-width: 0; color: var(--color-ink-0); font-weight: 400; overflow-wrap: anywhere; }
+	.project-label code { display: block; color: var(--color-ink-2); font-size: var(--type-identifier); }
+	.operation-table .project-ceiling { color: var(--color-state-warning-text); }
 	.duration-options { display: grid; gap: 0.75rem; min-width: 0; margin: 0; padding: 0; border: 0; }
 	.duration-options legend { margin-bottom: 0.5rem; color: var(--color-ink-1); font-size: var(--type-body); }
 	.duration-option { display: flex; align-items: center; gap: 0.5rem; min-width: 0; color: var(--color-ink-0); font-size: var(--type-body); overflow-wrap: anywhere; }
@@ -469,5 +569,9 @@
 	@media (min-width: 640px) {
 		.consent-details { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem 1.25rem; }
 		.consent-details > div:nth-child(3) { grid-column: 1 / -1; }
+	}
+	@media (max-width: 479px) {
+		.operation-table thead th:not(:first-child), .operation-table td { width: 3.75rem; }
+		.operation-table thead small { display: none; }
 	}
 </style>

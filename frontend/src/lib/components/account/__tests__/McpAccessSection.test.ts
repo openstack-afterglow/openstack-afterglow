@@ -716,7 +716,6 @@ describe('McpAccessSection', () => {
 		await fireEvent.change(screen.getByLabelText(t('mcp.permission')), { target: { value: 'manage' } });
 		expect(screen.getByText(t('mcp.managePreviewPending'))).toBeTruthy();
 		expect(screen.queryByText(t('mcp.managePreviewUnknown'))).toBeNull();
-		expect(screen.queryByText(tp('mcpConsent.preview.unknownWrite'))).toBeNull();
 		expect(screen.queryByText(tp('mcpConsent.preview.unavailable'))).toBeNull();
 		expect(button.hasAttribute('disabled')).toBe(true);
 		await fireEvent.submit(button.closest('form')!);

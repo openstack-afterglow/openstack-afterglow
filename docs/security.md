@@ -31,6 +31,8 @@ Lumen·Drover·Waygate·Palimpsest는 fresh native core `member`/`manager`/`admi
 
 지속 OAuth 승인은 현재 human native 인증을 다시 검증한 명시 승인에서만 만든다. 기존 유한 승인을 소급 연장하거나 application-credential/Trust/OAuth 기반 권위로 새 credential을 만들지 않는다. 승인 당시 프로젝트 집합·role ID/name·read/manage scope를 고정하고 refresh는 기존 범위만 유지하거나 축소하며 실제 현재 역할·리소스 소유권을 매번 재확인한다. Refresh 재사용은 family/grant를 회수한다. 변경의 final authorization 전에 축소된 권한은 거부하고 그 뒤 이미 승인된 전송은 원장 경계에서 유지한다.
 
+OAuth 동의는 프로젝트마다 `read`·`create`·`update`를 따로 저장하고 MCP 도구마다 하나의 작업을 요구한다. 생성만 허용한 프로젝트에서 기존 리소스 변경·삭제나 조회는 provider 호출 전에 거부한다. 저장된 작업 목록은 grant access level보다 우선하며 더 넓게 해석하지 않는다. 쓰기 작업은 승인 당시 대상 프로젝트의 native 쓰기 역할과 `mcp:write`가 모두 있어야 하고, 실행 때마다 현재 역할·native 서비스 정책을 다시 확인한다. Palimpsest의 action 전용 정책 응답은 action→capability 고정 표로만 투영하며 알 수 없는 action은 권한으로 바꾸지 않는다.
+
 지속 restricted credential은 만료가 없으므로 취소 전 장기 유출 위험이 있다. 로컬 grant 폐기는 즉시 dispatch를 막지만 Keystone 삭제는 소유자 native session으로 별도 확인해야 한다. 종료된 grant의 암호문은 원장 lease 조정과 미정산 credential 생성 경계를 확인한 뒤 제거한다. Expired/missing lease는 unknown으로 조정될 수 있으며 이는 worker 종료나 provider 결과의 증거가 아니다. 기존 unknown 원장·재전송 금지와 원격 credential ID·정리 대기는 보존한다. 원격 삭제가 확인되기 전에는 삭제 완료로 표시하지 않는다. MCP permission preview는 Lumen 정책/API 키·제어를 조회하지 않으며 반대 방향인 Lumen→승인된 cloud MCP bridge는 유지한다.
 
 ## MCP 네트워크·VM 장치 변경 경계

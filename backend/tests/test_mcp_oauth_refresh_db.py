@@ -1128,7 +1128,7 @@ async def test_oauth_write_consent_narrowed_to_read_freezes_projects_through_ref
         for target in ("A", "B"):
             validate_grant_project(grant, target)
             with pytest.raises(McpAuthorityError, match="management"):
-                validate_grant_project(grant, target, write=True)
+                validate_grant_project(grant, target, operation="update")
         with pytest.raises(McpAuthorityError, match="outside"):
             validate_grant_project(grant, "C")
 
@@ -1175,6 +1175,44 @@ async def test_oauth_manage_consent_uses_actual_target_roles_not_home_roles(oaut
         assert request.grant_id is None
     _, tokens, _ = await approve_and_exchange(consent, project_scope="selected", project_ids=["B"], access_level="read")
     assert tokens["scope"] == "mcp:read"
+
+
+async def test_oauth_project_operations_save_each_project_selection(oauth_consent):
+    from app.services.mcp_control_plane.authority import McpAuthorityError, validate_grant_project
+    from app.services.mcp_control_plane.oauth_authority import approve_consent_ticket
+
+    consent = oauth_consent
+    with pytest.raises(McpAuthorityError, match="management"):
+        await approve_consent_ticket(
+            consent.factory,
+            ticket=consent.ticket,
+            owner_user_id=consent.owner,
+            owner_project_id="A",
+            username="owner",
+            roles=["member"],
+            conn=consent.conn,
+            project_scope="selected",
+            project_operations={"A": ["read"], "B": ["update"]},
+        )
+    assert consent.created == []
+
+    _, tokens, grant_id = await approve_and_exchange(
+        consent, project_scope="selected", project_operations={"A": ["read", "create"], "B": ["read"]}
+    )
+    assert tokens["scope"] == "mcp:read mcp:write"
+    async with consent.factory() as session:
+        grant = await session.get(McpDelegatedGrant, grant_id)
+        assert grant.access_level == "manage"
+        assert [(row["id"], row["operations"]) for row in grant.approved_projects] == [
+            ("A", ["read", "create"]),
+            ("B", ["read"]),
+        ]
+        validate_grant_project(grant, "A", operation="create")
+        with pytest.raises(McpAuthorityError, match="management"):
+            validate_grant_project(grant, "A", operation="update")
+        validate_grant_project(grant, "B", operation="read")
+        with pytest.raises(McpAuthorityError, match="management"):
+            validate_grant_project(grant, "B", operation="create")
 
 
 async def test_oauth_ticket_expiring_during_credential_creation_revokes_and_cleans(oauth_consent, monkeypatch):
@@ -2101,7 +2139,7 @@ async def test_refresh_attenuation_invalidates_captured_write_principal_at_final
     narrowed = await refresh(issued, client_id=issued.client_id, scope="mcp:read")
     assert narrowed.status_code == 200
     with pytest.raises(ledger.McpInvocationError) as denied:
-        await ledger.authorize_mutation_dispatch(principal, invocation_id=invocation_id)
+        await ledger.authorize_mutation_dispatch(principal, invocation_id=invocation_id, operation="update")
     assert isinstance(denied.value.__cause__, authentication.McpAuthenticationError)
     async with consent.factory() as session:
         invocation = await session.get(McpToolInvocation, invocation_id)

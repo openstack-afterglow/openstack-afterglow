@@ -11,7 +11,7 @@ const experience = vi.hoisted(() => ({
 	begin: vi.fn(), applied: vi.fn(), discarded: vi.fn(), message: vi.fn(), state: vi.fn(), record: vi.fn(),
 }));
 
-const { api, auth, projectSwitching, goto, page } = vi.hoisted(() => {
+const { api, auth, projectSwitching, goto, page, setAuth, domainAuthState } = vi.hoisted(() => {
 	function store<T>(initial: T) {
 		let value = initial;
 		const subscribers = new Set<(next: T) => void>();
@@ -33,13 +33,16 @@ const { api, auth, projectSwitching, goto, page } = vi.hoisted(() => {
 		projectSwitching: store(false),
 		goto: vi.fn(),
 		page: store({ url: new URL('http://localhost/oauth/mcp/authorize'), data: {} }),
+		setAuth: vi.fn(),
+		domainAuthState: vi.fn(),
 	};
 });
 
 vi.mock('$app/navigation', () => ({ goto }));
 vi.mock('$app/stores', () => ({ page }));
 vi.mock('$lib/api/client', () => ({ api, ApiError: class ApiError extends Error { constructor(_status: number, detail: string) { super(detail); } } }));
-vi.mock('$lib/stores/auth', () => ({ auth, projectSwitching }));
+vi.mock('$lib/stores/auth', () => ({ auth, projectSwitching, setAuth }));
+vi.mock('$lib/utils/authSession', () => ({ domainAuthState }));
 vi.mock('$lib/utils/experience', async importOriginal => {
 	const actual = await importOriginal<typeof ExperienceModule>();
 	return {
@@ -96,7 +99,13 @@ function defaultGets(scopes = ['mcp:read'], available = projects, capability: Re
 	api.get.mockImplementation((path: string) => Promise.resolve(path === '/api/v1/auth/mcp-projects?preview=true' ? available : { ...details, scopes, ...capability }));
 }
 function approveButton() { return screen.getByRole('button', { name: t('mcpConsent.actions.allowRead') }) as HTMLButtonElement; }
-function checkbox(id: string) { return screen.getByRole('checkbox', { name: new RegExp(id) }) as HTMLInputElement; }
+function operation(id: string, op: 'read' | 'create' | 'update') {
+	return screen.getByRole('checkbox', { name: new RegExp(`${id} ${t(`mcpConsent.operations.${op}`)}$`) }) as HTMLInputElement;
+}
+function checkbox(id: string) { return operation(id, 'read'); }
+function column(op: 'read' | 'create' | 'update') {
+	return screen.getByRole('checkbox', { name: t('mcpConsent.operations.selectAll', { operation: t(`mcpConsent.operations.${op}`) }) }) as HTMLInputElement;
+}
 function ongoingCheckbox() { return screen.getByRole('checkbox', { name: t('mcpConsent.duration.ongoingLabel') }) as HTMLInputElement; }
 function finiteDescription() {
 	const deadline = new Intl.DateTimeFormat(intlLocale(), { dateStyle: 'long', timeStyle: 'short' }).format(new Date(details.grant_deadline));
@@ -104,15 +113,12 @@ function finiteDescription() {
 }
 async function loaded() {
 	await fireEvent.click(await screen.findByRole('button', { name: commonT('pagination.next') }));
-	await screen.findByRole('combobox', { name: t('mcpConsent.access.label') });
+	await screen.findByRole('heading', { name: t('mcpConsent.operations.label') });
 }
 function preview() { return within(screen.getByRole('region', { name: t('mcpConsent.preview.title') })); }
 function projectPreview(id: string) { return within(preview().getByRole('listitem', { name: new RegExp(id) })); }
-async function chooseAccess(access: 'read' | 'manage') {
-	await fireEvent.change(screen.getByRole('combobox', { name: t('mcpConsent.access.label') }), { target: { value: access } });
-}
-async function chooseScope(scope: 'selected' | 'all') {
-	await fireEvent.change(screen.getByRole('combobox', { name: t('mcpConsent.projects.label') }), { target: { value: scope } });
+async function allow(id: string, ...ops: ('read' | 'create' | 'update')[]) {
+	for (const op of ops) await fireEvent.click(operation(id, op));
 }
 function expectDecision(decision: 'approve' | 'deny', body: unknown, token: string, projectId: string) {
 	expect(api.post).toHaveBeenCalledWith(`/api/v1/auth/mcp-oauth/consents/${ticket}/${decision}`,
@@ -260,15 +266,17 @@ describe('MCP OAuth consent route', () => {
 		expect(api.get).not.toHaveBeenCalled();
 	});
 
-	it.each(['ko', 'en', 'ja', 'zh-CN', 'bn', 'ms', 'nb', 'sw', 'vi'] as const)('labels the choices in %s and disables unrequested manage access', async (locale) => {
+	it.each(['ko', 'en', 'ja', 'zh-CN', 'bn', 'ms', 'nb', 'sw', 'vi'] as const)('labels the operation table in %s and disables writes the client did not request', async (locale) => {
 		initLocale(locale);
 		render(Page);
 		await loaded();
-		expect((screen.getByRole('option', { name: t('mcpConsent.access.manage') }) as HTMLOptionElement).disabled).toBe(true);
-		expect(screen.getByText(t('mcpConsent.access.manageUnavailable'))).toBeTruthy();
-		expect((screen.getByRole('combobox', { name: t('mcpConsent.access.label') }) as HTMLSelectElement).value).toBe('read');
-		expect(screen.getByRole('combobox', { name: t('mcpConsent.projects.label') })).toBeTruthy();
-		expect(projectPreview('project-a').getByText(t('mcpConsent.preview.cloud.read'))).toBeTruthy();
+		expect(screen.getByText(t('mcpConsent.operations.readOnlyClient'))).toBeTruthy();
+		for (const op of ['create', 'update'] as const) {
+			expect(operation('project-a', op).disabled).toBe(true);
+			expect(column(op).disabled).toBe(true);
+		}
+		expect(checkbox('project-a').checked).toBe(true);
+		expect(projectPreview('project-a').getByText(t('mcpConsent.operations.read'))).toBeTruthy();
 		expect(projectPreview('project-a').getByText(t('mcpConsent.preview.service.denied'))).toBeTruthy();
 		expect(projectPreview('project-a').getByText(t('mcpConsent.permission.droverAccess'))).toBeTruthy();
 		expect(preview().queryByText('Lumen')).toBeNull();
@@ -302,7 +310,7 @@ describe('MCP OAuth consent route', () => {
 		expectDecision('approve', { access_level: 'read', project_scope: 'selected', project_ids: ['project-a'] }, actor.token, actor.projectId);
 	});
 
-	it('preserves finite opt-out while reviewing again and changing the approved scope', async () => {
+	it('preserves finite opt-out while reviewing again and changing the approved operations', async () => {
 		defaultGets(['mcp:read', 'mcp:write']);
 		render(Page);
 		await loaded();
@@ -310,8 +318,7 @@ describe('MCP OAuth consent route', () => {
 		await fireEvent.click(screen.getByRole('button', { name: commonT('pagination.previous') }));
 		await loaded();
 		expect(ongoingCheckbox().checked).toBe(false);
-		await chooseScope('all');
-		await chooseAccess('manage');
+		await allow('project-a', 'create', 'update');
 		expect(ongoingCheckbox().checked).toBe(false);
 		expect(screen.getByText(finiteDescription())).toBeTruthy();
 		await fireEvent.click(ongoingCheckbox());
@@ -319,7 +326,7 @@ describe('MCP OAuth consent route', () => {
 		expect(screen.queryByText(finiteDescription())).toBeNull();
 		expect(api.post).not.toHaveBeenCalled();
 		await fireEvent.click(screen.getByRole('button', { name: t('mcpConsent.actions.allowManage') }));
-		expectDecision('approve', { access_level: 'manage', project_scope: 'all', project_ids: [], ongoing: true }, actor.token, actor.projectId);
+		expectDecision('approve', { access_level: 'manage', project_scope: 'selected', project_ids: ['project-a'], ongoing: true }, actor.token, actor.projectId);
 	});
 
 	it.each(transitions)('resets the duration choice to the disclosed default on %s', async (kind) => {
@@ -343,7 +350,8 @@ describe('MCP OAuth consent route', () => {
 		defaultGets(['mcp:read', 'mcp:write']);
 		render(Page);
 		await loaded();
-		expect((screen.getByRole('option', { name: t('mcpConsent.access.manage') }) as HTMLOptionElement).disabled).toBe(false);
+		expect(operation('project-a', 'create').disabled).toBe(false);
+		expect(operation('project-b', 'create').disabled).toBe(true);
 		await fireEvent.click(checkbox('project-a'));
 		expect(approveButton().disabled).toBe(true);
 		await fireEvent.click(approveButton());
@@ -357,89 +365,96 @@ describe('MCP OAuth consent route', () => {
 		expect(pendingMcpConsentTicket()).toBeNull();
 	});
 
-	it.each(['read', 'manage'] as const)('sends explicit %s access and no IDs for all-project approval', async (access) => {
-		defaultGets(access === 'manage' ? ['mcp:read', 'mcp:write'] : ['mcp:read']);
+	it('sends each project its own operations when the selection is mixed', async () => {
+		defaultGets(['mcp:read', 'mcp:write']);
 		render(Page);
 		await loaded();
-		await fireEvent.change(screen.getByRole('combobox', { name: t('mcpConsent.access.label') }), { target: { value: access } });
-		await fireEvent.change(screen.getByRole('combobox', { name: t('mcpConsent.projects.label') }), { target: { value: 'all' } });
-		expect(screen.queryByRole('checkbox', { name: /project-[ab]/ })).toBeNull();
-		expect(ongoingCheckbox().checked).toBe(true);
-		await fireEvent.click(screen.getByRole('button', { name: t(access === 'manage' ? 'mcpConsent.actions.allowManage' : 'mcpConsent.actions.allowRead') }));
+		await fireEvent.click(column('create'));
+		expect(operation('project-a', 'create').checked).toBe(true);
+		expect(operation('project-b', 'create').checked).toBe(false);
+		await fireEvent.click(checkbox('project-b'));
+		await fireEvent.click(screen.getByRole('button', { name: t('mcpConsent.actions.allowManage') }));
 		expectDecision('approve', {
-			access_level: access, project_scope: 'all', project_ids: [], ongoing: true,
+			access_level: 'manage', project_scope: 'selected', project_ids: ['project-a', 'project-b'],
+			project_operations: { 'project-a': ['read', 'create'], 'project-b': ['read'] }, ongoing: true,
 		}, actor.token, actor.projectId);
 	});
 
-	it('previews all mixed projects with independent native service leaves without granting on selection', async () => {
+	it('allows create without read and never sends a project without operations', async () => {
+		defaultGets(['mcp:read', 'mcp:write']);
+		render(Page);
+		await loaded();
+		await allow('project-a', 'read', 'create');
+		await fireEvent.click(screen.getByRole('button', { name: t('mcpConsent.actions.allowManage') }));
+		expectDecision('approve', {
+			access_level: 'manage', project_scope: 'selected', project_ids: ['project-a'],
+			project_operations: { 'project-a': ['create'] }, ongoing: true,
+		}, actor.token, actor.projectId);
+	});
+
+	it('selects a whole read column and clears it again', async () => {
+		render(Page);
+		await loaded();
+		await fireEvent.click(column('read'));
+		expect(checkbox('project-a').checked).toBe(true);
+		expect(checkbox('project-b').checked).toBe(true);
+		await fireEvent.click(column('read'));
+		expect(checkbox('project-a').checked).toBe(false);
+		expect(checkbox('project-b').checked).toBe(false);
+		await fireEvent.click(column('read'));
+		await fireEvent.click(approveButton());
+		expectDecision('approve', { access_level: 'read', project_scope: 'selected', project_ids: ['project-a', 'project-b'], ongoing: true }, actor.token, actor.projectId);
+	});
+
+	it('previews mixed projects with collapsed native service leaves without granting on selection', async () => {
 		defaultGets(['mcp:read', 'mcp:write']);
 		render(Page);
 		await loaded();
 		expect(preview().queryByRole('listitem', { name: /project-b/ })).toBeNull();
-		await chooseAccess('manage');
-		await chooseScope('all');
-		expect(projectPreview('project-a').getByText(t('mcpConsent.preview.cloud.manage'))).toBeTruthy();
-		expect(projectPreview('project-b').getByText(t('mcpConsent.preview.cloud.read'))).toBeTruthy();
+		await allow('project-a', 'create', 'update');
+		await fireEvent.click(checkbox('project-b'));
+		expect(projectPreview('project-a').getByText(new RegExp(t('mcpConsent.operations.update')))).toBeTruthy();
+		expect(projectPreview('project-b').getByText(t('mcpConsent.operations.read'))).toBeTruthy();
 		expect(projectPreview('project-a').getByText('drover-clusters_editor')).toBeTruthy();
 		expect(projectPreview('project-a').queryByText(/lumen-/)).toBeNull();
-		expect(projectPreview('project-b').getByText('palimpsest-publish_editor')).toBeTruthy();
-		expect(projectPreview('project-b').queryByText(/lumen-/)).toBeNull();
+		expect(projectPreview('project-b').queryByText('palimpsest-publish_editor')).toBeNull();
+		expect(projectPreview('project-b').getByText('palimpsest-inventory_reader')).toBeTruthy();
 		expect(preview().queryByText('Lumen')).toBeNull();
 		for (const name of ['Drover', 'Palimpsest', 'Waygate']) {
 			expect(projectPreview('project-a').getByText(name)).toBeTruthy();
 			expect(projectPreview('project-b').getByText(name)).toBeTruthy();
 		}
-		expect(preview().queryByText('waygate-clients_editor')).toBeNull();
+		expect(preview().getAllByText(t('mcpConsent.preview.serviceDetails'))).toHaveLength(2);
 		expect(screen.getByText(t('mcpConsent.manage.body'))).toBeTruthy();
 		expect(api.post).not.toHaveBeenCalled();
-		await fireEvent.click(screen.getByRole('button', { name: t('mcpConsent.actions.allowManage') }));
-		expectDecision('approve', { access_level: 'manage', project_scope: 'all', project_ids: [], ongoing: true }, actor.token, actor.projectId);
 	});
 
-	it('immediately attenuates every project and service when manage changes to read', async () => {
+	it('immediately attenuates service leaves when write operations are cleared', async () => {
 		defaultGets(['mcp:read', 'mcp:write']);
 		render(Page);
 		await loaded();
-		await chooseScope('all');
-		await chooseAccess('manage');
+		await allow('project-a', 'create');
 		expect(preview().getByText('drover-clusters_editor')).toBeTruthy();
-		expect(preview().queryByText(/lumen-/)).toBeNull();
-		await chooseAccess('read');
-		expect(preview().getAllByText(t('mcpConsent.preview.cloud.read'))).toHaveLength(2);
-		expect(preview().queryByText(t('mcpConsent.preview.cloud.manage'))).toBeNull();
-		for (const leaf of ['drover-clusters_editor', 'palimpsest-publish_editor', 'lumen-chat_user', 'lumen-tools_user', 'lumen-keys_editor']) {
-			expect(preview().queryByText(leaf)).toBeNull();
-		}
-		for (const leaf of ['drover-inventory_reader', 'drover-access_user', 'palimpsest-download_user', 'waygate-connect_user']) {
+		await allow('project-a', 'create');
+		expect(preview().queryByText('drover-clusters_editor')).toBeNull();
+		for (const leaf of ['drover-inventory_reader', 'drover-access_user', 'palimpsest-download_user']) {
 			expect(preview().getByText(leaf)).toBeTruthy();
 		}
-		expect(projectPreview('project-b').getByText('waygate-connect_user')).toBeTruthy();
+		expect(screen.getByRole('button', { name: t('mcpConsent.actions.allowRead') })).toBeTruthy();
 		expect(api.post).not.toHaveBeenCalled();
-		await fireEvent.click(approveButton());
-		expectDecision('approve', { access_level: 'read', project_scope: 'all', project_ids: [], ongoing: true }, actor.token, actor.projectId);
 	});
 
-	it('updates selected preview and refuses selected manage readers without losing the explicit selection', async () => {
+	it('never offers write operations on a read-only project', async () => {
 		defaultGets(['mcp:read', 'mcp:write']);
 		render(Page);
 		await loaded();
-		await chooseAccess('manage');
-		await fireEvent.click(checkbox('project-b'));
-		expect(projectPreview('project-b').getByText(t('mcpConsent.preview.cloud.read'))).toBeTruthy();
-		const manage = () => screen.getByRole('button', { name: t('mcpConsent.actions.allowManage') }) as HTMLButtonElement;
-		expect(manage().disabled).toBe(true);
-		expect(screen.getByText(t('mcpConsent.preview.selectedReadOnly'))).toBeTruthy();
-		await fireEvent.click(manage());
-		expect(api.post).not.toHaveBeenCalled();
-		await chooseScope('all');
-		expect(manage().disabled).toBe(false);
-		await chooseScope('selected');
-		expect(manage().disabled).toBe(true);
-		expect(checkbox('project-b').checked).toBe(true);
-		await fireEvent.click(checkbox('project-b'));
-		expect(preview().queryByRole('listitem', { name: /project-b/ })).toBeNull();
-		expect(manage().disabled).toBe(false);
-		expect(api.post).not.toHaveBeenCalled();
+		expect(screen.getByText(t('mcpConsent.operations.ceiling.read'))).toBeTruthy();
+		for (const op of ['create', 'update'] as const) expect(operation('project-b', op).disabled).toBe(true);
+		await fireEvent.click(column('update'));
+		expect(operation('project-a', 'update').checked).toBe(true);
+		expect(operation('project-b', 'update').checked).toBe(false);
+		await fireEvent.click(screen.getByRole('button', { name: t('mcpConsent.actions.allowManage') }));
+		expect(api.post.mock.calls[0][1].project_operations).toEqual({ 'project-a': ['read', 'update'] });
 	});
 
 	it.each(['missing', 'error'] as const)('never presents %s native service metadata as allowed or verified denial', async (kind) => {
@@ -450,7 +465,7 @@ describe('MCP OAuth consent route', () => {
 		}]);
 		render(Page);
 		await loaded();
-		await chooseAccess('manage');
+		await allow('project-a', 'create');
 		expect(projectPreview('project-a').getAllByText(t('mcpConsent.preview.service.unavailable'))).toHaveLength(kind === 'missing' ? 3 : 1);
 		expect(preview().queryByText('drover-clusters_editor')).toBeNull();
 		expect(preview().queryByText('permission_check_unavailable')).toBeNull();
@@ -459,30 +474,25 @@ describe('MCP OAuth consent route', () => {
 		expect(api.post).not.toHaveBeenCalled();
 	});
 
-	it.each([undefined, null])('keeps unavailable cloud metadata %s unknown in read and manage mode', async (canWrite) => {
+	it.each([undefined, null])('keeps unavailable cloud metadata %s unknown and read-only', async (canWrite) => {
 		defaultGets(['mcp:read', 'mcp:write'], [{ ...projects[0], can_write: canWrite }]);
 		render(Page);
 		await loaded();
-		await chooseAccess('manage');
-		await chooseScope('all');
+		expect(screen.getByText(t('mcpConsent.operations.ceiling.unknown'))).toBeTruthy();
+		expect(operation('project-a', 'create').disabled).toBe(true);
+		expect(operation('project-a', 'update').disabled).toBe(true);
 		expect(projectPreview('project-a').getByText(t('mcpConsent.preview.cloud.unknown'))).toBeTruthy();
 		expect(preview().queryByText(t('mcpConsent.preview.cloud.manage'))).toBeNull();
-		expect(screen.getByText(t('mcpConsent.preview.unknownWrite'))).toBeTruthy();
-		const manage = screen.getByRole('button', { name: t('mcpConsent.actions.allowManage') }) as HTMLButtonElement;
-		expect(manage.disabled).toBe(true);
-		await fireEvent.click(manage);
-		expect(api.post).not.toHaveBeenCalled();
-		await chooseAccess('read');
-		expect(projectPreview('project-a').getByText(t('mcpConsent.preview.cloud.unknown'))).toBeTruthy();
 		expect(approveButton().disabled).toBe(false);
 	});
 
-	it('cannot elevate a read request by forcing the disabled manage option', async () => {
+	it('cannot elevate a read request by clicking a disabled write operation', async () => {
 		render(Page);
 		await loaded();
-		await fireEvent.change(screen.getByRole('combobox', { name: t('mcpConsent.access.label') }), { target: { value: 'manage' } });
+		await fireEvent.click(operation('project-a', 'update'));
 		await fireEvent.click(approveButton());
 		expect(api.post.mock.calls[0][1].access_level).toBe('read');
+		expect(api.post.mock.calls[0][1]).not.toHaveProperty('project_operations');
 	});
 
 	it('blocks duplicate decisions while approval is pending', async () => {
@@ -496,19 +506,6 @@ describe('MCP OAuth consent route', () => {
 		await fireEvent.click(screen.getByRole('button', { name: t('mcpConsent.actions.deny') }));
 		expect(api.post).toHaveBeenCalledTimes(1);
 		await act(async () => decision.resolve({ redirect_uri: 'https://client.example.test/approved', effective_ongoing: true }));
-	});
-
-	it('restores explicit selection when switching back from all projects', async () => {
-		render(Page);
-		await loaded();
-		await fireEvent.click(checkbox('project-b'));
-		const scope = screen.getByRole('combobox', { name: t('mcpConsent.projects.label') });
-		await fireEvent.change(scope, { target: { value: 'all' } });
-		await fireEvent.change(scope, { target: { value: 'selected' } });
-		expect(checkbox('project-a').checked).toBe(true);
-		expect(checkbox('project-b').checked).toBe(true);
-		await fireEvent.click(approveButton());
-		expect(api.post.mock.calls[0][1].project_ids).toEqual(['project-a', 'project-b']);
 	});
 
 	it.each([{ available: [] }, { available: [projects[1]] }])('never uses a current project missing from the authoritative list $available', async ({ available }) => {
@@ -567,7 +564,7 @@ describe('MCP OAuth consent route', () => {
 		await loaded();
 		await fireEvent.click(checkbox('project-b'));
 		await fireEvent.click(ongoingCheckbox());
-		await fireEvent.change(screen.getByRole('combobox', { name: t('mcpConsent.access.label') }), { target: { value: 'manage' } });
+		await allow('project-a', 'create');
 		api.get.mockImplementation((path: string) => (path === '/api/v1/auth/mcp-projects?preview=true') === (endpoint === 'projects')
 			? Promise.reject(new Error('reload failed')) : Promise.resolve(path === '/api/v1/auth/mcp-projects?preview=true' ? projects : details));
 		await act(() => { projectSwitching.set(true); projectSwitching.set(false); });
@@ -580,7 +577,7 @@ describe('MCP OAuth consent route', () => {
 		expect(checkbox('project-a').checked).toBe(true);
 		expect(checkbox('project-b').checked).toBe(false);
 		expect(ongoingCheckbox().checked).toBe(true);
-		expect((screen.getByRole('combobox', { name: t('mcpConsent.access.label') }) as HTMLSelectElement).value).toBe('read');
+		expect(operation('project-a', 'create').checked).toBe(false);
 	});
 
 	it.each(transitions)('never redirects or consumes the ticket for an old decision after %s', async (kind) => {
@@ -651,8 +648,8 @@ describe('consent semantic source boundaries', () => {
 
 	it('records finite access and selection choices without client, project, redirect or ticket data', async () => {
 		setTicket(ticket); render(Page); await loaded();
-		await chooseAccess('read'); await chooseScope('all');
-		await chooseScope('selected'); await fireEvent.click(checkbox('project-a'));
+		await fireEvent.click(column('read'));
+		await fireEvent.click(column('read'));
 		const payloads = experience.record.mock.calls.filter(([, type]) => type === 'view.state_changed').map(([, , payload]) => payload);
 		expect(payloads).toContainEqual({ state: 'ready', step: 1, access: 'read', selection: 'all' });
 		expect(payloads).toContainEqual({ state: 'ready', step: 1, access: 'none', selection: 'none' });
@@ -728,20 +725,45 @@ describe('MCP consent authorization domain', () => {
 		expect(screen.getByText('domain-dms')).toBeTruthy();
 	});
 
-	it('hides the change-domain action when only one domain is available', async () => {
+	it('hides the domain list when no other domain is available', async () => {
 		auth.set({ ...actor, availableDomains: [{ id: 'domain-dms', name: 'DMS Lab' }] });
 		withDomain();
 		render(Page);
 		await loaded();
+		expect(screen.queryByRole('combobox', { name: t('mcpConsent.domain.label') })).toBeNull();
 		expect(screen.queryByRole('button', { name: t('mcpConsent.domain.change') })).toBeNull();
 	});
 
-	it('routes to domain selection when several domains are available', async () => {
+	it('switches only the working domain in place and reloads the same ticket', async () => {
 		auth.set({ ...actor, availableDomains: [{ id: 'domain-dms', name: 'DMS Lab' }, { id: 'domain-b', name: 'Other' }] });
 		withDomain();
+		const next = { ...actor, token: 'token-domain-b', projectId: 'project-b', availableDomains: [] };
+		domainAuthState.mockReturnValue(next);
+		setAuth.mockImplementation((state: typeof next) => auth.set(state));
+		api.post.mockResolvedValueOnce({ token: 'token-domain-b' });
 		render(Page);
 		await loaded();
+		const select = screen.getByRole('combobox', { name: t('mcpConsent.domain.label') }) as HTMLSelectElement;
+		expect([...select.options].map((option) => option.value)).toEqual(['', 'domain-b']);
+		await fireEvent.change(select, { target: { value: 'domain-b' } });
 		await fireEvent.click(screen.getByRole('button', { name: t('mcpConsent.domain.change') }));
-		expect(goto).toHaveBeenCalledWith('/select-domain');
+		await waitFor(() => expect(setAuth).toHaveBeenCalledWith(next));
+		expect(api.post).toHaveBeenCalledWith('/api/v1/auth/token/domain', { domain_id: 'domain-b' }, actor.token, undefined,
+			{ replayOnUnauthorized: false, suppressAuthRedirect: true, cache: 'no-store' });
+		expect(goto).not.toHaveBeenCalled();
+		await waitFor(() => expect(api.get).toHaveBeenCalledWith(`/api/v1/auth/mcp-oauth/consents/${ticket}`, 'token-domain-b', 'project-b', getOptions));
+	});
+
+	it('keeps the request and reports a failed domain switch', async () => {
+		auth.set({ ...actor, availableDomains: [{ id: 'domain-dms', name: 'DMS Lab' }, { id: 'domain-b', name: 'Other' }] });
+		withDomain();
+		api.post.mockRejectedValueOnce(new Error('switch failed'));
+		render(Page);
+		await loaded();
+		await fireEvent.change(screen.getByRole('combobox', { name: t('mcpConsent.domain.label') }), { target: { value: 'domain-b' } });
+		await fireEvent.click(screen.getByRole('button', { name: t('mcpConsent.domain.change') }));
+		await screen.findByText(t('mcpConsent.domain.switchFailed'));
+		expect(setAuth).not.toHaveBeenCalled();
+		expect(pendingMcpConsentTicket()).toBe(ticket);
 	});
 });

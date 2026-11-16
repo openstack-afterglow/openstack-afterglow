@@ -396,6 +396,8 @@ async def get_policy_capabilities(service_type: str, token_info: dict, *, timeou
     except ValueError as exc:
         raise NativePolicyError(502, "policy_invalid_response", "Invalid native policy response") from exc
     known = frozenset(SERVICE_CAPABILITIES[service_type])
+    if service_type == "palimpsest" and isinstance(payload, dict) and "capabilities" not in payload:
+        payload = _palimpsest_capabilities(payload)
     if (
         not isinstance(payload, dict)
         or payload.get("service") != service_type
@@ -406,6 +408,29 @@ async def get_policy_capabilities(service_type: str, token_info: dict, *, timeou
     ):
         raise NativePolicyError(502, "policy_invalid_response", "Invalid native policy response")
     return payload
+
+
+# Palimpsest 0.3.13+ reports only native actions (role-based policy, no service
+# roles). Each capability leaf is granted by exactly the action it used to imply.
+_PALIMPSEST_ACTION_CAPABILITIES = {
+    "packages:inventory": "palimpsest-inventory_reader",
+    "packages:read": "palimpsest-download_user",
+    "packages:write": "palimpsest-publish_editor",
+    "keys:issue": "palimpsest-keys_editor",
+    "keys:revoke": "palimpsest-keys_admin",
+}
+
+
+def _palimpsest_capabilities(payload: dict) -> dict:
+    actions = payload.get("actions")
+    if not isinstance(actions, list):
+        return payload
+    leaves = {
+        _PALIMPSEST_ACTION_CAPABILITIES[action]
+        for action in actions
+        if isinstance(action, str) and action in _PALIMPSEST_ACTION_CAPABILITIES
+    }
+    return {**payload, "capabilities": sorted(leaves)}
 
 
 async def resolve_service_endpoint(service_type: str) -> str | None:

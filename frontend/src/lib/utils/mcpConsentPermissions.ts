@@ -16,6 +16,24 @@ export const MCP_CONSENT_SERVICES = [
 	{ id: 'waygate', name: 'Waygate' },
 ] as const;
 
+/** Per-project consent operations; `update` covers changing and deleting existing resources. */
+export const MCP_OPERATIONS = ['read', 'create', 'update'] as const;
+export type McpOperation = (typeof MCP_OPERATIONS)[number];
+
+export function isWriteOperation(operation: McpOperation): boolean {
+	return operation !== 'read';
+}
+
+/** Grant-wide access implied by one project's chosen operations. */
+export function operationsAccess(operations: readonly McpOperation[]): 'read' | 'manage' {
+	return operations.some(isWriteOperation) ? 'manage' : 'read';
+}
+
+/** Write operations need a proven native write role; unknown metadata is never proof. */
+export function canChooseWrite(project: McpConsentProject): boolean {
+	return !project.scope_error && project.can_write === true;
+}
+
 // Consent attenuation only: these exact native leaves are read/download access.
 // Never expand service grades or derive service authority from can_write.
 const READ_SERVICE_LEAVES: Record<string, true> = {

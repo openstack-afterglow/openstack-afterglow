@@ -232,6 +232,7 @@ async def _execute_tool(
             principal = await ledger.authorize_mutation_dispatch(
                 principal,
                 invocation_id=claim.invocation_id,
+                operation=entry.operation,
                 source="lumen",
             )
         except ledger.McpMutationAuthorizationDenied:
