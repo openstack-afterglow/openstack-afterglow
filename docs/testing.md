@@ -6,6 +6,14 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 운영 1.32.23 릴리스·롤아웃 (2026-11-16 14:04–14:12 UTC / 23:04–23:12 KST)
+
+- 발행: `dev` `0d114029`의 exact-SHA CI에서 backend 단위 테스트 15,445개 중 1개(`tests/test_native_vm.py::test_real_signal_stops_graceful_and_stubborn_children[15]`, 실제 프로세스 signal 대기의 `subprocess.TimeoutExpired`)가 실패했다. 이 릴리스가 바꾸지 않은 테스트라서 같은 SHA에서 실패한 job만 다시 실행했고 backend·frontend 2분할·contract·disposable DB functional·version 확인 job이 모두 성공했으며 `dev` 이미지 빌드도 통과했다. 같은 commit에 불변 annotated tag `1.32.23`을 붙였고 이미지(api `sha256:ff55e80b…`, frontend `sha256:30387dd5…`, worker `sha256:84ccb499…`)는 amd64 전용이며 `1.32.23`과 `latest`가 같은 digest, revision 라벨은 `0d114029`다. Helm `1.32.23`과 한국어·영어 GitHub Release를 게시했다. DB 스키마·새 Redis 키는 없다.
+- 백업·변경: `/etc/kolla/.afterglow-rollout-backups/1.32.23-20261116T140426Z`(pyproject·uv.lock·globals.d·운영자 afterglow.conf). `afterglow-kolla` tag, `uv lock --refresh-package afterglow-kolla`, `uv sync --inexact --no-install-package waygate`(dry-run과 실행 모두 afterglow-kolla만 교체), `90-openstack-afterglow-globals.yml`의 4줄(tag·api·frontend·worker digest)만 바꿨다.
+- 실행: `kolla-ansible pull`·`prechecks -i multinode --limit control --tags afterglow` rc0. reconfigure 1단계는 1.32.22와 같이 `--limit compute --tags afterglow,lumen,waygate,drover,palimpsest`(rc0·13초·12개 호스트 모두 `changed=0`)로 실행했다. 2단계는 `--limit control --tags afterglow,lumen,waygate,drover,palimpsest`를 원격에서 분리(`setsid`)해 시간 제한 없이 실행했고 rc0·약 5분, controller1 `changed=11`·controller2/3 `changed=6`, failed·unreachable 0이다. 전체 recap과 로그는 위 백업 디렉터리에 있다.
+- 결과 관측: afterglow backend·frontend·notion_worker 9개 컨테이너가 14:09 UTC 무렵 세 컨트롤러에서 거의 동시에 재시작되었다(짧은 중단). 실행 중 이미지 digest는 세 컨트롤러 모두 새 pin과 일치하고 backend·frontend는 healthy다. afterglow·lumen·waygate·drover·palimpsest 컨테이너 33개의 전후 비교에서 바뀐 것은 이 9개뿐이다. 공개 `/api/v1/health` `{"status":"ok"}`, `/login` 200, 공개 `_app/version.json`이 컨트롤러 frontend 컨테이너의 빌드와 같고, 비인증 `GET /api/v1/volumes/backups`는 401이다. 재시작 후 3개 backend 로그에 Traceback·5xx가 없었다.
+- 실행하지 못한 검증: 멤버 세션에서 자동 백업이 `자동`으로 표시되는지(DMSLAB gitlab 백업 `012a5a5f-…`)는 멤버 자격과 사용자 브라우저 relay 확장이 없어 운영에서 확인하지 못했다. 이 수정의 근거는 실제 openstacksdk HTTP 경로를 쓰는 소스 테스트뿐이다. 행 새로고침 모션·볼륨 용량 요약의 운영 화면도 보지 못했다. 복구 지점 목록 캐시 TTL(설정 기본값 백업 60초·스냅샷 30초)이 지나면 이전 분류가 사라진다.
+
 ## 운영 1.32.22 릴리스·롤아웃 (2026-11-16 09:15–09:35 UTC / 18:15–18:35 KST)
 
 - 발행: `dev` `23fe4410`의 exact-SHA CI(backend·frontend 2분할·contract·disposable DB functional·version/orchestration)가 통과한 뒤 같은 commit에 불변 tag `1.32.22`를 붙였다. 이미지(api `sha256:b0067f6d…`, frontend `sha256:66eb8ae6…`, worker `sha256:e3a3d8db…`)는 amd64 전용이며 `1.32.22`와 `latest`가 같은 digest, revision 라벨은 `23fe4410`이다. Helm `1.32.22`와 한국어·영어 GitHub Release를 게시했다. 릴리스 노트에 삭제·변경 기능(인스턴스 상세 두 섹션, `POST …/auto-snapshot/configs`→`GET`)과 새 Redis 키를 정확히 적었다.
