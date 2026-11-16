@@ -2214,9 +2214,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "52fdf580dc7a64261d72ab28eacd7436cbbbcdcfc5333564479fae0640df848c",
-  "reviewed_at": "2026-11-16T08:54:51Z",
-  "summary": "Volume recovery detail toolbar/empty state, snapshot policy list GET, tutorial usage-schedule mock"
+  "source_sha256": "57d0e15e53d217addc4f734e40f70212df698c603da6280f6ca18bab735fae1c",
+  "reviewed_at": "2026-11-16T09:05:56Z",
+  "summary": "Release 1.32.22: MCP per-project operations, account page defaults/sessions/activity, instance usage modal, volume recovery views and incremental auto backup; version bump and changelog."
 }
 ```
 <!-- architecture-review:end -->
