@@ -145,6 +145,7 @@ async def owner(db_tables, monkeypatch):
                 can_write=can_write,
                 conn=state.conn,
                 owns_connection=False,
+                operations=authority.default_project_operations(access_level, can_write),
             )
         ]
 
@@ -600,6 +601,7 @@ async def test_missing_exact_current_project_approval_refuses_credentials(owner,
             can_write=current.can_write,
             conn=current.conn,
             owns_connection=False,
+            operations=current.operations,
         )
         return [foreign] if prepared_scope == "foreign" else [current, foreign]
 

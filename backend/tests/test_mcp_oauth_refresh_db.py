@@ -297,7 +297,7 @@ async def test_new_key_cannot_duplicate_unresolved_mutation(issued_refresh, monk
     with pytest.raises(ledger.McpInvocationError, match="unresolved outcome"):
         await ledger.claim_mutation(
             principal,
-            entry=SimpleNamespace(effect="external_mutation", name="afterglow_vm_action"),
+            entry=SimpleNamespace(effect="external_mutation", name="afterglow_vm_action", operation="update"),
             arguments={"action": "reboot", "server_id": "server-a"},
             idempotency_key="fresh-retry-key",
         )
@@ -326,7 +326,7 @@ async def test_concurrent_new_keys_have_one_claim_winner(issued_refresh, monkeyp
     from app.services.mcp_control_plane import ledger
 
     principal, invocation_id = await mutation_fixture(issued_refresh, monkeypatch, status="succeeded")
-    entry = SimpleNamespace(effect="external_mutation", name="afterglow_vm_action")
+    entry = SimpleNamespace(effect="external_mutation", name="afterglow_vm_action", operation="update")
     claims = await asyncio.gather(
         *(
             ledger.claim_mutation(
@@ -1521,7 +1521,7 @@ async def test_oauth_sdk_native_roles_support_each_scope_without_inference_expan
             assert [role["id"] for role in consent.remote[credential_id]["roles"]] == [
                 "role-" + role for role in consent.memberships[target]
             ]
-            validate_grant_project(grant, target, write=access_level == "manage")
+            validate_grant_project(grant, target, operation="update" if access_level == "manage" else "read")
 
 
 @pytest.mark.parametrize("access_level", ["read", "manage"])
