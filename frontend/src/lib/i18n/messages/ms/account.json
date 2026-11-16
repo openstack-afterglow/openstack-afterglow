@@ -152,6 +152,8 @@
 	"projectSettings.affiliation": "Keahlian",
 	"projectSettings.administrator": "Pentadbir",
 	"security.unknown": "Tidak diketahui",
+	"security.otherBrowser": "Pelayar lain",
+	"security.currentSession": "Sesi semasa",
 	"security.deleteFailed": "Gagal memadam sesi",
 	"security.signedOut": "Semua sesi telah dibatalkan. Log masuk semula.",
 	"security.revokeFailed": "Gagal membatalkan sesi",

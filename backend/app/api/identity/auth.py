@@ -46,6 +46,7 @@ from app.services.domain_scope import (
 from app.services.identity_roles import _field, _to_completion, visible_role_names
 from app.services.native_operation import NativeOperation
 from app.services.recent_projects import get_recent_project_ids, record_project_access
+from app.services.traffic_geo import country_lookup
 from app.utils.auth_diagnostics import authentication_operation, authentication_step
 
 _logger = logging.getLogger(__name__)
@@ -161,6 +162,8 @@ async def _build_token_response(
     origin_fp: str = "",
     device_type: str = "",
     os: str = "",
+    browser_name: str = "",
+    browser_major: str = "",
     started_at: float | None = None,
     native_expires_at: str = "",
     previous_jti: str | None = None,
@@ -258,6 +261,8 @@ async def _build_token_response(
                 origin_fp=origin_fp,
                 device_type=device_type,
                 os=os,
+                browser_name=browser_name,
+                browser_major=browser_major,
                 started_at=started_at,
                 previous_jti=previous_jti,
                 timeout_seconds=get_settings().session_timeout_seconds if previous_jti else None,
@@ -591,10 +596,11 @@ async def _login(request: Request, req: LoginRequest, background_tasks: Backgrou
     default_project_id = data.get("default_project_id", "")
 
     # 로그인 출처 + 기기 정보 기록
-    from app.services.token_binding import get_origin, parse_device
+    from app.services.token_binding import get_origin, parse_browser, parse_device
 
     origin_ip, origin_fp = get_origin(request)
     device_type, os_name = parse_device(request.headers.get("User-Agent", ""))
+    browser_name, browser_major = parse_browser(request.headers.get("User-Agent", ""))
 
     # Only an exact, policy-valid canonical native proof clears its account guard.
     await login_guard.record_success(account["name"], account["domain_id"])
@@ -626,6 +632,8 @@ async def _login(request: Request, req: LoginRequest, background_tasks: Backgrou
         origin_fp=origin_fp,
         device_type=device_type,
         os=os_name,
+        browser_name=browser_name,
+        browser_major=browser_major,
         operation=operation,
     )
     await activity_svc.record(
@@ -1418,6 +1426,13 @@ async def list_sessions(token_info: dict = Depends(get_token_info)):
     keystone_token 등 민감 필드는 제거된 채 반환된다.
     """
     sessions = await session_store.list_user_sessions(token_info["user_id"])
+    geo = country_lookup(get_settings().traffic_analytics.geoip_mmdb)
+    current_jti = token_info.get("refresh_jti")
+    for session in sessions:
+        session["is_current"] = bool(current_jti and session["jti"] == current_jti)
+        country, reason = geo.lookup(session.get("origin_ip"))
+        if reason == "located":
+            session["country_code"] = country
     return {"sessions": sessions, "count": len(sessions)}
 
 
@@ -1531,10 +1546,11 @@ async def issue_federated_login(
                 raise HTTPException(status_code=403, detail="Federation domain does not match")
             data = await _prepare_initial_session(data, operation=operation)
             default_project_id = data.get("default_project_id", "")
-            from app.services.token_binding import get_origin, parse_device
+            from app.services.token_binding import get_origin, parse_browser, parse_device
 
             origin_ip, origin_fp = get_origin(request)
             device_type, os_name = parse_device(request.headers.get("User-Agent", ""))
+            browser_name, browser_major = parse_browser(request.headers.get("User-Agent", ""))
             operation.invalidate()
             response = await _build_token_response(
                 keystone_token=data["session_token"],
@@ -1557,6 +1573,8 @@ async def issue_federated_login(
                 origin_fp=origin_fp,
                 device_type=device_type,
                 os=os_name,
+                browser_name=browser_name,
+                browser_major=browser_major,
                 operation=operation,
                 **policy_context,
             )

@@ -152,6 +152,8 @@
 	"projectSettings.affiliation": "Affiliation",
 	"projectSettings.administrator": "Administrator",
 	"security.unknown": "Unknown",
+	"security.otherBrowser": "Other browser",
+	"security.currentSession": "Current session",
 	"security.deleteFailed": "Failed to delete the session",
 	"security.signedOut": "All sessions have been revoked. Sign in again.",
 	"security.revokeFailed": "Failed to revoke sessions",

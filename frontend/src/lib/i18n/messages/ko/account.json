@@ -152,6 +152,8 @@
 	"projectSettings.affiliation": "소속",
 	"projectSettings.administrator": "관리자",
 	"security.unknown": "알 수 없음",
+	"security.otherBrowser": "다른 브라우저",
+	"security.currentSession": "현재 세션",
 	"security.deleteFailed": "세션 삭제 실패",
 	"security.signedOut": "모든 세션이 폐기되었습니다. 다시 로그인해 주세요.",
 	"security.revokeFailed": "세션 폐기 실패",

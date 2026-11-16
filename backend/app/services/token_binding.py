@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import ipaddress
 import logging
+import re
 
 _logger = logging.getLogger(__name__)
 
@@ -60,6 +61,36 @@ def parse_device(user_agent: str) -> tuple[str, str]:
         device_type = "unknown"
 
     return device_type, os_name
+
+
+# More specific Chromium products must precede Chrome; Safari's engine version
+# is not its browser version. UA metadata is descriptive, never authentication.
+_BROWSER_PATTERNS = tuple(
+    (name, re.compile(pattern))
+    for name, pattern in (
+        ("Samsung Internet", r"\bSamsungBrowser/([0-9]{1,6})(?:[.\s]|$)"),
+        ("Whale", r"\bWhale/([0-9]{1,6})(?:[.\s]|$)"),
+        ("Edge", r"\b(?:Edg|EdgA|EdgiOS|Edge)/([0-9]{1,6})(?:[.\s]|$)"),
+        ("Opera", r"\b(?:OPR|OPiOS)/([0-9]{1,6})(?:[.\s]|$)"),
+        ("Firefox", r"\b(?:Firefox|FxiOS)/([0-9]{1,6})(?:[.\s]|$)"),
+        ("Chrome", r"\b(?:Chrome|CriOS)/([0-9]{1,6})(?:[.\s]|$)"),
+    )
+)
+_SAFARI_VERSION = re.compile(r"\bVersion/([0-9]{1,6})(?:[.\s]|$)")
+
+
+def parse_browser(user_agent: str) -> tuple[str, str]:
+    """Return only an allowlisted browser name and its reported major version.
+
+    Chromium browsers without their own product token (including Dia) report
+    Chrome. Never infer a brand from fingerprints or retain the full UA.
+    """
+    for name, pattern in _BROWSER_PATTERNS:
+        if match := pattern.search(user_agent):
+            return name, match[1]
+    if "Safari/" in user_agent and (match := _SAFARI_VERSION.search(user_agent)):
+        return "Safari", match[1]
+    return "unknown", ""
 
 
 def get_origin(request) -> tuple[str, str]:

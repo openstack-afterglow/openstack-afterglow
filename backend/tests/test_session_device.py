@@ -71,6 +71,76 @@ class TestParseDevice:
         assert ua not in os_name
 
 
+@pytest.mark.parametrize(
+    ("user_agent", "expected"),
+    [
+        (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+            ("Chrome", "142"),
+        ),
+        (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.3595.53",
+            ("Edge", "142"),
+        ),
+        (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
+            "(KHTML, like Gecko) Version/18.6 Safari/605.1.15",
+            ("Safari", "18"),
+        ),
+        (
+            "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0",
+            ("Firefox", "144"),
+        ),
+        (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/138.0.0.0 Whale/4.33.325.17 Safari/537.36",
+            ("Whale", "4"),
+        ),
+        pytest.param(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+            ("Chrome", "142"),
+            id="dia-reports-chrome-no-brand-inference",
+        ),
+        (
+            "Mozilla/5.0 (Linux; Android 14; SM-S921B) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) SamsungBrowser/28.0 Chrome/130.0.0.0 Mobile Safari/537.36",
+            ("Samsung Internet", "28"),
+        ),
+        (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 OPR/123.0.0.0",
+            ("Opera", "123"),
+        ),
+        (
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 "
+            "(KHTML, like Gecko) CriOS/142.0.7444.77 Mobile/15E148 Safari/604.1",
+            ("Chrome", "142"),
+        ),
+        (
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 "
+            "(KHTML, like Gecko) FxiOS/144.0 Mobile/15E148 Safari/605.1.15",
+            ("Firefox", "144"),
+        ),
+        (
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 "
+            "(KHTML, like Gecko) EdgiOS/142.0.3595.53 Mobile/15E148 Safari/605.1.15",
+            ("Edge", "142"),
+        ),
+        ("Mozilla/5.0 AppleWebKit/605.1.15 Safari/605.1.15", ("unknown", "")),
+        ("curl/8.7.1", ("unknown", "")),
+        ("Chrome/not-a-version Safari/537.36", ("unknown", "")),
+        ("", ("unknown", "")),
+    ],
+)
+def test_parse_browser(user_agent, expected):
+    from app.services.token_binding import parse_browser
+
+    assert parse_browser(user_agent) == expected
+
+
 # ============================================================================
 # delete_session_owned (서비스 계층 단위)
 # ============================================================================
@@ -200,12 +270,17 @@ async def test_store_session_device_fields_saved(_fake_redis_global):
         exp=9_999_999_999,
         device_type="desktop",
         os="macOS",
+        browser_name="Chrome",
+        browser_major="142",
     )
 
     sess = await session_store.get_session(jti)
     assert sess is not None
     assert sess["device_type"] == "desktop"
     assert sess["os"] == "macOS"
+    assert sess["browser_name"] == "Chrome"
+    assert sess["browser_major"] == "142"
+    assert "user_agent" not in sess
 
 
 @pytest.mark.anyio
@@ -240,6 +315,60 @@ async def test_legacy_session_no_device_fields(_fake_redis_global):
     assert len(sessions) == 1
     assert sessions[0]["jti"] == jti
     # 크래시 없이 반환되어야 함 (device 필드 없어도 OK)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("available", [True, False])
+async def test_session_list_browser_country_and_legacy(client, _fake_redis_global, monkeypatch, available):
+    from app.api.identity import auth as auth_api
+    from app.config import get_settings
+    from app.services import session_store
+    from app.services.traffic_geo import CountryLookup
+
+    geo = CountryLookup("")
+    if available:
+        geo.state = "offline_mmdb"
+        geo.reader = MagicMock()
+        geo.reader.get.return_value = {"country": {"iso_code": "KR"}}
+    lookup = MagicMock(return_value=geo)
+    monkeypatch.setattr(auth_api, "country_lookup", lookup)
+    await session_store.store_session(
+        "browser-session",
+        "native-secret",
+        "project",
+        "test-user-123",
+        9_999_999_999,
+        origin_ip="8.8.8.8",
+        browser_name="Chrome",
+        browser_major="142",
+    )
+    await session_store.store_session(
+        "private-session",
+        "native-secret",
+        "project",
+        "test-user-123",
+        9_999_999_999,
+        origin_ip="192.168.1.10",
+    )
+    legacy = {"user_id": "test-user-123", "origin_ip": "", "keystone_token": "native-secret"}
+    await _fake_redis_global.set(session_store._key("legacy-session"), json.dumps(legacy))
+    await _fake_redis_global.sadd(session_store._user_index_key("test-user-123"), "legacy-session")
+
+    response = await client.get("/api/v1/auth/sessions")
+    assert response.status_code == 200
+    rows = {row["jti"]: row for row in response.json()["sessions"]}
+    assert response.json()["count"] == 3
+    assert rows["browser-session"]["browser_name"] == "Chrome"
+    assert rows["browser-session"]["browser_major"] == "142"
+    assert rows["browser-session"].get("country_code") == ("KR" if available else None)
+    assert "country_code" not in rows["private-session"]
+    assert "country_code" not in rows["legacy-session"]
+    assert "browser_name" not in rows["legacy-session"]
+    assert all("keystone_token" not in row and "user_agent" not in row for row in rows.values())
+    assert all(row["is_current"] is False for row in rows.values())
+    lookup.assert_called_once_with(get_settings().traffic_analytics.geoip_mmdb)
+    if available:
+        geo.reader.get.assert_called_once_with("8.8.8.8")
 
 
 # ============================================================================

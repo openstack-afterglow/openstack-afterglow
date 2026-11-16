@@ -152,6 +152,8 @@
 	"projectSettings.affiliation": "অধিভুক্তি",
 	"projectSettings.administrator": "প্রশাসক",
 	"security.unknown": "অজানা",
+	"security.otherBrowser": "অন্য ব্রাউজার",
+	"security.currentSession": "বর্তমান সেশন",
 	"security.deleteFailed": "সেশন মুছতে ব্যর্থ হয়েছে",
 	"security.signedOut": "সমস্ত সেশন প্রত্যাহার করা হয়েছে। অনুগ্রহ করে আবার সাইন ইন করুন।",
 	"security.revokeFailed": "সেশন প্রত্যাহার করতে ব্যর্থ হয়েছে",

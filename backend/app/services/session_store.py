@@ -178,7 +178,7 @@ end
 -- the immutable login origin and absolute lifetime.
 replacement['started_at'] = start
 replacement['identity_domain_id'] = identity
-for _, field in ipairs({'origin_ip', 'origin_fp', 'device_type', 'os', 'auth_method', 'provider_id', 'provider_revision', 'provider_domain_id', 'login_email'}) do
+for _, field in ipairs({'origin_ip', 'origin_fp', 'device_type', 'os', 'browser_name', 'browser_major', 'auth_method', 'provider_id', 'provider_revision', 'provider_domain_id', 'login_email'}) do
     replacement[field] = old[field] or ''
 end
 local family = old['family_id'] or ARGV[3]
@@ -373,6 +373,8 @@ async def store_session(
     target_project_name: str = "",
     refresh_replay: dict | None = None,
     previous_refresh_exp: int | None = None,
+    browser_name: str = "",
+    browser_major: str = "",
 ) -> bool:
     """Store a login or atomically replace an active previous refresh record.
 
@@ -418,6 +420,8 @@ async def store_session(
             # 기기 정보 (coarse 요약 — raw UA 미저장)
             "device_type": device_type,
             "os": os,
+            "browser_name": browser_name,
+            "browser_major": browser_major,
         }
     )
     if previous_jti is not None:

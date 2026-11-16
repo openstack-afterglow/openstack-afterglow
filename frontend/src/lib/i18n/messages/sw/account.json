@@ -152,6 +152,8 @@
 	"projectSettings.affiliation": "Ushirika",
 	"projectSettings.administrator": "Msimamizi",
 	"security.unknown": "Haijulikani",
+	"security.otherBrowser": "Kivinjari kingine",
+	"security.currentSession": "Kipindi cha sasa",
 	"security.deleteFailed": "Imeshindwa kufuta kipindi",
 	"security.signedOut": "Vipindi vyote vimebatilishwa. Ingia tena.",
 	"security.revokeFailed": "Imeshindwa kubatilisha vipindi",
