@@ -39,11 +39,12 @@ async def test_markerless_accounts_admin_gets_own_member_primary_without_identit
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("method", ["password", "provider"])
-async def test_opt_in_remembered_workspace_is_freshly_authorized(native_login, monkeypatch, method):
+@pytest.mark.parametrize("remember", [True, False])
+async def test_saved_workspace_is_freshly_authorized(native_login, monkeypatch, method, remember):
     client, native = native_login
     # Organization admission already exists; reconnect must not grant or repair it.
     native.raw.append(grant("reader", user="ordinary", project="default-a"))
-    await login_preferences.save("ordinary", "account", True, domain_id="tenant-a", project_id="work-a")
+    await login_preferences.save("ordinary", "account", remember, domain_id="tenant-a", project_id="work-a")
     before = list(native.raw)
     response = await login(client) if method == "password" else await provider_login(client, monkeypatch)
     assert response.status_code == 200, response.text
@@ -56,18 +57,32 @@ async def test_opt_in_remembered_workspace_is_freshly_authorized(native_login, m
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("fault", ["revoked", "disabled", "wrong-domain"])
-async def test_inaccessible_saved_target_falls_back_to_verified_personal(native_login, fault):
+@pytest.mark.parametrize("fault", ["revoked", "disabled", "wrong-domain", "deleted"])
+@pytest.mark.parametrize("remember", [True, False])
+async def test_inaccessible_saved_target_falls_back_to_verified_personal(native_login, monkeypatch, fault, remember):
     client, native = native_login
     native.raw.append(grant("reader", user="ordinary", project="default-a"))
-    if fault == "revoked":
+    if fault in {"revoked", "deleted"}:
         native.raw = [r for r in native.raw if r.scope.get("project", {}).get("id") != "work-a"]
     if fault == "disabled":
         native.project_rows["work-a"].enabled = False
+    if fault == "deleted":
+        from keystoneclient.exceptions import NotFound
+
+        native.project_rows.pop("work-a")
+
+        original = native.projects.get
+
+        def get_project(pid):
+            if pid == "work-a":
+                raise NotFound("Project not found")
+            return original(pid)
+
+        monkeypatch.setattr(native.projects, "get", get_project)
     await login_preferences.save(
         "ordinary",
         "account",
-        True,
+        remember,
         domain_id="tenant-b" if fault == "wrong-domain" else "tenant-a",
         project_id="work-a",
     )
@@ -97,13 +112,67 @@ async def test_saved_target_directory_failure_is_not_silently_treated_as_revocat
 async def test_preference_exact_home_and_user_isolation_and_atomic_opt_out(native_login):
     _, _ = native_login
     await login_preferences.save("ordinary", "account", True, domain_id="tenant-a", project_id="work-a")
-    assert not (await login_preferences.read("second", "account"))["remember_last_workspace"]
-    assert not (await login_preferences.read("ordinary", "home"))["remember_last_workspace"]
+    assert await login_preferences.read("second", "account") == {"remember_last_workspace": True}
+    assert await login_preferences.read("ordinary", "home") == {"remember_last_workspace": True}
     await login_preferences.record("ordinary", "account", "tenant-b", "work-b")
     assert (await login_preferences.read("ordinary", "account"))["project_id"] == "work-b"
-    await login_preferences.save("ordinary", "account", False)
+    fixed = await login_preferences.save("ordinary", "account", False, domain_id="tenant-b", project_id="work-b")
     await login_preferences.record("ordinary", "account", "tenant-a", "work-a")
-    assert await login_preferences.read("ordinary", "account") == {"remember_last_workspace": False}
+    assert await login_preferences.read("ordinary", "account") == fixed
+
+
+@pytest.mark.asyncio
+async def test_absent_preference_records_successful_workspace_continuation(native_login):
+    client, _ = native_login
+    assert await login_preferences.read("ordinary", "account") == {"remember_last_workspace": True}
+    signed_in = await login(client)
+    assert signed_in.status_code == 200, signed_in.text
+    selected = await client.post(
+        "/api/v1/auth/token/workspace",
+        headers={"Authorization": f"Bearer {signed_in.json()['token']}"},
+        json={"domain_id": "tenant-a", "project_id": "work-a"},
+    )
+    assert selected.status_code == 200, selected.text
+    assert await login_preferences.read("ordinary", "account") == {
+        "remember_last_workspace": True,
+        "domain_id": "tenant-a",
+        "project_id": "work-a",
+    }
+    reconnected = await login(client)
+    assert reconnected.status_code == 200, reconnected.text
+    assert reconnected.json()["project_id"] == "work-a"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("legacy", [True, False])
+async def test_inflight_record_cannot_undo_opt_out(native_login, monkeypatch, legacy):
+    import asyncio
+
+    client, _ = native_login
+    redis = await login_preferences.cache._get_redis()
+    entered, release = asyncio.Event(), asyncio.Event()
+    original = redis.eval
+
+    async def delayed(*args):
+        entered.set()
+        await release.wait()
+        return await original(*args)
+
+    monkeypatch.setattr(redis, "eval", delayed)
+    pending = asyncio.create_task(login_preferences.record("ordinary", "account", "tenant-a", "work-a"))
+    await entered.wait()
+    if legacy:
+        await redis.set(login_preferences._key("ordinary", "account"), '{"remember_last_workspace":false}')
+        expected = {"remember_last_workspace": False}
+    else:
+        expected = await login_preferences.save("ordinary", "account", False, domain_id="tenant-b", project_id="work-b")
+    release.set()
+    await pending
+    assert await login_preferences.read("ordinary", "account") == expected
+    if legacy:
+        response = await login(client)
+        assert response.status_code == 200, response.text
+        assert response.json()["initial_workspace"]["kind"] == "personal"
 
 
 @pytest.mark.asyncio
@@ -168,29 +237,64 @@ async def test_profile_preference_api_uses_only_current_exact_actor_and_fresh_me
     app.dependency_overrides[get_token_info] = lambda: actor
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as profile_client:
         read = await profile_client.get("/api/v1/profile/login-preference")
-        assert read.status_code == 200 and read.json() == {"remember_last_workspace": False}
+        assert read.status_code == 200 and read.json()["remember_last_workspace"] is True
         assert "no-store" in read.headers["cache-control"]
         foreign = await profile_client.put(
             "/api/v1/profile/login-preference", json={"remember_last_workspace": True, "project_id": "work-b"}
         )
-        assert foreign.status_code == 422
+        assert foreign.status_code == 200 and foreign.json()["project_id"] == pid
         saved = await profile_client.put("/api/v1/profile/login-preference", json={"remember_last_workspace": True})
         assert saved.status_code == 200 and saved.json()["project_id"] == pid
         native.raw = [r for r in native.raw if r.scope.get("project", {}).get("id") != pid]
         revoked = await profile_client.put("/api/v1/profile/login-preference", json={"remember_last_workspace": True})
         assert revoked.status_code == 403
-        # Opt-out remains possible even after losing the selected project.
-        disabled = await profile_client.put("/api/v1/profile/login-preference", json={"remember_last_workspace": False})
-        assert disabled.status_code == 200 and disabled.json() == {"remember_last_workspace": False}
+        missing = await profile_client.put("/api/v1/profile/login-preference", json={"remember_last_workspace": False})
+        assert missing.status_code == 409
+        for partial in [{"domain_id": "tenant-a"}, {"project_id": "work-a"}]:
+            incomplete = await profile_client.put(
+                "/api/v1/profile/login-preference", json={"remember_last_workspace": False, **partial}
+            )
+            assert incomplete.status_code == 409
+        native.raw.append(grant("reader", user="ordinary", project="default-a"))
+        outside = await profile_client.put(
+            "/api/v1/profile/login-preference",
+            json={"remember_last_workspace": False, "domain_id": "tenant-a", "project_id": "work-b"},
+        )
+        assert outside.status_code == 403 and outside.json()["detail"] == "Resource is outside the current domain"
+        not_joined = await profile_client.put(
+            "/api/v1/profile/login-preference",
+            json={"remember_last_workspace": False, "domain_id": "tenant-b", "project_id": "work-b"},
+        )
+        assert not_joined.status_code == 403 and not_joined.json()["detail"] == "domain_membership_denied"
+        fixed = await profile_client.put(
+            "/api/v1/profile/login-preference",
+            json={"remember_last_workspace": False, "domain_id": "tenant-a", "project_id": "work-a"},
+        )
+        assert fixed.status_code == 200 and fixed.json() == {
+            "remember_last_workspace": False,
+            "domain_id": "tenant-a",
+            "project_id": "work-a",
+        }
+        native.raw = [r for r in native.raw if r.scope.get("project", {}).get("id") != "work-a"]
+        denied = await profile_client.put(
+            "/api/v1/profile/login-preference",
+            json={"remember_last_workspace": False, "domain_id": "tenant-a", "project_id": "work-a"},
+        )
+        assert denied.status_code == 403 and denied.json()["detail"] == "project_membership_denied"
+        unchanged = await profile_client.get("/api/v1/profile/login-preference")
+        assert unchanged.json() == fixed.json()
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("substitute", ["wrong_subject", "wrong_project", "wrong_home"])
-async def test_remembered_exchange_subject_scope_substitution_never_becomes_personal_fallback(native_login, substitute):
+@pytest.mark.parametrize("remember", [True, False])
+async def test_saved_exchange_subject_scope_substitution_never_becomes_personal_fallback(
+    native_login, substitute, remember
+):
     client, native = native_login
     native.raw.append(grant("reader", user="ordinary", project="default-a"))
     await account_spaces.ensure_personal_project("ordinary")
-    await login_preferences.save("ordinary", "account", True, domain_id="tenant-a", project_id="work-a")
+    await login_preferences.save("ordinary", "account", remember, domain_id="tenant-a", project_id="work-a")
     setattr(native, substitute, True)
     response = await login(client)
     assert response.status_code in {401, 403} and "token" not in response.json()
