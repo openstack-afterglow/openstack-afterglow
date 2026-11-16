@@ -250,16 +250,12 @@
 			if (!isCurrent(request)) { request.experience.discard(request.controller.signal.aborted ? 'aborted' : 'stale'); return; }
 			const text = observedAuthText(request.experience, 'public-entry', t);
 			const failure = message(errorValue, errorValue instanceof ApiError ? '' : text('mcpConsent.error.loadFailed'), request.experience);
-			if (inline) {
-				// The session already belongs to the new domain; never keep the old domain's projects selectable.
-				projects = [];
-				operations = {};
-				domainError = failure;
-			} else {
-				clearSelection();
-				error = failure;
-			}
+			// A failed inline refresh leaves the session in the new domain, so the page falls back to the
+			// ordinary load failure state (error and retry) instead of showing the old domain's details.
+			clearSelection();
+			error = failure;
 			loading = false;
+			projectsRefreshing = false;
 			request.experience.state('error'); rendered = true;
 		} finally {
 			if (isCurrent(request)) { loading = false; projectsRefreshing = false; }

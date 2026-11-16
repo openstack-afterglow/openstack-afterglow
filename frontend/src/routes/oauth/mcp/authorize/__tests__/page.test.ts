@@ -818,4 +818,32 @@ describe('MCP consent authorization domain', () => {
 		expect(checkbox('project-a')).toBeTruthy();
 		expect(pendingMcpConsentTicket()).toBe(ticket);
 	});
+
+	it('falls back to the load error with retry when the refresh after a domain switch fails', async () => {
+		auth.set({ ...actor, availableDomains: [{ id: 'domain-dms', name: 'DMS Lab' }, { id: 'domain-b', name: 'Other' }] });
+		const next = { ...actor, token: 'token-domain-b', projectId: 'project-b', availableDomains: [{ id: 'domain-dms', name: 'DMS Lab' }, { id: 'domain-b', name: 'Other' }] };
+		domainAuthState.mockReturnValue(next);
+		setAuth.mockImplementation((state: typeof next) => auth.set(state));
+		api.post.mockResolvedValueOnce({ token: 'token-domain-b' });
+		let failRefresh = true;
+		api.get.mockImplementation((path: string, token: string) => {
+			const other = token === 'token-domain-b';
+			if (other && failRefresh) return Promise.reject(new Error('refresh failed'));
+			if (path === '/api/v1/auth/mcp-projects?preview=true') return Promise.resolve(other ? [projects[1]] : projects);
+			return Promise.resolve({ ...details, scopes: ['mcp:read'], ongoing_supported: true,
+				domain_id: other ? 'domain-b' : 'domain-dms', domain_name: other ? 'Other' : 'DMS Lab' });
+		});
+		render(Page);
+		await loaded();
+		await fireEvent.change(screen.getByRole('combobox', { name: domainLabel() }), { target: { value: 'domain-b' } });
+		await screen.findByText(t('mcpConsent.error.loadFailed'));
+		// Never keep showing the previous domain once the session has moved on.
+		expect(screen.queryByText('domain-dms')).toBeNull();
+		expect(screen.queryByRole('combobox', { name: domainLabel() })).toBeNull();
+		failRefresh = false;
+		await fireEvent.click(screen.getByRole('button', { name: t('mcpConsent.actions.retry') }));
+		await fireEvent.click(await screen.findByRole('button', { name: commonT('pagination.next') }));
+		await screen.findByRole('heading', { name: t('mcpConsent.operations.label') });
+		expect((screen.getByRole('combobox', { name: domainLabel() }) as HTMLSelectElement).value).toBe('domain-b');
+	});
 });
