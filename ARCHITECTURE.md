@@ -2222,9 +2222,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "d3e2894711dbe83f44f6a351b2121253c1a8c0437e502bdd4f36323ba515d1b1",
-  "reviewed_at": "2026-11-16T10:17:34Z",
-  "summary": "표 행 모션에서 tr의 animate:rowReflow 제거(퇴장 행 table layout 이탈), grid 행만 유지"
+  "source_sha256": "7c4a8eb13634681b2482ae3c42b73550cdbb844acbaa9c3a7aade1523a36fb7e",
+  "reviewed_at": "2026-11-16T13:40:40Z",
+  "summary": "Release 1.32.23: hidden-owner recovery point classification, volume backup/snapshot list scope, capacity summary, keyed row refresh motion; version bump and changelog."
 }
 ```
 <!-- architecture-review:end -->

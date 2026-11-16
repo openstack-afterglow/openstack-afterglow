@@ -10,5 +10,6 @@
 - [x] 4.2 `$lib/utils/rowMotion` (enter/exit/reflow/changed, batch limit) and its tests; applied to keyed table rows across dashboard/admin tables; jsdom `getAnimations` stub.
 - [x] 4.3 Refresh no longer swaps a loaded list for a loader: admin floating IPs, admin users recent activity; stable keys for unkeyed rows.
 - [x] 4.4 Real-browser check in tutorial mode: no row/loader churn on a manual refresh of eight list pages; a deleted row fades out (opacity 1→0) then leaves.
-- [ ] 5.1 Full `npm run test:gate`, commit on `dev`.
-- [ ] 5.2 Patch release and production rollout (needs owner approval); member-session probe of the DMSLAB gitlab backup after rollout.
+- [x] 4.5 `<tr>` rows drop `animate:rowReflow` (Svelte pinned outgoing rows with `position: absolute`, collapsing cells); real-browser check of a `<tr>` outro/intro and a grid-row outro (width and 9 columns kept, siblings slide).
+- [x] 5.1 Full gate (3 known environment-only backend failures), commit on `dev`.
+- [ ] 5.2 Patch release 1.32.23 (approved) and production rollout; member-session probe of the DMSLAB gitlab backup after rollout.
