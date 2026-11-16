@@ -4,7 +4,7 @@ import { createSwr } from '$lib/utils/swr.svelte';
 import { apiMut } from '$lib/api/mutations';
 import { wizard, openWizard } from '$lib/stores/wizard';
 import type { QuotaItem } from '$lib/types/quotas';
-import type { Volume, Snapshot } from '$lib/types/volume';
+import type { Volume, Snapshot, VolumeBackup } from '$lib/types/volume';
 import { confirmDialog } from '$lib/stores/confirm.svelte';
 import {
   beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, recordExperience, type ExperienceContext,
@@ -41,6 +41,9 @@ export function createVolumesController(opts: VolumesControllerOpts) {
   let deleting = $state<string | null>(null);
   let snapshotsLoading = $state(true);
   let snapshotsError = $state('');
+  let backups = $state<VolumeBackup[]>([]);
+  let backupsLoading = $state(true);
+  let backupsError = $state('');
   let quotasError = $state('');
   let showModal = $state(false);
   let showTransferModal = $state(false);
@@ -63,6 +66,7 @@ export function createVolumesController(opts: VolumesControllerOpts) {
   // previous-project response cannot overwrite fresher data.
   let volumesRequestSeq = 0;
   let snapshotsRequestSeq = 0;
+  let backupsRequestSeq = 0;
   let quotasRequestSeq = 0;
   let scopeRevision = 0;
   let destroyed = false;
@@ -189,6 +193,23 @@ export function createVolumesController(opts: VolumesControllerOpts) {
     }
   }
 
+  async function fetchBackups(manual = false) {
+    const seq = ++backupsRequestSeq;
+    const project = opts.projectId();
+    const token = opts.token();
+    const owns = () => seq === backupsRequestSeq && project === opts.projectId() && token === opts.token();
+    try {
+      const result = await api.get<VolumeBackup[]>('/api/v1/volumes/backups', token, project, manual ? { refresh: true } : undefined);
+      if (!owns()) return;
+      backups = result;
+      backupsError = '';
+    } catch {
+      if (owns()) backupsError = t('page.backupsUnavailable');
+    } finally {
+      if (owns()) backupsLoading = false;
+    }
+  }
+
   async function fetchQuotas(manual = false) {
     const seq = ++quotasRequestSeq;
     const project = opts.projectId();
@@ -205,7 +226,7 @@ export function createVolumesController(opts: VolumesControllerOpts) {
   }
 
   async function fetchAll(manual = false) {
-    await Promise.allSettled([fetchVolumes(manual), fetchSnapshots(manual), fetchQuotas(manual)]);
+    await Promise.allSettled([fetchVolumes(manual), fetchSnapshots(manual), fetchBackups(manual), fetchQuotas(manual)]);
   }
 
   function openVolumePanel(id: string) {
@@ -286,11 +307,15 @@ export function createVolumesController(opts: VolumesControllerOpts) {
     experienceDiscarded(pendingCreation?.context, 'scope_changed');
     pendingCreation = undefined;
     snapshotsRequestSeq += 1;
+    backupsRequestSeq += 1;
     quotasRequestSeq += 1;
     snapshotsLoading = true;
     snapshotsError = '';
     quotasError = '';
     snapshots = [];
+    backups = [];
+    backupsLoading = true;
+    backupsError = '';
     quotas = null;
     renameTargetVol = null;
     extendTargetVol = null;
@@ -311,6 +336,9 @@ export function createVolumesController(opts: VolumesControllerOpts) {
   return {
     get volumes() { return volumes; },
     get snapshots() { return snapshots; },
+    get backups() { return backups; },
+    get backupsLoading() { return backupsLoading; },
+    get backupsError() { return backupsError; },
     get loading() { return loading; },
     set loading(v: boolean) { loading = v; },
     get refreshing() { return refreshing; },
@@ -346,6 +374,7 @@ export function createVolumesController(opts: VolumesControllerOpts) {
     destroy,
     fetchVolumes,
     fetchSnapshots,
+    fetchBackups,
     fetchQuotas,
     fetchAll,
     openVolumePanel,

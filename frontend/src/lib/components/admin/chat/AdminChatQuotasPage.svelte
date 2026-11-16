@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
 	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
 	import { createObservationView } from '$lib/components/admin/observation/observationView.svelte';
@@ -371,7 +372,7 @@
 				</thead>
 				<tbody>
 					{#each tableView.rows as row (row.user.id)}
-						<tr data-user-id={row.user.id}>
+						<tr data-user-id={row.user.id} in:rowEnter out:rowExit animate:rowReflow use:rowChanged={row}>
 							<td class="user-cell" title={row.user.id}>
 								<div class="flex items-center gap-2">
 									<span class="font-medium text-[var(--color-ink-1)]">{row.user.name}</span>

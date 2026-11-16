@@ -1,4 +1,5 @@
 <script lang="ts">
+ import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
  import { untrack } from 'svelte';
  import { authDisplayContext } from '$lib/stores/authDisplayContext';
  import { intlLocale } from '$lib/i18n/runtime.svelte';
@@ -107,7 +108,7 @@
 			</thead>
 			<tbody>
 				{#each view.rows as rule (rule.id)}
-					<tr class="border-b border-line last:border-0">
+					<tr class="border-b border-line last:border-0" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={rule}>
 						<td class="px-3 py-2 font-mono text-ink-2">{rule.access_to}</td>
 						<td class="px-3 py-2">
 							<span class="px-1.5 py-0.5 rounded {rule.access_level === 'rw' ? 'bg-surface-selected/30 text-warm-text' : 'bg-surface-sunken text-ink-2'}">{rule.access_level}</span>

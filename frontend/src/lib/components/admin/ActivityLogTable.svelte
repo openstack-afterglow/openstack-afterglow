@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import { createObservationView, nativeObservationFilter, observationOptions } from '$lib/components/admin/observation/observationView.svelte';
 	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
 	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
@@ -251,7 +252,7 @@
 				</thead>
 				<tbody class="divide-y divide-line">
 					{#each tableView.rows as log (log.id)}
-						<tr class="hover:bg-surface-sunken/40 transition-colors">
+						<tr class="hover:bg-surface-sunken/40 transition-colors" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={log}>
 							<td class="px-4 py-3 text-ink-2 whitespace-nowrap" title={log.created_at}>
 								{relativeTime(log.created_at)}
 							</td>

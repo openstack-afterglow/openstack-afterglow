@@ -1,4 +1,5 @@
 <script lang="ts">
+ import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
  import { t as storageCommonT } from '$lib/i18n/ns/common';
  import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
 	import { t } from '$lib/i18n/ns/volume';
@@ -110,7 +111,7 @@
 			<div></div>
 		</div>
 		{#each snapshots as snap (snap.id)}
-			<div class="resource-selection-surface {snapshotGridClass} px-4 py-3 text-[13px] items-center border-b border-line hover:bg-surface-sunken/30 transition-colors last:border-b-0" data-selected={selectedIds.has(snap.id)}>
+			<div class="resource-selection-surface {snapshotGridClass} px-4 py-3 text-[13px] items-center border-b border-line hover:bg-surface-sunken/30 transition-colors last:border-b-0" data-selected={selectedIds.has(snap.id)} in:rowEnter out:rowExit animate:rowReflow use:rowChanged={snap}>
 				<div><SelectionCheckbox checked={selectedIds.has(snap.id)} disabled={selectionDisabled} onclick={() => onToggleSelect(snap.id)} ariaLabel={t('snapshotListTable.selectSnapshot', { name: snap.name || snap.id })} /></div>
 				<div class="min-w-0">
 					<div class="text-ink-0 font-medium truncate">{snap.name || snap.id.slice(0, 12)}</div>

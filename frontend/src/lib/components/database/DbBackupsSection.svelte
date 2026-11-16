@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import { t as tr } from '$lib/i18n/ns/database';
 	import { useDbInstanceDetailController } from '$lib/stores/dbInstanceDetailController.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
@@ -238,8 +239,8 @@
 				</tr>
 			</thead>
 			<tbody>
-				{#each s.backupView.rows as b}
-					<tr data-tour={tourCreatedId === b.id ? 'database-backups-created' : undefined} class="border-t border-line/50">
+				{#each s.backupView.rows as b (b.id)}
+					<tr data-tour={tourCreatedId === b.id ? 'database-backups-created' : undefined} class="border-t border-line/50" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={b}>
 						<td class="py-2 text-ink-0">{b.name}</td>
 						<td class="py-2">
 							<div class="flex items-center gap-1">

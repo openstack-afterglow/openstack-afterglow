@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t as tr } from '$lib/i18n/ns/database';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
@@ -168,8 +169,8 @@
 					</tr>
 				</thead>
 				<tbody>
-					{#each view.rows as inst}
-						<tr class="border-b border-line/50 hover:bg-surface-sunken/30 transition-colors">
+					{#each view.rows as inst (inst.id)}
+						<tr class="border-b border-line/50 hover:bg-surface-sunken/30 transition-colors" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={inst}>
 							<td class="py-3 px-4">
 								<a href="/admin/database-instances/{inst.id}" class="text-warm-text hover:text-warm-text-hover font-medium max-md:block max-md:max-w-[66vw] max-md:truncate" title={inst.name}>{inst.name}</a>
 							</td>

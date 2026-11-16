@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
 	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
 	import { createObservationView, nativeObservationFilter } from '$lib/components/admin/observation/observationView.svelte';
@@ -272,7 +273,7 @@
 						<table tabindex="0" aria-label={t('aodh.alarms')} class="focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
 							<thead><tr><TableColumnHeader view={tableView} columnKey="name" /><TableColumnHeader view={tableView} columnKey="state" /><TableColumnHeader view={tableView} columnKey="type" /><TableColumnHeader view={tableView} columnKey="enabled" /><TableColumnHeader view={tableView} columnKey="severity" /></tr></thead>
 							<tbody>{#each tableView.rows as alarm (alarm.alarm_id)}
-								<tr data-selected={selectedId === alarm.alarm_id}>
+								<tr data-selected={selectedId === alarm.alarm_id} in:rowEnter out:rowExit animate:rowReflow use:rowChanged={alarm}>
 									<td><Button variant="link" ariaLabel={t('aodh.selectNamed', { name: alarm.name || alarm.alarm_id })} ariaPressed={selectedId === alarm.alarm_id} onclick={() => void selectAlarm(alarm.alarm_id)}>{alarm.name || alarm.alarm_id}</Button></td>
 									<td>{stateLabel(alarm.state)}</td><td class="font-mono">{alarm.type}</td><td>{reported(alarm.enabled)}</td><td>{reported(alarm.severity)}</td>
 								</tr>

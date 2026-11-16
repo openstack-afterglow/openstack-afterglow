@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import type { AdminFileStorage } from '$lib/types/fileStorage';
 	import { projectNames } from '$lib/stores/projectNames';
 	import { formatNumber } from '$lib/utils/format';
@@ -65,7 +66,7 @@
 		</thead>
 		<tbody>
 			{#each storages as fs (fs.id)}
-				<tr class="border-b border-line/50 text-xs transition-colors {selectedId === fs.id ? 'bg-surface-selected/10' : 'hover:bg-surface-sunken/20'}">
+				<tr class="border-b border-line/50 text-xs transition-colors {selectedId === fs.id ? 'bg-surface-selected/10' : 'hover:bg-surface-sunken/20'}" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={fs}>
 					<td class="p-0"><button type="button" onclick={() => onOpen(fs)} class="block w-full py-2 pr-4 font-medium text-ink-0 hover:text-warm-text-hover transition-colors text-left" title={fs.name || fs.id}><span class="max-md:block max-md:max-w-[66vw] max-md:truncate">{fs.name || fs.id.slice(0, 8)}</span></button></td>
 					<td class="py-2 pr-4"><StatusChip status={fs.status} /></td>
 					<td class="py-2 pr-4 text-ink-2">{formatNumber(fs.size)} GB</td>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
 	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
 	import { createObservationView } from '$lib/components/admin/observation/observationView.svelte';
@@ -623,7 +624,7 @@
 							</thead>
 							<tbody class="motion-stagger">
 								{#each tableView.rows as f (f.flavor)}
-									<tr>
+									<tr in:rowEnter out:rowExit animate:rowReflow use:rowChanged={f}>
 										<td>
 											<div class="flex items-center gap-2">
 												<span class="font-mono text-ink-0">{f.flavor}</span>
@@ -725,7 +726,7 @@
 						</thead>
 						<tbody class="motion-stagger">
 							{#each tableView.rows as row (row.instance_id)}
-								<tr>
+								<tr in:rowEnter out:rowExit animate:rowReflow use:rowChanged={row}>
 									<td>
 										<div class="text-ink-0">{row.name || t('usageReport.missingValue')}</div>
 										<div class="font-mono text-xs text-ink-2">{row.instance_id.slice(0, 8)}</div>

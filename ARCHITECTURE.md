@@ -295,6 +295,10 @@ Resampled counter/vCPU는 bounded native-granularity window로 내부 reset/gap/
 
 자동/수동 분류는 소유 프로젝트를 요구한다. DMS Lab Cinder는 `backup:backup_project_attribute`(기본 `rule:admin_api`)로 멤버 세션에서 백업의 `project_id`를 숨기므로, `cinder._recovery_origin`은 `all_projects` 없는 읽기(`list_*`/`get_*`/`create_*`)에서 보이지 않는 `project_id`만 토큰이 실제로 범위를 갖는 `conn._afterglow_authenticated_project_id`로 채워 분류한다. 논리 workspace인 `_afterglow_project_id`는 admin-target 세션에서 이 값과 다르므로 증명으로 쓰지 않는다. 보이는 소유자는 항상 우선하며 `all_projects` 읽기와 인증 프로젝트 증명이 없는 연결은 채우지 않아 수동으로 남는다. 이 보정 전에는 멤버에게 모든 자동 백업이 `수동`으로 표시됐다.
 
+볼륨 목록 요약(`VolumeSummaryCards`)은 볼륨 용량·개수·연결·할당량에 더해 스냅샷 개수·용량과 백업 개수·용량을 보인다. 백업은 `volumesController`가 `GET /api/v1/volumes/backups`를 새 요청 seq로 읽으며(`fetchBackups`, 프로젝트 전환 시 리셋) 실패하면 `page.backupsUnavailable`과 `—`로 표시한다. Cinder의 백업·스냅샷 `size`는 원본 볼륨 크기이므로 합계는 실제 소비량이 아니며 title로 안내한다.
+
+표 새로고침은 전체 목록을 다시 불러오는 것이 아니라 바뀐 행만 갱신하는 계약이다. 새로고침 경로는 이미 목록이 있으면 loader로 바꾸지 않아야 하며(`admin/floating-ips`·사용자 활동 패널을 이 기준으로 고쳤다) 범위(domain/project) 전환만 비운다. 키가 있는 `{#each}`의 행 루트(`<tr>` 또는 grid 행)에는 `$lib/utils/rowMotion`의 `in:rowEnter out:rowExit animate:rowReflow use:rowChanged={row}`를 둔다: 새 행 fade-in, 사라진 행 fade-out, 나머지 형제 FLIP 이동, 값(JSON signature)이 바뀐 행 1회 배경 강조. Svelte 전환은 로컬이라 첫 렌더는 움직이지 않고, 지연(deferred) 전환이 같은 업데이트의 모든 행이 등록된 뒤 평가되는 점을 이용해 한 번에 `ROW_MOTION_BATCH_LIMIT`(6)행을 넘는 교체(페이지 이동·필터·scope 전환)는 모션 없이 즉시 바뀌어 표가 잠시 두 배가 되지 않는다. 모션 줄이기·Web Animations 부재 환경은 즉시 전환이다. 모바일 카드, 형제 행이 있는 행(`HostHealthPanel`), 안정 키가 없는 목록은 적용하지 않는다. 토큰 갱신이 사용자·프로젝트 소유자 키를 바꾸는 일부 페이지(`$auth` 원본을 추적하는 effect)는 의도된 소유권 fence로 이번 변경 범위 밖이다.
+
 자동 백업 정책은 일별 증분·주별/월별 전체를 사용한다. 증분 부모는 Cinder가 같은 볼륨의 최신 사용 가능한 백업(수동 포함)에서 고르며 Afterglow는 부모 ID를 지정하지 않는다. 마지막 owned 전체 이후 증분이 일별 보관 개수-1에 도달하거나 그 이후 체인에 수동·미완료·불명확 포인트가 섞이면 새 전체로 회전해 체인 길이를 보관 창 안으로 제한한다. 보관 정리는 자식부터 최신 `has_dependent_backups`가 명확히 false일 때만 삭제하고, 수동 백업이 의존하는 owned 부모는 `retained_over_limit`로 남긴다. 비동기 Cinder 삭제 완료를 기다리는 drain은 시한이 있으며 시한이 지나도 삭제 대기 포인트를 삭제됨으로 간주하지 않는다. 스냅샷 lane은 같은 엔진의 CoW 전용 경로로 변화가 없다.
 
 콘솔 정보 위계 변경은 공통 `AutoRefreshControl`의 한 select, `ResourceIdentifier`, 문맥별 StatusChip, semantic editable/input과 light/dark token·typography·row/control geometry를 재사용한다. 인스턴스·네트워크·볼륨은 compact 요약→도구→표/카드→하단 페이지를 우선하며 추이는 접힘/용량 분석으로 옮긴다. Complete-project 배열의 표시 paging과 관리자 native marker paging은 별개로 유지하고 필터/page 변경은 숨겨진 선택을 제거한다. 기존 shared 상세 경로/권한·mutation fence를 새 표시 구조로 대체하지 않는다.
@@ -2218,9 +2222,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "dffae8185dcf767a779308441a7ec0c09c2c343ca24b2890704de9adbefb718d",
-  "reviewed_at": "2026-11-16T09:49:18Z",
-  "summary": "볼륨 백업·스냅샷 목록을 복구 지점이 있는 볼륨으로 한정하고, 멤버 세션에서 숨겨진 Cinder project_id를 토큰 인증 프로젝트로 채워 자동/수동을 분류"
+  "source_sha256": "d77db755a6b68b6686ba4b0dd8007936806e3dd239942b6d615d58095cc7275f",
+  "reviewed_at": "2026-11-16T10:10:01Z",
+  "summary": "볼륨 요약에 백업·스냅샷 용량 추가, 표 새로고침 행 모션(rowMotion)과 새로고침 loader 교체 수정, 자동/수동 분류와 목록 범위"
 }
 ```
 <!-- architecture-review:end -->

@@ -1,4 +1,5 @@
 <script lang="ts">
+ import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
  import { untrack } from 'svelte';
  import { intlLocale } from '$lib/i18n/runtime.svelte';
  import { t as commonT } from '$lib/i18n/ns/common';
@@ -33,8 +34,8 @@
 		<table class="w-full text-sm">
 			<thead><tr><TableColumnHeader {view} columnKey="key" /><TableColumnHeader {view} columnKey="value" /></tr></thead>
  <tbody>
-				{#each view.rows as [k, v]}
-					<tr class="border-b border-line/50">
+				{#each view.rows as [k, v] (k)}
+					<tr class="border-b border-line/50" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={[k, v]}>
 						<td class="py-2 pr-4 text-ink-2 text-xs w-1/3">{k}</td>
 						<td class="py-2 text-ink-2 font-mono text-xs break-all">{v}</td>
 					</tr>

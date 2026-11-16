@@ -1,4 +1,5 @@
 <script lang="ts">
+ import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
  import type { TableView } from '$lib/utils/tableView.svelte';
  import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
  import { t } from '$lib/i18n/ns/file-storage';
@@ -33,7 +34,7 @@
   <div class="overflow-x-auto"><table class="w-full text-sm">
    <thead><tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide"><th class="text-left py-3 pr-3">{@render selectAll()}</th><TableColumnHeader {view} columnKey="name" /><TableColumnHeader {view} columnKey="type" /><TableColumnHeader {view} columnKey="status" /><TableColumnHeader {view} columnKey="dns" /><TableColumnHeader {view} columnKey="server" /><TableColumnHeader {view} columnKey="domain" /><th class="text-right py-3">{t('securityTable.actions')}</th></tr></thead>
    <tbody class="motion-stagger">{#each services as svc (svc.id)}
-    <tr class="resource-selection-surface border-b border-line/50 hover:bg-surface-sunken/30 transition-colors" data-selected={selectedIds.has(svc.id)}>
+    <tr class="resource-selection-surface border-b border-line/50 hover:bg-surface-sunken/30 transition-colors" data-selected={selectedIds.has(svc.id)} in:rowEnter out:rowExit animate:rowReflow use:rowChanged={svc}>
      <td class="py-3 pr-3">{@render selectService(svc)}</td><td class="py-3 pr-4 font-medium text-ink-0"><span>{svc.name}</span>{#if svc.description}<div class="text-xs text-ink-2">{svc.description}</div>{/if}</td><td class="py-3 pr-4"><Pill tone="accent" size="xs">{typeLabel[svc.type] ?? svc.type}</Pill></td><td class="py-3 pr-4"><StatusChip status={svc.status || null} /></td><td class="py-3 pr-4 text-xs text-ink-2 font-mono">{svc.dns_ip || '-'}</td><td class="py-3 pr-4 text-xs text-ink-2">{svc.server || '-'}</td><td class="py-3 pr-4 text-xs text-ink-2">{svc.domain || '-'}</td><td class="py-3 text-right"><div class="flex justify-end gap-1">{@render serviceActions(svc)}</div></td>
     </tr>
    {/each}</tbody>

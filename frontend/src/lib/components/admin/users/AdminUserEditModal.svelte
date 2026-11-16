@@ -24,6 +24,7 @@
   import AdminUserEmailComposer from './AdminUserEmailComposer.svelte';
   import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+  import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 
   let {
     user = $bindable<User | null>(),
@@ -406,7 +407,7 @@
                 </thead>
                 <tbody>
                   {#each sessionsView.rows as sess (sess.jti)}
-                    <tr class="border-b border-line/50">
+                    <tr class="border-b border-line/50" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={sess}>
                       <td class="py-1.5 pr-3 font-mono text-ink-2">{sess.origin_ip || '—'}</td>
                       <td class="py-1.5 pr-3 text-ink-2">{deviceLabel(sess)}</td>
                       <td class="py-1.5 pr-3 text-ink-2">{formatSessionTime(sess.last_seen)}</td>

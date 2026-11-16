@@ -12,6 +12,7 @@
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { ResourceIdentifier } from '$lib/components/ui';
 	import type { TableView } from '$lib/utils/tableView.svelte';
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	let {
 		volumes,
 		view,
@@ -142,6 +143,7 @@
 		<div
 			class="resource-selection-surface {volumeGridClass} min-h-11 px-4 py-1 text-sm items-center border-b border-line transition-colors last:border-b-0 {selectedVolumeId === vol.id ? 'bg-surface-sunken/30' : ''}"
 			data-selected={selectedIds.has(vol.id)}
+			in:rowEnter out:rowExit animate:rowReflow use:rowChanged={vol}
 		>
 			<SelectionCheckbox
 				checked={selectedIds.has(vol.id)}

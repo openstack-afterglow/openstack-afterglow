@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import type { SystemAccountIdentity } from '$lib/types/common';
 	import { isSystemAccount } from '$lib/utils/systemAccount';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
@@ -219,7 +220,7 @@
 				<table class="w-full text-sm"><thead><tr><TableColumnHeader view={tableView} columnKey="name" /><TableColumnHeader view={tableView} columnKey="email" /><TableColumnHeader view={tableView} columnKey="id" /><th></th></tr></thead>
 					<tbody>
 						{#each filtered as u (u.id)}
-							<tr class="border-b border-line/50 hover:bg-surface-sunken/50 transition-colors">
+							<tr class="border-b border-line/50 hover:bg-surface-sunken/50 transition-colors" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={u}>
 								<td class="px-4 py-2 text-ink-0 text-xs">{u.name}</td>
 								<td class="px-4 py-2 text-ink-2 text-xs">{u.email || '-'}</td>
 								<td class="px-4 py-2 text-ink-2 font-mono text-xs">{u.id.slice(0, 8)}</td>

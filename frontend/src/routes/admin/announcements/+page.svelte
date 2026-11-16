@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { createTableView } from '$lib/utils/tableView.svelte';
 	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
@@ -346,7 +347,7 @@
 					</thead>
 					<tbody>
 						{#each tableView.rows as a (a.id)}
-							<tr class="border-b border-[var(--color-line)] last:border-0">
+							<tr class="border-b border-[var(--color-line)] last:border-0" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={a}>
 								<td class="py-2.5 pr-4 text-[var(--color-ink-2)] tabular-nums whitespace-nowrap">{formatIsoDateTime(a.created_at)}</td>
 								<td class="py-2.5 pr-4 text-[var(--color-ink-0)] max-w-[240px] truncate" title={a.title}>{a.title}</td>
 								<td class="py-2.5 pr-4">

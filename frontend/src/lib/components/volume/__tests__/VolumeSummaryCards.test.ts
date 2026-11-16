@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 
 import VolumeSummaryCards from '../VolumeSummaryCards.svelte';
-import type { Snapshot, Volume } from '$lib/types/volume';
+import type { Snapshot, Volume, VolumeBackup } from '$lib/types/volume';
 
 const volumes: Volume[] = [
 	{
@@ -54,7 +54,26 @@ describe('VolumeSummaryCards', () => {
 
 	it('keeps unavailable snapshot counts and quotas distinct from measured zero', () => {
 		render(VolumeSummaryCards, { volumes, snapshots: [], quotas: null, snapshotsKnown: false });
-		expect(screen.getAllByText('—')).toHaveLength(2);
+		expect(screen.getAllByText('—')).toHaveLength(3);
 		expect(screen.getByText('10 GiB')).toBeTruthy();
+	});
+
+	it('sums snapshot and backup capacity and marks an unreadable backup inventory unknown', () => {
+		const backups = [
+			{ id: 'b1', name: 'b1', description: '', volume_id: 'vol-1', status: 'available', size: 10, created_at: null, is_incremental: false, has_dependent_backups: false },
+			{ id: 'b2', name: 'b2', description: '', volume_id: 'vol-1', status: 'available', size: 25, created_at: null, is_incremental: true, has_dependent_backups: false },
+		] as unknown as VolumeBackup[];
+		const view = render(VolumeSummaryCards, { volumes, snapshots, quotas, backups });
+		// volume 10 + snapshot 10 + quota 100 are distinct from the 35 GiB backup total.
+		expect(screen.getByText('35 GiB')).toBeTruthy();
+		expect(screen.getAllByText('10 GiB')).toHaveLength(2);
+		view.unmount();
+		render(VolumeSummaryCards, { volumes, snapshots, quotas, backups: [], backupsKnown: false });
+		expect(screen.getAllByText('—')).toHaveLength(2);
+	});
+
+	it('hides backup figures when the page has no backup inventory', () => {
+		render(VolumeSummaryCards, { volumes, snapshots, quotas });
+		expect(screen.queryByText('백업')).toBeNull();
 	});
 });

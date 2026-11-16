@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import { t as tr } from '$lib/i18n/ns/database';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import type { DbBackup } from '$lib/types/database';
@@ -115,8 +116,8 @@
 				</tr>
 			</thead>
 			<tbody>
-				{#each view.rows as b}
-					<tr class="border-t border-line/50">
+				{#each view.rows as b (b.id)}
+					<tr class="border-t border-line/50" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={b}>
 						<td class="py-2 text-ink-0">{b.name}</td>
 						<td class="py-2 text-ink-2 text-xs">{b.status}</td>
 						<td class="py-2 text-ink-2 text-xs">{b.size ? `${b.size} GB` : '-'}</td>

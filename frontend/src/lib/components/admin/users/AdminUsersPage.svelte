@@ -169,6 +169,7 @@
 		}
 	}
 
+	let shownActivityScope = '';
 	async function loadActivity(fresh = false) {
 		if (!alive) return;
 		const generation = ++activityGeneration;
@@ -178,6 +179,10 @@
 		const boundary = creationRevision;
 		const owns = () => alive && generation === activityGeneration && requestToken === token && requestProject === projectId && requestDomain === domainId && boundary === creationRevision;
 		activityError = '';
+		const activityScope = `${requestDomain}:${requestProject}:${boundary}`;
+		// Only a refresh of the same scope keeps its rows; another domain/project starts from the loader.
+		if (activityScope !== shownActivityScope) activityLog = [];
+		shownActivityScope = activityScope;
 		loadingActivity = true;
 		try {
 			const data = await api.get<ActivityEvent[]>(
@@ -377,7 +382,7 @@
 				<RegexSearch id="admin-users-activity-search" bind:value={activitySearch} />
 				<TableViewControls view={activityView} class="" />
 				<p class="text-xs text-ink-2">{tc('table.loadedScope')}</p>
-				{#if loadingActivity}
+				{#if loadingActivity && activityLog.length === 0}
 					<p class="text-xs text-ink-2"><LoadingState variant="inline" label={t('userPage.loading')} /></p>
 				{:else if activityLog.length === 0}
 					<p class="text-xs text-ink-2">{t('userPage.noChanges')}</p>

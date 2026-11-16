@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import { t as commonT } from '$lib/i18n/ns/common';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
@@ -44,6 +45,7 @@
 
 	let fips = $state<FloatingIpInfo[]>([]);
 	let loading = $state(true);
+	let inventoryLoaded = false;
 
 	// 생성 모달
 	let showCreate = $state(false);
@@ -63,7 +65,8 @@
 	const projectId = $derived($auth.projectId ?? undefined);
 
 	async function load(force = false) {
-		loading = true;
+		// Only the first read blocks the list; later refreshes patch the rows that are already shown.
+		if (!inventoryLoaded) loading = true;
 		inventoryError = '';
 		try {
 			fips = await api.get<FloatingIpInfo[]>('/api/v1/admin/all-floating-ips', token, projectId, { refresh: force });
@@ -71,6 +74,7 @@
 			fips = []; inventoryError = reason instanceof Error ? reason.message : scopeT('state.unavailable');
 		} finally {
 			loading = false;
+			inventoryLoaded = true;
 		}
 	}
 
@@ -163,7 +167,7 @@
 				</thead>
 				<tbody>
 					{#each view.rows as f (f.id)}
-						<tr class="border-b border-line/50 text-xs hover:bg-surface-sunken/30 transition-colors">
+						<tr class="border-b border-line/50 text-xs hover:bg-surface-sunken/30 transition-colors" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={f}>
 							<td class="py-2 pr-4 font-mono text-green-400">{f.floating_ip_address}</td>
 							<td class="py-2 pr-4 font-mono text-ink-2">{f.fixed_ip_address ?? '-'}</td>
 							<td class="py-2 pr-4 {f.port_id ? 'text-green-400' : 'text-ink-2'}">

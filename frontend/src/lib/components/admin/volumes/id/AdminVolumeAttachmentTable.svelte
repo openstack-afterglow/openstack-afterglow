@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import { t } from '$lib/i18n/ns/admin-storage';
 	import type { AdminVolumeDetail } from '$lib/types/volume';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
@@ -37,8 +38,8 @@
 				</tr>
 			</thead>
 			<tbody>
-				{#each view.rows as att}
-					<tr class="border-b border-line/50 text-xs">
+				{#each view.rows as att (att.server_id)}
+					<tr class="border-b border-line/50 text-xs" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={att}>
 						<td class="py-2 pr-4 font-mono text-ink-2">{att.server_id}</td>
 						<td class="py-2 pr-4 text-ink-2">{att.device}</td>
 					</tr>

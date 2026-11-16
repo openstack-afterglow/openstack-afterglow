@@ -6,5 +6,9 @@
 - [x] 2.1 `cinder._caller_project` / `_recovery_origin` fill a hidden owner from `_afterglow_authenticated_project_id`.
 - [x] 2.2 Tests: hidden owner on real SDK HTTP reads (backup and snapshot), logical workspace differing from token project, `all_projects`, missing proof, visible foreign owner.
 - [x] 3.1 ARCHITECTURE.md, CHANGELOG.md.
-- [ ] 3.2 Full `npm run test:gate`, commit on `dev`.
-- [ ] 3.3 Patch release and production rollout (needs owner approval); member-session probe of the DMSLAB gitlab backup after rollout.
+- [x] 4.1 Volume list summary: backup count/capacity and snapshot capacity (`volumesController.fetchBackups`, `VolumeSummaryCards`), 9 locales, tests.
+- [x] 4.2 `$lib/utils/rowMotion` (enter/exit/reflow/changed, batch limit) and its tests; applied to keyed table rows across dashboard/admin tables; jsdom `getAnimations` stub.
+- [x] 4.3 Refresh no longer swaps a loaded list for a loader: admin floating IPs, admin users recent activity; stable keys for unkeyed rows.
+- [x] 4.4 Real-browser check in tutorial mode: no row/loader churn on a manual refresh of eight list pages; a deleted row fades out (opacity 1→0) then leaves.
+- [ ] 5.1 Full `npm run test:gate`, commit on `dev`.
+- [ ] 5.2 Patch release and production rollout (needs owner approval); member-session probe of the DMSLAB gitlab backup after rollout.

@@ -99,7 +99,8 @@ beforeEach(() => {
 	auth.update((value) => ({ ...value, token: 'token-a', projectId: 'project-a', userId: 'user-a', isSystemAdmin: false, roles: ['member'] }));
 	(observedProjectPermissions as Writable<PermissionState>).set({ permissions: null, loading: false, error: '' });
 	grant(...allWaygateLeaves);
-	Element.prototype.animate = vi.fn().mockReturnValue({ finished: Promise.resolve(), cancel: vi.fn(), play: vi.fn() });
+	// A real animation reports completion through onfinish; without it an outgoing keyed row would never leave the DOM.
+	Element.prototype.animate = vi.fn(() => ({ finished: Promise.resolve(), cancel: vi.fn(), play: vi.fn(), set onfinish(handler: () => void) { queueMicrotask(handler); } }) as unknown as Animation);
 	vi.stubGlobal('matchMedia', vi.fn((query: string) => ({
 		matches: false, media: query, onchange: null,
 		addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(),

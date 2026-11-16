@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { t } from '$lib/i18n/ns/admin-ops';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
@@ -89,7 +90,7 @@
 			</thead>
 			<tbody>
 				{#each displayedAgents as agent (agent.id)}
-					<tr>
+					<tr in:rowEnter out:rowExit animate:rowReflow use:rowChanged={agent}>
 						<td class="text-ink-0">{agent.agent_type}</td>
 						<td class="font-mono text-ink-2">{agent.binary}</td>
 						<td class="text-ink-2">{agent.host}</td>

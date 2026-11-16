@@ -42,7 +42,7 @@ export default defineConfig({
 	test: {
 		include: ['src/**/*.{test,spec}.{js,ts}'],
 		environment: 'jsdom',
-		setupFiles: ['src/__mocks__/resize-observer.ts'],
+		setupFiles: ['src/__mocks__/resize-observer.ts', 'src/__mocks__/web-animations.ts'],
 		globals: true,
 		// 기본 forks 대비 worker_threads 가 파일당 환경·import 비용을 줄인다.
 		// 로컬 --maxWorkers=3 측정(CI 실행 아님): 전체 247 파일 2회 모두 통과, 로컬 wall time 약 -14.8%.

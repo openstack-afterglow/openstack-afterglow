@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import { t as tl } from '$lib/i18n/ns/common';
   import PageShell from '$lib/components/ui/PageShell.svelte';
   import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -220,7 +221,7 @@
 
       <div class="motion-stagger">
       {#each view.rows as fip (fip.id)}
-        <div class="resource-selection-surface grid grid-cols-[1fr_160px_1fr_140px_90px] px-5 py-3.5 border-b border-line last:border-b-0 items-center hover:bg-surface-sunken/20 transition-colors" data-selected={selection.has(fip.id)}>
+        <div class="resource-selection-surface grid grid-cols-[1fr_160px_1fr_140px_90px] px-5 py-3.5 border-b border-line last:border-b-0 items-center hover:bg-surface-sunken/20 transition-colors" data-selected={selection.has(fip.id)} in:rowEnter out:rowExit animate:rowReflow use:rowChanged={fip}>
           <div class="flex items-center gap-2">
             <SelectionCheckbox
               checked={selection.has(fip.id)}

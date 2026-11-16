@@ -1,4 +1,5 @@
 <script lang="ts">
+ import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
  import { t as storageCommonT } from '$lib/i18n/ns/common';
  import type { TableView } from '$lib/utils/tableView.svelte';
  import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
@@ -63,7 +64,7 @@
  <TableColumnHeader {view} columnKey="name" /><TableColumnHeader {view} columnKey="status" /><TableColumnHeader {view} columnKey="size" /><th>{t('backupGroups.origin')}</th><th>{t('backupGroups.method')}</th><th>{t('backupGroups.creator')}</th><TableColumnHeader {view} columnKey="created" /><th class="text-right py-3">{t('backupListTable.actions')}</th>
 </tr></thead><tbody class="motion-stagger">
  {#each backups as backup (backup.id)}
-  <tr class="resource-selection-surface border-b border-line/50 hover:bg-surface-sunken/50 transition-colors" data-selected={selectedIds.has(backup.id)}>
+  <tr class="resource-selection-surface border-b border-line/50 hover:bg-surface-sunken/50 transition-colors" data-selected={selectedIds.has(backup.id)} in:rowEnter out:rowExit animate:rowReflow use:rowChanged={backup}>
    <td class="py-3 pr-3"><SelectionCheckbox checked={selectedIds.has(backup.id)} disabled={selectionDisabled} onclick={() => onToggleSelect(backup.id)} ariaLabel={t('backupListTable.selectBackup', { name: backup.name || backup.id })} /></td>
    <td class="py-3 pr-6 font-medium text-ink-0"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={backup.name || backup.id}>{backup.name || backup.id.slice(0, 8)}</span></td>
    <td class="py-3 pr-6"><StatusChip status={backup.status} /></td><td class="py-3 pr-6 text-ink-2">{formatStorage(backup.size)}</td>

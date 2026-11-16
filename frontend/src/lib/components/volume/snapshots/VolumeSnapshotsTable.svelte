@@ -1,4 +1,5 @@
 <script lang="ts">
+ import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
  import { t as storageCommonT } from '$lib/i18n/ns/common';
  import type { TableView } from '$lib/utils/tableView.svelte';
  import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
@@ -82,7 +83,7 @@
     </thead>
     <tbody class="motion-stagger">
       {#each snapshots as snap (snap.id)}
-        <tr class="resource-selection-surface border-b border-line/50 hover:bg-surface-sunken/50 transition-colors" data-selected={selectedIds.has(snap.id)}>
+        <tr class="resource-selection-surface border-b border-line/50 hover:bg-surface-sunken/50 transition-colors" data-selected={selectedIds.has(snap.id)} in:rowEnter out:rowExit animate:rowReflow use:rowChanged={snap}>
           <td class="py-3 pr-3"><SelectionCheckbox checked={selectedIds.has(snap.id)} disabled={selectionDisabled} onclick={() => onToggleSelect(snap.id)} ariaLabel={t('snapshotsTable.selectSnapshot', { name: snap.name || snap.id })} /></td>
           <td class="py-3 pr-6 font-medium text-ink-0"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={snap.name || snap.id}>{snap.name || snap.id.slice(0, 8)}</span></td>
           <td class="py-3 pr-6"><StatusChip status={snap.status} /></td>

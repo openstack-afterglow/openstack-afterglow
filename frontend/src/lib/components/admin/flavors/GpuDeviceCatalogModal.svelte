@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import { t } from '$lib/i18n/ns/admin-compute';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
@@ -238,7 +239,7 @@
 								</thead>
 								<tbody>
 									{#each view.rows as d (d.vendor_id + d.device_id)}
-										<tr class="border-t border-line/50">
+										<tr class="border-t border-line/50" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={d}>
 											<td class="px-3 py-1.5 font-mono text-ink-2">{d.vendor_id}:{d.device_id}</td>
 											<td class="px-3 py-1.5 text-ink-0">{d.name} <span class="text-ink-2">({d.vendor_name})</span></td>
 											<td class="px-3 py-1.5 font-mono text-ink-2 break-all">{d.aliases.join(', ') || '-'}</td>

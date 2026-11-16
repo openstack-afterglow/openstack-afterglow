@@ -6,6 +6,7 @@
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
 	import type { createTableView } from '$lib/utils/tableView.svelte';
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 
 	let { networks, view, ownerNames, ownerDomains = new Map<string, string>(), emptyMessage, onRowClick, onEdit, onDelete, tourDeleteId = null }: {
 		networks: AdminNetwork[];
@@ -59,7 +60,7 @@
 			</tr></thead>
 			<tbody>
 				{#each networks as network (network.id)}
-					<tr class="border-b border-line last:border-b-0">
+					<tr class="border-b border-line last:border-b-0" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={network}>
 						<td class="px-4 py-2"><button type="button" onclick={() => onRowClick(network.id)} class="font-medium text-left text-ink-0 hover:text-warm-text" title={network.name || network.id}>{network.name || network.id.slice(0, 8)}</button><ResourceIdentifier id={network.id} /></td>
 						<td class="px-4 py-2">{@render owner(network)}</td>
 						<td class="px-4 py-2"><StatusChip status={network.status} /></td>

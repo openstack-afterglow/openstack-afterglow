@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import { t as tr } from '$lib/i18n/ns/database';
 	import { useDbInstanceDetailController } from '$lib/stores/dbInstanceDetailController.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
@@ -86,7 +87,7 @@
 				<span>{tr('labels.actions')}</span>
 			</div>
 			{#each s.userView.rows as u (u.name + '@' + u.host)}
-				<div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)_auto] items-center gap-3 py-1.5 border-b border-line/50">
+				<div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)_auto] items-center gap-3 py-1.5 border-b border-line/50" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={u}>
 					<span class="text-ink-0 text-sm font-medium font-mono break-all">{u.name}</span>
 					<span class="text-ink-2 text-sm font-mono break-all">{u.host || '%'}</span>
 					<span class="text-ink-2 text-xs break-all">{u.databases?.map(d => d.name).join(', ') || '—'}</span>

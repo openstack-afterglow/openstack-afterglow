@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { t } from '$lib/i18n/ns/admin-ops';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
@@ -75,7 +76,7 @@
 				</thead>
 				<tbody>
 					{#each visibleEndpoints as endpoint (endpoint.service_id)}
-						<tr class="align-top">
+						<tr class="align-top" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={endpoint}>
 							<td class="text-ink-0 font-medium">{endpoint.name}</td>
 							<td class="text-ink-2">{endpoint.service}</td>
 							<td class="text-ink-2">{endpoint.region}</td>

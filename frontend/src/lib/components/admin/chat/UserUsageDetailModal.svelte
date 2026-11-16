@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
 	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
 	import { createObservationView } from '$lib/components/admin/observation/observationView.svelte';
@@ -218,7 +219,7 @@
 								<thead><tr><TableColumnHeader view={tableView} columnKey="model" /><TableColumnHeader view={tableView} columnKey="input" /><TableColumnHeader view={tableView} columnKey="output" /><TableColumnHeader view={tableView} columnKey="total" /><TableColumnHeader view={tableView} columnKey="credit" /><TableColumnHeader view={tableView} columnKey="cost" /><TableColumnHeader view={tableView} columnKey="requests" /></tr></thead>
 								<tbody>
 									{#each tableView.rows as item (`${item.provider ?? ''}:${item.model_name}`)}
-										<tr>
+										<tr in:rowEnter out:rowExit animate:rowReflow use:rowChanged={item}>
 											<td><div class="font-medium text-[var(--color-ink-1)]">{item.model_name}</div><div class="text-xs text-[var(--color-ink-3)]">{item.provider ?? t('unknown')}</div></td>
 											<td class="tabular-nums">{formatNumber(item.prompt_tokens)}</td>
 											<td class="tabular-nums">{formatNumber(item.completion_tokens)}</td>
@@ -252,7 +253,7 @@
 								<thead><tr><TableColumnHeader view={tableView} columnKey="time" /><TableColumnHeader view={tableView} columnKey="source" /><TableColumnHeader view={tableView} columnKey="model" /><TableColumnHeader view={tableView} columnKey="input" /><TableColumnHeader view={tableView} columnKey="output" /><TableColumnHeader view={tableView} columnKey="total" /><TableColumnHeader view={tableView} columnKey="credit" /><TableColumnHeader view={tableView} columnKey="cost" /></tr></thead>
 								<tbody>
 									{#each tableView.rows as record (record.id)}
-										<tr>
+										<tr in:rowEnter out:rowExit animate:rowReflow use:rowChanged={record}>
 											<td class="whitespace-nowrap">{formatDate(record.created_at)}</td>
 											<td><Pill tone="neutral" size="xs">{sourceLabel(record.source)}</Pill></td>
 											<td><div class="font-medium text-[var(--color-ink-1)]">{record.model_name}</div><div class="text-xs text-[var(--color-ink-3)]">{record.provider ?? t('unknown')}{record.api_key_id ? t('apiKeySuffix', { id: String(record.api_key_id) }) : ''}</div></td>

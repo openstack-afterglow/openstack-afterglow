@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import { projectNames } from '$lib/stores/projectNames';
 	import { formatNumber } from '$lib/utils/format';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
@@ -117,6 +118,7 @@
 		<tbody>
 			{#each volumes as v, index (v.id)}
 				<tr
+					in:rowEnter out:rowExit animate:rowReflow use:rowChanged={v}
 					class="resource-selection-surface border-b border-line/50 text-sm transition-colors {selectedIds.has(v.id) ? 'is-selected bg-surface-selected/10' : selectedVolumeId === v.id ? 'bg-surface-sunken/50' : ''}"
 					data-selected={selectedIds.has(v.id)}
 					data-tour={index === 0 ? 'admin-storage-row' : undefined}

@@ -26,6 +26,7 @@
 	import BklitChart from '$lib/components/charts/BklitChart.svelte';
 	import type { ChartDatum, ChartSpec } from '$lib/components/charts/types';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 
 	import { usageChartWindow } from '$lib/utils/chatUsageChartWindow';
 	import { adminIdentityLabel } from '$lib/utils/adminIdentityLabel';
@@ -527,7 +528,7 @@
 						</thead>
 						<tbody>
 							{#each tableView.rows as m (m.model_name)}
-								<tr>
+								<tr in:rowEnter out:rowExit animate:rowReflow use:rowChanged={m}>
 									<td class="text-sm font-medium text-[var(--color-ink-1)]">{m.model_name}</td>
 									<td class="w-32">
 										<div role="meter" aria-label={t('adminStats.modelShareLabel', { model: m.model_name })} aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round((m.total_tokens / maxModelTokens) * 100)} aria-valuetext={t('adminStats.tokenCount', { count: fmtInt(m.total_tokens) })}>
@@ -581,7 +582,7 @@
 						</thead>
 						<tbody>
 							{#each tableView.rows as u (u.user_id)}
-								<tr>
+								<tr in:rowEnter out:rowExit animate:rowReflow use:rowChanged={u}>
 									<td class="text-sm font-medium text-[var(--color-ink-1)]" title={u.user_id}>
 										{adminIdentityLabel(u.user_name, u.user_id)}
 									</td>

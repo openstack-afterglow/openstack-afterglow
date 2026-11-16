@@ -21,3 +21,21 @@ The system SHALL classify an automatic backup or snapshot using the project the 
 #### Scenario: Cross-project or unproven read
 - **WHEN** the read uses `all_projects` or the connection has no authenticated project
 - **THEN** an owner that Cinder did not show stays unknown and the point is reported as manual
+
+### Requirement: Volume list shows recovery capacity
+The volume list summary SHALL show the number of backups and the sum of backup and snapshot sizes, SHALL label them as source-volume sizes rather than consumed space, and SHALL show an unknown marker instead of zero when the inventory cannot be read.
+
+#### Scenario: Backup inventory unreadable
+- **WHEN** the backup list request fails
+- **THEN** the backup count and capacity show `—`
+
+### Requirement: Refresh patches only changed rows
+A table refresh SHALL NOT replace an already shown list with a loader, SHALL keep rows whose data is unchanged, and SHALL animate added, removed and changed rows only. A replacement of more than six rows at once SHALL NOT animate.
+
+#### Scenario: One row changes
+- **WHEN** a refresh returns the same rows with one changed value
+- **THEN** every row node is retained and only the changed row flashes
+
+#### Scenario: Page turn
+- **WHEN** a page turn replaces every row of a ten-row table
+- **THEN** no row animation runs and the outgoing rows are removed at once

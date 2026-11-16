@@ -17,6 +17,7 @@
 	import type { Project, ProjectMember as Member } from '$lib/types/project';
 	import { t } from '$lib/i18n/ns/admin-identity';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
   import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
@@ -184,7 +185,7 @@
 						</thead>
 						<tbody class="divide-y divide-line">
 							{#each tableView.rows as m (m.user_id + m.role_id)}
-								<tr class="hover:bg-surface-sunken/40">
+								<tr class="hover:bg-surface-sunken/40" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={m}>
 									<td class="px-4 py-3 text-ink-0">{m.user_name}<SystemAccountNotice identity={m} /></td>
 									<td class="px-4 py-3 text-ink-2">{m.role_name}</td>
 									<td class="px-4 py-3 text-ink-2">{m.type === 'group' ? t('projectDetail.groupType') : m.type == null || m.type === 'user' ? t('projectDetail.userType') : m.type}</td>

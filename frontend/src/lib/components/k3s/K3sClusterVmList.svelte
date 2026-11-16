@@ -7,6 +7,7 @@
 	import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
 	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 
 	const s = useK3sClusterDetailController();
 	type VmRow = { id: string; label: string };
@@ -41,7 +42,7 @@
 				{#each columns as column}<TableColumnControl {view} columnKey={column.key} />{/each}<span></span>
 			</div>
 			{#each view.rows as row (row.id)}
-				<div class="grid grid-cols-[1fr_2fr_auto] items-center gap-2 border-b border-line py-2 text-xs">
+				<div class="grid grid-cols-[1fr_2fr_auto] items-center gap-2 border-b border-line py-2 text-xs" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={row}>
 					<span>{row.label}</span><span class="font-mono break-all text-ink-2">{row.id}</span>
 					<Button variant="link" size="xs" onclick={() => s.setViewingInstance(row.id)}>{t('overview.vms.viewInstance')}</Button>
 				</div>

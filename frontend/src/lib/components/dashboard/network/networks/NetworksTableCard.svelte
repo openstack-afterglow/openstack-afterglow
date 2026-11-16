@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { t } from '$lib/i18n/ns/network-pages';
   import { ActionMenu, Button, ResourceIdentifier, StatusChip } from '$lib/components/ui';
@@ -68,7 +69,7 @@
       </tr></thead>
       <tbody>
         {#each networks as net (net.id)}
-          <tr class="resource-selection-surface border-b border-line last:border-b-0" data-selected={selectedIds.has(net.id)} aria-busy={deleting === net.id || settingDefault === net.id}>
+          <tr class="resource-selection-surface border-b border-line last:border-b-0" data-selected={selectedIds.has(net.id)} aria-busy={deleting === net.id || settingDefault === net.id} in:rowEnter out:rowExit animate:rowReflow use:rowChanged={net}>
             <td class="px-4 py-2"><div class="flex items-center gap-2">{@render selection(net)}<div class="min-w-0"><button type="button" onclick={() => onOpenPanel(net.id)} class="text-left font-medium text-ink-0 hover:text-warm-text">{net.name || net.id.slice(0, 12)}</button><ResourceIdentifier id={net.id} /></div></div></td>
             <td class="px-4 py-2 font-mono text-xs text-ink-2" title={net.cidrs?.length ? net.cidrs.join(', ') : undefined}>{net.cidrs?.length ? net.cidrs.join(', ') : '—'}</td>
             <td class="px-4 py-2">{@render networkType(net)}</td><td class="px-4 py-2 text-right tabular-nums text-ink-2">{net.subnets.length}</td><td class="px-4 py-2"><StatusChip status={net.status} /></td><td class="px-4 py-2">{@render networkActions(net, 'row')}</td>

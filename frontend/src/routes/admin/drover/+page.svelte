@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/drover-pages';
 	import { onDestroy, onMount } from 'svelte';
@@ -195,6 +196,7 @@
 				<tbody>
 					{#each view.rows as c (c.id)}
 						<tr
+							in:rowEnter out:rowExit animate:rowReflow use:rowChanged={c}
 							class="cursor-pointer text-xs transition-colors focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
 							onclick={() => openClusterPanel(c.id)}
 							onkeydown={(e) => e.key === 'Enter' && openClusterPanel(c.id)}

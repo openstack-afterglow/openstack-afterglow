@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import { t } from '$lib/i18n/ns/drover';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import type { Cluster } from '$lib/types/cluster';
@@ -70,7 +71,7 @@
 		</thead>
 		<tbody>
 			{#each clusters as c (c.id)}
-				<tr class="resource-selection-surface k3s-table__row transition-colors" data-selected={selectedIds.has(c.id)}>
+				<tr class="resource-selection-surface k3s-table__row transition-colors" data-selected={selectedIds.has(c.id)} in:rowEnter out:rowExit animate:rowReflow use:rowChanged={c}>
 					<td class="py-3 pr-3"><SelectionCheckbox checked={selectedIds.has(c.id)} disabled={selectionDisabled || !selectableIds.has(c.id)} ariaLabel={t('overview.table.selectCluster', { name: c.name })} onclick={() => onToggleSelect(c.id)} /></td>
 					<td class="py-3 pr-6"><button onclick={() => onNavigate(c.id)} class="k3s-table__name font-medium transition-colors text-left max-md:block max-md:max-w-[66vw] max-md:truncate" title={c.name}>{c.name}</button></td>
 					<td class="py-3 pr-6"><StatusChip status={c.status} /></td>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import { t } from '$lib/i18n/ns/admin-compute';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
@@ -93,6 +94,7 @@
 		<tbody>
 			{#each instances as s, index (s.id)}
 				<tr
+					in:rowEnter out:rowExit animate:rowReflow use:rowChanged={s}
 					class="resource-selection-surface instance-admin-row border-b border-line/50 text-sm transition-colors {selectedIds.has(s.id) ? 'is-selected bg-surface-selected/10' : ''}"
 					data-selected={selectedIds.has(s.id)}
 					data-tour={index === 0 ? 'admin-compute-row' : undefined}

@@ -8,6 +8,7 @@
 	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
 	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 	import { t as tc } from '$lib/i18n/ns/common';
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 
 	let {
 		subnets,
@@ -136,7 +137,7 @@
 			</thead>
 			<tbody>
 				{#each view.rows as subnet (subnet.id)}
-					<tr class="border-b border-line/50">
+					<tr class="border-b border-line/50" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={subnet}>
 						<td class="py-2 pr-6 text-ink-2">{subnet.name || '-'}</td>
 						<td class="py-2 pr-6 text-ink-2 font-mono text-xs">{subnet.cidr}</td>
 						<td class="py-2 pr-6 text-ink-2 font-mono text-xs">{subnet.gateway_ip ?? '-'}</td>

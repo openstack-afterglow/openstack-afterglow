@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { t } from '$lib/i18n/ns/waygate';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
@@ -1386,7 +1387,7 @@
 				</thead>
 				<tbody class="motion-stagger">
 					{#each serverView.rows as server (server.id)}
-						<tr class="resource-selection-surface cursor-pointer" data-selected={selection.has(server.id)} onclick={() => openPanel(server.id)}>
+						<tr class="resource-selection-surface cursor-pointer" data-selected={selection.has(server.id)} onclick={() => openPanel(server.id)} in:rowEnter out:rowExit animate:rowReflow use:rowChanged={server}>
 							<td class="text-[var(--color-ink-0)]">
 								{#if can.deleteGateway}
 								<SelectionCheckbox

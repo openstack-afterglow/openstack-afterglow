@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
 	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
 	import { createObservationView } from '$lib/components/admin/observation/observationView.svelte';
@@ -235,7 +236,7 @@
 			<table tabindex="0" aria-label={t('settings.title')}>
 				<thead><tr><TableColumnHeader view={tableView} columnKey="name" /><TableColumnHeader view={tableView} columnKey="type" /><TableColumnHeader view={tableView} columnKey="state" /><TableColumnHeader view={tableView} columnKey="severity" /></tr></thead>
 				<tbody>{#each tableView.rows as alarm (alarm.alarm_id)}
-					<tr data-selected={selected === alarm.alarm_id}><td><button class="alarm-select" disabled={busy} onclick={() => selectAlarm(alarm.alarm_id)}>{alarm.name}</button><div class="identifier">{alarm.alarm_id}</div></td><td>{alarm.type}</td><td>{alarm.state ?? t('settings.unknown')}</td><td>{alarm.severity ?? t('settings.unknown')}</td></tr>
+					<tr data-selected={selected === alarm.alarm_id} in:rowEnter out:rowExit animate:rowReflow use:rowChanged={alarm}><td><button class="alarm-select" disabled={busy} onclick={() => selectAlarm(alarm.alarm_id)}>{alarm.name}</button><div class="identifier">{alarm.alarm_id}</div></td><td>{alarm.type}</td><td>{alarm.state ?? t('settings.unknown')}</td><td>{alarm.severity ?? t('settings.unknown')}</td></tr>
 				{:else}<tr><td colspan="4">{t(alarmPage.status === 'available' ? 'settings.empty' : 'settings.rowsUnknown')}</td></tr>{/each}</tbody>
 			</table>
 		</TableShell>

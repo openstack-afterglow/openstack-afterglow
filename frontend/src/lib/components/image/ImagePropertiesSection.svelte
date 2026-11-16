@@ -9,6 +9,7 @@
 	import { useImageDetailController, isReservedKey } from '$lib/stores/imageDetailController.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { Alert, AnimatedNumber, CompactResourceCard, ResponsiveTable } from '$lib/components/ui';
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 
 	const s = useImageDetailController();
 	const setupLocked = $derived(s.windowsEditing || s.windowsSaving);
@@ -68,7 +69,7 @@
 				<thead><tr>{#each columns() as column}<TableColumnHeader {view} columnKey={column.key} />{/each}</tr></thead>
 				<tbody>
 					{#each view.rows as [k, v] (k)}
-						<tr class="border-b border-line/50">
+						<tr class="border-b border-line/50" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={[k, v]}>
 							<td class="py-1.5 pr-4 text-ink-2 font-mono w-2/5 break-all align-top">{k}</td>
 							<td class="py-1.5 text-ink-2 font-mono break-all">{v}</td>
 						</tr>

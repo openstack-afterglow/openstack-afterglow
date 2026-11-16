@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import { t as commonT } from '$lib/i18n/ns/common';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import type { AdminRouter } from '$lib/types/networks';
@@ -60,7 +61,7 @@
 		</thead>
 		<tbody>
 			{#each view.rows as r (r.id)}
-				<tr class="border-b border-line/50 text-xs hover:bg-surface-sunken/30 transition-colors">
+				<tr class="border-b border-line/50 text-xs hover:bg-surface-sunken/30 transition-colors" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={r}>
 					<td class="py-2 pr-4 text-ink-0"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={r.name || r.id}>{r.name || r.id.slice(0, 8)}</span></td>
 					<td class="py-2 pr-4 {r.status === 'ACTIVE' ? 'text-green-400' : 'text-ink-2'}">{r.status}</td>
 					<td class="py-2 pr-4 text-ink-2 font-mono">

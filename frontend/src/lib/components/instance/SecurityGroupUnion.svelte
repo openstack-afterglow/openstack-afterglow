@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import Button from '$lib/components/ui/Button.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
 	import { t } from '$lib/i18n/ns/instance';
@@ -76,7 +77,7 @@
 					</thead>
 					<tbody>
 						{#each view.rows as row (row.key)}
-							<tr>
+							<tr in:rowEnter out:rowExit animate:rowReflow use:rowChanged={row}>
 								<td>{row.ethertype}</td>
 								<td>{row.protocolLabel}</td>
 								<td>{row.portLabel}</td>

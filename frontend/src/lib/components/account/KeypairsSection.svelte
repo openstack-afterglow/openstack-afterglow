@@ -19,6 +19,7 @@
   import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
   import { createTableView } from '$lib/utils/tableView.svelte';
   import { sessionScopeKey } from '$lib/utils/authSession';
+  import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 
   interface Keypair {
     name: string;
@@ -255,7 +256,7 @@
         <div class="text-right">{t('keypairs.actions')}</div>
       </div>
       {#each view.rows as kp, i (kp.name)}
-        <div class="grid grid-cols-[1fr_100px_160px] px-3 py-2.5 text-xs items-center {i < view.rows.length - 1 ? 'border-b border-line' : ''} hover:bg-surface-sunken/30 transition-colors">
+        <div class="grid grid-cols-[1fr_100px_160px] px-3 py-2.5 text-xs items-center {i < view.rows.length - 1 ? 'border-b border-line' : ''} hover:bg-surface-sunken/30 transition-colors" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={kp}>
           <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-2 text-ink-0 font-medium"><span class="truncate">{kp.name}</span>{#if defaultKey === kp.name}<Pill tone="neutral" size="xs">{t('keypairs.default')}</Pill>{/if}</div>
             <div class="text-xs text-ink-2 font-mono truncate mt-0.5">{kp.fingerprint}</div>

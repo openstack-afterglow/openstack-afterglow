@@ -14,6 +14,7 @@
 	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
 	import { fmtTime, type ServiceColumn } from './serviceColumns.js';
 	import { serviceTimestamp } from './serviceList';
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	const id = $props.id();
 
 	let {
@@ -100,7 +101,7 @@
 			</thead>
 			<tbody>
 				{#each displayedServices as service (service.id || service.binary + service.host)}
-					<tr>
+					<tr in:rowEnter out:rowExit animate:rowReflow use:rowChanged={service}>
 						{#each columns as column (column.type)}
 							<td>
 								{#if column.type === 'binary'}

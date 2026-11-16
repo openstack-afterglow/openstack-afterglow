@@ -210,7 +210,7 @@
     {/snippet}
   </PageHeader>
   {#if !ctrl.loading && !ctrl.error}
-    <VolumeSummaryCards volumes={ctrl.volumes} snapshots={ctrl.snapshots} quotas={ctrl.quotas} showSnapshots={$betaFeatures.volumeSnapshots} snapshotsKnown={!ctrl.snapshotsLoading && !ctrl.snapshotsError} />
+    <VolumeSummaryCards volumes={ctrl.volumes} snapshots={ctrl.snapshots} quotas={ctrl.quotas} showSnapshots={$betaFeatures.volumeSnapshots} snapshotsKnown={!ctrl.snapshotsLoading && !ctrl.snapshotsError} backups={ctrl.backups} backupsKnown={!ctrl.backupsLoading && !ctrl.backupsError} />
   {/if}
   <VolumesTabs tab={ctrl.tab} onChange={changeTab} volumeCount={ctrl.loading || ctrl.error ? null : ctrl.volumes.length} snapshotCount={ctrl.snapshotsLoading || ctrl.snapshotsError ? null : ctrl.snapshots.length} showSnapshots={$betaFeatures.volumeSnapshots} />
   <ResourceToolbar label={t('page.toolbar')}>

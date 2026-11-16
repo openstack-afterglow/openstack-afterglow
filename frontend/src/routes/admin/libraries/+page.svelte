@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
   import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
   import PageShell from '$lib/components/ui/PageShell.svelte';
@@ -1588,7 +1589,7 @@
                     <tbody class="divide-y divide-line/50">
                       {#each profileView.rows as profile (profile.id)}
                         {@const blockers = blockingConsumesForProfile(profile.name)}
-                        <tr>
+                        <tr in:rowEnter out:rowExit animate:rowReflow use:rowChanged={profile}>
                           <td class="px-3 py-2 font-mono text-ink-1">{profile.name}</td>
                           <td class="px-3 py-2 text-ink-2">{profile.layers.join(' → ')}</td>
                           <td class="px-3 py-2 text-ink-2">{blockers.length}</td>
@@ -1665,7 +1666,7 @@
               </thead>
               <tbody class="divide-y divide-line/50">
                 {#each artifactView.rows as a (a.id)}
-                  <tr class="hover:bg-surface-selected/30 transition-colors">
+                  <tr class="hover:bg-surface-selected/30 transition-colors" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={a}>
                     <td class="px-4 py-2.5">
                       <div class="font-mono text-ink-0">#{a.id} {a.name}</div>
                       <div class="mt-1 flex items-center gap-1.5 text-xs text-ink-2">
@@ -1800,7 +1801,7 @@
                 </thead>
                 <tbody class="divide-y divide-line">
                   {#each importView.rows as job (job.id)}
-                    <tr>
+                    <tr in:rowEnter out:rowExit animate:rowReflow use:rowChanged={job}>
                       <td class="px-3 py-2 text-ink-2"><button type="button" class="underline" aria-label={t('history.jobDetails', { id: job.id })} onclick={() => selectedImportId = job.id}>#{job.id}</button></td>
                       <td class="px-3 py-2 font-mono">{job.profile_name}</td>
                       <td class="px-3 py-2 text-ink-2">{job.base_image_name || shortId(job.base_image_id)}</td>
@@ -1846,6 +1847,7 @@
                 {#each buildView.rows as build (build.id)}
                   {@const isDone = TERMINAL.has(build.status)}
                   <tr
+                    in:rowEnter out:rowExit animate:rowReflow use:rowChanged={build}
                     class="hover:bg-surface-selected/30 transition-colors cursor-pointer {isDone ? 'opacity-50' : ''}"
                     onclick={() => openBuildDetail(build)}
                   >
@@ -1938,6 +1940,7 @@
               <tbody class="divide-y divide-line/50">
                 {#each consumeView.rows as c (c.id)}
                   <tr
+                    in:rowEnter out:rowExit animate:rowReflow use:rowChanged={c}
                     class="hover:bg-surface-selected/30 transition-colors cursor-pointer"
                     onclick={() => openConsumeDetail(c)}
                   >

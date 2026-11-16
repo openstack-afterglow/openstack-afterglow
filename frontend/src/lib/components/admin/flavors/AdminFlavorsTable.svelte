@@ -12,6 +12,7 @@
 	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
 	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 	import type { createTableView } from '$lib/utils/tableView.svelte';
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 
 	let {
 		flavors,
@@ -87,7 +88,7 @@
 			</thead>
 			<tbody>
 				{#each pagedFlavors as f (f.id)}
-					<tr class="border-b border-line/50 text-xs hover:bg-surface-sunken/50 transition-colors">
+					<tr class="border-b border-line/50 text-xs hover:bg-surface-sunken/50 transition-colors" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={f}>
 						<td class="py-2 pr-4">
 							<div class="min-w-0">
 								<span class="text-ink-0 max-md:block max-md:max-w-[66vw] max-md:truncate" title={f.name}>{f.display_name ?? f.name}</span>

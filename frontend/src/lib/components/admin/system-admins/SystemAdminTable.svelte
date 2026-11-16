@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import type { SystemAccountIdentity } from '$lib/types/common';
 	import { isSystemAccount } from '$lib/utils/systemAccount';
 	import SystemAccountNotice from '$lib/components/identity/SystemAccountNotice.svelte';
@@ -96,7 +97,7 @@
 		</thead>
 		<tbody>
 			{#each tableView.rows as admin (admin.user_id)}
-				<tr class="border-b border-line/50 text-xs hover:bg-surface-sunken/30 transition-colors">
+				<tr class="border-b border-line/50 text-xs hover:bg-surface-sunken/30 transition-colors" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={admin}>
 					<td class="py-2 pr-4 text-ink-0"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={admin.name || ''}>{admin.name || '-'}</span><SystemAccountNotice identity={admin} /></td>
 					<td class="py-2 pr-4 text-ink-2">{admin.email || '-'}</td>
 					<td class="py-2 pr-4">

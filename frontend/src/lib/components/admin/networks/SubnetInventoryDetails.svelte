@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
 	import { t as commonT } from '$lib/i18n/ns/common';
 	import { t } from '$lib/i18n/ns/admin-network';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
@@ -393,8 +394,8 @@
 									</tr>
 								</thead>
 								<tbody>
-									{#each visiblePorts as port}
-										<tr>
+									{#each visiblePorts as port (port.id)}
+										<tr in:rowEnter out:rowExit animate:rowReflow use:rowChanged={port}>
 											<td class="font-mono text-xs whitespace-nowrap">{port.id}</td>
 											<td class="text-sm font-medium">{port.name || '-'}</td>
 											<td>
