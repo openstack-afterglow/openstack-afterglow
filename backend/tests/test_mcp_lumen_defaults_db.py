@@ -268,7 +268,13 @@ async def test_explicit_consent_uses_actual_roles_without_personal_bearer(owner,
         assert grant.source == "lumen" and grant.status == "active"
         assert grant.access_level == access_level and grant.consented_at is not None
         assert grant.approved_projects == [
-            {"id": owner.info["project_id"], "name": "Current owner project", "roles": ["member"], "can_write": True}
+            {
+                "id": owner.info["project_id"],
+                "name": "Current owner project",
+                "roles": ["member"],
+                "can_write": True,
+                "operations": ["read", "create", "update"] if access_level == "manage" else ["read"],
+            }
         ]
         assert not grant.cleanup_pending
         assert grant.application_credential_id in owner.remote

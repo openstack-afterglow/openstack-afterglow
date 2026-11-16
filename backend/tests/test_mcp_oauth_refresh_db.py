@@ -1545,7 +1545,13 @@ async def test_oauth_sdk_stale_admin_role_narrows_to_current_selected_project(sd
         grant, scopes = await resolve_oauth_access_token(db, raw_token=tokens["access_token"], resource=_URLS.resource)
         assert grant.id == grant_id and grant.status == "active"
         assert grant.approved_projects == [
-            {"id": "B", "name": "Project B", "roles": ["member", "reader"], "can_write": True}
+            {
+                "id": "B",
+                "name": "Project B",
+                "roles": ["member", "reader"],
+                "can_write": True,
+                "operations": ["read", "create", "update"] if access_level == "manage" else ["read"],
+            }
         ]
         assert scopes == (("mcp:read", "mcp:write") if access_level == "manage" else ("mcp:read",))
 

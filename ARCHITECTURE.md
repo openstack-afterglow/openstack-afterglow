@@ -2198,9 +2198,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "9abf202fe11c4f7e4952237f122454390cca85febcd59e91d41d6e0c46472c95",
-  "reviewed_at": "2026-11-16T07:26:34Z",
-  "summary": "MCP OAuth per-project read/create/update consent with exact-operation enforcement, consent-page domain list, Palimpsest action-only policy projection; unit/contract/frontend tests pass, DB lane and browser check not run"
+  "source_sha256": "ef117eab7b992b3d71e9073eecfccb1057f788b43ec6acfcb67850d2de283d9f",
+  "reviewed_at": "2026-11-16T07:30:47Z",
+  "summary": "DB-lane approved_projects assertions include per-project operations"
 }
 ```
 <!-- architecture-review:end -->
