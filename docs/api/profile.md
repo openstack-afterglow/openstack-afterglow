@@ -39,7 +39,7 @@ nav_order: 11
 | `PUT` | `/api/v1/profile/image` | Gravatar 선택 또는 새 아바타 생성·저장 |
 | `PUT` | `/api/v1/profile/image/upload` | bounded raw raster 업로드·정규화·저장 |
 | `GET` | `/api/v1/profile/login-preference` | 본인 로그인 작업공간 선호 조회 (private, no-store) |
-| `PUT` | `/api/v1/profile/login-preference` | `{remember_last_workspace:boolean}` 저장; target은 현재 검증된 scope에서 서버가 결정 |
+| `PUT` | `/api/v1/profile/login-preference` | `remember_last_workspace:true`는 현재 검증된 scope를 저장; `false`는 필수 `domain_id`·`project_id`를 검증해 고정 |
 | `GET` | `/api/v1/profile/email-notifications` | 현재 immutable user/home의 이메일 알림 선호 조회 |
 | `PUT` | `/api/v1/profile/email-notifications` | `{announcements:boolean,resource_alerts:boolean}` strict 저장 |
 
@@ -52,7 +52,9 @@ nav_order: 11
 
 ## 로그인 작업공간 선호
 
-기본 `{remember_last_workspace:false}`는 관리자도 자신의 verified personal primary로 로그인합니다. PUT true는 현재 활성·접근 가능한 domain/project를 fresh native 확인한 뒤 exact user+immutable home별 Redis에 저장합니다. 임의 target/user/home 필드는422이고 프로젝트 없는 상태는409입니다. 이후 성공한 scope publication만 활성 선호의 pair를 갱신하며 opt-out을 atomic하게 보존합니다. 다음 password/provider 로그인에서 저장 pair를 다시 검증하고 철회·삭제·비활성은 personal fallback, directory/Redis 장애는503입니다. 선호는 권한이 아니며 Redis persistence/복구 정책에 따라 보존됩니다. False 저장은 선택 프로젝트 접근을 잃은 뒤에도 가능합니다.
+미저장 기본값은 `{remember_last_workspace:true}`이며, 성공한 작업 공간 continuation이 마지막 접근 domain/project hint를 exact user+immutable home별 Redis에 생성·갱신합니다. 아직 hint가 없는 최초 로그인은 관리자도 자신의 verified personal primary를 사용합니다. PUT true는 현재 활성·접근 가능한 domain/project를 fresh native 확인해 저장하며, body의 선택적 `domain_id`·`project_id`가 현재 인증 scope를 바꾸지는 않습니다. PUT false는 고정할 `domain_id`와 `project_id`를 모두 요구하며 누락은409, 잘못된 필드 형식이나 임의 user/home 필드는422입니다. 고정 pair도 domain context·도메인 소속·project-domain 일치·프로젝트 멤버십을 모두 확인하고 기존403/404를 유지합니다. 다른 작업 공간 continuation은 고정 pair나 legacy `{remember_last_workspace:false}`를 atomic하게 덮어쓰지 않습니다. Pair 없는 legacy opt-out은 personal로 로그인하며 UI에서 고정 pair 선택을 요구합니다.
+
+다음 password/provider 로그인은 기억된 pair와 고정 pair 모두 fresh native 권한을 재검증합니다. 철회·삭제·비활성으로 검증이403/404이면 personal로 돌아가지만 directory/Redis 장애는503이고, native exchange 거부·subject/scope 변조는 terminal 오류입니다. `initial_workspace.kind`는 검증된 저장 pair에 `remembered`, personal fallback에 `personal`을 사용하며 응답 session과 정확히 일치합니다. 선호는 권한이 아니며 Redis persistence/복구 정책에 따라 보존됩니다.
 
 
 ## GET /api/v1/profile
