@@ -1677,8 +1677,8 @@ async def test_per_project_operations_bind_each_project_to_its_own_selection(pro
     assert [(row["id"], row["operations"]) for row in metadata] == [(provider.a, ["create"]), (provider.b, ["read"])]
     grant = SimpleNamespace(approved_projects=metadata, owner_project_id=provider.a, access_level="manage")
     authority.validate_grant_project(grant, provider.a, operation="create")
-    with pytest.raises(authority.McpGrantStateError, match="read access"):
-        authority.validate_grant_project(grant, provider.a, operation="read")
+    # Saved create/update selections imply read, including grants saved before read was implied.
+    authority.validate_grant_project(grant, provider.a, operation="read")
     with pytest.raises(authority.McpGrantStateError, match="management"):
         authority.validate_grant_project(grant, provider.a, operation="update")
     authority.validate_grant_project(grant, provider.b, operation="read")
@@ -1686,6 +1686,20 @@ async def test_per_project_operations_bind_each_project_to_its_own_selection(pro
         authority.validate_grant_project(grant, provider.b, operation="create")
     # Credential loading checks membership only and never needs an operation.
     assert authority.validate_grant_project(grant, provider.a)["id"] == provider.a
+
+
+@pytest.mark.parametrize(
+    ("chosen", "stored"),
+    [
+        (["read"], ("read",)),
+        (["create"], ("read", "create")),
+        (["update"], ("read", "update")),
+        (["update", "create"], ("read", "create", "update")),
+        (["read", "update"], ("read", "update")),
+    ],
+)
+def test_write_operations_always_imply_read(chosen, stored):
+    assert authority.validate_project_operations(chosen) == stored
 
 
 async def test_per_project_write_operation_requires_native_write_role(project_provider):

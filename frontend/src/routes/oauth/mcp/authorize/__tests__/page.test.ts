@@ -380,15 +380,41 @@ describe('MCP OAuth consent route', () => {
 		}, actor.token, actor.projectId);
 	});
 
-	it('allows create without read and never sends a project without operations', async () => {
+	it('selects read automatically when create or update is chosen and keeps it while one stays chosen', async () => {
 		defaultGets(['mcp:read', 'mcp:write']);
 		render(Page);
 		await loaded();
-		await allow('project-a', 'read', 'create');
+		await fireEvent.click(checkbox('project-a'));
+		expect(checkbox('project-a').checked).toBe(false);
+		await fireEvent.click(operation('project-a', 'update'));
+		expect(checkbox('project-a').checked).toBe(true);
+		expect(checkbox('project-a').disabled).toBe(true);
+		await fireEvent.click(operation('project-a', 'create'));
+		await fireEvent.click(operation('project-a', 'update'));
+		expect(checkbox('project-a').disabled).toBe(true);
+		await fireEvent.click(operation('project-a', 'create'));
+		expect(checkbox('project-a').disabled).toBe(false);
+		expect(checkbox('project-a').checked).toBe(true);
+		await fireEvent.click(screen.getByRole('button', { name: t('mcpConsent.actions.allowRead') }));
+		expectDecision('approve', { access_level: 'read', project_scope: 'selected', project_ids: ['project-a'], ongoing: true }, actor.token, actor.projectId);
+	});
+
+	it('adds read for every project of a chosen create column and never clears read under a chosen write', async () => {
+		defaultGets(['mcp:read', 'mcp:write']);
+		render(Page);
+		await loaded();
+		await fireEvent.click(checkbox('project-a'));
+		await fireEvent.click(column('create'));
+		expect(operation('project-a', 'create').checked).toBe(true);
+		expect(checkbox('project-a').checked).toBe(true);
+		await fireEvent.click(checkbox('project-b'));
+		await fireEvent.click(column('read'));
+		expect(checkbox('project-a').checked).toBe(true);
+		expect(checkbox('project-b').checked).toBe(false);
 		await fireEvent.click(screen.getByRole('button', { name: t('mcpConsent.actions.allowManage') }));
 		expectDecision('approve', {
 			access_level: 'manage', project_scope: 'selected', project_ids: ['project-a'],
-			project_operations: { 'project-a': ['create'] }, ongoing: true,
+			project_operations: { 'project-a': ['read', 'create'] }, ongoing: true,
 		}, actor.token, actor.projectId);
 	});
 
@@ -716,6 +742,8 @@ describe('MCP consent authorization domain', () => {
 			: { ...details, domain_id: 'domain-dms', domain_name: 'DMS Lab', scopes: ['mcp:read'], ongoing_supported: true }));
 	}
 
+	const domainLabel = () => t('mcpConsent.details.domain');
+
 	it('names the authorization domain on the project step', async () => {
 		auth.set({ ...actor, availableDomains: [{ id: 'domain-dms', name: 'DMS Lab' }] });
 		withDomain();
@@ -725,45 +753,69 @@ describe('MCP consent authorization domain', () => {
 		expect(screen.getByText('domain-dms')).toBeTruthy();
 	});
 
-	it('hides the domain list when no other domain is available', async () => {
+	it('shows no domain selector when only the connected domain exists', async () => {
 		auth.set({ ...actor, availableDomains: [{ id: 'domain-dms', name: 'DMS Lab' }] });
 		withDomain();
 		render(Page);
 		await loaded();
-		expect(screen.queryByRole('combobox', { name: t('mcpConsent.domain.label') })).toBeNull();
-		expect(screen.queryByRole('button', { name: t('mcpConsent.domain.change') })).toBeNull();
+		expect(screen.queryByRole('combobox', { name: domainLabel() })).toBeNull();
 	});
 
-	it('switches only the working domain in place and reloads the same ticket', async () => {
-		auth.set({ ...actor, availableDomains: [{ id: 'domain-dms', name: 'DMS Lab' }, { id: 'domain-b', name: 'Other' }] });
+	it('selects the connected domain by default even when the session list omits it', async () => {
+		auth.set({ ...actor, availableDomains: [{ id: 'domain-b', name: 'Other' }] });
 		withDomain();
-		const next = { ...actor, token: 'token-domain-b', projectId: 'project-b', availableDomains: [] };
+		render(Page);
+		await loaded();
+		const select = screen.getByRole('combobox', { name: domainLabel() }) as HTMLSelectElement;
+		expect([...select.options].map((option) => option.value)).toEqual(['domain-dms', 'domain-b']);
+		expect(select.value).toBe('domain-dms');
+	});
+
+	it('switches the domain in place and refreshes only the project area', async () => {
+		auth.set({ ...actor, availableDomains: [{ id: 'domain-dms', name: 'DMS Lab' }, { id: 'domain-b', name: 'Other' }] });
+		const next = { ...actor, token: 'token-domain-b', projectId: 'project-b', availableDomains: [{ id: 'domain-dms', name: 'DMS Lab' }, { id: 'domain-b', name: 'Other' }] };
 		domainAuthState.mockReturnValue(next);
 		setAuth.mockImplementation((state: typeof next) => auth.set(state));
 		api.post.mockResolvedValueOnce({ token: 'token-domain-b' });
+		api.get.mockImplementation((path: string, token: string) => {
+			const other = token === 'token-domain-b';
+			if (path === '/api/v1/auth/mcp-projects?preview=true') return Promise.resolve(other ? [projects[1]] : projects);
+			return Promise.resolve({ ...details, scopes: ['mcp:read'], ongoing_supported: true,
+				domain_id: other ? 'domain-b' : 'domain-dms', domain_name: other ? 'Other' : 'DMS Lab' });
+		});
 		render(Page);
 		await loaded();
-		const select = screen.getByRole('combobox', { name: t('mcpConsent.domain.label') }) as HTMLSelectElement;
-		expect([...select.options].map((option) => option.value)).toEqual(['', 'domain-b']);
+		const select = screen.getByRole('combobox', { name: domainLabel() }) as HTMLSelectElement;
+		expect(select.value).toBe('domain-dms');
+		expect(screen.queryByRole('button', { name: /도메인 변경|Change domain/ })).toBeNull();
 		await fireEvent.change(select, { target: { value: 'domain-b' } });
-		await fireEvent.click(screen.getByRole('button', { name: t('mcpConsent.domain.change') }));
 		await waitFor(() => expect(setAuth).toHaveBeenCalledWith(next));
 		expect(api.post).toHaveBeenCalledWith('/api/v1/auth/token/domain', { domain_id: 'domain-b' }, actor.token, undefined,
 			{ replayOnUnauthorized: false, suppressAuthRedirect: true, cache: 'no-store' });
-		expect(goto).not.toHaveBeenCalled();
 		await waitFor(() => expect(api.get).toHaveBeenCalledWith(`/api/v1/auth/mcp-oauth/consents/${ticket}`, 'token-domain-b', 'project-b', getOptions));
+		await waitFor(() => expect(checkbox('project-b')).toBeTruthy());
+		// Still on the permission step; the client step and the full-page loader never came back.
+		expect(screen.getByRole('heading', { name: t('mcpConsent.operations.label') })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: commonT('pagination.next') })).toBeNull();
+		expect(screen.queryAllByRole('checkbox', { name: /project-a/ })).toHaveLength(0);
+		expect((screen.getByRole('combobox', { name: domainLabel() }) as HTMLSelectElement).value).toBe('domain-b');
+		expect(goto).not.toHaveBeenCalled();
+		// The refreshed session, not the old one, is used to decide.
+		await fireEvent.click(screen.getByRole('button', { name: t('mcpConsent.actions.allowRead') }));
+		await waitFor(() => expectDecision('approve', { access_level: 'read', project_scope: 'selected', project_ids: ['project-b'], ongoing: true }, 'token-domain-b', 'project-b'));
 	});
 
-	it('keeps the request and reports a failed domain switch', async () => {
+	it('keeps the request and the old selection when a domain switch fails', async () => {
 		auth.set({ ...actor, availableDomains: [{ id: 'domain-dms', name: 'DMS Lab' }, { id: 'domain-b', name: 'Other' }] });
 		withDomain();
 		api.post.mockRejectedValueOnce(new Error('switch failed'));
 		render(Page);
 		await loaded();
-		await fireEvent.change(screen.getByRole('combobox', { name: t('mcpConsent.domain.label') }), { target: { value: 'domain-b' } });
-		await fireEvent.click(screen.getByRole('button', { name: t('mcpConsent.domain.change') }));
+		await fireEvent.change(screen.getByRole('combobox', { name: domainLabel() }), { target: { value: 'domain-b' } });
 		await screen.findByText(t('mcpConsent.domain.switchFailed'));
 		expect(setAuth).not.toHaveBeenCalled();
+		expect((screen.getByRole('combobox', { name: domainLabel() }) as HTMLSelectElement).value).toBe('domain-dms');
+		expect(checkbox('project-a')).toBeTruthy();
 		expect(pendingMcpConsentTicket()).toBe(ticket);
 	});
 });

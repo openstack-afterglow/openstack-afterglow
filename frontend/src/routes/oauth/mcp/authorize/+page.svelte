@@ -69,17 +69,27 @@
 	let ongoing = $state(true);
 	let reviewStep = $state<'client' | 'permissions'>('client');
 	let heading = $state<HTMLHeadingElement>();
-	let domainTarget = $state('');
 	let domainSwitching = $state(false);
 	let domainError = $state('');
+	// Table area only: a domain change refreshes the projects without leaving the permission step.
+	let projectsRefreshing = $state(false);
+	// Remounts the select so a failed switch snaps it back to the connected domain.
+	let domainSelectKey = $state(0);
+	let inlineDomainSwitch = false;
 	const ongoingSupported = $derived(consent?.ongoing_supported === true);
 	const requestsManage = $derived(consent?.scopes.includes('mcp:write') === true);
 	const previewProjects = $derived(projects.filter((project) => (operations[project.id]?.length ?? 0) > 0));
 	const accessLevel = $derived<'read' | 'manage'>(
 		previewProjects.some((project) => operations[project.id].some(isWriteOperation)) ? 'manage' : 'read');
-	const otherDomains = $derived(($auth.availableDomains ?? []).filter((domain) => domain.id !== consent?.domain_id));
+	const domainOptions = $derived.by(() => {
+		const listed = $auth.availableDomains ?? [];
+		const currentId = consent?.domain_id;
+		return currentId && !listed.some((domain) => domain.id === currentId)
+			? [{ id: currentId, name: consent?.domain_name ?? currentId }, ...listed]
+			: listed;
+	});
 	const loopbackRedirect = $derived(consent !== null && isLoopback(consent.redirect_uri));
-	const canApprove = $derived(!loading && !deciding && !domainSwitching && consent !== null && reviewStep === 'permissions'
+	const canApprove = $derived(!loading && !deciding && !domainSwitching && !projectsRefreshing && consent !== null && reviewStep === 'permissions'
 		&& previewProjects.length > 0 && !decisionUnconfirmed);
 	function message(error: unknown, fallback: string, observation: AuthExperience) {
 		if (error instanceof ApiError) { observation.unknownMessage(); return error.message; }
@@ -102,10 +112,15 @@
 		return operations[project.id]?.includes(operation) === true;
 	}
 	function withOperation(current: McpOperation[], operation: McpOperation, enabled: boolean): McpOperation[] {
-		return MCP_OPERATIONS.filter((candidate) => candidate === operation ? enabled : current.includes(candidate));
+		const next = MCP_OPERATIONS.filter((candidate) => candidate === operation ? enabled : current.includes(candidate));
+		// Create and update always carry read.
+		return next.some(isWriteOperation) && !next.includes('read') ? MCP_OPERATIONS.filter((candidate) => candidate === 'read' || next.includes(candidate)) : next;
+	}
+	function readLocked(project: McpConsentProject) {
+		return (operations[project.id] ?? []).some(isWriteOperation);
 	}
 	function toggle(project: McpConsentProject, operation: McpOperation) {
-		if (deciding || !allowed(project, operation)) return;
+		if (deciding || !allowed(project, operation) || (operation === 'read' && readLocked(project))) return;
 		operations = { ...operations, [project.id]: withOperation(operations[project.id] ?? [], operation, !chosen(project, operation)) };
 		observeChoice();
 	}
@@ -121,7 +136,10 @@
 		if (deciding) return;
 		const enable = !columnState(operation).all;
 		const next = { ...operations };
-		for (const project of columnProjects(operation)) next[project.id] = withOperation(next[project.id] ?? [], operation, enable);
+		for (const project of columnProjects(operation)) {
+			if (operation === 'read' && !enable && readLocked(project)) continue;
+			next[project.id] = withOperation(next[project.id] ?? [], operation, enable);
+		}
 		operations = next;
 		observeChoice();
 	}
@@ -206,7 +224,8 @@
 		void loadConsent(request);
 	}
 
-	async function loadConsent(request: RequestContext) {
+	// `inline` refreshes only the project area after a domain change: the step, duration and client details stay.
+	async function loadConsent(request: RequestContext, inline = false) {
 		let rendered = false;
 		try {
 			const [details, availableProjects] = await Promise.all([
@@ -219,47 +238,77 @@
 			]);
 			if (!isCurrent(request)) { request.experience.discard(request.controller.signal.aborted ? 'aborted' : 'stale'); return; }
 			consent = details;
-			ongoing = details.ongoing_supported === true;
+			ongoing = inline ? ongoing && details.ongoing_supported === true : details.ongoing_supported === true;
 			projects = availableProjects;
 			operations = availableProjects.some((project) => project.id === request.projectId)
 				? { [request.projectId]: ['read'] } : {};
-			domainTarget = '';
-			request.experience.state(availableProjects.length ? 'ready' : 'empty', 0);
+			request.experience.state(availableProjects.length ? 'ready' : 'empty', inline ? 1 : 0);
 			reviewExperience = request.experience;
 			recordChoice(request.experience);
 			rendered = true;
 		} catch (errorValue) {
 			if (!isCurrent(request)) { request.experience.discard(request.controller.signal.aborted ? 'aborted' : 'stale'); return; }
-			clearSelection();
 			const text = observedAuthText(request.experience, 'public-entry', t);
-			error = message(errorValue, errorValue instanceof ApiError ? '' : text('mcpConsent.error.loadFailed'), request.experience);
+			const failure = message(errorValue, errorValue instanceof ApiError ? '' : text('mcpConsent.error.loadFailed'), request.experience);
+			if (inline) {
+				// The session already belongs to the new domain; never keep the old domain's projects selectable.
+				projects = [];
+				operations = {};
+				domainError = failure;
+			} else {
+				clearSelection();
+				error = failure;
+			}
 			loading = false;
 			request.experience.state('error'); rendered = true;
 		} finally {
-			if (isCurrent(request)) loading = false;
+			if (isCurrent(request)) { loading = false; projectsRefreshing = false; }
 			if (rendered) void request.experience.applied();
 		}
 	}
 
-	// Re-scope only the working domain; the same ticket is reloaded for the new session project.
-	async function switchDomain() {
+	function refreshProjects() {
 		const current = get(auth);
-		const target = domainTarget;
-		if (!target || deciding || domainSwitching || get(projectSwitching) || !current.token
-			|| !otherDomains.some((domain) => domain.id === target)) return;
+		if (!ticket || !current.token || !current.projectId || !current.userId) { reload(); return; }
+		activeRequest?.controller.abort();
+		const epoch = ownerEpoch;
+		const experience = beginAuthExperience('mcp.consent', 'load', () => mounted && epoch === ownerEpoch, 'mcp');
+		experience.state('loading', 1);
+		const request = { token: current.token, projectId: current.projectId, ticket, controller: new AbortController(), experience };
+		activeRequest = request;
+		projectsRefreshing = true;
+		projects = [];
+		operations = {};
+		void loadConsent(request, true);
+	}
+
+	// Re-scope only the working domain, then refresh the project area for the same ticket in place.
+	async function switchDomain(target: string) {
+		const current = get(auth);
+		if (!target || target === consent?.domain_id || deciding || domainSwitching || projectsRefreshing || get(projectSwitching)
+			|| !current.token || !domainOptions.some((domain) => domain.id === target)) {
+			domainSelectKey++;
+			return;
+		}
 		domainSwitching = true;
 		domainError = '';
+		inlineDomainSwitch = true;
 		projectSwitching.set(true);
+		let switched = false;
 		try {
 			const response = await api.post<SessionTokenResponse>('/api/v1/auth/token/domain', { domain_id: target }, current.token, undefined,
 				{ replayOnUnauthorized: false, suppressAuthRedirect: true, cache: 'no-store' });
 			setAuth(domainAuthState(response, current, target));
+			switched = true;
 		} catch {
 			domainError = t('mcpConsent.domain.switchFailed');
+			domainSelectKey++;
 		} finally {
-			domainSwitching = false;
 			projectSwitching.set(false);
+			inlineDomainSwitch = false;
+			domainSwitching = false;
 		}
+		if (switched) refreshProjects();
 	}
 
 	async function decide(decision: 'approve' | 'deny') {
@@ -334,6 +383,7 @@
 			if (owner && owner.token === next.token && owner.userId === next.userId
 				&& owner.projectId === next.projectId && owner.switching === next.switching) return;
 			owner = next;
+			if (inlineDomainSwitch) return;
 			reload();
 		});
 		const unsubscribePage = page.subscribe(({ url }) => {
@@ -426,27 +476,31 @@
 			<div class="consent-client-summary">
 				<strong>{consent.client_name}</strong>
 				<code>{consent.client_id}</code>
-				<p class="consent-domain"><span>{t('mcpConsent.details.domain')}</span> <strong>{consent.domain_name ?? ''}</strong> <code>{consent.domain_id ?? ''}</code></p>
-				<p class="consent-domain-help">{t('mcpConsent.domain.help')}</p>
-				{#if otherDomains.length > 0}
-					<div class="domain-switch">
-						<Field label={t('mcpConsent.domain.label')} for="mcp-consent-domain">
-							<SelectInput id="mcp-consent-domain" value={domainTarget} disabled={deciding || domainSwitching}
-								onchange={(event) => { domainTarget = (event.target as HTMLSelectElement).value; }}>
-								<option value="">{t('mcpConsent.domain.placeholder')}</option>
-								{#each otherDomains as domain (domain.id)}
-									<option value={domain.id}>{domain.name}</option>
-								{/each}
-							</SelectInput>
-						</Field>
-						<Button variant="secondary" onclick={() => void switchDomain()} disabled={!domainTarget || deciding || domainSwitching}>{t('mcpConsent.domain.change')}</Button>
-					</div>
-				{/if}
 			</div>
 			<section class="operation-section" aria-labelledby="mcp-consent-operations">
 				<h2 id="mcp-consent-operations" class="operation-heading">{t('mcpConsent.operations.label')}</h2>
+				<div class="domain-field">
+					{#if domainOptions.length > 1}
+						<Field label={t('mcpConsent.details.domain')} for="mcp-consent-domain">
+							{#key domainSelectKey}
+								<SelectInput id="mcp-consent-domain" value={consent.domain_id ?? ''} disabled={deciding || domainSwitching || projectsRefreshing}
+									onchange={(event) => void switchDomain((event.target as HTMLSelectElement).value)}>
+									{#each domainOptions as domain (domain.id)}
+										<option value={domain.id}>{domain.name}</option>
+									{/each}
+								</SelectInput>
+							{/key}
+						</Field>
+					{:else}
+						<p class="consent-domain"><span>{t('mcpConsent.details.domain')}</span> <strong>{consent.domain_name ?? ''}</strong></p>
+					{/if}
+					<code>{consent.domain_id ?? ''}</code>
+					<p class="duration-help">{t('mcpConsent.domain.help')}</p>
+				</div>
 				<p class="duration-help">{t(requestsManage ? 'mcpConsent.operations.help' : 'mcpConsent.operations.readOnlyClient')}</p>
-				{#if projects.length > 0}
+				{#if domainSwitching || projectsRefreshing}
+					<LoadingState variant="section" label={t('mcpConsent.domain.switching')} />
+				{:else if projects.length > 0}
 					<div class="operation-table-scroll">
 						<table class="operation-table" aria-labelledby="mcp-consent-operations">
 							<thead>
@@ -479,7 +533,7 @@
 										{#each MCP_OPERATIONS as operation (operation)}
 											<td>
 												<SelectionCheckbox ariaLabel={`${project.name} ${project.id} ${t(`mcpConsent.operations.${operation}`)}`}
-													checked={chosen(project, operation)} disabled={deciding || !allowed(project, operation)}
+													checked={chosen(project, operation)} disabled={deciding || !allowed(project, operation) || (operation === 'read' && readLocked(project))}
 													onclick={() => toggle(project, operation)} />
 											</td>
 										{/each}
@@ -490,7 +544,9 @@
 					</div>
 				{/if}
 			</section>
-			{#if previewProjects.length === 0}
+			{#if domainSwitching || projectsRefreshing}
+				<!-- The project area above shows the refresh; no permission preview for a stale selection. -->
+			{:else if previewProjects.length === 0}
 				<Alert tone="warning">
 					{#snippet children()}{t('mcpConsent.projects.empty')}{/snippet}
 				</Alert>
@@ -544,9 +600,10 @@
 	.consent-client-summary { display: grid; gap: 0.25rem; min-width: 0; padding-bottom: 0.75rem; border-bottom: 1px solid var(--color-line); }
 	.consent-client-summary strong { font-size: var(--type-body); font-weight: 500; }
 	.consent-client-summary code { color: var(--color-ink-2); }
-	.domain-switch { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.5rem 0.75rem; margin-top: 0.5rem; }
-	.domain-switch :global(.field) { flex: 1 1 14rem; min-width: 0; }
-	.domain-switch :global(select) { min-width: 0; }
+	.domain-field { display: grid; gap: 0.25rem; min-width: 0; }
+	.domain-field :global(select) { min-width: 0; }
+	.domain-field code { color: var(--color-ink-2); font-size: var(--type-identifier); overflow-wrap: anywhere; }
+	.consent-domain { margin: 0; color: var(--color-ink-1); font-size: var(--type-body); }
 	.operation-section { display: grid; gap: 0.5rem; min-width: 0; }
 	.operation-heading { margin: 0; color: var(--color-ink-0); font-size: 1rem; font-weight: 600; }
 	.operation-table-scroll { min-width: 0; overflow-x: auto; }

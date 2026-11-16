@@ -154,6 +154,7 @@ def default_project_operations(access_level: str, can_write: bool) -> tuple[str,
 
 
 def validate_project_operations(value: object) -> tuple[str, ...]:
+    """Validate one project's chosen operations; create and update always imply read."""
     if (
         not isinstance(value, list | tuple)
         or not value
@@ -161,7 +162,10 @@ def validate_project_operations(value: object) -> tuple[str, ...]:
         or len(set(value)) != len(value)
     ):
         raise McpAuthorityError("project operations must be a non-empty subset of read, create and update")
-    return tuple(operation for operation in MCP_OPERATIONS if operation in value)
+    chosen = set(value)
+    if chosen & MCP_WRITE_OPERATIONS:
+        chosen.add("read")
+    return tuple(operation for operation in MCP_OPERATIONS if operation in chosen)
 
 
 def default_grant_lifetime() -> timedelta:
