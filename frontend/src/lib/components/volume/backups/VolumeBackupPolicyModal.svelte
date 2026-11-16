@@ -80,6 +80,8 @@
 <form onsubmit={(event) => { event.preventDefault(); void submit(); }} aria-label={t('autoPolicy.settings')}>
 <FormModal open={true} title={t('autoPolicy.settings')} onClose={close} submitting={saving}>
 	<div class="space-y-4" data-testid="auto-backup-policy-editor">
+		<p class="text-sm text-ink-2">{t('backupPolicy.description')}</p>
+		<Alert tone="info">{t('backupPolicy.chainHelp')}</Alert>
 		{#if !$canWrite}<Alert tone="info">{t('autoPolicy.reader')}</Alert>{/if}
 		<Field label={t('autoPolicy.source')} for={`${componentId}-source`}>
 			<SelectInput id={`${componentId}-source`} bind:value={source} onchange={changeSource} disabled={saving || !$canWrite}>
@@ -98,7 +100,7 @@
 			<SelectInput id={`${componentId}-weekday`} bind:value={weeklyDay} disabled={saving || !$canWrite}>{#each days as day, index}<option value={String(index)}>{t(`autoPolicy.${day}`)}</option>{/each}</SelectInput>
 		</Field>
 		<Field label={t('autoPolicy.monthlyDay')} for={`${componentId}-monthday`}><TextInput id={`${componentId}-monthday`} bind:value={monthlyDay} inputmode="numeric" disabled={saving || !$canWrite} /></Field>
-		<p class="text-xs text-ink-2">{t('autoPolicy.calendarHelp')}</p>
+		<p class="text-xs text-ink-2">{t('backupPolicy.calendarHelp')}</p>
 		<label class="flex min-h-11 items-center gap-3 text-sm text-ink-1"><input type="checkbox" bind:checked={form.enabled} disabled={saving || !$canWrite} /><span>{t('autoPolicy.enabled')}</span></label>
 		<Alert tone="warning"><p id={`${componentId}-risk`}>{t('autoPolicy.forceRisk')}</p><p id={`${componentId}-scope`} class="mt-2">{t('autoPolicy.forceScope')}</p></Alert>
 		<label class="flex min-h-11 items-center gap-3 text-sm text-ink-1"><input type="checkbox" bind:checked={form.force} disabled={saving || !$canWrite} aria-describedby={`${componentId}-risk ${componentId}-scope`} /><span>{t('autoPolicy.force')}</span></label>

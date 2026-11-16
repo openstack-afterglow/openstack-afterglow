@@ -21,6 +21,9 @@ export interface VolumeBackupPolicy extends VolumeBackupPolicyInput {
 	last_status: 'never' | 'creating' | 'available' | 'error' | 'unknown' | 'skipped';
 	last_backup_id: string | null;
 	last_error: string | null;
+	last_backup_method?: 'full' | 'incremental' | null;
+	last_full_fallback?: boolean;
+	retained_over_limit?: string[];
 	source_status?: 'missing' | 'not_owned' | 'unavailable';
 	source_available?: boolean | null;
 	source_error?: string | null;

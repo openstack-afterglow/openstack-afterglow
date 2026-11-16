@@ -15,7 +15,7 @@ vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'token-a', projectId: 'project-a', userId: 'actor-a' }),
 }));
 
-import UsageScheduleSection from '../instance/UsageScheduleSection.svelte';
+import UsageScheduleSection from './_UsageScheduleHarness.svelte';
 
 const schedule: UsageScheduleInfo = {
 	instance_id: 'vm-a', starts_at: '2099-01-01T10:20:30Z', expires_at: '2099-01-31T10:20:30Z',

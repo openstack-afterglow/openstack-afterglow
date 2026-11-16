@@ -2,7 +2,6 @@
 	import InstanceHeader from '../InstanceHeader.svelte';
 	import NetworkSection from '../NetworkSection.svelte';
 	import VolumesSection from '../VolumesSection.svelte';
-	import StorageAttachmentsSection from '../StorageAttachmentsSection.svelte';
 	import { createInstanceDetailController, provideInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 
 	let { adminMode = false }: { adminMode?: boolean } = $props();
@@ -27,5 +26,4 @@
 	/>
 	<NetworkSection />
 	<VolumesSection />
-	<StorageAttachmentsSection />
 {/if}

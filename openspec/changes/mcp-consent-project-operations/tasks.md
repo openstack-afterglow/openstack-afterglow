@@ -24,7 +24,7 @@
 ## 4. Clients
 
 - [x] 4.1 Hermes Agent 0.19.0 (`hermes-agent[mcp]`, mcp 1.26.0) and OpenClaw 2026.11.4 run against a loopback mock that validates with Afterglow's own registration, scope, PKCE and resource checks: both register as public clients (`token_endpoint_auth_method: none`, `authorization_code`+`refresh_token`), request `mcp:read mcp:write`, send S256 PKCE and the exact resource. All checks pass. Headless completion: Hermes accepts the pasted redirect URL; OpenClaw accepts `--code`.
-- [ ] 4.2 Live login against production with user approval. Dynamic registration of both clients against production succeeded; the approval step did not happen, so token exchange and tool calls are unverified.
+- [x] 4.2 Live login against production (deployed 1.32.21, before this change) with user approval from an interactive terminal: `hermes mcp test afterglow` listed the tools, `openclaw mcp probe` reported 63 tools, and Hermes' token read `afterglow_projects_list` and `afterglow_vm_list`. Both test grants were then revoked (revoke 200; refresh `invalid_grant`; access 401). Per-project operation enforcement is not live-verified until deployment.
 
 ## 5. Verification and docs
 

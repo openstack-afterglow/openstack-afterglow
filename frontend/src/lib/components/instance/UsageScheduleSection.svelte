@@ -1,33 +1,21 @@
 <script lang="ts">
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
-	import { onMount } from 'svelte';
 	import { Alert, Button, Pill } from '$lib/components/ui';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { t } from '$lib/i18n/ns/usage-schedule';
-	import { createInstanceUsageController } from '$lib/stores/instanceUsageController.svelte';
+	import type { InstanceUsageController } from '$lib/stores/instanceUsageController.svelte';
 	import { calendarMonthAfter, fromLocalDateTime, toLocalDateTime, usageDraftError } from '$lib/utils/instanceUsage';
 	import UsageScheduleFields from './UsageScheduleFields.svelte';
 	import WaygateManagedNote from './WaygateManagedNote.svelte';
 
-	let { instanceId, projectId, adminMode = false, canWrite = false, waygateLocked = false, onUpdated }: {
-		instanceId: string;
-		projectId: string | undefined;
-		adminMode?: boolean;
+	let { controller, canWrite = false, waygateLocked = false, onClose }: {
+		/** Owned by the instance detail, which also shows the expiry beside the creation date. */
+		controller: InstanceUsageController;
 		canWrite?: boolean;
 		/** Waygate gateway on the project surface: the schedule edit (PUT) is locked; only extension (POST …/extend) remains. */
 		waygateLocked?: boolean;
-		onUpdated?: () => void;
+		onClose?: () => void;
 	} = $props();
-	let section: HTMLElement;
-	onMount(() => {
-		// Native ownership loads after route-level hash scrolling has already run.
-		if (window.location.hash === '#usage-schedule') section.scrollIntoView({ block: 'start', behavior: 'instant' });
-	});
-
-	const controller = createInstanceUsageController({
-		instanceId: () => instanceId, projectId: () => projectId,
-		adminMode: () => adminMode, canWrite: () => canWrite, extensionOnly: () => waygateLocked, onUpdated: () => onUpdated?.(),
-	});
 	const locked = $derived(!!controller.schedule && !['active', 'blocked', 'complete'].includes(controller.schedule.state));
 	const draftError = $derived(usageDraftError(controller.draft, controller.schedule?.expires_at, Date.now(), controller.schedule?.starts_at));
 	const resumeError = $derived.by(() => {
@@ -50,12 +38,17 @@
 	}
 </script>
 
-<section bind:this={section} id="usage-schedule" aria-labelledby="usage-schedule-title" aria-busy={controller.loading || controller.saving}
-	class="usage-schedule mb-4 min-w-0 scroll-mt-4 rounded-lg border border-line bg-surface-base p-4 md:p-6">
+<section id="usage-schedule" aria-labelledby="usage-schedule-title" aria-busy={controller.loading || controller.saving}
+	class="usage-schedule w-[min(42rem,calc(100vw-2rem))] min-w-0 rounded-lg border border-line bg-surface-base p-4 md:p-6">
 	<div class="mb-4 flex min-w-0 flex-wrap items-start justify-between gap-3">
 		<h2 id="usage-schedule-title" class="min-w-0 break-words text-[15px] font-semibold text-ink-0">{t('title')}</h2>
-		<Button variant="secondary" size="sm" class="min-h-11 max-w-full whitespace-normal" disabled={controller.loading || controller.saving}
-			onclick={() => void controller.refresh()}>{t('refresh')}</Button>
+		<div class="flex min-w-0 flex-wrap gap-2">
+			<Button variant="secondary" size="sm" class="min-h-11 max-w-full whitespace-normal" disabled={controller.loading || controller.saving}
+				onclick={() => void controller.refresh()}>{t('refresh')}</Button>
+			{#if onClose}
+				<Button variant="ghost" size="sm" class="min-h-11 max-w-full whitespace-normal" disabled={controller.saving} onclick={onClose}>{t('close')}</Button>
+			{/if}
+		</div>
 	</div>
 
 	<div class="min-w-0 space-y-4 break-words [overflow-wrap:anywhere]">

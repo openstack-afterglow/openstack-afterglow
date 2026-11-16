@@ -115,3 +115,6 @@ async def delete_keypair(
             error_message=str(e)[:500],
         )
         raise HTTPException(status_code=500, detail="키페어 삭제 실패")
+    from app.services import ssh_key_preferences
+
+    await ssh_key_preferences.clear_deleted(uid, token_info["identity_domain_id"], keypair_name)

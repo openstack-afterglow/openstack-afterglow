@@ -283,7 +283,7 @@ async def test_fresh_source_ownership_status_and_force_consent(policy_redis, own
 
 
 @pytest.mark.asyncio
-async def test_completion_prunes_only_verified_owned_managed_full_backups(policy_redis):
+async def test_completion_prunes_only_verified_owned_managed_completed_backups(policy_redis):
     cloud = BackupCloud()
     config = await save(max_daily=1, max_weekly=0, max_monthly=0)
     managed = f"auto_{VOLUME[:8]}_daily_20260501"
@@ -306,7 +306,7 @@ async def test_completion_prunes_only_verified_owned_managed_full_backups(policy
     assert cloud.deleted == []
     cloud.records["new-backup"].status = "available"
     await ab.run_backup_cycle(cloud, PROJECT, VOLUME, now=due(config))
-    assert cloud.deleted == ["old-full"]
+    assert cloud.deleted == ["old-full", "incremental"]
     assert (await current())["last_status"] == "available"
     assert not await policy_redis.exists(ab._key("active", PROJECT, VOLUME))
 

@@ -11,6 +11,8 @@ import asyncio
 
 from fastapi import HTTPException
 
+from app.services.parallel import run_parallel
+
 
 class NativeReads(dict):
     """Keep identity-keyed memo owners alive until this read phase ends."""
@@ -83,9 +85,15 @@ class NativeOperation:
         from app.services import identity_roles
 
         def load():
-            return identity_roles._catalog(
-                list(self.ks.roles.list()), list(self.ks.inference_rules.list_inference_roles())
+            # Bind the lazy client before fan-out. The joined executor keeps both
+            # reads inside this phase, including failures and caller cancellation.
+            ks = self.ks
+            roles, inferences = run_parallel(
+                lambda: list(ks.roles.list()),
+                lambda: list(ks.inference_rules.list_inference_roles()),
+                max_workers=2,
             )
+            return identity_roles._catalog(roles, inferences)
 
         return self.reads.retain(self.read(("catalog",), load))
 

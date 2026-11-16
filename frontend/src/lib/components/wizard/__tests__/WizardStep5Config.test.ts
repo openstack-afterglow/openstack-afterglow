@@ -70,6 +70,59 @@ function deferredProfile() {
 	return { promise, resolve, reject };
 }
 
+describe('WizardStep5Config default SSH key', () => {
+	it.each(['project-key', 'missing-key', null])('preselects only a saved key present in current inventory (%s)', async name => {
+		mocks.apiGet.mockImplementation((path: string) => Promise.resolve(
+			path === '/api/v1/profile/ssh-key-preference' ? { keypair_name: name } : { history: [], presets: [] },
+		));
+		await renderConfig();
+		const select = await screen.findByLabelText(t('config.keypair.label'), { exact: false }) as HTMLSelectElement;
+		await waitFor(() => expect(select.value).toBe(name === 'project-key' ? name : ''));
+		await fireEvent.change(select, { target: { value: 'test-keypair' } });
+		expect(get(wizard).keyName).toBe('test-keypair');
+		store.ensureStepData(5);
+		expect(get(wizard).keyName).toBe('test-keypair');
+		await fireEvent.change(select, { target: { value: '' } });
+		store.ensureStepData(5);
+		await tick();
+		expect(get(wizard).keyName).toBeNull();
+	});
+
+	it('does not block manual selection when preferences are unavailable', async () => {
+		mocks.apiGet.mockImplementation((path: string) => path === '/api/v1/profile/ssh-key-preference'
+			? Promise.reject(new Error('unavailable')) : Promise.resolve({ history: [], presets: [] }));
+		await renderConfig();
+		const select = await screen.findByLabelText(t('config.keypair.label'), { exact: false }) as HTMLSelectElement;
+		expect(select.value).toBe('');
+		await fireEvent.change(select, { target: { value: 'project-key' } });
+		expect(get(wizard).keyName).toBe('project-key');
+	});
+	it('does not preselect a registered key for Windows boot', async () => {
+		mocks.apiGet.mockImplementation((path: string) => Promise.resolve(
+			path === '/api/v1/profile/ssh-key-preference' ? { keypair_name: 'project-key' } : { history: [], presets: [] },
+		));
+		wizard.update(w => ({ ...w, imageId: 'windows-native' }));
+		const { container } = await renderConfig();
+		await screen.findByTestId('windows-password-config');
+		await waitFor(() => expect(store.keypairs.length).toBe(2));
+		expect(get(wizard).keyName).toBeNull();
+		expect(container.querySelector('#create-keypair')).toBeNull();
+	});
+
+	it('does not overwrite GitHub mode when a late default arrives', async () => {
+		const preference = Promise.withResolvers<{ keypair_name: string | null }>();
+		mocks.apiGet.mockImplementation((path: string) => path === '/api/v1/profile/ssh-key-preference'
+			? preference.promise : Promise.resolve({ history: [], presets: [] }));
+		await renderConfig();
+		store.selectSshAccessMode('github');
+		preference.resolve({ keypair_name: 'project-key' });
+		await waitFor(() => expect(store.keypairs.length).toBe(2));
+		expect(get(wizard).sshAccessMode).toBe('github');
+		expect(get(wizard).keyName).toBeNull();
+	});
+
+});
+
 describe('WizardStep5Config ordinary root disk', () => {
 	beforeEach(() => {
 		prepareWizardConsumer(5);
