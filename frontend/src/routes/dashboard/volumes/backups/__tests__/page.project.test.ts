@@ -61,5 +61,6 @@ describe('volume backup project isolation', () => {
     projectAuth.set({ token: 'token', projectId: null });
     await vi.waitFor(() => expect(screen.queryByText('current-backup')).toBeNull());
     expect(screen.queryByText('previous-project-backup')).toBeNull();
+    expect(screen.getByText('볼륨 백업이 없습니다')).toBeTruthy();
   });
 });

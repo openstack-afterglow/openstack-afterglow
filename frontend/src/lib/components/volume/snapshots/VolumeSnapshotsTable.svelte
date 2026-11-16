@@ -26,7 +26,8 @@
   const tourDeleteId = $derived(snapshots.find((snap) => snap.id === highlightId && (snap.status === 'available' || snap.status === 'error'))?.id ?? null);
 </script>
 
-{#if view.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{storageCommonT('table.noMatches')}</p>{/if}
+<!-- The per-volume detail has no search; only column filters can hide rows, so with none active an empty list means no snapshots. -->
+{#if view.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{Object.values(view.filters).some((values) => values.length > 0) ? storageCommonT('table.noMatches') : t('snapshotListTable.empty')}</p>{/if}
 <ResponsiveTable>
   {#snippet cards()}
     <div class="responsive-card-toolbar">

@@ -277,6 +277,22 @@ Resampled counter/vCPU는 bounded native-granularity window로 내부 reset/gap/
 
 계정 설정은 `accountNavSection`의 프로필(`/dashboard/account`)·SSH 키(`/keypairs`)·Beta 기능(`/beta`)·세션(`/sessions`)·MCP(`/mcp`)·활동(`/activity`) 여섯 목적지로 나뉜다. 하위 경로는 모두 `/dashboard/account` 기준이다. 기존 `ConsoleNavigation`이 tablet/desktop의 contextual sidebar·접힌 icon rail, mobile global drawer와 command palette의 동일 목적지를 제공하며 계정 화면에는 VM 생성 action을 넣지 않는다. 계정 `+layout.svelte` 하나가 PageShell·header를 소유하고 경로별 기존 section만 mount한다. 프로필에는 비밀번호와 로그인 작업 공간 설정을 유지한다. 탐색은 workspace나 권한을 바꾸지 않으며 기존 section의 요청·권한·일회 secret 정리 경계를 재사용한다. 새 backend/API·DB/schema·설정·서비스/배포 구조 변화는 없다.
 
+로그인 작업 공간은 기본적으로 마지막 접근 도메인·프로젝트를 기억한다. 사용자가 해제하면 fresh native 멤버십을 검증한 고정 domain/project pair를 저장해야 하며, Redis 원자 갱신은 고정 선택과 legacy opt-out을 이후 작업 공간 전환의 `record()`로 덮어쓰지 않는다. 로그인 시 저장 대상의 403/404만 개인 프로젝트로 fallback하고 native exchange 거부는 terminal로 유지한다.
+
+기본 SSH 키는 immutable home domain UUID+user UUID 해시별 Redis preference(`services/ssh_key_preferences.py`)로 저장한다. `GET/PUT /api/v1/profile/ssh-key-preference`는 저장 시 호출자의 Nova keypair 목록을 검증하고, 기본 키 삭제는 원자적 비교·삭제로 다른 동시 선택을 보존한다. VM 생성 wizard의 keypair 모드만 현재 목록에 존재하는 기본 키를 미리 선택하며 GitHub SSH→keypair 모드 복귀와 생성 후 초기화에서도 다시 적용한다. Windows·관리자·GitHub SSH 방식은 그대로다.
+
+로그인 세션은 User-Agent에서 허용된 브라우저명·주버전만 저장하고 전체 UA는 저장하지 않으며, Redis 원자 회전(refresh·작업 공간 전환)에서 최초 정보를 보존한다. 세션 목록은 기존 offline GeoIP 설정으로 출처 IP의 국가 코드를 보완하고 조회 불가·비공개 IP는 생략한다. 외부 위치 서비스와 새 schema는 없다.
+
+계정 활동 API(`list_for_user`)는 의도적인 리소스 변경과 세션·자격 증명 보안 동작만 SQL에서 필터링한 뒤 cursor/limit을 적용한다. `request.*`·읽기·stage·UI/experience 관측, native notification echo(`source`가 afterglow 또는 legacy NULL이 아닌 행), 채팅 대화·실행 churn은 제외하며 positive action vocabulary를 새 mutation producer와 함께 유지해야 한다. 관리자 감사 조회·통계·원본 기록은 그대로이고 실제 MariaDB REGEXP 방언은 `test_activity_log_db.py`가 검증한다.
+
+작업 공간 조회·전환의 `NativeOperation.catalog`는 동일 요청·read phase의 Keystone 역할 목록과 inference 목록을 최대 두 worker로 병렬 조회한다. Lazy native client를 먼저 확정하고 두 조회를 모두 join한 뒤 catalog를 구성하며, 실패 순서·취소 drain·session 정리와 `invalidate()` 전후 membership·정책·토큰 교환 재검사, 장기 권한 cache 부재 경계는 변경하지 않는다. 프로젝트 선택 한 번은 여전히 native 읽기·교환 약 127회를 수행하며 이를 줄이려면 재검사 경계 자체를 재설계해야 한다.
+
+인스턴스 상세는 `InstanceDetailPanel`이 하나의 `createInstanceUsageController`를 소유해 생성일 아래 만료일·만료 동작 표시와 header의 기간 연장 modal(`UsageScheduleSection`)이 같은 조회 결과를 공유한다. `#usage-schedule` 알림 링크는 modal을 한 번 열고, 사용 기간 조회 실패는 패널에서 오류와 재시도를 표시해 자동 보류·삭제 대상이 만료 정보 없이 보이지 않게 한다. 인스턴스 상세의 파일 스토리지 접근 권한·Afterglow 정보(union strategy/libraries) 섹션은 제거했으며 해당 backend API는 유지한다.
+
+볼륨 백업·스냅샷 화면은 이미지 저장소와 같은 원본 볼륨 카드→URL `volume` query 상세 구조다. 카드는 볼륨명(목록에 없으면 삭제된 볼륨과 짧은 ID), 포인트 수, 최신 생성 시각, 자동 정책 상태를 보이고 상세는 그 볼륨의 자동 정책과 포인트별 생성 시각·자동/수동(주기)·전체/증분·생성자·상태를 보인다. 생성자는 Cinder `user_id`(백업 microversion 3.56, 스냅샷 3.41 명시 요청)를 현재 프로젝트 `projectAuthority.members`로만 이름 해석하고 거절되면 짧은 ID를 표시한다. 자동/수동과 주기는 `auto_backup`의 기존 소유권 분류(정확한 metadata·이름 규칙, prefix 단독 불인정)를 공개한 단일 분류기가 결정한다. 수동 백업 생성은 같은 볼륨의 사용 가능한 전체 백업이 없으면 증분을 막는다. Cinder 스냅샷에는 전체/증분 선택이 없으므로 화면은 copy-on-write 증분만 명시하고 독립 사본은 전체 백업으로 안내한다.
+
+자동 백업 정책은 일별 증분·주별/월별 전체를 사용한다. 증분 부모는 Cinder가 같은 볼륨의 최신 사용 가능한 백업(수동 포함)에서 고르며 Afterglow는 부모 ID를 지정하지 않는다. 마지막 owned 전체 이후 증분이 일별 보관 개수-1에 도달하거나 그 이후 체인에 수동·미완료·불명확 포인트가 섞이면 새 전체로 회전해 체인 길이를 보관 창 안으로 제한한다. 보관 정리는 자식부터 최신 `has_dependent_backups`가 명확히 false일 때만 삭제하고, 수동 백업이 의존하는 owned 부모는 `retained_over_limit`로 남긴다. 비동기 Cinder 삭제 완료를 기다리는 drain은 시한이 있으며 시한이 지나도 삭제 대기 포인트를 삭제됨으로 간주하지 않는다. 스냅샷 lane은 같은 엔진의 CoW 전용 경로로 변화가 없다.
+
 콘솔 정보 위계 변경은 공통 `AutoRefreshControl`의 한 select, `ResourceIdentifier`, 문맥별 StatusChip, semantic editable/input과 light/dark token·typography·row/control geometry를 재사용한다. 인스턴스·네트워크·볼륨은 compact 요약→도구→표/카드→하단 페이지를 우선하며 추이는 접힘/용량 분석으로 옮긴다. Complete-project 배열의 표시 paging과 관리자 native marker paging은 별개로 유지하고 필터/page 변경은 숨겨진 선택을 제거한다. 기존 shared 상세 경로/권한·mutation fence를 새 표시 구조로 대체하지 않는다.
 
 `ConsoleNavigation`은 기능별 localized metadata를 sidebar/drawer/command palette에서 공유한다. Global drawer의 기본 제공 visible overview는 항상 펼친 Hub로 맨 위에 두고 그 아래에는 현재 보이는 catalog와 교차한 계정/home UUID·user/admin별 display-only 즐겨찾기를 노출한다. Hub를 중복 추가하거나 숨기지 않으며 recent는 Hub 위에 나타나지 않는다. 관리자·사용자의 모든 서비스 catalog는 초기·재열기·actor 변경에서 펼쳐 카테고리를 노출하고 개별 group 하위 목적지만 접힘으로 시작한다. 검색·명시 토글은 유지한다. 이 기본 노출/즐겨찾기 명칭 수정은 display state만 바꾸며 API·권한·schema·설정·서비스 구조에는 영향 없다. Contextual service sidebar·compact rail·mobile focus/권한/service/beta gating은 유지하며 기존 `pinned` 저장 path가 권위가 되지 않는다. `ThemeSelect`는 explicit light/dark/system과 OS 적용 결과를 제공하며 기존 resolvedTheme listener를 재사용한다. Cloud Shell의 xterm/socket과 Drover의 조회 오류·native summary/disclosure 경계는 그대로다.
@@ -2198,9 +2214,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "ef117eab7b992b3d71e9073eecfccb1057f788b43ec6acfcb67850d2de283d9f",
-  "reviewed_at": "2026-11-16T07:30:47Z",
-  "summary": "DB-lane approved_projects assertions include per-project operations"
+  "source_sha256": "99e4643ee12a3fcb1386b65824bd5f44e6690088915623182a9abff50f0843d1",
+  "reviewed_at": "2026-11-16T08:45:53Z",
+  "summary": "Instance usage modal, account page defaults/sessions/activity, workspace catalog parallel reads, volume recovery views by source volume, incremental auto backup chains"
 }
 ```
 <!-- architecture-review:end -->

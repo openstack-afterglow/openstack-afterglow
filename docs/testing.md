@@ -6,6 +6,15 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 인스턴스 사용 기간 modal·계정 페이지·볼륨 복구 화면·증분 자동 백업 (2026-11-16, source/local)
+
+- 범위: 인스턴스 상세 사용 기간 modal과 조회 실패 재시도, 로그인 작업 공간 기본값·고정 선택, 기본 SSH 키, 세션 브라우저·국가, 계정 활동 의도 필터, 작업 공간 역할 catalog 병렬 조회, 볼륨 백업·스냅샷 원본 볼륨별 화면, 자동 백업 일별 증분 체인과 보관 drain. 8개 브랜치를 로컬 `dev`에 병합했다.
+- DB lane(`npm run test:functional`, MariaDB/Postgres/Redis 일회용 compose): 301 passed / 46 skipped. 첫 실행은 MCP DB 테스트 15건이 실패했다. 이전 MCP 프로젝트별 작업 동의 변경 뒤 test fake가 `validate_grant_project(write=...)`와 `operations` 없는 `ApprovedProject`를 쓰고 있었기 때문이며(`b5319e03`), 이 동의 변경의 DB lane은 그때 처음 실행됐다. 새 `test_activity_log_db.py`가 계정 활동 필터를 실제 MariaDB REGEXP 방언에서 검증한다.
+- 전체 gate(`npm run test:gate`, `python3` 3.12를 PATH 앞에 둠): docs·experience catalog·JS target 통과. Backend unit 15329 passed / 3 failed / 106 skipped. 실패 3건(`test_host_health.py::test_admin_route_reads_the_shared_snapshot_without_probing`, `test_site_branding.py`의 asset URL 2건)은 공유 checkout의 운영자 `afterglow.conf`(monitoring host 목록·public base URL)를 실제 settings로 읽는 테스트 격리 문제다. 변경 전 `f1013b7c`에 같은 `afterglow.conf`를 두면 같은 3건이 실패하고 파일을 빼면 통과한다. Gate가 backend 단계에서 멈춰 나머지 단계를 같은 source에서 개별 실행했다: frontend 592 files / 7986 tests, contract 262 passed, functional 301 passed / 46 skipped / 142 deselected, `lint:backend` Ruff check·format 917 files 통과.
+- 환경 정정: 이전 기록에서 Docker 미기동으로 분류한 `scripts/local-services-config.test.js` 실패의 실제 원인은 시스템 `python3` 3.9.6에 `tomllib`가 없는 것이다. Python 3.12를 PATH 앞에 두면 통과한다. Docker Desktop은 실행 중이었다.
+- 개별 검증: 자동 백업·스냅샷·복구 포인트 분류 backend 173 passed, 볼륨 frontend 14 files / 125 tests, 작업 공간 권한·scope 회귀 69 passed. 볼륨 상세에서 포인트가 없을 때 검색·필터 없는 화면에 "일치하는 행 없음" 대신 빈 상태 문구를 보이도록 고치고 프로젝트 격리 테스트의 빈 상태 단언을 복원했다.
+- 실행하지 못한 검증: 브라우저 시각 확인(이 환경에서 Chromium·WebKit·Firefox 기동 불가), 실제 Cinder 증분 체인·비동기 삭제, 운영 GeoIP DB, 운영 배포. 이전 broad 실행(`tests/integration` 포함)의 세션 정리 단계가 로컬 Compose Redis(`127.0.0.1:6379/0`)의 `afterglow:cache:*` 키를 지웠을 수 있다(로그 없음, 로컬 캐시 한정).
+
 ## MCP 프로젝트별 작업 동의·도메인 목록·Palimpsest 정책 호환 (2026-11-16, source/local)
 
 - 운영 관측(읽기 전용): 재연결한 omp OAuth grant로 BIO·DMSLAB·SYSTEM·agent 4개 프로젝트에서 VM·볼륨·네트워크·K3s·Waygate·DB·쿼터·Swift·백업 목록 9종을 순차 호출해 36건 모두 성공했다. 같은 36건을 동시에 보내면 32건이 `HTTP 429 MCP request limit exceeded`였고 이는 grant별 요청 제한의 정상 동작이다.
