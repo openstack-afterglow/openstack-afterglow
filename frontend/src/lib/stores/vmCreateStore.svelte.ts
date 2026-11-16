@@ -1211,6 +1211,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 
 	function selectSshAccessMode(mode: 'keypair' | 'github') {
 		if (mode === 'github' && !githubSshEligible) return;
+		if (mode === 'github') keyDefaultApplied = false;
 		wizard.update(w => ({
 			...w,
 			sshAccessMode: mode,
@@ -1218,6 +1219,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			githubUsername: mode === 'keypair' ? '' : w.githubUsername,
 			githubProfile: mode === 'keypair' ? null : w.githubProfile,
 		}));
+		if (mode === 'keypair') applyConfigurationDefaults();
 	}
 
 
@@ -1408,6 +1410,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			toast.success(t('toast.created'));
 			// 완료 보고는 root layout 의 Toast 가 이어받는다. 타이머로 사용자를 이동시키지 않는다 (WCAG 2.2.1).
 			if (!destroyed) {
+				keyDefaultApplied = false;
 				resetWizard();
 				adminSelectedProjectId = null;
 				adminSelectedProjectName = null;
@@ -1459,6 +1462,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 								deployContext = undefined;
 								// 완료 보고는 root layout 의 Toast 가 이어받는다. 타이머로 사용자를 이동시키지 않는다 (WCAG 2.2.1).
 								if (!destroyed) {
+									keyDefaultApplied = false;
 									resetWizard();
 									adminSelectedProjectId = null;
 									adminSelectedProjectName = null;

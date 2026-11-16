@@ -66,7 +66,6 @@
 
   async function fetchKeypairs() {
     const owner = capture(); if (!owner) return;
-    loading = true;
     await Promise.all([
       (async () => {
         try {
