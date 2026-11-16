@@ -54,9 +54,21 @@ beforeEach(() => {
 	remove.mockResolvedValue(undefined); confirm.mockResolvedValue(true);
 });
 
+	it('shows dependency retention as a warning without changing successful backup status', async () => {
+		get.mockImplementation((path: string) => Promise.resolve(path === '/api/v1/volumes' ? [available] : path === `${base}/configs` ? [saved({ retained_over_limit: ['base'], last_backup_method: 'full', last_full_fallback: true })] : []));
+		render(Page);
+		expect(await screen.findByText('backupPolicy.retainedOverLimit')).toBeTruthy();
+		expect(screen.getByText('autoPolicy.status.available')).toBeTruthy();
+		expect(screen.getByText('backupPolicy.method.full')).toBeTruthy();
+		expect(screen.getByText('backupPolicy.fullFallback')).toBeTruthy();
+	});
+
 describe('scheduled backup settings', () => {
 	it('creates a source calendar policy and displays backend next/last/result rather than an immediate backup', async () => {
 		render(Page); await openSettings(); await source('volume-a');
+		expect(editor().getByText('backupPolicy.description')).toBeTruthy();
+		expect(editor().getByText('backupPolicy.chainHelp')).toBeTruthy();
+		expect(editor().getByText('backupPolicy.calendarHelp')).toBeTruthy();
 		await input('autoPolicy.time', '21:45'); await input('autoPolicy.timezone', 'UTC');
 		await input('autoPolicy.daily', '4'); await input('autoPolicy.weekly', '0'); await input('autoPolicy.monthly', '3');
 		await fireEvent.change(editor().getByLabelText('autoPolicy.weeklyDay'), { target: { value: '4' } });
