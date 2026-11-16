@@ -39,15 +39,24 @@ function complete(path: string, body: unknown, status = 200) {
 	pending.get(path)!.resolve(new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }));
 }
 
+// Creator names come from the current project's member list, read alongside the backups.
+function completeMembers() {
+	const path = [...pending.keys()].find((key) => key.endsWith('/members'));
+	expect(path).toBeDefined();
+	complete(path!, { items: [] });
+}
+
 describe('backup page with the real scoped API transport', () => {
 	it.each(['policies-first', 'policies-last'])('publishes concurrent successful reads with %s completion', async (order) => {
 		render(Page);
-		await waitFor(() => expect(pending.size).toBe(3));
+		await waitFor(() => expect(pending.size).toBe(4));
 		expect(requests).toEqual(expect.arrayContaining([{ path: configs, method: 'GET' }, { path: backups, method: 'GET' }, { path: '/api/v1/volumes', method: 'GET' }]));
+		completeMembers();
 		if (order === 'policies-first') complete(configs, []);
 		complete('/api/v1/volumes', [volume]); complete(backups, [backup]);
 		if (order === 'policies-last') complete(configs, []);
-		await screen.findByText('Saved backup');
+		// The first view lists source volumes; individual backups appear in the volume detail.
+		await screen.findByText('Source volume');
 		await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
 		expect(screen.queryByText('서버 오류')).toBeNull();
 		expect(screen.queryByText('원본 볼륨을 불러올 수 없습니다. 정책을 편집하기 전에 다시 시도하세요.')).toBeNull();
@@ -55,8 +64,8 @@ describe('backup page with the real scoped API transport', () => {
 	});
 
 	it('shows a failed list as an alert rather than successful empty artwork or loading', async () => {
-		render(Page); await waitFor(() => expect(pending.size).toBe(3));
-		complete(configs, []); complete('/api/v1/volumes', [volume]); complete(backups, { detail: 'unavailable' }, 503);
+		render(Page); await waitFor(() => expect(pending.size).toBe(4));
+		completeMembers(); complete(configs, []); complete('/api/v1/volumes', [volume]); complete(backups, { detail: 'unavailable' }, 503);
 		await screen.findByText('조회 실패 (503)');
 		expect(screen.queryByText('볼륨 백업이 없습니다')).toBeNull();
 		expect(document.querySelector('.empty-state')).toBeNull();

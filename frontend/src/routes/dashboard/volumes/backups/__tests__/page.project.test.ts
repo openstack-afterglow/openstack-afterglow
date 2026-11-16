@@ -18,7 +18,8 @@ vi.mock('$lib/stores/auth', () => ({
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
   createAutoRefresh: () => ({ active: false, intervalSeconds: 15, intervalOptions: [10, 15, 30, 60] }),
 }));
-vi.mock('$app/state', () => ({ page: { url: new URL('http://localhost/dashboard/volumes/backups') } }));
+// Backup rows render inside the selected source volume's detail.
+vi.mock('$app/state', () => ({ page: { url: new URL('http://localhost/dashboard/volumes/backups?volume=volume-1') } }));
 
 import { auth } from '$lib/stores/auth';
 import Page from '../+page.svelte';
@@ -42,8 +43,7 @@ describe('volume backup project isolation', () => {
     const oldResponse = new Promise<VolumeBackup[]>((resolve) => { resolveOld = resolve; });
 		const oldStarted = Promise.withResolvers<void>();
     mockGet.mockImplementation((path: string, _token: string, projectId: string) => {
-      if (path === '/api/v1/volumes' || path.endsWith('/auto-backup/configs')) return Promise.resolve([]);
-      expect(path).toBe('/api/v1/volumes/backups');
+      if (path !== '/api/v1/volumes/backups') return Promise.resolve(path.endsWith('/members') ? { items: [] } : []);
 			if (projectId === 'old') { oldStarted.resolve(); return oldResponse; }
 			return Promise.resolve([backup('current-backup')]);
     });
@@ -60,6 +60,6 @@ describe('volume backup project isolation', () => {
 
     projectAuth.set({ token: 'token', projectId: null });
     await vi.waitFor(() => expect(screen.queryByText('current-backup')).toBeNull());
-    expect(screen.getByText('볼륨 백업이 없습니다')).toBeTruthy();
+    expect(screen.queryByText('previous-project-backup')).toBeNull();
   });
 });
