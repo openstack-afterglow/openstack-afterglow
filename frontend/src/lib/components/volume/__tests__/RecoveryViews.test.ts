@@ -4,17 +4,17 @@ import { writable } from 'svelte/store';
 import { SvelteURL } from 'svelte/reactivity';
 import type { Volume, VolumeBackup, VolumeSnapshot } from '$lib/types/volume';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), goto: vi.fn(), url: null as URL | null }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), goto: vi.fn(), url: null as URL | null, refresh: null as (() => Promise<void>) | null }));
 vi.mock('$app/state', () => ({ page: { get url() { return mocks.url; }, data: {} } }));
 vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
-vi.mock('$lib/api/client', () => ({ api: { get: mocks.get, prefetch: vi.fn(), post: vi.fn(), delete: vi.fn(), withExperience: () => ({ get: mocks.get }) }, ApiError: class ApiError extends Error {} }));
+vi.mock('$lib/api/client', () => ({ api: { get: mocks.get, prefetch: vi.fn(), post: mocks.post, delete: vi.fn(), withExperience: () => ({ get: mocks.get }) }, ApiError: class ApiError extends Error {} }));
 vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', projectId: 'project-a', userId: 'me', domainId: 'domain-a', canWrite: true, roles: ['member'] }), canWrite: writable(true), projectSwitching: writable(false), isMockAuthActive: () => false }));
-vi.mock('$lib/stores/authDisplayContext', () => ({ authDisplayContext: writable({ key: 'owner-a' }) }));
+vi.mock('$lib/stores/authDisplayContext', () => ({ authDisplayContext: writable({ key: 'owner-a', ready: true }) }));
 vi.mock('$lib/stores/betaFeatures', () => ({ betaFeatures: writable({ volumeSnapshots: true }) }));
-vi.mock('$lib/utils/autoRefresh.svelte', () => ({ createAutoRefresh: () => ({ active: false, intervalSeconds: 15, intervalOptions: [15] }) }));
+vi.mock('$lib/utils/autoRefresh.svelte', () => ({ createAutoRefresh: (refresh: () => Promise<void>) => { mocks.refresh = refresh; return { active: false, intervalSeconds: 15, intervalOptions: [15] }; } }));
 vi.mock('$lib/utils/experience', () => ({ beginExperienceAction: vi.fn(), beginExperienceLoad: vi.fn(), experienceApplied: vi.fn(), experienceDiscarded: vi.fn(), experienceState: vi.fn() }));
 vi.mock('$lib/i18n/ns/volume', () => ({ t: (key: string, params?: Record<string, unknown>) => key + (params ? JSON.stringify(params) : '') }));
-vi.mock('$lib/components/TutorialStartButton.svelte', async () => ({ default: (await import('$lib/components/ui/EmptyState.svelte')).default }));
+// Vitest hoists this factory before static component bindings; load the UI stub inside that factory.
 vi.mock('$lib/tutorial/TutorialStartButton.svelte', async () => ({ default: (await import('$lib/components/ui/EmptyState.svelte')).default }));
 
 import BackupPage from '../../../../routes/dashboard/volumes/backups/+page.svelte';
@@ -32,6 +32,7 @@ beforeEach(() => {
  cleanup();
  mocks.url = new SvelteURL('http://localhost/dashboard/volumes/backups');
  mocks.goto.mockReset().mockImplementation(async (url: URL) => { mocks.url!.search = url.search; });
+ mocks.post.mockReset().mockResolvedValue({ ...full, id: 'created-a' });
  mocks.get.mockReset().mockImplementation(async (path: string) => {
   if (path === '/api/v1/volumes') return [volume];
   if (path.endsWith('/configs')) return [];
@@ -115,4 +116,45 @@ it.each([['backup', BackupPage], ['snapshot', SnapshotPage]] as const)('%s start
  await fireEvent.click(screen.getByRole('button', { name: 'backupGroups.back' }));
  await screen.findByRole('button', { name: volume.name });
  expect(mocks.url!.searchParams.has('volume')).toBe(false);
+});
+
+it.each([['backup', BackupPage], ['snapshot', SnapshotPage]] as const)('%s opens direct volume URLs after refresh', async (kind, Page) => {
+ mocks.url!.search = '?volume=volume-a';
+ render(Page);
+ await screen.findAllByText(kind === 'backup' ? 'Full copy' : 'Snapshot copy');
+ expect(screen.queryByRole('button', { name: volume.name })).toBeNull();
+ expect(screen.getByRole('button', { name: 'backupGroups.back' })).toBeTruthy();
+});
+
+it.each([['backup', BackupPage], ['snapshot', SnapshotPage]] as const)('%s creation opens its source detail so tutorial delete anchors stay reachable', async (kind, Page) => {
+ render(Page);
+ await screen.findByRole('button', { name: volume.name });
+ await fireEvent.click(screen.getByRole('button', { name: kind === 'backup' ? 'backupsPage.create' : 'snapshotsPage.create' }));
+ const prefix = kind === 'backup' ? 'backupCreateModal' : 'snapshotCreateModal';
+ await fireEvent.change(screen.getByRole('combobox', { name: `${prefix}.volumeLabel` }), { target: { value: volume.id } });
+ await fireEvent.input(screen.getByRole('textbox', { name: `${prefix}.nameLabel` }), { target: { value: 'New recovery point' } });
+ await fireEvent.click(screen.getByRole('button', { name: `${prefix}.create` }));
+ await waitFor(() => expect(mocks.url!.searchParams.get('volume')).toBe(volume.id));
+ expect(mocks.post).toHaveBeenCalledWith(kind === 'backup' ? '/api/v1/volumes/backups' : '/api/v1/volume-snapshots', expect.objectContaining({ volume_id: volume.id }), 'token', 'project-a');
+ await screen.findAllByText(kind === 'backup' ? 'Full copy' : 'Snapshot copy');
+});
+
+it.each([['backup', BackupPage], ['snapshot', SnapshotPage]] as const)('%s retains settled policy and deleted-volume labels during background refresh', async (kind, Page) => {
+ const orphan = { ...full, id: 'orphan', volume_id: 'deleted-volume' };
+ const baseGet = mocks.get.getMockImplementation()!;
+ const policy = { volume_id: volume.id, project_id: 'project-a', enabled: true };
+ mocks.get.mockImplementation(async (path: string) => path.endsWith('/configs') ? [policy] : path === (kind === 'backup' ? '/api/v1/volumes/backups' : '/api/v1/volume-snapshots') ? [full, orphan] : baseGet(path));
+ render(Page);
+ await screen.findByText('backupGroups.policyActive');
+ const deletedName = 'backupGroups.deletedVolume' + JSON.stringify({ id: 'deleted-' });
+ expect(screen.getByRole('button', { name: deletedName })).toBeTruthy();
+ const { promise: pending, resolve: finish } = Promise.withResolvers<unknown[]>();
+ mocks.get.mockImplementation((path: string) => path.endsWith('/configs') ? pending : Promise.resolve(path === (kind === 'backup' ? '/api/v1/volumes/backups' : '/api/v1/volume-snapshots') ? [full, orphan] : baseGet(path)));
+ const refresh = mocks.refresh!();
+ await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(expect.stringContaining('/configs'), 'token', 'project-a'));
+ expect(screen.getByText('backupGroups.policyActive')).toBeTruthy();
+ expect(screen.queryByText('backupGroups.policyUnknown')).toBeNull();
+ expect(screen.getByRole('button', { name: deletedName })).toBeTruthy();
+ finish([policy]);
+ await refresh;
 });

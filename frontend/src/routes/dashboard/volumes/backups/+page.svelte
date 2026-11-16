@@ -19,7 +19,7 @@
 	import { auth, canWrite, projectSwitching } from '$lib/stores/auth';
 	import { derived } from 'svelte/store';
 	import { api, ApiError } from '$lib/api/client';
-	import type { Volume, VolumeBackup } from '$lib/types/volume';
+	import type { VolumeBackup } from '$lib/types/volume';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
@@ -34,7 +34,6 @@
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 
 	let backups = $state<VolumeBackup[]>([]);
-	let volumes = $state<Volume[]>([]);
 	let loading = $state(true);
 	let refreshing = $state(false);
 	let error = $state('');
@@ -46,18 +45,19 @@
 	let lastCreatedId = $state<string | null>(null);
 	let bulkBusy = $state(false);
 	const policies = createVolumeBackupPoliciesController();
+	const volumes = $derived(policies.volumes);
 	const selectedVolumeId = $derived(page.url.searchParams.get('volume') ?? page.url.searchParams.get('auto-backup'));
 	const groups = $derived(groupRecoveryPoints(volumes, backups, policies.policies));
 	const selectedGroup = $derived(groups.find(group => group.id === selectedVolumeId));
 	const volumeColumns = $derived<TableColumn<RecoveryGroup>[]>([
-		{ key: 'name', label: t('backupGroups.volume'), value: group => recoveryVolumeName(group, !policies.volumesError) },
+		{ key: 'name', label: t('backupGroups.volume'), value: group => recoveryVolumeName(group, policies.settled && !policies.volumesError) },
 		{ key: 'status', label: t('listTable.status'), value: group => group.volume?.status },
 		{ key: 'size', label: t('backupGroups.volumeSize'), value: group => group.volume?.size },
 		{ key: 'count', label: t('backupGroups.count'), value: group => group.points.length },
 		{ key: 'latest', label: t('backupGroups.latest'), value: group => group.latest },
 		{ key: 'policy', label: t('backupGroups.policy'), value: group => policies.error ? null : group.policy ? group.policy.enabled ? t('backupGroups.policyActive') : t('backupGroups.policyPaused') : t('backupGroups.noPolicy') },
 	]);
-	const groupView = createTableView({ locale: intlLocale, rows: () => groups, columns: () => volumeColumns, search: () => search, searchable: group => [group.id, recoveryVolumeName(group, !policies.volumesError)] });
+	const groupView = createTableView({ locale: intlLocale, rows: () => groups, columns: () => volumeColumns, search: () => search, searchable: group => [group.id, recoveryVolumeName(group, policies.settled && !policies.volumesError)] });
 	let creatorNames = $state<Record<string, string>>({});
 	function selectVolume(id: string | null) {
 		selection.clear();
@@ -105,30 +105,22 @@
 		}
 	}
 
-	async function fetchVolumes() {
-		const token = $auth.token ?? undefined;
-		const projectId = $auth.projectId;
-		const requestGeneration = generation;
-		if (!projectId || !token || $projectSwitching) return;
-		try {
-			const next = await api.get<Volume[]>('/api/v1/volumes', token, projectId);
-			if ($auth.projectId === projectId && $auth.token === token && generation === requestGeneration) volumes = next;
-		} catch {
-			if ($auth.projectId === projectId && $auth.token === token && generation === requestGeneration) volumes = [];
-		}
-	}
-
-	function prefetchVolumes() {
-		void api.prefetch('/api/v1/volumes', $auth.token ?? undefined, $auth.projectId ?? undefined);
-	}
-
 	function openCreate() {
 		showModal = true;
-		void fetchVolumes();
 	}
 
 	async function createBackup(form: { volume_id: string; name: string; description: string; incremental: boolean; force: boolean }): Promise<string | true> {
-		try { const created = await api.post<VolumeBackup>('/api/v1/volumes/backups', form, $auth.token ?? undefined, $auth.projectId ?? undefined); lastCreatedId = created.id; await fetchBackups(); return true; }
+		const token = $auth.token;
+		const projectId = $auth.projectId;
+		const owner = generation;
+		try {
+			const created = await api.post<VolumeBackup>('/api/v1/volumes/backups', form, token ?? undefined, projectId ?? undefined);
+			if (owner !== generation || $auth.projectId !== projectId) return true;
+			lastCreatedId = created.id;
+			await fetchBackups();
+			if (owner === generation && $auth.projectId === projectId) selectVolume(form.volume_id);
+			return true;
+		}
 		catch (e) { return e instanceof ApiError ? e.message : t('backupsPage.createFailed'); }
 	}
 
@@ -161,8 +153,8 @@
 	}
 
 	const bulkActions = $derived<BulkSelectionAction[]>([{ key: 'delete', label: t('backupsPage.delete'), tone: 'danger', onAction: runBulkDelete }]);
-	async function forceRefresh() { refreshing = true; try { await Promise.all([fetchBackups(true), fetchVolumes(), policies.refresh(), fetchCreators()]); } finally { refreshing = false; } }
-	const ar = createAutoRefresh(async () => { await Promise.all([fetchBackups(), fetchVolumes(), policies.refresh()]); }, { storageKey: 'dashboard-volume-backups', defaultActive: true, defaultInterval: 15, intervalOptions: [10, 15, 30, 60], invokeOnMount: false });
+	async function forceRefresh() { refreshing = true; try { await Promise.all([fetchBackups(true), policies.refresh(), fetchCreators()]); } finally { refreshing = false; } }
+	const ar = createAutoRefresh(async () => { await Promise.all([fetchBackups(), policies.refresh()]); }, { storageKey: 'dashboard-volume-backups', defaultActive: true, defaultInterval: 15, intervalOptions: [10, 15, 30, 60], invokeOnMount: false });
 
 	$effect(() => {
 		let previous = '';
@@ -172,10 +164,10 @@
 			previous = key;
 			untrack(() => {
 				generation++;
-				selection.clear(); backups = []; volumes = []; creatorNames = {}; error = ''; selectedBackup = null; lastCreatedId = null;
+				selection.clear(); backups = []; creatorNames = {}; error = ''; selectedBackup = null; lastCreatedId = null;
 				showModal = false; showRestoreModal = false;
 				loading = Boolean(value.projectId && value.token);
-				if (value.projectId && value.token && !switching) void Promise.all([fetchBackups(), fetchVolumes(), fetchCreators()]);
+				if (value.projectId && value.token && !switching) void Promise.all([fetchBackups(), fetchCreators()]);
 			});
 		});
 	});
@@ -202,7 +194,7 @@
 	<PageHeader breadcrumb={t('backupsPage.breadcrumb')} title={t('backupsPage.title')}>
 		{#snippet actions()}
 			<TutorialStartButton tour="volume-backups" compactOnMobile />
-			<Button onclick={openCreate} onintent={prefetchVolumes} variant="primary" dataTour="volume-backups-create-open">{t('backupsPage.create')}</Button>
+			<Button onclick={openCreate} variant="primary" dataTour="volume-backups-create-open">{t('backupsPage.create')}</Button>
 		{/snippet}
 	</PageHeader>
 	<ResourceToolbar label={t('backupsPage.toolbar')}>
@@ -211,12 +203,12 @@
 	</ResourceToolbar>
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	<div data-tour="volume-backups-list">
-	{#if loading}
+	{#if loading || (!policies.settled && !!$auth.projectId && !!$auth.token)}
 		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('backupsPage.title') })} />
 	{:else if selectedVolumeId}
 		<div class="flex flex-wrap items-center gap-3">
 			<Button variant="ghost" onclick={() => selectVolume(null)}>{t('backupGroups.back')}</Button>
-			<h2 class="min-w-0 break-all text-lg font-semibold">{selectedGroup ? recoveryVolumeName(selectedGroup, !policies.volumesError) : selectedVolumeId}</h2>
+			<h2 class="min-w-0 break-all text-lg font-semibold">{selectedGroup ? recoveryVolumeName(selectedGroup, policies.settled && !policies.volumesError) : selectedVolumeId}</h2>
 		</div>
 		{#key selectedVolumeId}<VolumeBackupPolicies controller={policies} volumeId={selectedVolumeId} />{/key}
 		<VolumeBackupListTable backups={view.rows} {view} {creatorNames} currentUserId={$auth.userId} deletingId={deleting} highlightId={lastCreatedId} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onRestore={(b) => { selectedBackup = b; showRestoreModal = true; }} onDelete={deleteBackup} />
@@ -224,9 +216,9 @@
 	{:else}
 		{#if policies.volumesError}<Alert tone="danger">{policies.volumesError}</Alert>{/if}
 		{#if policies.error}<Alert tone="danger">{policies.error}</Alert>{/if}
-		{#if groupView.rows.length === 0 && !error}<EmptyState headline={t('backupGroups.empty')} />{/if}
+		{#if groupView.rows.length === 0 && !error && !policies.error && !policies.volumesError && policies.settled}<EmptyState headline={t('backupGroups.empty')} />{/if}
 		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-			{#each groupView.rows as group (group.id)}<RecoveryVolumeCard {group} kind="backup" inventoryKnown={!policies.volumesError} policyKnown={!policies.loading && !policies.error} onOpen={() => selectVolume(group.id)} />{/each}
+			{#each groupView.rows as group (group.id)}<RecoveryVolumeCard {group} kind="backup" inventoryKnown={policies.settled && !policies.volumesError} policyKnown={policies.settled && !policies.error} onOpen={() => selectVolume(group.id)} />{/each}
 		</div>
 	{/if}
 	</div>

@@ -1385,10 +1385,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 		count: 22,
 		tokens: ["bg-blue-500","bg-blue-600","bg-gray-700","bg-gray-800","bg-gray-900","border-blue-500","border-gray-600","border-gray-700","text-gray-300","text-gray-400","text-gray-500","text-red-400"],
 	},
-	"frontend/src/lib/components/volume/snapshots/VolumeSnapshotsEmptyState.svelte": {
-		count: 3,
-		tokens: ["text-blue-300","text-blue-400","text-gray-600"],
-	},
 	"frontend/src/lib/components/volume/snapshots/VolumeSnapshotsTable.svelte": {
 		count: 14,
 		tokens: ["bg-gray-800/50","border-gray-700","border-gray-800","border-gray-800/50","border-red-700","border-red-900","text-gray-400","text-gray-500","text-gray-600","text-red-300","text-red-400"],

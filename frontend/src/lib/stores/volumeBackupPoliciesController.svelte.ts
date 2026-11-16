@@ -14,6 +14,7 @@ export interface VolumeBackupPoliciesController {
 	readonly policies: VolumeBackupPolicy[];
 	readonly volumes: Volume[];
 	readonly loading: boolean;
+	readonly settled: boolean;
 	readonly error: string;
 	readonly volumesError: string;
 	readonly mutationError: string;
@@ -42,6 +43,7 @@ export function createVolumeBackupPoliciesController(resource: 'backup' | 'snaps
 	let policies = $state<VolumeBackupPolicy[]>([]);
 	let volumes = $state<Volume[]>([]);
 	let loading = $state(false);
+	let settled = $state(false);
 	let error = $state('');
 	let volumesError = $state('');
 	let mutationError = $state('');
@@ -90,6 +92,7 @@ export function createVolumeBackupPoliciesController(resource: 'backup' | 'snaps
 		]);
 		if (owns()) {
 			loading = false;
+			settled = true;
 			experienceState(experience, error || volumesError ? 'error' : policies.length ? 'ready' : 'empty');
 			// The controller has no mounted-result fence; publication is known, DOM commitment is not.
 			void experienceApplied(experience);
@@ -107,6 +110,7 @@ export function createVolumeBackupPoliciesController(resource: 'backup' | 'snaps
 				generation++;
 				loadSequence++;
 				policies = []; volumes = []; error = ''; volumesError = ''; mutationError = '';
+				settled = false;
 				busy = false; editor = null; loading = Boolean(value.projectId && value.token);
 				if (active && value.projectId && value.token && !switching) void refreshAttempt();
 			});
@@ -188,6 +192,7 @@ export function createVolumeBackupPoliciesController(resource: 'backup' | 'snaps
 	return {
 		get policies() { return policies; }, get volumes() { return volumes; },
 		get loading() { return loading; }, get error() { return error; }, get volumesError() { return volumesError; },
+		get settled() { return settled; },
 		get mutationError() { return mutationError; }, get busy() { return busy; }, get generation() { return generation; },
 		get resuming() { return resuming; },
 		get editor() { return editor; }, close() { editor = null; }, refresh, open, save, setEnabled, remove,

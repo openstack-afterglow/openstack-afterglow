@@ -58,9 +58,12 @@ def test_classifier_uses_exact_scheduler_ownership(kind, tier):
     assert auto_backup.classify_recovery_point({"name": native["name"]}, PROJECT, resource=kind) is None
     if kind == "snapshot":
         assert auto_backup.classify_recovery_point({**native, "metadata": {}}, PROJECT, resource=kind) is None
-        assert auto_backup.classify_recovery_point(
-            {**native, "metadata": {**native["metadata"], "afterglow_slot": "other"}}, PROJECT, resource=kind
-        ) is None
+        assert (
+            auto_backup.classify_recovery_point(
+                {**native, "metadata": {**native["metadata"], "afterglow_slot": "other"}}, PROJECT, resource=kind
+            )
+            is None
+        )
 
 
 @pytest.fixture(params=["backup", "snapshot"])
@@ -71,7 +74,9 @@ def native_reader(request):
     record = point(kind, "daily")
     native = {**record}
     native.pop("project_id")
-    native["os-backup-project-attr:project_id" if kind == "backup" else "os-extended-snapshot-attributes:project_id"] = PROJECT
+    native[
+        "os-backup-project-attr:project_id" if kind == "backup" else "os-extended-snapshot-attributes:project_id"
+    ] = PROJECT
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
@@ -81,7 +86,15 @@ def native_reader(request):
             path = urlsplit(self.path).path.rstrip("/")
             calls.append((path, self.headers.get("OpenStack-API-Version")))
             if path in ("/v3", f"/v3/{PROJECT}"):
-                body = {"version": {"id": "v3.0", "status": "CURRENT", "min_version": "3.0", "version": "3.70", "links": [{"rel": "self", "href": endpoint + "/v3/"}]}}
+                body = {
+                    "version": {
+                        "id": "v3.0",
+                        "status": "CURRENT",
+                        "min_version": "3.0",
+                        "version": "3.70",
+                        "links": [{"rel": "self", "href": endpoint + "/v3/"}],
+                    }
+                }
             elif path.endswith("/detail"):
                 body = {plural: [native]}
             else:
