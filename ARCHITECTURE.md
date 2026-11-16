@@ -2223,8 +2223,8 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 {
   "schema_version": 1,
   "source_sha256": "7c4a8eb13634681b2482ae3c42b73550cdbb844acbaa9c3a7aade1523a36fb7e",
-  "reviewed_at": "2026-11-16T14:13:24Z",
-  "summary": "Record 1.32.23 production rollout receipt."
+  "reviewed_at": "2026-11-16T14:16:58Z",
+  "summary": "Record managed-account member probe; archive volume-recovery-list-and-owner-fix."
 }
 ```
 <!-- architecture-review:end -->

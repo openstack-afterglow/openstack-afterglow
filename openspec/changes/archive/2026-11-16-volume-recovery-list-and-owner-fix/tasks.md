@@ -13,4 +13,4 @@
 - [x] 4.5 `<tr>` rows drop `animate:rowReflow` (Svelte pinned outgoing rows with `position: absolute`, collapsing cells); real-browser check of a `<tr>` outro/intro and a grid-row outro (width and 9 columns kept, siblings slide).
 - [x] 5.1 Full gate (3 known environment-only backend failures), commit on `dev`.
 - [x] 5.2 Patch release 1.32.23 (tag `1.32.23` on `0d114029`, images, Helm, KO/EN Release) and DMS Lab Kolla rollout (rc0, 9 containers restarted, digests match); receipt in `docs/testing.md`.
-- [ ] 5.3 Member-session production check that the DMSLAB gitlab backup shows as automatic (blocked: no member credential, user Chrome relay extension not connected). Archive this change after it runs.
+- [x] 5.3 Production check with the managed backup account (role member/reader, read-only, in `afterglow_backend`): raw `project_id` hidden, classified `manual` without the proof and `auto`/`daily` with it. A human member browser session and the `get_os_conn` wiring were not observed.
