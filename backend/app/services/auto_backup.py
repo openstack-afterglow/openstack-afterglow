@@ -34,6 +34,7 @@ _ALL_KEY = f"{_PREFIX}:all_configs"
 _POLL_SECONDS = 15
 _LEASE_SECONDS = 90
 _FAILURE_BACKOFF_SECONDS = 300
+_RETENTION_DRAIN_SECONDS = 300
 _AUTH_ERROR = "Scheduled protection cannot authenticate to this project; operator authorization is required."
 
 
@@ -718,9 +719,9 @@ async def _daily_incremental(conn, project_id, volume_id, max_daily):
     """Bound an owned chain to the daily retention window.
 
     Cinder selects the latest available parent by data_timestamp, including
-    manual points; the public API exposes no parent graph. A manual or
-    incomplete point makes chain membership uncertain, so start a full copy.
-    Otherwise count owned increments since the latest available owned full.
+    manual points; the public API exposes no parent graph. Only points at or
+    after the latest usable owned full can make its chain uncertain. An older
+    failed/manual point must not prevent recovery on a fresh full base.
     Rotate to full when adding another point would exceed max_daily.
     Cinder revalidates on POST; rejection never authorizes a second POST.
     """
@@ -728,23 +729,37 @@ async def _daily_incremental(conn, project_id, volume_id, max_daily):
         return False
     backups = _scoped(conn, project_id, await _sdk(cinder.list_backups, conn, volume_id=volume_id))
     points = [point for point in backups if _owned(point, project_id, volume_id)]
-    if not points or any(_tier(point, project_id, volume_id) is None or not _safe_completed(point) for point in points):
-        return False
-    fulls = [point for point in points if point["is_incremental"] is False]
+    fulls = [
+        point
+        for point in points
+        if _tier(point, project_id, volume_id) is not None
+        and _safe_completed(point)
+        and point["is_incremental"] is False
+    ]
     if not fulls:
         return False
     base = max(fulls, key=_created_time)
+    base_time = _created_time(base)
+    recent = []
+    for point in points:
+        created = _created_time(point)
+        if created is None:
+            return False
+        if created < base_time:
+            continue
+        if _tier(point, project_id, volume_id) is None or not _safe_completed(point):
+            return False
+        recent.append(point)
     # Equal timestamps cannot establish ordering. Count conservatively rather
     # than losing an increment at the boundary of Cinder's timestamp precision.
-    increments = sum(
-        point["is_incremental"] is True and _created_time(point) >= _created_time(base) for point in points
-    )
+    increments = sum(point["is_incremental"] is True and _created_time(point) >= base_time for point in recent)
     return increments < max_daily - 1
 
 
 async def _prune_backups(conn, lease, project_id, volume_id, config):
     backups = _scoped(conn, project_id, await _sdk(cinder.list_backups, conn, volume_id=volume_id))
     candidates = []
+    submitted = False
     for tier in ("monthly", "weekly", "daily"):
         count = config[f"max_{tier}"]
         if count == 0:
@@ -773,7 +788,7 @@ async def _prune_backups(conn, lease, project_id, volume_id, config):
             if not _source_owned(source, project_id) or not await lease.current(
                 project_id, volume_id, config["revision"]
             ):
-                return sorted(retained)
+                return sorted(retained), False
             try:
                 await _sdk(cinder.delete_backup, conn, old["id"])
             except HttpException as exc:
@@ -786,14 +801,23 @@ async def _prune_backups(conn, lease, project_id, volume_id, config):
                 blocked.append(old)
                 continue
             deleted.add(old["id"])
+            submitted = True
             retained.discard(old["id"])
             await _invalidate_backups(project_id)
         if not deleted:
             break
-        # Immediate provider deletions can release parents in this cycle.
-        # Asynchronous deletions keep parents over limit until a later cycle.
+        # Immediate provider deletions can release parents in this pass.
+        # Asynchronous Cinder deletes retain the active journal for later ticks.
         candidates = blocked
-    return sorted(retained)
+    if submitted:
+        backups = _scoped(conn, project_id, await _sdk(cinder.list_backups, conn, volume_id=volume_id))
+    pending = [
+        point["id"]
+        for point in backups
+        if _tier(point, project_id, volume_id) is not None and point.get("status") == "deleting"
+    ]
+    retained.update(pending)  # Accepted DELETE is not observed disappearance.
+    return sorted(retained), bool(pending)
 
 
 async def _prune(conn, redis, lease, project_id, volume_id, config):
@@ -836,49 +860,61 @@ async def _prune(conn, redis, lease, project_id, volume_id, config):
             await _invalidate_backups(project_id)
 
 
-async def _reconcile(conn, redis, lease, project_id, volume_id, operation):
-    try:
-        if operation.get(_id_field()):
-            backup = _scoped(conn, project_id, await _sdk(_provider("get"), conn, operation[_id_field()]))
-        else:
-            backups = _scoped(conn, project_id, await _sdk(_provider("list"), conn, volume_id=volume_id))
-            matches = [b for b in backups if _matches_operation(b, project_id, volume_id, operation)]
-            backup = matches[0] if len(matches) == 1 else None
-        if not backup or not _matches_operation(backup, project_id, volume_id, operation):
-            raise ValueError(f"{_resource().title()} identity is not confirmed")
-        operation[_id_field()] = backup["id"]
-        status = backup.get("status")
-        operation["status"] = (
-            "available"
-            if status == "available"
-            else "error"
-            if status == "error"
-            else ("creating" if status in ("creating", "restoring") else "unknown")
-        )
-        operation["error"] = (
-            f"Cinder {_resource()} failed."
-            if status == "error"
-            else (
-                f"{_resource().title()} completion is not yet confirmed." if operation["status"] == "unknown" else None
+async def _reconcile(conn, redis, lease, project_id, volume_id, operation, now):
+    retention_only = _resource() == "backup" and bool(operation.get("retention_started_at"))
+    if retention_only:
+        # The durable drain marker is written only after confirmed completion.
+        # Later deletion/restoration of that backup cannot undo its receipt.
+        operation.update(status="available", error=None)
+    else:
+        try:
+            if operation.get(_id_field()):
+                backup = _scoped(conn, project_id, await _sdk(_provider("get"), conn, operation[_id_field()]))
+            else:
+                backups = _scoped(conn, project_id, await _sdk(_provider("list"), conn, volume_id=volume_id))
+                matches = [b for b in backups if _matches_operation(b, project_id, volume_id, operation)]
+                backup = matches[0] if len(matches) == 1 else None
+            if not backup or not _matches_operation(backup, project_id, volume_id, operation):
+                raise ValueError(f"{_resource().title()} identity is not confirmed")
+            operation[_id_field()] = backup["id"]
+            status = backup.get("status")
+            operation["status"] = (
+                "available"
+                if status == "available"
+                else "error"
+                if status == "error"
+                else ("creating" if status in ("creating", "restoring") else "unknown")
             )
-        )
-    except Exception:
-        operation.update(
-            status="unknown",
-            error=f"{_resource().title()} acceptance or completion could not be confirmed; it will not be resubmitted.",
-        )
+            operation["error"] = (
+                f"Cinder {_resource()} failed."
+                if status == "error"
+                else (
+                    f"{_resource().title()} completion is not yet confirmed."
+                    if operation["status"] == "unknown"
+                    else None
+                )
+            )
+        except Exception:
+            operation.update(
+                status="unknown",
+                error=f"{_resource().title()} acceptance or completion could not be confirmed; it will not be resubmitted.",
+            )
     if not await _result(redis, lease, project_id, volume_id, operation):
         return
     if operation["status"] in ("available", "error"):
         await _invalidate_backups(project_id)
-    if operation["status"] == "available" and _safe_completed(backup):
+    prune_pending = False
+    if operation["status"] == "available" and (retention_only or _safe_completed(backup)):
         config = await get_auto_backup_config(project_id, volume_id)
         if config and await lease.current(project_id, volume_id, operation["revision"]):
             retained = await _prune(conn, redis, lease, project_id, volume_id, config)
             if _resource() == "backup":
+                retained, prune_pending = retained
                 operation["retained_over_limit"] = retained
+                if prune_pending:
+                    operation.setdefault("retention_started_at", now.isoformat())
     if operation["status"] in ("available", "error"):
-        await _result(redis, lease, project_id, volume_id, operation, done=True)
+        await _result(redis, lease, project_id, volume_id, operation, done=not prune_pending)
 
 
 def _peer_active_key(project_id: str, volume_id: str) -> str:
@@ -894,7 +930,22 @@ def _peer_active_key(project_id: str, volume_id: str) -> str:
 async def _cycle(conn, redis, lease, project_id, volume_id, now):
     active = _text(await redis.get(_key("active", project_id, volume_id)))
     if active:
-        return await _reconcile(conn, redis, lease, project_id, volume_id, json.loads(active))
+        operation = json.loads(active)
+        if _resource() == "backup" and operation.get("retention_started_at"):
+            operation.update(status="available", error=None)
+            deadline = _time(operation["retention_started_at"]) + timedelta(seconds=_RETENTION_DRAIN_SECONDS)
+            config = await get_auto_backup_config(project_id, volume_id, now=now)
+            if config and config.get("next_run_at"):
+                deadline = min(deadline, _time(config["next_run_at"]))
+            if now >= deadline:
+                # Housekeeping must not block protection forever. Keep the
+                # over-limit receipt; a later completed backup rechecks Cinder.
+                if not await _result(redis, lease, project_id, volume_id, operation, done=True):
+                    return
+            else:
+                return await _reconcile(conn, redis, lease, project_id, volume_id, operation, now)
+        else:
+            return await _reconcile(conn, redis, lease, project_id, volume_id, operation, now)
     config = await get_auto_backup_config(project_id, volume_id, now=now)
     if not config or not config["enabled"] or _time(config["next_run_at"]) > now:
         return
