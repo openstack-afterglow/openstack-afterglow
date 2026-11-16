@@ -21,7 +21,9 @@ logger = logging.getLogger(__name__)
 ActionStatus = Literal["started", "success", "failed", "observed"]
 
 # Account history is an intent feed, not the operator's request/interaction trace.
-# Both legacy bare operations and namespaced business/native events are recorded.
+# Both legacy bare operations and namespaced business/route-literal actions exist.
+# Native notifications echo state changes, not user intent. Chat content and
+# execution telemetry are also omitted; credential issuance/revocation remains.
 # Keep this positive vocabulary alongside new mutation producers; unknown actions
 # remain available in the unchanged admin audit APIs.
 _USER_MUTATION_OPERATIONS = (
@@ -100,11 +102,6 @@ _USER_MUTATION_OPERATIONS = (
     "bulk_reboot",
     "bulk_shelve",
     "bulk_unshelve",
-    "power_on",
-    "power_off",
-    "created",
-    "updated",
-    "deleted",
     "set_admin_instance_password",
     "start_admin_instance",
     "stop_admin_instance",
@@ -123,9 +120,91 @@ _USER_MUTATION_OPERATIONS = (
     "detach_admin_instance_storage",
     "delete_admin_instance",
     "extend_admin_instance_volume",
+    "roles",
+    "quotas",
+    "vpn-reserved-ranges",
+    "compute-pool",
+    "default",
+    "managers",
+    "reconcile",
+    "usage-schedule",
+    "usage-extension-policy",
+    "rotate-cephx",
+    "name",
+    "confirm-resize",
+    "revert-resize",
+    "live-migrate",
+    "cold-migrate",
+    "evacuate",
+    "abort",
+    "force-complete",
+    "security-groups",
+    "floating-ip",
+    "volumes",
+    "interfaces",
+    "storage-attachments",
+    "admin-password",
+    "flavor-compositions",
+    "async",
+    "bulk-action",
+    "build",
+    "force-delete",
+    "access-rules",
+    "service",
+    "relocate",
+    "recover-delete",
+    "bulk-delete",
+    "reset-status",
+    "transfer",
+    "accept",
+    "desired",
+    "frontend-visibility",
+    "usage-schedule-requirement",
+    "extra-specs",
+    "access",
+    "resolve",
+    "revoke-sessions",
+    "unlock-account",
+    "reset-email",
+    "sync-monitoring-sg",
+    "email",
+    "block-source",
+    "dockerfile",
+    "cancel",
+    "consume",
+    "publication",
+    "profiles",
+    "members",
+    "verification",
+    "properties",
+    "deactivate",
+    "reactivate",
+    "presets",
+    "configs",
+    "ensure-default",
+    "floating-ips",
+    "subnets",
+    "gateway",
+    "listeners",
+    "pools",
+    "health-monitor",
+    "rules",
+    "backfill-digest",
+    "namespace",
+    "restart",
+    "root",
+    "databases",
+    "users",
+    "backups",
+    "auto-backup",
+    "objects",
+    "directory",
+    "copy",
+    "move",
+    "upload",
+    "acl",
 )
-_USER_MUTATION_ACTION_PATTERN = r"^([a-z_]+\.)*(" + "|".join(_USER_MUTATION_OPERATIONS) + r")(\.(end|error))?$"
-_USER_OBSERVATION_ACTION_PATTERN = r"(^|\.)(read|get|list|show|inspect|stage|verify|check|download)(\.|$)"
+_USER_MUTATION_ACTION_PATTERN = r"^([a-z_]+\.)*(" + "|".join(_USER_MUTATION_OPERATIONS) + r")$"
 _USER_SESSION_ACTIONS = ("session_delete", "logout", "logout_all", "admin_revoke_sessions")
 
 _SECRET_ASSIGNMENT = re.compile(
@@ -320,11 +399,14 @@ async def list_for_user(
     async with factory() as session:
         conds = [
             ActivityLog.user_id == user_id,
-            ~ActivityLog.action.startswith("request."),
-            ~ActivityLog.action.regexp_match(_USER_OBSERVATION_ACTION_PATTERN),
+            or_(ActivityLog.source == "afterglow", ActivityLog.source.is_(None)),
             or_(
                 and_(
                     ActivityLog.resource_type.not_in(("request", "ui", "experience", "unknown", "auth")),
+                    or_(
+                        ~ActivityLog.resource_type.startswith("chat_", autoescape=True),
+                        ActivityLog.resource_type.in_(("chat_api_key", "chat_git_credential")),
+                    ),
                     ActivityLog.action.regexp_match(_USER_MUTATION_ACTION_PATTERN),
                 ),
                 and_(ActivityLog.resource_type == "auth", ActivityLog.action.in_(_USER_SESSION_ACTIONS)),

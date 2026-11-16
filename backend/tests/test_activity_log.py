@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import FastAPI
 from sqlalchemy import Integer, MetaData
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from app.models.activity import ActivityLog
 from app.services import activity
+from app.services.openstack_notifications import normalize_notification
 
 
 @pytest.fixture
@@ -75,8 +80,6 @@ async def test_profile_activity_filters_persisted_telemetry_and_reads(client, ac
         ("keypair", "keypair.create"),
         ("user", "password_reset_email"),
         ("project", "project_create"),
-        ("instance", "compute.instance.create.end"),
-        ("instance", "compute.instance.power_on.end"),
         ("instance", "admin.attach_admin_instance_volume"),
         ("instance", "bulk_reboot"),
         ("mcp_lumen_selection", "mcp_lumen_selection.set"),
@@ -85,13 +88,10 @@ async def test_profile_activity_filters_persisted_telemetry_and_reads(client, ac
         ("request", "request.read"),
         ("request", "request.stage"),
         ("request", "request.create"),
-        ("instance", "request.update"),
         ("instance", "instance.read"),
         ("instance", "instance.list"),
         ("instance", "instance.stage"),
         ("instance", "instance.inspect"),
-        ("instance", "compute.instance.read.start"),
-        ("image", "image.download.start"),
         ("instance", "instance.update.stage"),
         ("ui", "ui.action"),
         ("ui", "ui.create"),
@@ -125,6 +125,141 @@ async def test_profile_activity_filters_persisted_telemetry_and_reads(client, ac
     ]
     assert result[0]["project_id"] == "other-project"
     assert result[0]["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_profile_activity_keeps_user_intents_and_legacy_mutations_not_native_echoes(client, activity_db):
+    await seed_activity(
+        activity_db,
+        [
+            {"action": "instance.create", "source": None},
+            {"action": "instance.read", "source": None},
+            {"resource_type": "request", "action": "request.stage", "source": None},
+        ],
+    )
+    for resource, action in (
+        ("instance", "instance.create"),
+        ("instance", "instance.delete"),
+        ("volume_backup", "volume_backup.create"),
+        ("volume_backup", "volume.auto_backup_enable"),
+        ("volume_backup", "volume.auto_backup_disable"),
+        ("volume_snapshot", "volume.auto_snapshot_enable"),
+    ):
+        await activity.record(
+            project_id="test-project-123",
+            user_id="test-user-123",
+            username="testuser",
+            resource_type=resource,
+            action=action,
+            status="success",
+        )
+
+    # The collector attributes native echoes to context.user_id. That can be
+    # the human for state transitions, or the managed account for a cron backup.
+    notifications = [
+        ("nova", "compute.instance.create.end", "test-user-123", {"instance_id": "vm-1"}),
+        ("nova", "compute.instance.update", "test-user-123", {"instance_id": "vm-1"}),
+        ("neutron", "port.update.end", "test-user-123", {"port_id": "port-1"}),
+        ("cinder", "backup.create.end", "backup-system-user", {"backup_id": "backup-1"}),
+    ]
+    async with activity_db() as session:
+        for service, event, user_id, payload in notifications:
+            values = normalize_notification(
+                json.dumps(
+                    {
+                        "event_type": event,
+                        "payload": payload,
+                        "context": {"user_id": user_id, "project_id": "test-project-123"},
+                    }
+                ).encode(),
+                service,
+            )
+            session.add(ActivityLog(**values))
+        await session.commit()
+
+    response = await client.get("/api/v1/profile/activity?limit=200")
+    assert response.status_code == 200
+    assert [(row["source"], row["action"]) for row in response.json()] == [
+        ("afterglow", "volume.auto_snapshot_enable"),
+        ("afterglow", "volume.auto_backup_disable"),
+        ("afterglow", "volume.auto_backup_enable"),
+        ("afterglow", "volume_backup.create"),
+        ("afterglow", "instance.delete"),
+        ("afterglow", "instance.create"),
+        ("afterglow", "instance.create"),  # NULL source is serialized as legacy Afterglow.
+    ]
+
+
+@pytest.mark.asyncio
+async def test_account_intent_feed_classifies_real_middleware_route_operations(client, activity_db):
+    import httpx
+
+    from app.main import activity_audit_middleware, app
+
+    application = FastAPI()
+    application.middleware("http")(activity_audit_middleware)
+
+    async def native_mutation_boundary(request: Request):
+        request.state.token_info = {
+            "project_id": "test-project-123",
+            "user_id": "test-user-123",
+            "username": "testuser",
+        }
+        return JSONResponse({"ok": True})
+
+    # Reuse current registered route templates; run the production middleware
+    # and persistence, replacing only native resource handlers.
+    routes = [
+        ("PUT", "/api/v1/iam/projects/{project_id}/members/{user_id}/roles"),
+        ("PUT", "/api/v1/instances/{instance_id}/name"),
+        ("POST", "/api/v1/instances/{instance_id}/confirm-resize"),
+        ("POST", "/api/v1/instances/github-users/lookup"),
+        ("POST", "/api/v1/instances/{instance_id}/storage-attachments/{file_storage_id}/connection-info"),
+        ("POST", "/api/v1/admin/hypervisors/{hypervisor_id}/removal-check"),
+    ]
+    for method, template in routes:
+        registered = next(route for route in app.routes if getattr(route, "path", None) == template)
+        assert method in registered.methods
+        application.add_api_route(registered.path, native_mutation_boundary, methods=[method])
+
+    # Chat endpoints share the middleware's resource-prefix map. Conversation
+    # and run churn is not cloud resource history, but credential changes are.
+    for method, template in (
+        ("POST", "/api/v1/chat/conversations"),
+        ("DELETE", "/api/v1/chat/conversations/{conversation_id}"),
+        ("POST", "/api/v1/chat/runs"),
+        ("POST", "/api/v1/chat/api-keys"),
+        ("DELETE", "/api/v1/chat/git-credentials/{credential_id}"),
+    ):
+        application.add_api_route(template, native_mutation_boundary, methods=[method])
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=application), base_url="http://activity.test"
+    ) as producer:
+        for method, path in (
+            ("PUT", "/api/v1/iam/projects/project-a/members/user-a/roles"),
+            ("PUT", "/api/v1/instances/vm-a/name"),
+            ("POST", "/api/v1/instances/vm-a/confirm-resize"),
+            ("POST", "/api/v1/instances/github-users/lookup"),
+            ("POST", "/api/v1/instances/vm-a/storage-attachments/share-a/connection-info"),
+            ("POST", "/api/v1/admin/hypervisors/host-a/removal-check"),
+            ("POST", "/api/v1/chat/conversations"),
+            ("DELETE", "/api/v1/chat/conversations/conversation-a"),
+            ("POST", "/api/v1/chat/runs"),
+            ("POST", "/api/v1/chat/api-keys"),
+            ("DELETE", "/api/v1/chat/git-credentials/credential-a"),
+        ):
+            assert (await producer.request(method, path)).status_code == 200
+
+    response = await client.get("/api/v1/profile/activity?limit=200")
+    assert response.status_code == 200
+    assert [(row["resource_type"], row["action"]) for row in response.json()] == [
+        ("chat_git_credential", "chat_git_credential.delete"),
+        ("chat_api_key", "chat_api_key.create"),
+        ("instance", "instance.confirm-resize"),
+        ("instance", "instance.name"),
+        ("project", "project.roles"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -178,7 +313,7 @@ async def test_profile_activity_explicit_filters_cannot_restore_telemetry(client
 @pytest.mark.asyncio
 async def test_admin_activity_retains_persisted_reads_and_request_telemetry(admin_client, activity_db):
     rows = [
-        {"action": "instance.create"},
+        {"action": "compute.instance.create.end", "source": "openstack", "username": ""},
         {"resource_type": "request", "action": "request.read"},
         {"resource_type": "request", "action": "request.stage"},
         {"action": "instance.read", "user_id": "another-user"},
