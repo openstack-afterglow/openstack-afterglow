@@ -79,9 +79,9 @@ async def complete(cloud, config):
 
 
 @pytest.mark.asyncio
-async def test_first_daily_full_then_incremental_keeps_base_above_limit(policy_redis):
+async def test_first_daily_full_then_incremental_within_retention_window(policy_redis):
     cloud = ChainCloud()
-    config = await save(max_daily=1, max_weekly=0, max_monthly=0)
+    config = await save(max_daily=2, max_weekly=0, max_monthly=0)
     assert "method" not in config  # Existing stored policies need no new setting or migration.
     await complete(cloud, config)
     assert cloud.submissions[0]["is_incremental"] is False
@@ -95,7 +95,7 @@ async def test_first_daily_full_then_incremental_keeps_base_above_limit(policy_r
     assert result["last_status"] == "available"
     assert result["last_backup_method"] == "incremental"
     assert result["last_full_fallback"] is False
-    assert result["retained_over_limit"] == ["submitted-1"]
+    assert result["retained_over_limit"] == []
 
 
 @pytest.mark.asyncio
@@ -127,25 +127,26 @@ async def test_daily_full_fallback_requires_available_exact_owned_full(policy_re
     cloud = ChainCloud()
     cloud.add("unusable-base", "manual", **fields)
     cloud.add("orphan-incremental", "manual-incremental", is_incremental=True)
-    config = await save(max_daily=1, max_weekly=0, max_monthly=0)
+    config = await save(max_daily=3, max_weekly=0, max_monthly=0)
     await complete(cloud, config)
     assert cloud.submissions[0]["is_incremental"] is False
     assert (await current())["last_full_fallback"] is True
 
 
 @pytest.mark.asyncio
-async def test_manual_latest_backup_can_be_incremental_parent(policy_redis):
+@pytest.mark.parametrize("count", [1, 3])
+async def test_manual_latest_backup_starts_full_instead_of_extending_uncertain_chain(policy_redis, count):
     cloud = ChainCloud()
     cloud.managed("owned-base", "daily", 1)
     cloud.add("manual-latest", "operator-copy", created_at="2026-05-30T03:00:00+00:00", is_incremental=True)
     cloud.parents["manual-latest"] = "owned-base"
     cloud.records["owned-base"].has_dependent_backups = True
-    config = await save(max_daily=1, max_weekly=0, max_monthly=0)
+    config = await save(max_daily=count, max_weekly=0, max_monthly=0)
     await complete(cloud, config)
-    assert cloud.submissions[0]["is_incremental"] is True
-    assert cloud.parents["submitted-1"] == "manual-latest"
+    assert cloud.submissions[0]["is_incremental"] is False
+    assert cloud.parents["submitted-1"] is None
     assert cloud.deleted == []
-    assert (await current())["retained_over_limit"] == ["owned-base"]
+    assert (await current())["retained_over_limit"] == (["owned-base"] if count == 1 else [])
     assert (await current())["last_status"] == "available"
 
 
@@ -212,9 +213,9 @@ async def test_manual_child_racing_delete_is_retained_not_a_cycle_failure(policy
 @pytest.mark.asyncio
 async def test_incremental_lost_reply_reconciles_exact_slot_without_replaying(policy_redis):
     cloud = ChainCloud()
-    cloud.add("manual-base", "manual")
+    cloud.managed("owned-base", "daily", 1)
     cloud.submit_error = TimeoutError("lost accepted incremental reply")
-    config = await save(max_daily=1, max_weekly=0, max_monthly=0)
+    config = await save(max_daily=3, max_weekly=0, max_monthly=0)
     await ab.run_backup_cycle(cloud, PROJECT, VOLUME, now=due(config))
     active = json.loads(await policy_redis.get(ab._key("active", PROJECT, VOLUME)))
     assert active["backup_method"] == "incremental"
@@ -230,7 +231,7 @@ async def test_incremental_lost_reply_reconciles_exact_slot_without_replaying(po
 @pytest.mark.asyncio
 async def test_parent_disappearing_before_post_rejects_once_without_full_retry(policy_redis, monkeypatch):
     cloud = ChainCloud()
-    cloud.add("manual-base", "manual")
+    cloud.managed("owned-base", "daily", 1)
     original = cloud.create_backup
 
     def gone(**kwargs):
@@ -238,9 +239,55 @@ async def test_parent_disappearing_before_post_rejects_once_without_full_retry(p
         return original(**kwargs)
 
     monkeypatch.setattr(cloud, "create_backup", gone)
-    config = await save(max_daily=1, max_weekly=0, max_monthly=0)
+    config = await save(max_daily=3, max_weekly=0, max_monthly=0)
     await ab.run_backup_cycle(cloud, PROJECT, VOLUME, now=due(config))
     await ab.run_backup_cycle(cloud, PROJECT, VOLUME, now=due(config))
     assert len(cloud.submissions) == 1
     assert cloud.submissions[0]["is_incremental"] is True
     assert (await current())["last_status"] == "error"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("count", [1, 2, 3, 5])
+async def test_daily_only_rotates_full_and_converges_with_bounded_chain_slack(policy_redis, count):
+    cloud = ChainCloud()
+    config = await save(max_daily=count, max_weekly=0, max_monthly=0)
+    for day in range(3 * count + 1):
+        await complete(cloud, config)
+        assert cloud.submissions[-1]["is_incremental"] is (day % count != 0)
+        assert len(cloud.records) <= count + count - 1
+        config = await current()
+        assert config["last_status"] == "available"
+        if (day + 1) % count == 0:
+            assert len(cloud.records) == count
+            assert config["retained_over_limit"] == []
+    for point in cloud.records:
+        depth = 1
+        parent = cloud.parents[point]
+        while parent:
+            depth += 1
+            parent = cloud.parents[parent]
+        assert depth <= count
+
+
+@pytest.mark.asyncio
+async def test_weekly_full_resets_daily_chain_length_and_daily_rotation_still_applies(policy_redis):
+    cloud = ChainCloud()
+    config = await save(max_daily=3, max_weekly=1, max_monthly=0)
+    methods = []
+    for _ in range(9):
+        await complete(cloud, config)
+        methods.append((config["next_tier"], cloud.submissions[-1]["is_incremental"]))
+        config = await current()
+    assert methods == [
+        ("weekly", False),
+        ("daily", True),
+        ("daily", True),
+        ("daily", False),
+        ("daily", True),
+        ("daily", True),
+        ("daily", False),
+        ("weekly", False),
+        ("daily", True),
+    ]
+    assert len(cloud.records) <= 3 + 1 + 2

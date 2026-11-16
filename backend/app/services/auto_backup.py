@@ -705,20 +705,32 @@ async def _invalidate_backups(project_id):
     await invalidation.invalidate_mutation_count("cinder", project_id)
 
 
-async def _daily_incremental(conn, project_id, volume_id):
-    """Cinder selects the latest available parent, including manual backups.
+async def _daily_incremental(conn, project_id, volume_id, max_daily):
+    """Bound an owned chain to the daily retention window.
 
-    Parent selection is native (by data_timestamp), not the policy's last ID.
-    The API does not expose the parent graph. Require an available full base
-    for this exact volume/project; never guess a parent from managed names.
-    Cinder revalidates the chain on POST, so a concurrent change may reject it.
-    A rejection is terminal for this slot, never a second full-backup POST.
+    Cinder selects the latest available parent by data_timestamp, including
+    manual points; the public API exposes no parent graph. A manual or
+    incomplete point makes chain membership uncertain, so start a full copy.
+    Otherwise count owned increments since the latest available owned full.
+    Rotate to full when adding another point would exceed max_daily.
+    Cinder revalidates on POST; rejection never authorizes a second POST.
     """
+    if max_daily <= 1:
+        return False
     backups = _scoped(conn, project_id, await _sdk(cinder.list_backups, conn, volume_id=volume_id))
-    return any(
-        _owned(point, project_id, volume_id) and _safe_completed(point) and point.get("is_incremental") is False
-        for point in backups
+    points = [point for point in backups if _owned(point, project_id, volume_id)]
+    if not points or any(_tier(point, project_id, volume_id) is None or not _safe_completed(point) for point in points):
+        return False
+    fulls = [point for point in points if point["is_incremental"] is False]
+    if not fulls:
+        return False
+    base = max(fulls, key=_created_time)
+    # Equal timestamps cannot establish ordering. Count conservatively rather
+    # than losing an increment at the boundary of Cinder's timestamp precision.
+    increments = sum(
+        point["is_incremental"] is True and _created_time(point) >= _created_time(base) for point in points
     )
+    return increments < max_daily - 1
 
 
 async def _prune_backups(conn, lease, project_id, volume_id, config):
@@ -919,7 +931,11 @@ async def _cycle(conn, redis, lease, project_id, volume_id, now):
         "error": reason,
     }
     if _resource() == "backup":
-        incremental = not reason and tier == "daily" and await _daily_incremental(conn, project_id, volume_id)
+        incremental = (
+            not reason
+            and tier == "daily"
+            and await _daily_incremental(conn, project_id, volume_id, config["max_daily"])
+        )
         operation.update(
             backup_method="incremental" if incremental else "full",
             full_fallback=bool(not reason and tier == "daily" and not incremental),
