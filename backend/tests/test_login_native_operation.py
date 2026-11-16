@@ -496,3 +496,145 @@ async def test_exact_personal_landing_does_not_enumerate_native_memberships(nati
     # still has its independent Default membership).
     assert refreshed.status_code == 403
     assert "token" not in refreshed.json()
+
+
+@pytest.fixture
+def blocked_catalog(monkeypatch, domain_native):
+    import threading
+
+    native = domain_native
+    created = Mock(return_value=native)
+    native.session = SimpleNamespace(session=SimpleNamespace(close=Mock()))
+    monkeypatch.setattr(keystone, "_get_admin_ks_client", created)
+    state = SimpleNamespace(
+        operation=NativeOperation(),
+        native=native,
+        created=created,
+        entered={name: threading.Event() for name in ("roles", "inference")},
+        release={name: threading.Event() for name in ("roles", "inference")},
+        finished={name: threading.Event() for name in ("roles", "inference")},
+        failures={},
+        calls=[],
+    )
+
+    def block(name, read):
+        def load():
+            state.calls.append(name)
+            state.entered[name].set()
+            try:
+                assert state.release[name].wait(timeout=5)
+                if name in state.failures:
+                    raise state.failures[name]
+                return read()
+            finally:
+                state.finished[name].set()
+
+        return load
+
+    monkeypatch.setattr(native.roles, "list", block("roles", native.roles.list))
+    monkeypatch.setattr(
+        native.inference_rules, "list_inference_roles", block("inference", native.inference_rules.list_inference_roles)
+    )
+    yield state
+    for release in state.release.values():
+        release.set()
+
+
+@pytest.mark.asyncio
+async def test_catalog_reads_overlap_and_share_one_owned_client(blocked_catalog):
+    import asyncio
+
+    state = blocked_catalog
+
+    async def request():
+        async with state.operation:
+            catalog = await state.operation.run(state.operation.catalog)
+            assert await state.operation.run(state.operation.catalog) is catalog
+            return catalog
+
+    task = asyncio.create_task(request())
+    try:
+        for entered in state.entered.values():
+            assert await asyncio.to_thread(entered.wait, 5)
+        assert not any(finished.is_set() for finished in state.finished.values())
+        state.created.assert_called_once_with()
+        state.native.session.session.close.assert_not_called()
+    finally:
+        for release in state.release.values():
+            release.set()
+    catalog = await task
+    assert {role["name"] for role in catalog} == {role.name for role in state.native.role_rows}
+    assert next(role for role in catalog if role["id"] == "project_member")["inherited_role_ids"] == [
+        "member",
+        "project_reader",
+        "reader",
+    ]
+    assert sorted(state.calls) == ["inference", "roles"]
+    state.native.session.session.close.assert_called_once_with()
+    assert state.operation.reads == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["roles", "inference", "both"])
+async def test_catalog_failure_joins_sibling_and_preserves_ordered_error(blocked_catalog, failure):
+    import asyncio
+
+    state = blocked_catalog
+    for name in ("roles", "inference") if failure == "both" else (failure,):
+        state.failures[name] = ConnectionError(f"{name} unavailable")
+    first = "roles" if failure == "both" else failure
+    sibling = "inference" if first == "roles" else "roles"
+
+    async def request():
+        async with state.operation:
+            await state.operation.run(state.operation.catalog)
+
+    task = asyncio.create_task(request())
+    try:
+        for entered in state.entered.values():
+            assert await asyncio.to_thread(entered.wait, 5)
+        state.release[first].set()
+        assert await asyncio.to_thread(state.finished[first].wait, 5)
+        await asyncio.sleep(0)
+        assert not task.done()
+        assert ("catalog",) not in state.operation.reads
+        state.native.session.session.close.assert_not_called()
+    finally:
+        state.release[sibling].set()
+    with pytest.raises(ConnectionError) as error:
+        await task
+    assert error.value is state.failures[first]
+    assert all(finished.is_set() for finished in state.finished.values())
+    state.created.assert_called_once_with()
+    state.native.session.session.close.assert_called_once_with()
+    assert state.operation.reads == {}
+
+
+@pytest.mark.asyncio
+async def test_cancelled_catalog_drains_both_reads_before_closing_client(blocked_catalog):
+    import asyncio
+
+    state = blocked_catalog
+
+    async def request():
+        async with state.operation:
+            await state.operation.run(state.operation.catalog)
+
+    task = asyncio.create_task(request())
+    try:
+        for entered in state.entered.values():
+            assert await asyncio.to_thread(entered.wait, 5)
+        task.cancel()
+        state.release["roles"].set()
+        assert await asyncio.to_thread(state.finished["roles"].wait, 5)
+        await asyncio.sleep(0)
+        assert not task.done()
+        state.native.session.session.close.assert_not_called()
+    finally:
+        state.release["inference"].set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert all(finished.is_set() for finished in state.finished.values())
+    state.created.assert_called_once_with()
+    state.native.session.session.close.assert_called_once_with()
+    assert state.operation.reads == {}
