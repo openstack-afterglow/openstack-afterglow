@@ -87,6 +87,7 @@
 	"snapshotGroups.policy.tier.monthly": "月次",
 	"snapshotGroups.count": "スナップショット数",
 	"snapshotGroups.method": "増分（コピーオンライト）",
+	"snapshotGroups.methodLabel": "スナップショット方式",
 	"snapshotGroups.methodHelp": "スナップショットは増分方式（コピーオンライト）です。独立した完全コピーには完全バックアップを作成してください。",
 	"snapshotGroups.fullBackup": "完全バックアップを作成",
 	"page.titleWithCount": "{title}（{count}）",

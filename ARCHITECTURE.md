@@ -289,7 +289,7 @@ Resampled counter/vCPU는 bounded native-granularity window로 내부 reset/gap/
 
 인스턴스 상세는 `InstanceDetailPanel`이 하나의 `createInstanceUsageController`를 소유해 생성일 아래 만료일·만료 동작 표시와 header의 기간 연장 modal(`UsageScheduleSection`)이 같은 조회 결과를 공유한다. `#usage-schedule` 알림 링크는 modal을 한 번 열고, 사용 기간 조회 실패는 패널에서 오류와 재시도를 표시해 자동 보류·삭제 대상이 만료 정보 없이 보이지 않게 한다. 인스턴스 상세의 파일 스토리지 접근 권한·Afterglow 정보(union strategy/libraries) 섹션은 제거했으며 해당 backend API는 유지한다.
 
-볼륨 백업·스냅샷 화면은 이미지 저장소와 같은 원본 볼륨 카드→URL `volume` query 상세 구조다. 카드는 볼륨명(목록에 없으면 삭제된 볼륨과 짧은 ID), 포인트 수, 최신 생성 시각, 자동 정책 상태를 보이고 상세는 그 볼륨의 자동 정책과 포인트별 생성 시각·자동/수동(주기)·전체/증분·생성자·상태를 보인다. 생성자는 Cinder `user_id`(백업 microversion 3.56, 스냅샷 3.41 명시 요청)를 현재 프로젝트 `projectAuthority.members`로만 이름 해석하고 거절되면 짧은 ID를 표시한다. 자동/수동과 주기는 `auto_backup`의 기존 소유권 분류(정확한 metadata·이름 규칙, prefix 단독 불인정)를 공개한 단일 분류기가 결정한다. 수동 백업 생성은 같은 볼륨의 사용 가능한 전체 백업이 없으면 증분을 막는다. Cinder 스냅샷에는 전체/증분 선택이 없으므로 화면은 copy-on-write 증분만 명시하고 독립 사본은 전체 백업으로 안내한다.
+볼륨 백업·스냅샷 화면은 이미지 저장소와 같은 원본 볼륨 카드→URL `volume` query 상세 구조다. 카드는 볼륨명(목록에 없으면 삭제된 볼륨과 짧은 ID), 포인트 수, 최신 생성 시각, 자동 정책 상태를 보이고 상세는 toolbar에 목록 복귀와 볼륨명을 두고 그 볼륨의 자동 정책과 포인트별 생성 시각·자동/수동(주기)·전체/증분·생성자·상태를 보인다. 포인트가 없고 열 필터도 없으면 빈 상태 문구만 표시한다. 생성자는 Cinder `user_id`(백업 microversion 3.56, 스냅샷 3.41 명시 요청)를 현재 프로젝트 `projectAuthority.members`로만 이름 해석하고 거절되면 짧은 ID를 표시한다. 자동/수동과 주기는 `auto_backup`의 기존 소유권 분류(정확한 metadata·이름 규칙, prefix 단독 불인정)를 공개한 단일 분류기가 결정한다. 수동 백업 생성은 같은 볼륨의 사용 가능한 전체 백업이 없으면 증분을 막는다. Cinder 스냅샷에는 전체/증분 선택이 없으므로 화면은 copy-on-write 증분만 명시하고 독립 사본은 전체 백업으로 안내한다. 자동 스냅샷 정책 목록은 백업과 같이 `GET /api/v1/volume-snapshots/auto-snapshot/configs`(기존 POST 읽기에서 전환, `{volume_id}` 경로보다 먼저 등록)로 읽어 mutation으로 취급된 POST가 동시 GET을 회수하지 않게 한다.
 
 자동 백업 정책은 일별 증분·주별/월별 전체를 사용한다. 증분 부모는 Cinder가 같은 볼륨의 최신 사용 가능한 백업(수동 포함)에서 고르며 Afterglow는 부모 ID를 지정하지 않는다. 마지막 owned 전체 이후 증분이 일별 보관 개수-1에 도달하거나 그 이후 체인에 수동·미완료·불명확 포인트가 섞이면 새 전체로 회전해 체인 길이를 보관 창 안으로 제한한다. 보관 정리는 자식부터 최신 `has_dependent_backups`가 명확히 false일 때만 삭제하고, 수동 백업이 의존하는 owned 부모는 `retained_over_limit`로 남긴다. 비동기 Cinder 삭제 완료를 기다리는 drain은 시한이 있으며 시한이 지나도 삭제 대기 포인트를 삭제됨으로 간주하지 않는다. 스냅샷 lane은 같은 엔진의 CoW 전용 경로로 변화가 없다.
 
@@ -2214,9 +2214,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "99e4643ee12a3fcb1386b65824bd5f44e6690088915623182a9abff50f0843d1",
-  "reviewed_at": "2026-11-16T08:45:53Z",
-  "summary": "Instance usage modal, account page defaults/sessions/activity, workspace catalog parallel reads, volume recovery views by source volume, incremental auto backup chains"
+  "source_sha256": "52fdf580dc7a64261d72ab28eacd7436cbbbcdcfc5333564479fae0640df848c",
+  "reviewed_at": "2026-11-16T08:54:51Z",
+  "summary": "Volume recovery detail toolbar/empty state, snapshot policy list GET, tutorial usage-schedule mock"
 }
 ```
 <!-- architecture-review:end -->

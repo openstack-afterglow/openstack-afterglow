@@ -87,6 +87,7 @@
 	"snapshotGroups.policy.tier.monthly": "Bulanan",
 	"snapshotGroups.count": "Bilangan syot kilat",
 	"snapshotGroups.method": "Bertokok (salin semasa tulis)",
+	"snapshotGroups.methodLabel": "Kaedah petikan",
 	"snapshotGroups.methodHelp": "Syot kilat menggunakan kaedah bertokok (salin semasa tulis). Buat sandaran penuh untuk salinan penuh yang bebas.",
 	"snapshotGroups.fullBackup": "Buat sandaran penuh",
 	"page.titleWithCount": "{title} ({count})",

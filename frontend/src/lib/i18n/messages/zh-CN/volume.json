@@ -87,6 +87,7 @@
 	"snapshotGroups.policy.tier.monthly": "每月",
 	"snapshotGroups.count": "快照数",
 	"snapshotGroups.method": "增量（写时复制）",
+	"snapshotGroups.methodLabel": "快照方式",
 	"snapshotGroups.methodHelp": "快照采用增量方式（写时复制）。如需独立的完整副本，请创建完整备份。",
 	"snapshotGroups.fullBackup": "创建完整备份",
 	"page.titleWithCount": "{title}（{count}）",

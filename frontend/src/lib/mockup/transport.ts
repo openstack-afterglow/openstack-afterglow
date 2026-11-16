@@ -783,6 +783,14 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	if (method === 'GET' && pathname === '/api/v1/instances') return state.instances;
 	if (method === 'GET' && pathname === '/api/v1/instances/availability-zones') return [{ name: 'nova', available: true }];
 	if (method === 'GET' && pathname === '/api/v1/instances/metrics-summary-batch') return { monitoring_available: true, instances: instanceMetrics(state.instances.map((item) => item.id)) };
+	const usageSchedule = pathname.match(/^\/api\/v1\/instances\/([^/]+)\/usage-schedule$/);
+	if (method === 'GET' && usageSchedule) {
+		const instanceId = decodeURIComponent(usageSchedule[1]);
+		if (!state.instances.some((item) => item.id === instanceId)) throw new ApiError(404, 'Instance not found.');
+		// A fixed synthetic schedule so the tutorial shows the expiry and the extend dialog.
+		return { instance_id: instanceId, starts_at: '2026-07-09T00:00:00Z', expires_at: '2026-12-31T00:00:00Z', expiry_action: 'shelve',
+			delete_volumes: false, reason: '', revision: 'tutorial-1', state: 'active', source: 'created', last_error: null };
+	}
 	const instanceAction = pathname.match(/^\/api\/v1\/instances\/([^/]+)\/(start|stop|shelve|unshelve)$/);
 	if (method === 'POST' && instanceAction) {
 		const status = { start: 'ACTIVE', stop: 'SHUTOFF', shelve: 'SHELVED_OFFLOADED', unshelve: 'ACTIVE' }[instanceAction[2]] ?? 'ACTIVE';

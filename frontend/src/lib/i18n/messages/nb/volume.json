@@ -87,6 +87,7 @@
 	"snapshotGroups.policy.tier.monthly": "Månedlig",
 	"snapshotGroups.count": "Øyeblikksbilder",
 	"snapshotGroups.method": "Inkrementell (copy-on-write)",
+	"snapshotGroups.methodLabel": "Øyeblikksbildemetode",
 	"snapshotGroups.methodHelp": "Øyeblikksbilder er inkrementelle (copy-on-write). Opprett en fullstendig sikkerhetskopi for en uavhengig full kopi.",
 	"snapshotGroups.fullBackup": "Opprett fullstendig sikkerhetskopi",
 	"page.titleWithCount": "{title} ({count})",

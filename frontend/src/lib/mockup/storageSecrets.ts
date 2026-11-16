@@ -55,6 +55,7 @@ export function mockStorageSecrets(method: string, path: string, body: unknown):
 		return state.volumeBackups;
 	}
 	if (path === '/api/v1/volumes/backups/auto-backup/configs' && method === 'GET') return [];
+	if (path === '/api/v1/volume-snapshots/auto-snapshot/configs' && method === 'GET') return [];
 	if (path === '/api/v1/volumes/backups' && method === 'POST') {
 		const payload = (body ?? {}) as { volume_id?: unknown; name?: unknown; description?: unknown; incremental?: unknown; force?: unknown };
 		if (typeof payload.volume_id !== 'string' || typeof payload.name !== 'string') throw new ApiError(422, 'Volume and backup name are required.');

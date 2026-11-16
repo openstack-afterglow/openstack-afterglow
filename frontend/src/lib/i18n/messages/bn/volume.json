@@ -87,6 +87,7 @@
 	"snapshotGroups.policy.tier.monthly": "মাসিক",
 	"snapshotGroups.count": "স্ন্যাপশট সংখ্যা",
 	"snapshotGroups.method": "ক্রমবর্ধমান (কপি-অন-রাইট)",
+	"snapshotGroups.methodLabel": "স্ন্যাপশট পদ্ধতি",
 	"snapshotGroups.methodHelp": "স্ন্যাপশট ক্রমবর্ধমান (কপি-অন-রাইট)। স্বাধীন সম্পূর্ণ কপির জন্য পূর্ণ ব্যাকআপ তৈরি করুন।",
 	"snapshotGroups.fullBackup": "পূর্ণ ব্যাকআপ তৈরি করুন",
 	"page.titleWithCount": "{title} ({count})",

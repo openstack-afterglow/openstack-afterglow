@@ -198,7 +198,7 @@ async def test_auto_snapshot_policy_lifecycle_never_submits_or_deletes_snapshots
         assert config["next_run_at"] is not None and config["last_status"] == "never"
         fetched = await client.get(url)
         assert fetched.status_code == 200 and fetched.json() == config
-        listed = await client.post("/api/v1/volume-snapshots/auto-snapshot/configs")
+        listed = await client.get("/api/v1/volume-snapshots/auto-snapshot/configs")
         assert listed.status_code == 200 and listed.json() == [config]
         paused = await client.post(url, json={**body, "enabled": False})
         assert paused.status_code == 201 and paused.json()["next_run_at"] is None
@@ -207,7 +207,7 @@ async def test_auto_snapshot_policy_lifecycle_never_submits_or_deletes_snapshots
         assert resumed.json()["schedule_time"] == "18:15" and resumed.json()["next_run_at"] is not None
         assert (await client.delete(url)).status_code == 204
         assert (await client.get(url)).status_code == 404
-        assert (await client.post("/api/v1/volume-snapshots/auto-snapshot/configs")).json() == []
+        assert (await client.get("/api/v1/volume-snapshots/auto-snapshot/configs")).json() == []
         assert [call.kwargs["action"] for call in record.await_args_list] == [
             "volume.auto_snapshot_enable",
             "volume.auto_snapshot_enable",
@@ -275,7 +275,7 @@ async def test_auto_snapshot_reader_can_read_but_cannot_save_pause_or_remove(cli
     assert (await client.post(url, json={})).status_code == 201
     app.dependency_overrides[get_token_info] = lambda: make_token_info(roles=["reader"])
     assert (await client.get(url)).status_code == 200
-    assert (await client.post("/api/v1/volume-snapshots/auto-snapshot/configs")).status_code == 200
+    assert (await client.get("/api/v1/volume-snapshots/auto-snapshot/configs")).status_code == 200
     assert (await client.post(url, json={})).status_code == 403
     assert (await client.post(url, json={"enabled": False})).status_code == 403
     assert (await client.delete(url)).status_code == 403
@@ -308,7 +308,7 @@ async def test_auto_snapshot_even_admin_cannot_schedule_or_remove_unowned_source
     "method,path,body,service_method",
     [
         ("get", "vol-1", None, "get_auto_snapshot_config"),
-        ("post", "configs", None, "list_auto_snapshot_configs"),
+        ("get", "configs", None, "list_auto_snapshot_configs"),
         ("post", "vol-1", {}, "enable_auto_snapshot"),
         ("delete", "vol-1", None, "disable_auto_snapshot"),
     ],
@@ -352,7 +352,7 @@ async def test_auto_snapshot_missing_source_policy_visible_and_removable_without
     with patch("app.api.storage.volume_snapshots.cinder.delete_snapshot") as delete:
         assert (await client.get(url)).status_code == 404
         assert (await client.post(url, json={})).status_code == 404
-        listed = await client.post("/api/v1/volume-snapshots/auto-snapshot/configs")
+        listed = await client.get("/api/v1/volume-snapshots/auto-snapshot/configs")
         assert listed.status_code == 200
         policy = listed.json()[0]
         assert policy["volume_id"] == "vol-1" and policy["max_daily"] == 3
@@ -399,7 +399,7 @@ async def test_auto_snapshot_source_failure_never_changes_policy(
         mock_conn.block_storage.get_volume.return_value.project_id = (
             "foreign-project" if failure_kind == "foreign" else None
         )
-    listed = await client.post("/api/v1/volume-snapshots/auto-snapshot/configs")
+    listed = await client.get("/api/v1/volume-snapshots/auto-snapshot/configs")
     assert listed.status_code == 200
     policy = listed.json()[0]
     assert policy["enabled"] is True and policy["max_weekly"] == 4
@@ -442,7 +442,7 @@ async def test_auto_snapshot_list_rejects_unverified_saved_identity(client, mock
         new_callable=AsyncMock,
         return_value=[config],
     ):
-        response = await client.post("/api/v1/volume-snapshots/auto-snapshot/configs")
+        response = await client.get("/api/v1/volume-snapshots/auto-snapshot/configs")
     assert response.status_code == 503
     mock_conn.block_storage.get_volume.assert_not_called()
 

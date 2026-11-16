@@ -149,7 +149,7 @@ async def _assert_schedule_source(conn, volume_id: str):
     return volume
 
 
-@router.post("/auto-snapshot/configs")
+@router.get("/auto-snapshot/configs")
 async def list_auto_snapshot_configs(
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):

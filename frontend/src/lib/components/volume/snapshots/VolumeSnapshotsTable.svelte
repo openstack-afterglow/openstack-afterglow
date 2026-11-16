@@ -27,7 +27,10 @@
 </script>
 
 <!-- The per-volume detail has no search; only column filters can hide rows, so with none active an empty list means no snapshots. -->
-{#if view.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{Object.values(view.filters).some((values) => values.length > 0) ? storageCommonT('table.noMatches') : t('snapshotListTable.empty')}</p>{/if}
+{#if view.rows.length === 0 && !Object.values(view.filters).some((values) => values.length > 0)}
+<p role="status" class="py-4 text-sm text-ink-2">{t('snapshotListTable.empty')}</p>
+{:else}
+{#if view.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{storageCommonT('table.noMatches')}</p>{/if}
 <ResponsiveTable>
   {#snippet cards()}
     <div class="responsive-card-toolbar">
@@ -43,7 +46,7 @@
         </div>
         <dl>
           <div><dt>{t('snapshotsTable.size')}</dt><dd>{formatStorage(snap.size)}</dd></div>
-          <div><dt>{t('backupGroups.method')}</dt><dd>{t('snapshotGroups.method')}</dd></div>
+          <div><dt>{t('snapshotGroups.methodLabel')}</dt><dd>{t('snapshotGroups.method')}</dd></div>
           <div><dt>{t('backupGroups.origin')}</dt><dd>{recoveryOrigin(snap)}</dd></div>
           <div><dt>{t('backupGroups.creator')}</dt><dd>{recoveryCreator(snap, currentUserId, creatorNames)}</dd></div>
           <div class="col-span-2"><dt>{t('snapshotsTable.createdAt')}</dt><dd>{snap.created_at ? new Date(snap.created_at).toLocaleString(intlLocale()) : t('snapshotsTable.missingValue')}</dd></div>
@@ -72,7 +75,7 @@
         <TableColumnHeader {view} columnKey="name" />
         <TableColumnHeader {view} columnKey="status" />
         <TableColumnHeader {view} columnKey="size" />
-        <th>{t('backupGroups.origin')}</th><th>{t('backupGroups.method')}</th><th>{t('backupGroups.creator')}</th>
+        <th>{t('backupGroups.origin')}</th><th>{t('snapshotGroups.methodLabel')}</th><th>{t('backupGroups.creator')}</th>
         <TableColumnHeader {view} columnKey="created" />
         <th class="text-right py-3">{t('snapshotsTable.actions')}</th>
       </tr>
@@ -104,3 +107,4 @@
   </table>
 </div>
 </ResponsiveTable>
+{/if}

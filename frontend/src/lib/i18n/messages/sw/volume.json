@@ -87,6 +87,7 @@
 	"snapshotGroups.policy.tier.monthly": "Kila mwezi",
 	"snapshotGroups.count": "Picha za papo hapo",
 	"snapshotGroups.method": "Nyongeza (copy-on-write)",
+	"snapshotGroups.methodLabel": "Mbinu ya nakala ya muda",
 	"snapshotGroups.methodHelp": "Picha za papo hapo ni za nyongeza (copy-on-write). Unda nakala rudufu kamili kwa nakala kamili inayojitegemea.",
 	"snapshotGroups.fullBackup": "Unda nakala rudufu kamili",
 	"page.titleWithCount": "{title} ({count})",

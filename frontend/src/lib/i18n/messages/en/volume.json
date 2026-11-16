@@ -87,6 +87,7 @@
 	"snapshotGroups.policy.tier.monthly": "Monthly",
 	"snapshotGroups.count": "Snapshots",
 	"snapshotGroups.method": "Incremental (copy-on-write)",
+	"snapshotGroups.methodLabel": "Snapshot method",
 	"snapshotGroups.methodHelp": "Snapshots are incremental (copy-on-write). Create a full backup for an independent full copy.",
 	"snapshotGroups.fullBackup": "Create a full backup",
 	"page.titleWithCount": "{title} ({count})",

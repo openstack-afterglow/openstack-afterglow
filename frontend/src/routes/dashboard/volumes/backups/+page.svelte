@@ -198,18 +198,15 @@
 		{/snippet}
 	</PageHeader>
 	<ResourceToolbar label={t('backupsPage.toolbar')}>
- {#snippet filters()}{#if !selectedVolumeId}<RegexSearch id="VolumeBackupListTable-search" bind:value={search} /><TableViewControls view={groupView} />{/if}{/snippet}
+ <!-- Detail view has no volume search; the toolbar carries the way back and the selected volume instead of an empty panel. -->
+ {#snippet filters()}{#if selectedVolumeId}<div class="flex min-w-0 flex-wrap items-center gap-3"><Button variant="secondary" size="sm" onclick={() => selectVolume(null)}>{t('backupGroups.back')}</Button><h2 class="min-w-0 break-all text-lg font-semibold">{selectedGroup ? recoveryVolumeName(selectedGroup, policies.settled && !policies.volumesError) : selectedVolumeId}</h2></div>{:else}<RegexSearch id="VolumeBackupListTable-search" bind:value={search} /><TableViewControls view={groupView} />{/if}{/snippet}
 		{#snippet actions()}<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={refreshing} onManualRefresh={forceRefresh} />{/snippet}
 	</ResourceToolbar>
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
-	<div data-tour="volume-backups-list">
+	<div data-tour="volume-backups-list" class="space-y-4">
 	{#if loading || (!policies.settled && !!$auth.projectId && !!$auth.token)}
 		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('backupsPage.title') })} />
 	{:else if selectedVolumeId}
-		<div class="flex flex-wrap items-center gap-3">
-			<Button variant="ghost" onclick={() => selectVolume(null)}>{t('backupGroups.back')}</Button>
-			<h2 class="min-w-0 break-all text-lg font-semibold">{selectedGroup ? recoveryVolumeName(selectedGroup, policies.settled && !policies.volumesError) : selectedVolumeId}</h2>
-		</div>
 		{#key selectedVolumeId}<VolumeBackupPolicies controller={policies} volumeId={selectedVolumeId} />{/key}
 		<VolumeBackupListTable backups={view.rows} {view} {creatorNames} currentUserId={$auth.userId} deletingId={deleting} highlightId={lastCreatedId} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onRestore={(b) => { selectedBackup = b; showRestoreModal = true; }} onDelete={deleteBackup} />
 		<BulkSelectionOverlay count={selection.count} ariaLabel={t('backupsPage.bulkLabel')} actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />

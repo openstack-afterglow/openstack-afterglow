@@ -709,7 +709,7 @@ SDK3.3.0은 지원 microversion에 따라 `/os-volume-transfer` 또는3.55 이�
 
 | 메서드 | 경로 | 설명 |
 | --- | --- | --- |
-| `POST` | `/api/v1/volume-snapshots/auto-snapshot/configs` | 현재 프로젝트의 저장 정책·원본 상태 조회(자원 변경 아님) |
+| `GET` | `/api/v1/volume-snapshots/auto-snapshot/configs` | 현재 프로젝트의 저장 정책·원본 상태 조회. `{volume_id}` 경로보다 먼저 등록된다 |
 | `GET` | `/api/v1/volume-snapshots/auto-snapshot/{volume_id}` | exact-project 원본의 정책 조회 |
 | `POST` | `/api/v1/volume-snapshots/auto-snapshot/{volume_id}` | 쓰기 권한 아래 정책 생성/수정·일시 중지/재개, 성공201 |
 | `DELETE` | `/api/v1/volume-snapshots/auto-snapshot/{volume_id}` | 저장 정책만 제거, 성공204. 기존 스냅샷은 보존 |

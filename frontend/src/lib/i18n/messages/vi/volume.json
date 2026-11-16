@@ -87,6 +87,7 @@
 	"snapshotGroups.policy.tier.monthly": "Hằng tháng",
 	"snapshotGroups.count": "Số ảnh chụp",
 	"snapshotGroups.method": "Gia tăng (sao chép khi ghi)",
+	"snapshotGroups.methodLabel": "Phương pháp chụp nhanh",
 	"snapshotGroups.methodHelp": "Ảnh chụp dùng phương pháp gia tăng (sao chép khi ghi). Hãy tạo bản sao lưu đầy đủ để có bản sao đầy đủ độc lập.",
 	"snapshotGroups.fullBackup": "Tạo bản sao lưu đầy đủ",
 	"page.titleWithCount": "{title} ({count})",

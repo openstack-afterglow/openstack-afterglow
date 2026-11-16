@@ -234,7 +234,8 @@
     {/snippet}
   </PageHeader>
   <ResourceToolbar label={t('snapshotsPage.toolbar')}>
- {#snippet filters()}{#if !selectedVolumeId}<RegexSearch id="VolumeSnapshotsTable-search" bind:value={search} /><TableViewControls view={groupView} />{/if}{/snippet}
+ <!-- Detail view has no volume search; the toolbar carries the way back and the selected volume instead of an empty panel. -->
+ {#snippet filters()}{#if selectedVolumeId}<div class="flex min-w-0 flex-wrap items-center gap-3"><Button variant="secondary" size="sm" onclick={() => selectVolume(null)}>{t('backupGroups.back')}</Button><h2 class="min-w-0 break-all text-lg font-semibold">{selectedGroup ? recoveryVolumeName(selectedGroup, policies.settled && !policies.volumesError) : selectedVolumeId}</h2></div>{:else}<RegexSearch id="VolumeSnapshotsTable-search" bind:value={search} /><TableViewControls view={groupView} />{/if}{/snippet}
     {#snippet actions()}<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={refreshing} onManualRefresh={forceRefresh} />{/snippet}
   </ResourceToolbar>
 
@@ -243,10 +244,6 @@
   {#if loading || (!policies.settled && !!$auth.projectId && !!$auth.token)}
     <LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('snapshotsPage.title') })} />
   {:else if selectedVolumeId}
-    <div class="flex flex-wrap items-center gap-3">
-      <Button variant="ghost" onclick={() => selectVolume(null)}>{t('backupGroups.back')}</Button>
-      <h2 class="min-w-0 break-all text-lg font-semibold">{selectedGroup ? recoveryVolumeName(selectedGroup, policies.settled && !policies.volumesError) : selectedVolumeId}</h2>
-    </div>
     <p class="text-sm text-ink-2">{t('snapshotGroups.methodHelp')}</p>
     {#key selectedVolumeId}<VolumeBackupPolicies controller={policies} volumeId={selectedVolumeId} resource="snapshot" />{/key}
     <VolumeSnapshotsTable snapshots={view.rows} {view} {deleting} {creatorNames} currentUserId={$auth.userId} highlightId={lastCreatedId} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onDelete={deleteSnapshot} />
