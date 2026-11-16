@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
+	import { rowChanged, rowEnter, rowExit } from '$lib/utils/rowMotion';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { t } from '$lib/i18n/ns/topology';
@@ -270,7 +270,7 @@
 						</thead>
 						<tbody>
 							{#each view.rows as sub (sub.id)}
-								<tr in:rowEnter out:rowExit animate:rowReflow use:rowChanged={sub}>
+								<tr in:rowEnter out:rowExit use:rowChanged={sub}>
 									<td>{sub.name || sub.id}</td>
 									<td class="mono">{sub.cidr}</td>
 									<td class="mono">{sub.gateway_ip ?? '—'}</td>

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
+	import { rowChanged, rowEnter, rowExit } from '$lib/utils/rowMotion';
 	import { t as commonT } from '$lib/i18n/ns/common';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { t } from '$lib/i18n/ns/admin-network';
@@ -46,7 +46,7 @@
 		</thead>
 		<tbody>
 			{#each view.rows as router (router.id)}
-				<tr class="border-b border-line/50" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={router}>
+				<tr class="border-b border-line/50" in:rowEnter out:rowExit use:rowChanged={router}>
 					<td class="py-2 pr-6 text-ink-2"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={router.name || router.id.slice(0, 12) + '...'}>{router.name || router.id.slice(0, 12) + '...'}</span></td>
 					<td class="py-2 pr-6">
 						{#if router.external_gateway_network_id}

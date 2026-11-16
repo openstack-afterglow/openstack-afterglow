@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
+	import { rowChanged, rowEnter, rowExit } from '$lib/utils/rowMotion';
 	import { t } from '$lib/i18n/ns/network-resources';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
@@ -64,7 +64,7 @@
 			</thead>
 			<tbody>
 				{#each view.rows as rule (rule.id)}
-					<tr class="border-b border-line/50 hover:bg-surface-sunken/30" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={rule}>
+					<tr class="border-b border-line/50 hover:bg-surface-sunken/30" in:rowEnter out:rowExit use:rowChanged={rule}>
 						<td class="px-4 py-2 text-ink-2">{rule.direction === 'ingress' ? t('securityGroup.rules.inbound') : t('securityGroup.rules.outbound')}</td>
 						<td class="px-4 py-2 text-ink-2 font-mono">{rule.protocol?.toUpperCase() ?? t('securityGroup.rules.anyProtocol')}</td>
 						<td class="px-4 py-2 text-ink-2 font-mono">

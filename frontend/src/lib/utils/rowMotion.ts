@@ -13,7 +13,12 @@ import { canAnimate, reflow } from './motion';
  * reduced motion and in runtimes without Web Animations.
  *
  * Usage on the immediate child of a keyed `{#each}`:
- *   <tr in:rowEnter out:rowExit animate:rowReflow use:rowChanged={row}>
+ *   <tr in:rowEnter out:rowExit use:rowChanged={row}>
+ *   <div class="grid ..." in:rowEnter out:rowExit animate:rowReflow use:rowChanged={row}>
+ *
+ * Never put `animate:` on a `<tr>`: Svelte pins every outgoing animated row with `position: absolute`, which
+ * takes a table row out of table layout so its cells collapse to content width during the fade. Rows that are
+ * `display: grid` blocks keep their width and may use `animate:rowReflow` for the sibling slide.
  */
 /**
  * A refresh changes a handful of rows; a page turn, filter or scope switch replaces them all. Animating the

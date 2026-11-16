@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
+	import { rowChanged, rowEnter, rowExit } from '$lib/utils/rowMotion';
 	import { formatNumber } from '$lib/utils/format';
 	import HypervisorUsageBar from './HypervisorUsageBar.svelte';
 	import { t } from '$lib/i18n/ns/admin-compute';
@@ -80,7 +80,7 @@
 			{#each view.rows as h (h.id)}
 				<tr
 					class="border-b border-line/50 text-xs transition-colors {selectedId === h.id ? 'bg-surface-sunken/70' : ''}"
-					in:rowEnter out:rowExit animate:rowReflow use:rowChanged={h}
+					in:rowEnter out:rowExit use:rowChanged={h}
 				>
 					<td class="p-0">
 						<button type="button" onclick={() => onSelect(h.id)} class="block w-full py-2 pr-4 font-mono text-ink-0 hover:text-warm-text-hover transition-colors text-left" title={h.name}>{h.name}</button>

@@ -26,7 +26,7 @@
 	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 	import { createTableView } from '$lib/utils/tableView.svelte';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
-	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
+	import { rowChanged, rowEnter, rowExit } from '$lib/utils/rowMotion';
 
 	interface ProjectQuota {
 		project_id: string;
@@ -274,7 +274,7 @@
 				</thead>
 				<tbody class="divide-y divide-line">
 					{#each view.rows as q, index (q.project_id)}
-						<tr class="hover:bg-surface-sunken/30" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={q}>
+						<tr class="hover:bg-surface-sunken/30" in:rowEnter out:rowExit use:rowChanged={q}>
 							<td class="py-3 pr-4 font-mono text-xs text-ink-2">{q.project_id}</td>
 							<td class="py-3 pr-4 text-ink-2">{q.project_quotas.secrets ?? -1}</td>
 							<td class="py-3 pr-4 text-ink-2">{q.project_quotas.orders ?? -1}</td>

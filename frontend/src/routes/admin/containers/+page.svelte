@@ -25,7 +25,7 @@
 	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 	import { createTableView } from '$lib/utils/tableView.svelte';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
-	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
+	import { rowChanged, rowEnter, rowExit } from '$lib/utils/rowMotion';
 	import { t as tc } from '$lib/i18n/ns/common';
 
 	interface AdminContainer {
@@ -150,7 +150,7 @@
 							role="button"
 							tabindex="0"
 							data-tour={index === 0 ? 'admin-containers-row' : undefined}
-							in:rowEnter out:rowExit animate:rowReflow use:rowChanged={c}
+							in:rowEnter out:rowExit use:rowChanged={c}
 						>
 							<td class="py-2 pr-4 text-ink-0"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={c.name || c.uuid}>{c.name || c.uuid.slice(0, 8)}</span></td>
 							<td class="py-2 pr-4"><StatusChip status={c.status} /></td>

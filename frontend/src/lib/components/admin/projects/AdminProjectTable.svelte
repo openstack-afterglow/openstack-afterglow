@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
+	import { rowChanged, rowEnter, rowExit } from '$lib/utils/rowMotion';
 	import type { TableView } from '$lib/utils/tableView.svelte';
 	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
 	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
@@ -80,7 +80,7 @@
 		</thead>
 		<tbody>
 			{#each projects as p (p.id)}
-				<tr class="border-b border-line/50 text-xs hover:bg-surface-sunken/50 transition-colors" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={p}>
+				<tr class="border-b border-line/50 text-xs hover:bg-surface-sunken/50 transition-colors" in:rowEnter out:rowExit use:rowChanged={p}>
 					<td class="py-2 pr-4 text-ink-0">
 						<a href={`/admin/projects/${encodeURIComponent(p.id)}?domain_id=${encodeURIComponent(domainId)}`} class="hover:text-warm-text-hover transition-colors max-md:block max-md:max-w-[66vw] max-md:truncate" title={p.name}>{p.name}</a>
 					</td>

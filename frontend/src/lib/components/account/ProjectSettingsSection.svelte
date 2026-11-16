@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
+	import { rowChanged, rowEnter, rowExit } from '$lib/utils/rowMotion';
 	import { isSystemAccount } from '$lib/utils/systemAccount';
 	import SystemAccountNotice from '$lib/components/identity/SystemAccountNotice.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
@@ -218,7 +218,7 @@
 						</thead>
 						<tbody class="divide-y divide-line">
 							{#each view.rows as m (m.user_id)}
-								<tr class="hover:bg-surface-selected/40 transition-colors" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={m}>
+								<tr class="hover:bg-surface-selected/40 transition-colors" in:rowEnter out:rowExit use:rowChanged={m}>
 									<td class="px-4 py-3 font-medium text-ink-0">{m.username || m.user_id}<SystemAccountNotice identity={m} /></td>
 									<td class="px-4 py-3 text-ink-2">{m.email || '—'}</td>
 									<td class="px-4 py-3">

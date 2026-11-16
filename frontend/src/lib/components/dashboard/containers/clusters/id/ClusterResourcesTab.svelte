@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
+  import { rowChanged, rowEnter, rowExit } from '$lib/utils/rowMotion';
   import { t } from '$lib/i18n/ns/containers-shell';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import type { StackResource } from '$lib/types/cluster';
@@ -51,7 +51,7 @@
       </thead>
       <tbody>
         {#each view.rows as r (r.resource_name)}
-          <tr class="border-b border-line/50 text-xs" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={r}>
+          <tr class="border-b border-line/50 text-xs" in:rowEnter out:rowExit use:rowChanged={r}>
             <td class="py-2 pr-4 text-ink-0 font-medium"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={r.resource_name}>{r.resource_name}</span></td>
             <td class="py-2 pr-4 text-ink-2 font-mono text-xs">{r.resource_type}</td>
             <td class="py-2 pr-4 text-ink-2 font-mono text-xs">{r.physical_resource_id?.slice(0, 12) || t('clusters.placeholder')}</td>

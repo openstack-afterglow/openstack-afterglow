@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
+	import { rowChanged, rowEnter, rowExit } from '$lib/utils/rowMotion';
 	import { t as tr } from '$lib/i18n/ns/database';
   import type { DbInstance } from '$lib/types/database';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
@@ -87,7 +87,7 @@
     </thead>
     <tbody class="motion-stagger">
       {#each view.rows as inst (inst.id)}
-        <tr class="resource-selection-surface db-instances-table__row transition-colors" data-selected={selectedIds.has(inst.id)} in:rowEnter out:rowExit animate:rowReflow use:rowChanged={inst}>
+        <tr class="resource-selection-surface db-instances-table__row transition-colors" data-selected={selectedIds.has(inst.id)} in:rowEnter out:rowExit use:rowChanged={inst}>
           <td class="py-3 px-3"><SelectionCheckbox checked={selectedIds.has(inst.id)} disabled={selectionDisabled || !selectableIds.has(inst.id)} ariaLabel={tr('selection.item', { name: inst.name })} onclick={() => onToggleSelect(inst.id)} /></td>
           <td class="py-3 px-4"><button data-tour={backupTourOpenId === inst.id ? 'database-backups-instance-open' : undefined} onclick={() => onOpen(inst.id)} class="db-instances-table__name font-medium text-left max-md:block max-md:max-w-[66vw] max-md:truncate" title={inst.name}>{inst.name}</button></td>
           <td class="py-3 px-4"><StatusChip status={inst.status} /></td>

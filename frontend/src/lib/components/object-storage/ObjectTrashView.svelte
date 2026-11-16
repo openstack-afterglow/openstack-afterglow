@@ -1,5 +1,5 @@
 <script lang="ts">
- import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
+ import { rowChanged, rowEnter, rowExit } from '$lib/utils/rowMotion';
  import { authDisplayContext } from '$lib/stores/authDisplayContext';
  import { t as storageCommonT } from '$lib/i18n/ns/common';
  import { untrack } from 'svelte';
@@ -201,7 +201,7 @@
 			</thead>
 			<tbody>
 				{#each view.rows as item (item.trash_key)}
-					<tr class="resource-selection-surface border-b border-line/40 hover:bg-surface-sunken/20 transition-colors" data-selected={selectionEnabled && selection.has(item.trash_key)} in:rowEnter out:rowExit animate:rowReflow use:rowChanged={item}>
+					<tr class="resource-selection-surface border-b border-line/40 hover:bg-surface-sunken/20 transition-colors" data-selected={selectionEnabled && selection.has(item.trash_key)} in:rowEnter out:rowExit use:rowChanged={item}>
 						{#if selectionEnabled}
 							<td class="py-2 px-3">
 								<SelectionCheckbox

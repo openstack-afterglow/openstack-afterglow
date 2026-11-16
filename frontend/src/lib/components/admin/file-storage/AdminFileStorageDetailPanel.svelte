@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
+	import { rowChanged, rowEnter, rowExit } from '$lib/utils/rowMotion';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -422,7 +422,7 @@
 						</thead>
 						<tbody>
 							{#each accessView.rows as rule (rule.id)}
-								<tr class="border-b border-line/50 last:border-0" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={rule}>
+								<tr class="border-b border-line/50 last:border-0" in:rowEnter out:rowExit use:rowChanged={rule}>
 									<td class="py-2 pr-4 font-mono text-ink-1">{rule.access_to}</td>
 									<td class="py-2 pr-4 text-ink-2">{rule.access_type ?? '-'}</td>
 									<td class="py-2 pr-4 text-ink-2">{rule.access_level}</td>

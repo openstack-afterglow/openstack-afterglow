@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
+  import { rowChanged, rowEnter, rowExit } from '$lib/utils/rowMotion';
   import { isSystemAccount } from '$lib/utils/systemAccount';
   import SystemAccountNotice from '$lib/components/identity/SystemAccountNotice.svelte';
 	import type { TableView } from '$lib/utils/tableView.svelte';
@@ -84,7 +84,7 @@
           <tr
             class="border-b border-line/50 text-xs hover:bg-surface-sunken/50 transition-colors cursor-pointer"
             data-tour={index === 0 ? 'admin-identity-row' : undefined}
-            in:rowEnter out:rowExit animate:rowReflow use:rowChanged={u}
+            in:rowEnter out:rowExit use:rowChanged={u}
           >
             <td class="py-2 pr-4 text-ink-0">{#if isSystemAccount(u)}<span class="text-sm">{u.name}</span>{:else}<Button variant="link" size="sm" onclick={() => onEdit(u)}>{u.name}</Button>{/if}<SystemAccountNotice identity={u} /></td>
             <td class="py-2 pr-4 text-ink-2">{u.email || '-'}</td>

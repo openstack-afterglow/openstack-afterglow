@@ -14,7 +14,7 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { useFileStorageDetailController } from '$lib/stores/fileStorageDetailController.svelte';
 	import { ResponsiveTable, CompactResourceCard } from '$lib/components/ui';
-	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
+	import { rowChanged, rowEnter, rowExit } from '$lib/utils/rowMotion';
 
 	const s = useFileStorageDetailController();
  let { search = $bindable(''), tableState }: { search?: string; tableState: TableViewState } = $props();
@@ -119,7 +119,7 @@
 				</thead>
 				<tbody class="motion-stagger">
 					{#each view.rows as rule (rule.id)}
-						<tr class="border-b border-line/50" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={rule}>
+						<tr class="border-b border-line/50" in:rowEnter out:rowExit use:rowChanged={rule}>
 							<td class="py-2 pr-4 font-mono text-xs text-ink-2">{rule.access_to ?? '-'}</td>
 							<td class="py-2 pr-4">
 								<span class="text-xs px-1.5 py-0.5 rounded {rule.access_level === 'rw' ? 'bg-orange-900/30 text-orange-400' : 'bg-surface-sunken text-ink-2'}">{rule.access_level}</span>

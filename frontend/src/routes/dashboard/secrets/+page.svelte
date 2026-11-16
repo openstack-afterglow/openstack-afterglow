@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
+	import { rowChanged, rowEnter, rowExit } from '$lib/utils/rowMotion';
 	import { t as tl } from '$lib/i18n/ns/common';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
@@ -597,7 +597,7 @@
 					</thead>
 					<tbody class="divide-y divide-line">
 						{#each secretView.rows as s (s.id)}
-							<tr class="resource-selection-surface hover:bg-surface-sunken/30" data-selected={selection.has(s.id)} in:rowEnter out:rowExit animate:rowReflow use:rowChanged={s}>
+							<tr class="resource-selection-surface hover:bg-surface-sunken/30" data-selected={selection.has(s.id)} in:rowEnter out:rowExit use:rowChanged={s}>
 								<td class="py-3 pr-4">
 									<SelectionCheckbox
 										checked={selection.has(s.id)}
@@ -678,7 +678,7 @@
 					</thead>
 					<tbody class="divide-y divide-line">
 						{#each containerView.rows as c (c.id)}
-							<tr class="resource-selection-surface hover:bg-surface-sunken/30" data-selected={selection.has(c.id)} in:rowEnter out:rowExit animate:rowReflow use:rowChanged={c}>
+							<tr class="resource-selection-surface hover:bg-surface-sunken/30" data-selected={selection.has(c.id)} in:rowEnter out:rowExit use:rowChanged={c}>
 								<td class="py-3 pr-4"><SelectionCheckbox checked={selection.has(c.id)} disabled={selectionBusy} ariaLabel={t('secrets.selection.item', { name: c.name ?? c.id })} onclick={() => selection.toggle(c.id)} /></td>
 								<td class="py-3 pr-4"><div class="max-md:max-w-[66vw] max-md:truncate" title={c.name ?? c.id}>{c.name ?? '-'}</div><div class="text-xs text-ink-2 font-mono max-md:max-w-[66vw] max-md:truncate">{c.id}</div></td>
 								<td class="py-3 pr-4 text-ink-2">{c.type}</td>
@@ -718,7 +718,7 @@
 					</thead>
 					<tbody class="divide-y divide-line">
 						{#each orderView.rows as o (o.id)}
-							<tr class="hover:bg-surface-sunken/30" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={o}>
+							<tr class="hover:bg-surface-sunken/30" in:rowEnter out:rowExit use:rowChanged={o}>
 								<td class="py-3 pr-4 font-mono text-xs text-ink-2">{o.id}</td>
 								<td class="py-3 pr-4 text-ink-2">{o.type}</td>
 								<td class="py-3 pr-4">

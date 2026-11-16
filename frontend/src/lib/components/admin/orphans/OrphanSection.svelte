@@ -1,5 +1,5 @@
 <script lang="ts" generics="T extends { id: string }">
-	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
+	import { rowChanged, rowEnter, rowExit } from '$lib/utils/rowMotion';
 	import { untrack, type Snippet } from 'svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
 	import { t } from '$lib/i18n/ns/admin-storage';
@@ -112,7 +112,7 @@
 				</thead>
 				<tbody>
 					{#each view.rows as item (item.id)}
-						<tr class="orphan-row border-b border-line/50 text-xs hover:bg-surface-sunken/30 transition-colors" class:is-selected={selected.has(item.id)} in:rowEnter out:rowExit animate:rowReflow use:rowChanged={item}>
+						<tr class="orphan-row border-b border-line/50 text-xs hover:bg-surface-sunken/30 transition-colors" class:is-selected={selected.has(item.id)} in:rowEnter out:rowExit use:rowChanged={item}>
 							<td class="py-2 pr-4">
 								<div class="selection-reveal" class:is-selected={selected.has(item.id)}>
 									<SelectionCheckbox

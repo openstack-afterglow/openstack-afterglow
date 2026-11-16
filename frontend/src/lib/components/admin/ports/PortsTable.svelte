@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
+	import { rowChanged, rowEnter, rowExit } from '$lib/utils/rowMotion';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { projectNames } from '$lib/stores/projectNames';
 	import type { PortInfo } from '$lib/types/networks';
@@ -76,7 +76,7 @@
 		</thead>
 		<tbody>
 			{#each view.rows as p (p.id)}
-				<tr class="border-b border-line/50 text-xs hover:bg-surface-sunken/30 transition-colors" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={p}>
+				<tr class="border-b border-line/50 text-xs hover:bg-surface-sunken/30 transition-colors" in:rowEnter out:rowExit use:rowChanged={p}>
 					<td class="py-2 pr-4">
 						<div class="text-ink-0 max-md:max-w-[66vw] max-md:truncate" title={p.name || ''}>{p.name || '-'}</div>
 						<div class="text-ink-2 font-mono">{p.id.slice(0, 12)}...</div>

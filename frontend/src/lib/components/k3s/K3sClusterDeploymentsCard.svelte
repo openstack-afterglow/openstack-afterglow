@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
+	import { rowChanged, rowEnter, rowExit } from '$lib/utils/rowMotion';
 	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
 	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
 	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
@@ -93,7 +93,7 @@
 				<tbody>
 					{#each view.rows as dep (dep.name)}
 						{@const actioning = s.workloadActioning === `${s.selectedNamespace}:deploy:${dep.name}`}
-						<tr class="border-b border-line/50 hover:bg-surface-sunken/30 transition-colors" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={dep}>
+						<tr class="border-b border-line/50 hover:bg-surface-sunken/30 transition-colors" in:rowEnter out:rowExit use:rowChanged={dep}>
 							<td class="py-2.5 text-ink-0 font-medium font-mono"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={dep.name}>{dep.name}</span></td>
 							<td class="py-2.5">
 								<span class="tabular-nums text-ink-0">{dep.ready}/{dep.replicas}</span>
@@ -150,7 +150,7 @@
 				</thead>
 				<tbody>
 					{#each replicaView.rows as rs (rs.name)}
-						<tr class="border-b border-line/50 hover:bg-surface-sunken/30 transition-colors" in:rowEnter out:rowExit animate:rowReflow use:rowChanged={rs}>
+						<tr class="border-b border-line/50 hover:bg-surface-sunken/30 transition-colors" in:rowEnter out:rowExit use:rowChanged={rs}>
 							<td class="py-2.5 text-ink-2 font-mono"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={rs.name}>{rs.name}</span></td>
 							<td class="py-2.5 tabular-nums text-ink-2">{rs.ready}/{rs.replicas}</td>
 							<td class="py-2.5 text-ink-2">

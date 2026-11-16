@@ -297,7 +297,7 @@ Resampled counter/vCPU는 bounded native-granularity window로 내부 reset/gap/
 
 볼륨 목록 요약(`VolumeSummaryCards`)은 볼륨 용량·개수·연결·할당량에 더해 스냅샷 개수·용량과 백업 개수·용량을 보인다. 백업은 `volumesController`가 `GET /api/v1/volumes/backups`를 새 요청 seq로 읽으며(`fetchBackups`, 프로젝트 전환 시 리셋) 실패하면 `page.backupsUnavailable`과 `—`로 표시한다. Cinder의 백업·스냅샷 `size`는 원본 볼륨 크기이므로 합계는 실제 소비량이 아니며 title로 안내한다.
 
-표 새로고침은 전체 목록을 다시 불러오는 것이 아니라 바뀐 행만 갱신하는 계약이다. 새로고침 경로는 이미 목록이 있으면 loader로 바꾸지 않아야 하며(`admin/floating-ips`·사용자 활동 패널을 이 기준으로 고쳤다) 범위(domain/project) 전환만 비운다. 키가 있는 `{#each}`의 행 루트(`<tr>` 또는 grid 행)에는 `$lib/utils/rowMotion`의 `in:rowEnter out:rowExit animate:rowReflow use:rowChanged={row}`를 둔다: 새 행 fade-in, 사라진 행 fade-out, 나머지 형제 FLIP 이동, 값(JSON signature)이 바뀐 행 1회 배경 강조. Svelte 전환은 로컬이라 첫 렌더는 움직이지 않고, 지연(deferred) 전환이 같은 업데이트의 모든 행이 등록된 뒤 평가되는 점을 이용해 한 번에 `ROW_MOTION_BATCH_LIMIT`(6)행을 넘는 교체(페이지 이동·필터·scope 전환)는 모션 없이 즉시 바뀌어 표가 잠시 두 배가 되지 않는다. 모션 줄이기·Web Animations 부재 환경은 즉시 전환이다. 모바일 카드, 형제 행이 있는 행(`HostHealthPanel`), 안정 키가 없는 목록은 적용하지 않는다. 토큰 갱신이 사용자·프로젝트 소유자 키를 바꾸는 일부 페이지(`$auth` 원본을 추적하는 effect)는 의도된 소유권 fence로 이번 변경 범위 밖이다.
+표 새로고침은 전체 목록을 다시 불러오는 것이 아니라 바뀐 행만 갱신하는 계약이다. 새로고침 경로는 이미 목록이 있으면 loader로 바꾸지 않아야 하며(`admin/floating-ips`·사용자 활동 패널을 이 기준으로 고쳤다) 범위(domain/project) 전환만 비운다. 키가 있는 `{#each}`의 행 루트에는 `$lib/utils/rowMotion`을 둔다: 표 행 `<tr>`은 `in:rowEnter out:rowExit use:rowChanged={row}`, `display: grid` 블록 행은 여기에 `animate:rowReflow`를 더한다. 새 행 fade-in, 사라진 행 fade-out, (grid 행만) 나머지 형제 FLIP 이동, 값(JSON signature)이 바뀐 행 1회 배경 강조다. `<tr>`에는 `animate:`를 쓰지 않는다: Svelte가 퇴장 행을 `position: absolute`로 고정해 table layout에서 빠지고 셀 폭이 내용 폭으로 무너지는 것을 실제 브라우저에서 관측했다(grid 행은 폭·열이 유지됨). Svelte 전환은 로컬이라 첫 렌더는 움직이지 않고, 지연(deferred) 전환이 같은 업데이트의 모든 행이 등록된 뒤 평가되는 점을 이용해 한 번에 `ROW_MOTION_BATCH_LIMIT`(6)행을 넘는 교체(페이지 이동·필터·scope 전환)는 모션 없이 즉시 바뀌어 표가 잠시 두 배가 되지 않는다. 모션 줄이기·Web Animations 부재 환경은 즉시 전환이다. 모바일 카드, 형제 행이 있는 행(`HostHealthPanel`), 안정 키가 없는 목록은 적용하지 않는다. 토큰 갱신이 사용자·프로젝트 소유자 키를 바꾸는 일부 페이지(`$auth` 원본을 추적하는 effect)는 의도된 소유권 fence로 이번 변경 범위 밖이다.
 
 자동 백업 정책은 일별 증분·주별/월별 전체를 사용한다. 증분 부모는 Cinder가 같은 볼륨의 최신 사용 가능한 백업(수동 포함)에서 고르며 Afterglow는 부모 ID를 지정하지 않는다. 마지막 owned 전체 이후 증분이 일별 보관 개수-1에 도달하거나 그 이후 체인에 수동·미완료·불명확 포인트가 섞이면 새 전체로 회전해 체인 길이를 보관 창 안으로 제한한다. 보관 정리는 자식부터 최신 `has_dependent_backups`가 명확히 false일 때만 삭제하고, 수동 백업이 의존하는 owned 부모는 `retained_over_limit`로 남긴다. 비동기 Cinder 삭제 완료를 기다리는 drain은 시한이 있으며 시한이 지나도 삭제 대기 포인트를 삭제됨으로 간주하지 않는다. 스냅샷 lane은 같은 엔진의 CoW 전용 경로로 변화가 없다.
 
@@ -2222,9 +2222,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "d77db755a6b68b6686ba4b0dd8007936806e3dd239942b6d615d58095cc7275f",
-  "reviewed_at": "2026-11-16T10:10:01Z",
-  "summary": "볼륨 요약에 백업·스냅샷 용량 추가, 표 새로고침 행 모션(rowMotion)과 새로고침 loader 교체 수정, 자동/수동 분류와 목록 범위"
+  "source_sha256": "d3e2894711dbe83f44f6a351b2121253c1a8c0437e502bdd4f36323ba515d1b1",
+  "reviewed_at": "2026-11-16T10:17:34Z",
+  "summary": "표 행 모션에서 tr의 animate:rowReflow 제거(퇴장 행 table layout 이탈), grid 행만 유지"
 }
 ```
 <!-- architecture-review:end -->

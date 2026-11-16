@@ -11,7 +11,7 @@
 	import { TableShell } from '$lib/components/ui';
 	import { RESOURCE_CATEGORIES } from '$lib/types/userDashboard';
 	import type { ProjectResourceInventory } from '$lib/types/userDashboard';
-	import { rowChanged, rowEnter, rowExit, rowReflow } from '$lib/utils/rowMotion';
+	import { rowChanged, rowEnter, rowExit } from '$lib/utils/rowMotion';
 
 	let { projects, search = $bindable(''), state: retainedState }: { projects: ProjectResourceInventory[]; search?: string; state?: TableViewState } = $props();
 	const metrics = ['vcpus', 'ram_mb', 'storage_gb'] as const;
@@ -48,7 +48,7 @@
 					</tr></thead>
 					<tbody>
 						{#each view.rows as project (project.project_id)}
-							<tr data-usage-project={project.project_id} in:rowEnter out:rowExit animate:rowReflow use:rowChanged={project}>
+							<tr data-usage-project={project.project_id} in:rowEnter out:rowExit use:rowChanged={project}>
 								<th scope="row" class="text-ink-0">{project.project_name}</th>
 								{#each RESOURCE_CATEGORIES as category (category)}
 									{@const inventory = project.resources[category]}
