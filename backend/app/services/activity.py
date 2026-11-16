@@ -20,6 +20,114 @@ logger = logging.getLogger(__name__)
 
 ActionStatus = Literal["started", "success", "failed", "observed"]
 
+# Account history is an intent feed, not the operator's request/interaction trace.
+# Both legacy bare operations and namespaced business/native events are recorded.
+# Keep this positive vocabulary alongside new mutation producers; unknown actions
+# remain available in the unchanged admin audit APIs.
+_USER_MUTATION_OPERATIONS = (
+    "create",
+    "delete",
+    "update",
+    "attach",
+    "detach",
+    "start",
+    "stop",
+    "reboot",
+    "resize",
+    "confirm_resize",
+    "revert_resize",
+    "shelve",
+    "unshelve",
+    "suspend",
+    "resume",
+    "pause",
+    "unpause",
+    "rebuild",
+    "restore",
+    "revert",
+    "extend",
+    "rename",
+    "associate",
+    "disassociate",
+    "add_rule",
+    "remove_rule",
+    "add_interface",
+    "remove_interface",
+    "set_gateway",
+    "remove_gateway",
+    "attach_volume",
+    "detach_volume",
+    "attach_interface",
+    "detach_interface",
+    "update_security_groups",
+    "assign_floating_ip",
+    "release_floating_ip",
+    "set_admin_password",
+    "grant",
+    "revoke",
+    "grant_access",
+    "revoke_access",
+    "transfer_create",
+    "transfer_accept",
+    "transfer_delete",
+    "auto_snapshot_enable",
+    "auto_snapshot_disable",
+    "auto_backup_enable",
+    "auto_backup_disable",
+    "force_delete",
+    "bulk_delete",
+    "recover_delete",
+    "recover",
+    "remove",
+    "ensure_default",
+    "request",
+    "review",
+    "approve",
+    "reject",
+    "apply",
+    "bootstrap",
+    "set",
+    "clear",
+    "reset",
+    "project_create",
+    "account_unlock",
+    "admin_system_role_grant",
+    "admin_system_role_revoke",
+    "password_reset_email",
+    "password_creation_settle",
+    "bulk_start",
+    "bulk_stop",
+    "bulk_reboot",
+    "bulk_shelve",
+    "bulk_unshelve",
+    "power_on",
+    "power_off",
+    "created",
+    "updated",
+    "deleted",
+    "set_admin_instance_password",
+    "start_admin_instance",
+    "stop_admin_instance",
+    "reboot_admin_instance",
+    "shelve_admin_instance",
+    "unshelve_admin_instance",
+    "attach_admin_instance_volume",
+    "detach_admin_instance_volume",
+    "update_admin_instance_volume",
+    "attach_admin_instance_interface",
+    "detach_admin_instance_interface",
+    "update_admin_instance_groups",
+    "assign_admin_instance_floating_ip",
+    "release_admin_instance_floating_ip",
+    "attach_admin_instance_storage",
+    "detach_admin_instance_storage",
+    "delete_admin_instance",
+    "extend_admin_instance_volume",
+)
+_USER_MUTATION_ACTION_PATTERN = r"^([a-z_]+\.)*(" + "|".join(_USER_MUTATION_OPERATIONS) + r")(\.(end|error))?$"
+_USER_OBSERVATION_ACTION_PATTERN = r"(^|\.)(read|get|list|show|inspect|stage|verify|check|download)(\.|$)"
+_USER_SESSION_ACTIONS = ("session_delete", "logout", "logout_all", "admin_revoke_sessions")
+
 _SECRET_ASSIGNMENT = re.compile(
     r"\b(password|passwd|secret|token|api[_-]?key|authorization)\s*([=:])\s*([^\s&;,]+)", re.I
 )
@@ -203,14 +311,25 @@ async def list_for_user(
     resource_type: str | None = None,
     action: str | None = None,
 ) -> list[dict]:
-    """account 페이지용. 본인 활동만 (cross-project)."""
+    """Account intent history across projects; filter before applying the cursor/limit."""
     if not is_db_available():
         return []
     factory = get_session_factory()
     if factory is None:
         return []
     async with factory() as session:
-        conds = [ActivityLog.user_id == user_id]
+        conds = [
+            ActivityLog.user_id == user_id,
+            ~ActivityLog.action.startswith("request."),
+            ~ActivityLog.action.regexp_match(_USER_OBSERVATION_ACTION_PATTERN),
+            or_(
+                and_(
+                    ActivityLog.resource_type.not_in(("request", "ui", "experience", "unknown", "auth")),
+                    ActivityLog.action.regexp_match(_USER_MUTATION_ACTION_PATTERN),
+                ),
+                and_(ActivityLog.resource_type == "auth", ActivityLog.action.in_(_USER_SESSION_ACTIONS)),
+            ),
+        ]
         if before_id is not None:
             conds.append(ActivityLog.id < before_id)
         if resource_type:
