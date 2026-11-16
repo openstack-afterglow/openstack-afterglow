@@ -25,6 +25,7 @@
 	import EvacuateModal from '$lib/components/admin/instances/EvacuateModal.svelte';
 	import { t } from '$lib/i18n/ns/instance';
 	import { consumerFlavorLabel } from '$lib/utils/flavorDisplay';
+	import { t as tu } from '$lib/i18n/ns/usage-schedule';
 	import RichText from '$lib/i18n/RichText.svelte';
 
 	interface Props {
@@ -278,6 +279,13 @@
 		{/if}
 
 		<InfoSection {showHost} {adminMode} usageSchedule={usageOwnerReady ? usage.schedule : null} />
+		{#if usageOwnerReady && usage.error && !showUsageModal}
+			<!-- A failed read must not hide that this instance may still be shelved or deleted on expiry. -->
+			<Alert tone="danger" class="mb-4">
+				<span>{usage.error}</span>
+				<Button variant="secondary" size="sm" class="ml-2" disabled={usage.loading} onclick={() => void usage.refresh()}>{tu('refresh')}</Button>
+			</Alert>
+		{/if}
 		{#if effectiveProjectId && s.instance.id === instanceId && s.instance.project_id === effectiveProjectId && $auth.token}
 		<div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
 			<h2 class="text-ink-0 text-[15px] font-semibold mb-4">{t('panel.monitoring')}</h2>

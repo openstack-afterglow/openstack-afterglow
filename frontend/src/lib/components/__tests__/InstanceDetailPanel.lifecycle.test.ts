@@ -344,6 +344,27 @@ describe('Instance detail stopped lifecycle presentation', () => {
 		expect(await screen.findByRole('dialog', { name: tu('title') })).toBeTruthy();
 		expect(document.querySelector('#usage-schedule')).toBeTruthy();
 	});
+
+	it('shows a failed usage read with a retry instead of hiding the expiry', async () => {
+		let usageReads = 0;
+		mocks.get.mockImplementation(async (path: string) => {
+			const composer = composerResponse(path);
+			if (composer) return composer;
+			if (!path.endsWith('/usage-schedule')) return summary;
+			usageReads += 1;
+			if (usageReads === 1) throw new Error('usage unavailable');
+			return { instance_id: instance.id, starts_at: '2099-01-01T10:20:30Z', expires_at: '2099-01-31T10:20:30Z',
+				expiry_action: 'shelve', delete_volumes: false, reason: '', revision: 'revision-a', state: 'active', source: 'created', last_error: null };
+		});
+		setup({ instance });
+		render(InstanceDetailPanel, { instanceId: instance.id });
+		const alert = await screen.findByText(tu('loadFailed'));
+		expect(screen.queryByText(tu('expiryDate'))).toBeNull();
+		await fireEvent.click(within(alert.closest('[role="alert"], .alert') as HTMLElement).getByRole('button', { name: tu('refresh') }));
+		await screen.findByText(tu('expiryDate'));
+		expect(screen.queryByText(tu('loadFailed'))).toBeNull();
+		expect(usageReads).toBe(2);
+	});
 });
 
 describe('Instance detail mobile layout', () => {
