@@ -209,6 +209,46 @@ def headers(tokens):
     return {"Authorization": f"Bearer {tokens['token']}"}
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["password", "provider"])
+async def test_browser_metadata_survives_refresh_and_scope_switches(login_proof, monkeypatch, method):
+    client, _ = login_proof
+    original_ua = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.3595.53"
+    )
+    client.headers["User-Agent"] = original_ua
+    response = await fresh_login(client) if method == "password" else await provider_login(client, monkeypatch)
+    assert response.status_code == 200, response.text
+    tokens = response.json()
+    original_jti, original = await stored(tokens)
+    assert (original["browser_name"], original["browser_major"]) == ("Edge", "142")
+    assert "user_agent" not in original
+    assert original_ua not in json.dumps(original)
+
+    # A changed refresh/switch request must not rewrite the login's reported client.
+    client.headers["User-Agent"] = "Mozilla/5.0 Chrome/143.0.0.0 Safari/537.36"
+    transitions = [
+        ("/api/v1/auth/refresh", lambda current: {"refresh_token": current["refresh_token"]}),
+        ("/api/v1/auth/token/workspace", lambda _: {"domain_id": "tenant-a", "project_id": "work-a"}),
+        ("/api/v1/auth/token/project", lambda _: {"project_id": "default-a"}),
+    ]
+    for path, payload in transitions:
+        changed = await client.post(path, json=payload(tokens), headers=headers(tokens))
+        assert changed.status_code == 200, changed.text
+        tokens = changed.json()
+        current_jti, current = await stored(tokens)
+        assert current_jti != original_jti
+        assert (current["browser_name"], current["browser_major"]) == ("Edge", "142")
+        listed = await client.get("/api/v1/auth/sessions", headers=headers(tokens))
+        assert listed.status_code == 200, listed.text
+        rows = listed.json()["sessions"]
+        assert len(rows) == 1
+        assert rows[0]["is_current"] is True
+        assert (rows[0]["browser_name"], rows[0]["browser_major"]) == ("Edge", "142")
+        assert "keystone_token" not in rows[0] and "user_agent" not in rows[0]
+
+
 @pytest.fixture
 async def selected_domain_login_proof(login_proof):
     client, state = login_proof

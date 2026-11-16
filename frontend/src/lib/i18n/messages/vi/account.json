@@ -152,6 +152,8 @@
 	"projectSettings.affiliation": "Đơn vị trực thuộc",
 	"projectSettings.administrator": "Quản trị viên",
 	"security.unknown": "Không xác định",
+	"security.otherBrowser": "Trình duyệt khác",
+	"security.currentSession": "Phiên hiện tại",
 	"security.deleteFailed": "Không thể xóa phiên",
 	"security.signedOut": "Đã thu hồi tất cả các phiên. Vui lòng đăng nhập lại.",
 	"security.revokeFailed": "Không thể thu hồi các phiên",

@@ -152,6 +152,8 @@
 	"projectSettings.affiliation": "所属",
 	"projectSettings.administrator": "管理者",
 	"security.unknown": "不明",
+	"security.otherBrowser": "その他のブラウザー",
+	"security.currentSession": "現在のセッション",
 	"security.deleteFailed": "セッションの削除に失敗しました",
 	"security.signedOut": "すべてのセッションを失効させました。再度ログインしてください。",
 	"security.revokeFailed": "セッションの失効に失敗しました",

@@ -34,6 +34,10 @@
     exp: number;
     device_type: string;
     os: string;
+    browser_name?: string;
+    browser_major?: string;
+    country_code?: string;
+    is_current?: boolean;
   }
 
   let sessions = $state<Session[]>([]);
@@ -51,7 +55,7 @@
     rows: () => sessions,
     search: () => search,
     columns: () => [
-      { key: 'ip', label: 'IP', value: row => row.origin_ip },
+      { key: 'ip', label: 'IP', value: row => [row.origin_ip, countryLabel(row.country_code)].filter(Boolean).join(' · ') },
       { key: 'device', label: tc('table.device'), value: row => deviceLabel(row) },
       { key: 'status', label: tc('table.status'), value: row => row.blacklisted ? t('security.blocked') : t('security.active') },
       { key: 'lastUsed', label: tc('table.lastUsed'), value: row => row.last_seen || null, format: value => formatTime(Number(value)) },
@@ -68,10 +72,19 @@
   function deviceLabel(sess: Session): string {
     const os = sess.os && sess.os !== 'unknown' ? sess.os : '';
     const dt = sess.device_type && sess.device_type !== 'unknown' ? sess.device_type : '';
-    if (os && dt) return `${os} · ${dt}`;
-    if (os) return os;
-    if (dt) return dt;
-    return t('security.unknown');
+    const browser = sess.browser_name === 'unknown' ? t('security.otherBrowser') : sess.browser_name;
+    const browserLabel = browser ? [browser, sess.browser_major].filter(Boolean).join(' ') : '';
+    return [browserLabel, os, dt].filter(Boolean).join(' · ') || t('security.unknown');
+  }
+
+  function countryLabel(code?: string): string {
+    if (!code || !/^[A-Z]{2}$/.test(code) || code === 'XX') return '';
+    try {
+      const name = new Intl.DisplayNames([intlLocale()], { type: 'region' }).of(code);
+      return name && name !== code ? `${name} (${code})` : code;
+    } catch {
+      return code;
+    }
   }
 
   async function loadSessions() {
@@ -163,10 +176,16 @@
         <div class="border-t border-line py-3 text-xs">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div class="flex flex-col gap-0.5 min-w-0">
-              <span class="text-ink-2 font-mono truncate">{sess.origin_ip || '—'}</span>
-              <span class="text-ink-2">{deviceLabel(sess)}</span>
+              <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-ink-2">
+                <span class="font-mono break-all">{sess.origin_ip || '—'}</span>
+                {#if countryLabel(sess.country_code)}<span>{countryLabel(sess.country_code)}</span>{/if}
+              </div>
+              <span class="text-ink-2 break-words">{deviceLabel(sess)}</span>
             </div>
             <div class="flex flex-wrap items-center gap-2">
+              {#if sess.is_current}
+                <span class="text-ink-2 text-xs font-medium">{t('security.currentSession')}</span>
+              {/if}
               {#if sess.blacklisted}
                 <span class="text-red-400 text-xs font-semibold uppercase">{t('security.blocked')}</span>
               {:else}

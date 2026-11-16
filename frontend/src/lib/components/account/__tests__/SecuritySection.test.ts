@@ -55,6 +55,38 @@ describe('SecuritySection logout navigation', () => {
 		vi.useRealTimers();
 	});
 
+	it('shows browser major version, localized country and the current session', async () => {
+		api.get.mockResolvedValue({ sessions: [{
+			...session, browser_name: 'Chrome', browser_major: '142', os: 'macOS',
+			device_type: 'desktop', country_code: 'KR', is_current: true,
+		}], count: 1 });
+		render(SecuritySection);
+		await screen.findByText('Chrome 142 · macOS · desktop');
+		expect(screen.getByText('대한민국 (KR)')).toBeTruthy();
+		expect(screen.getByText('현재 세션')).toBeTruthy();
+		expect((screen.getByRole('button', { name: '제거' }) as HTMLButtonElement).disabled).toBe(false);
+	});
+
+	it('keeps legacy sessions usable without browser or country metadata', async () => {
+		api.get.mockResolvedValue({ sessions: [{ ...session, os: 'Windows', device_type: 'desktop' }], count: 1 });
+		render(SecuritySection);
+		await screen.findByText('Windows · desktop');
+		expect(screen.getByText(session.origin_ip)).toBeTruthy();
+		expect(screen.queryByText('현재 세션')).toBeNull();
+		expect(screen.queryByText(/\(KR\)/)).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: '제거' }));
+		expect((screen.getByRole('button', { name: '확인' }) as HTMLButtonElement).disabled).toBe(false);
+	});
+
+	it('renders a generic browser and omits unavailable country metadata', async () => {
+		api.get.mockResolvedValue({ sessions: [{
+			...session, browser_name: 'unknown', browser_major: '', country_code: 'XX',
+		}], count: 1 });
+		render(SecuritySection);
+		await screen.findByText('다른 브라우저');
+		expect(screen.queryByText(/\(XX\)/)).toBeNull();
+	});
+
 	it('uses section headings, divider session rows and flat confirmation feedback', async () => {
 		render(SecuritySection);
 		await screen.findByText(session.origin_ip);

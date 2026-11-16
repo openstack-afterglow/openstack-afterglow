@@ -152,6 +152,8 @@
 	"projectSettings.affiliation": "所属",
 	"projectSettings.administrator": "管理员",
 	"security.unknown": "未知",
+	"security.otherBrowser": "其他浏览器",
+	"security.currentSession": "当前会话",
 	"security.deleteFailed": "删除会话失败",
 	"security.signedOut": "所有会话已撤销。重新登录。",
 	"security.revokeFailed": "撤销会话失败",

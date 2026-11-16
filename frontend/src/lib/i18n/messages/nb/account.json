@@ -152,6 +152,8 @@
 	"projectSettings.affiliation": "Tilhørighet",
 	"projectSettings.administrator": "Administrator",
 	"security.unknown": "Ukjent",
+	"security.otherBrowser": "Annen nettleser",
+	"security.currentSession": "Gjeldende økt",
 	"security.deleteFailed": "Kunne ikke slette økten",
 	"security.signedOut": "Alle økter er tilbakekalt. Logg inn på nytt.",
 	"security.revokeFailed": "Kunne ikke tilbakekalle øktene",
