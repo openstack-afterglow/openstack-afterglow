@@ -1,15 +1,19 @@
 <script lang="ts">
 	import { useInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 	import { t } from '$lib/i18n/ns/instance';
+	import { t as tu } from '$lib/i18n/ns/usage-schedule';
 	import { CompactResourceCard, ResponsiveTable, StatusChip } from '$lib/components/ui';
 	import { consumerInstanceFlavorLabel } from '$lib/utils/flavorDisplay';
+	import type { UsageScheduleInfo } from '$lib/types/instanceUsage';
 
 	interface Props {
 		showHost?: boolean;
 		adminMode?: boolean;
+		/** Usage schedule of this exact instance; its expiry is shown beneath the creation date. */
+		usageSchedule?: UsageScheduleInfo | null;
 	}
 
-	let { showHost = false, adminMode = false }: Props = $props();
+	let { showHost = false, adminMode = false, usageSchedule = null }: Props = $props();
 
 	const s = useInstanceDetailController();
 
@@ -17,6 +21,11 @@
 	const isWindows = $derived(s.instance!.os_type?.trim().toLowerCase() === 'windows');
 	const flavorLabel = $derived(adminMode ? s.instance!.flavor_display_name ?? s.instance!.flavor_name ?? s.instance!.flavor_id ?? '-' : consumerInstanceFlavorLabel(s.instance!));
 </script>
+
+{#snippet expiry(schedule: UsageScheduleInfo)}
+	<time datetime={schedule.expires_at}>{s.formatDate(schedule.expires_at)}</time>
+	<span class="block text-xs text-ink-2">{tu('action')}: {tu(schedule.expiry_action === 'delete' ? 'delete' : 'shelve')}</span>
+{/snippet}
 
 <div class="motion-enter bg-surface-base border border-line rounded-lg p-6 mb-4">
 	<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-4">{t('info.title')}</h2>
@@ -29,6 +38,7 @@
 					<dl class="space-y-2 text-xs">
 						<div><dt class="text-ink-2">ID</dt><dd class="break-all font-mono">{s.instance!.id}</dd></div>
 						<div><dt class="text-ink-2">{t('info.createdAt')}</dt><dd>{s.formatDate(s.instance!.created_at)}</dd></div>
+						{#if usageSchedule}<div><dt class="text-ink-2">{tu('expiryDate')}</dt><dd>{@render expiry(usageSchedule)}</dd></div>{/if}
 						{#if !isWindows}<div><dt class="text-ink-2">{t(githubLogin ? 'info.githubSsh' : 'info.keyPair')}</dt><dd class="break-all font-mono">{#if githubLogin}@{githubLogin}{:else}{s.instance!.key_name ?? '-'}{/if}</dd></div>{/if}
 						{#if showHost && s.instance!.host}<div><dt class="text-ink-2">{t('info.host')}</dt><dd class="break-all font-mono">{s.instance!.host}</dd></div>{/if}
 						{#if s.ownerDisplay}<div><dt class="text-ink-2">{t('info.creator')}</dt><dd class="break-all">{s.ownerDisplay}</dd></div>{/if}
@@ -45,6 +55,10 @@
 		<div>
 			<dt class="text-xs text-ink-2 mb-0.5">{t('info.createdAt')}</dt>
 			<dd class="text-sm text-ink-2">{s.formatDate(s.instance!.created_at)}</dd>
+			{#if usageSchedule}
+				<dt class="mt-3 text-xs text-ink-2 mb-0.5">{tu('expiryDate')}</dt>
+				<dd class="text-sm text-ink-2">{@render expiry(usageSchedule)}</dd>
+			{/if}
 		</div>
 		<div>
 			<dt class="text-xs text-ink-2 mb-0.5">{t('info.image')}</dt>

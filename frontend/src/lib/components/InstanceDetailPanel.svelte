@@ -6,7 +6,7 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
-	import { Alert, Button } from '$lib/components/ui';
+	import { Alert, Button, Modal } from '$lib/components/ui';
 	import { createInstanceDetailController, provideInstanceDetailController, type InstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 	import { mobileViewport } from '$lib/utils/mobileViewport';
 	import { RESIZABLE_STATUSES } from '$lib/utils/instanceStatus';
@@ -16,9 +16,8 @@
 	import ConsoleSection from '$lib/components/instance/ConsoleSection.svelte';
 	import NetworkSection from '$lib/components/instance/NetworkSection.svelte';
 	import VolumesSection from '$lib/components/instance/VolumesSection.svelte';
-	import UnionInfoSection from '$lib/components/instance/UnionInfoSection.svelte';
-	import StorageAttachmentsSection from '$lib/components/instance/StorageAttachmentsSection.svelte';
 	import UsageScheduleSection from '$lib/components/instance/UsageScheduleSection.svelte';
+	import { createInstanceUsageController } from '$lib/stores/instanceUsageController.svelte';
 	import MigrateModal from '$lib/components/instance/MigrateModal.svelte';
 	import PasswordModal from '$lib/components/instance/PasswordModal.svelte';
 	import RenameModal from '$lib/components/instance/RenameModal.svelte';
@@ -70,6 +69,31 @@
 				nativeOwner = null;
 			}
 		});
+	});
+
+	// The usage schedule belongs to this exact native instance and its owning project.
+	const usageOwnerReady = $derived(!!effectiveProjectId && !!$auth.token && s.instance?.id === instanceId
+		&& s.instance.project_id === effectiveProjectId);
+	const usage = createInstanceUsageController({
+		instanceId: () => instanceId,
+		projectId: () => usageOwnerReady ? effectiveProjectId : undefined,
+		adminMode: () => adminMode,
+		canWrite: () => $canWrite,
+		extensionOnly: () => s.waygateLocked,
+		onUpdated: () => onUpdated?.(),
+	});
+	let showUsageModal = $state(false);
+	const canOpenUsage = $derived(usageOwnerReady && $canWrite && !!usage.schedule);
+	// Usage reminders link to #usage-schedule: open the extension dialog once for that instance.
+	let usageHashHandled = '';
+	$effect(() => {
+		if (canOpenUsage && usageHashHandled !== instanceId && window.location.hash === '#usage-schedule') {
+			usageHashHandled = instanceId;
+			showUsageModal = true;
+		}
+	});
+	$effect(() => {
+		if (!canOpenUsage) showUsageModal = false;
 	});
 
 	// Modal control
@@ -223,6 +247,7 @@
 			onOpenPasswordModal={openPasswordModal}
 			onOpenResizeModal={openResizeModal}
 			onOpenEvacuateModal={openEvacuateModal}
+			onOpenUsageModal={canOpenUsage ? () => { showUsageModal = true; } : undefined}
 			refresh={headerOwnsRefresh ? refreshControl : undefined}
 		/>
 
@@ -252,9 +277,8 @@
 			</div>
 		{/if}
 
-		<InfoSection {showHost} {adminMode} />
+		<InfoSection {showHost} {adminMode} usageSchedule={usageOwnerReady ? usage.schedule : null} />
 		{#if effectiveProjectId && s.instance.id === instanceId && s.instance.project_id === effectiveProjectId && $auth.token}
-		<UsageScheduleSection {instanceId} projectId={effectiveProjectId} {adminMode} canWrite={$canWrite} waygateLocked={s.waygateLocked} {onUpdated} />
 		<div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
 			<h2 class="text-ink-0 text-[15px] font-semibold mb-4">{t('panel.monitoring')}</h2>
 			<MetricsPanel
@@ -269,11 +293,12 @@
 		<ConsoleSection />
 		<NetworkSection />
 		<VolumesSection />
-		<StorageAttachmentsSection />
-		<UnionInfoSection />
 	{/if}
 </div>
 
+<Modal open={showUsageModal} dismissible={!usage.saving} labelledBy="usage-schedule-title" onClose={() => { showUsageModal = false; }}>
+	<UsageScheduleSection controller={usage} canWrite={$canWrite} waygateLocked={s.waygateLocked} onClose={() => { showUsageModal = false; }} />
+</Modal>
 {#if showMigrateModal}
 	<MigrateModal type={migrateType} onClose={() => { showMigrateModal = false; }} />
 {/if}

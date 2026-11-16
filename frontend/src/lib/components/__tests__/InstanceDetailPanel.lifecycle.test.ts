@@ -11,6 +11,7 @@ import { t as tw } from '$lib/i18n/ns/vm-wizard';
 import { flavorCreateBlock, type FlavorComposerSnapshot, type FlavorOption } from '$lib/types/flavor';
 import { consumerFlavorLabel } from '$lib/utils/flavorDisplay';
 import { t as tc } from '$lib/i18n/ns/common';
+import { t as tu } from '$lib/i18n/ns/usage-schedule';
 
 const mocks = vi.hoisted(() => ({
 	controller: undefined as unknown,
@@ -42,8 +43,6 @@ vi.mock('$lib/components/instance/MetricsPanel.svelte', () => import('./_Unrelat
 vi.mock('$lib/components/instance/ConsoleSection.svelte', () => import('./_UnrelatedInstanceDetailSection.svelte'));
 vi.mock('$lib/components/instance/NetworkSection.svelte', () => import('./_UnrelatedInstanceDetailSection.svelte'));
 vi.mock('$lib/components/instance/VolumesSection.svelte', () => import('./_UnrelatedInstanceDetailSection.svelte'));
-vi.mock('$lib/components/instance/StorageAttachmentsSection.svelte', () => import('./_UnrelatedInstanceDetailSection.svelte'));
-vi.mock('$lib/components/instance/UnionInfoSection.svelte', () => import('./_UnrelatedInstanceDetailSection.svelte'));
 
 import { auth, canWrite } from '$lib/stores/auth';
 import InstanceDetailPanel from '../InstanceDetailPanel.svelte';
@@ -328,12 +327,21 @@ describe('Instance detail stopped lifecycle presentation', () => {
 
 	it('mounts administrator usage details only after exact native ownership with authenticated header scope', async () => {
 		identity.update(value => ({ ...value, projectId: 'admin-personal', isSystemAdmin: true }));
+		mocks.get.mockImplementation(async (path: string) => composerResponse(path) ?? (path.endsWith('/usage-schedule') ? {
+			instance_id: instance.id, starts_at: '2099-01-01T10:20:30Z', expires_at: '2099-01-31T10:20:30Z',
+			expiry_action: 'shelve', delete_volumes: false, reason: '', revision: 'revision-a', state: 'active', source: 'created', last_error: null,
+		} : summary));
 		setup({ instance: { ...instance, project_id: 'foreign-project' } });
 		render(InstanceDetailPanel, { instanceId: instance.id, adminMode: true, adminProjectId: null });
 		await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(
 			`/api/v1/admin/instances/${instance.id}/usage-schedule`, 'token-a', 'admin-personal',
 			expect.objectContaining({ cache: 'no-store' }),
 		));
+		// The expiry sits under the creation date; the editor opens from the header button.
+		await screen.findByText(tu('expiryDate'));
+		expect(document.querySelector('#usage-schedule')).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: tu('openExtend') }));
+		expect(await screen.findByRole('dialog', { name: tu('title') })).toBeTruthy();
 		expect(document.querySelector('#usage-schedule')).toBeTruthy();
 	});
 });

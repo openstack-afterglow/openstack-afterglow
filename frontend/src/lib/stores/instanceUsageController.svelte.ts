@@ -19,12 +19,25 @@ interface UsageRequestOwner {
 	generation: number;
 }
 
+export interface InstanceUsageController {
+	readonly schedule: UsageScheduleInfo | null;
+	readonly pendingRequest: UsageExtensionRequest | null;
+	draft: UsageScheduleDraft;
+	readonly loading: boolean;
+	readonly saving: boolean;
+	readonly error: string;
+	readonly saved: boolean;
+	readonly editable: boolean;
+	refresh(): Promise<void>;
+	save(): Promise<void>;
+}
+
 export function createInstanceUsageController(options: {
 	instanceId: () => string; projectId: () => string | undefined; adminMode: () => boolean;
 	canWrite: () => boolean; onUpdated?: () => void;
 	/** Waygate gateways: the schedule edit (PUT) is locked, but a later expiry may still be requested. */
 	extensionOnly?: () => boolean;
-}) {
+}): InstanceUsageController {
 	let schedule = $state<UsageScheduleInfo | null>(null);
 	let pendingRequest = $state<UsageExtensionRequest | null>(null);
 	let draft = $state<UsageScheduleDraft>(defaultUsageDraft());

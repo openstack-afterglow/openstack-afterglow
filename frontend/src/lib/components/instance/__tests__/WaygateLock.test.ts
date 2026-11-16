@@ -29,10 +29,6 @@ const iface: PortInfo = {
 	id: 'port', network_id: 'network', mac_address: 'fa:16:3e:00:00:01', name: null, device_owner: 'compute:nova',
 	project_id: 'project', fixed_ips: [{ ip_address: '192.0.2.10' }], security_group_ids: [], status: 'ACTIVE',
 };
-const attachment = {
-	file_storage_id: 'share', name: 'share', share_proto: 'NFS', access_id: 'rule', access_type: 'ip', access_to: '192.0.2.10',
-	access_level: 'rw', state: 'active', association_state: 'tracked', managed: true, exports: [], share_network_id: null, share_network: null,
-};
 
 function installApi() {
 	mockGet.mockImplementation((path: string) => {
@@ -46,7 +42,6 @@ function installApi() {
 		if (base === '/api/v1/instances/vm/volumes') return Promise.resolve([{ volume_id: 'data', name: 'data', device: '/dev/vdb', delete_on_termination: false, size: 10, status: 'in-use' }]);
 		if (base.endsWith('/security-groups')) return Promise.resolve({ ports: [iface], security_groups: [] });
 		if (base.endsWith('/owner')) return Promise.resolve({ display: '' });
-		if (base.endsWith('/storage-attachments')) return Promise.resolve([attachment]);
 		return Promise.resolve([]);
 	});
 }
@@ -69,13 +64,12 @@ const lockedButtons = () => [
 	t('rename.title'), t('header.shelve'), t('header.delete'), t('header.resize'),
 	t('network.addInterface'), t('network.addFloatingIp'), t('network.remove'), t('network.edit'),
 	t('volumes.addAttachment'), t('volumes.detach'), t('volumes.keep'),
-	t('storageAttachments.openGrant'), t('storageAttachments.revoke'),
 ];
 
 describe('Waygate-managed instance detail UI', () => {
 	it('disables locked actions with the localized tooltip and links to Waygate', async () => {
 		render(Wrapper);
-		await screen.findByText(t('storageAttachments.revoke'));
+		await screen.findByText(t('volumes.detach'));
 		const note = screen.getByTestId('waygate-managed-note');
 		expect(note.textContent).toBe(t('waygate.managedNote'));
 		expect(screen.getByRole('link', { name: t('waygate.openLink') }).getAttribute('href')).toBe('/dashboard/network/waygate');
@@ -96,7 +90,7 @@ describe('Waygate-managed instance detail UI', () => {
 	it('keeps an ordinary instance unaffected', async () => {
 		waygateManaged = false;
 		render(Wrapper);
-		await screen.findByText(t('storageAttachments.revoke'));
+		await screen.findByText(t('volumes.detach'));
 		expect(screen.queryByTestId('waygate-managed-note')).toBeNull();
 		for (const name of lockedButtons()) {
 			const control = button(name);
@@ -108,9 +102,9 @@ describe('Waygate-managed instance detail UI', () => {
 	it('leaves a gateway controllable in admin mode', async () => {
 		auth.update(state => ({ ...state, token: 'token', userId: 'admin', projectId: 'admin-project', roles: ['admin'], isSystemAdmin: true }));
 		render(Wrapper, { adminMode: true });
-		await screen.findByText(t('storageAttachments.revoke'));
+		await screen.findByText(t('volumes.detach'));
 		expect(screen.queryByTestId('waygate-managed-note')).toBeNull();
-		for (const name of [t('header.shelve'), t('header.delete'), t('network.remove'), t('volumes.detach'), t('storageAttachments.revoke')]) {
+		for (const name of [t('header.shelve'), t('header.delete'), t('network.remove'), t('volumes.detach')]) {
 			await waitFor(() => expect(button(name).disabled, name).toBe(false));
 		}
 	});
