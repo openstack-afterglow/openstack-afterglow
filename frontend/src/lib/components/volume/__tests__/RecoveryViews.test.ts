@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { writable } from 'svelte/store';
 import { SvelteURL } from 'svelte/reactivity';
 import type { Volume, VolumeBackup, VolumeSnapshot } from '$lib/types/volume';
+import type { VolumeBackupPolicy } from '$lib/types/volumeBackupPolicy';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), goto: vi.fn(), url: null as URL | null, refresh: null as (() => Promise<void>) | null }));
 vi.mock('$app/state', () => ({ page: { get url() { return mocks.url; }, data: {} } }));
@@ -21,7 +22,7 @@ import BackupPage from '../../../../routes/dashboard/volumes/backups/+page.svelt
 import SnapshotPage from '../../../../routes/dashboard/volumes/snapshots/+page.svelte';
 import BackupCreate from '../backups/VolumeBackupCreateModal.svelte';
 import SnapshotCreate from '../snapshots/VolumeSnapshotCreateModal.svelte';
-import { groupRecoveryPoints, hasFullBackup, recoveryCreator, recoveryOrigin, recoveryVolumeName, recoveryVolumeUrl } from '../recoveryPoints';
+import { groupRecoveryPoints, hasFullBackup, listedRecoveryGroups, recoveryCreator, recoveryOrigin, recoveryVolumeName, recoveryVolumeUrl } from '../recoveryPoints';
 
 const volume: Volume = { id: 'volume-a', name: 'Research data', size: 20, status: 'available', attachments: [], volume_type: null };
 const full: VolumeBackup = { id: 'full-a', volume_id: volume.id, name: 'Full copy', size: 20, status: 'available', created_at: '2026-11-15T03:00:00Z', description: '', is_incremental: false, has_dependent_backups: false, user_id: 'me', origin: 'manual' };
@@ -55,6 +56,12 @@ describe('source volume recovery groups', () => {
   expect(recoveryVolumeName(orphan)).toContain('backupGroups.deletedVolume');
   expect(recoveryVolumeName(orphan, false)).toContain('backupGroups.unknownVolume');
   expect(groups.find(group => group.id === 'empty-volume')?.points).toEqual([]);
+ });
+ it('lists only volumes with recovery points while policy-only volumes stay reachable as details', () => {
+  const policy = { volume_id: 'policy-volume', project_id: 'project-a', enabled: true } as VolumeBackupPolicy;
+  const groups = groupRecoveryPoints([volume, { ...volume, id: 'empty-volume' }, { ...volume, id: 'policy-volume' }], [full], [policy]);
+  expect(listedRecoveryGroups(groups).map(group => group.id)).toEqual([volume.id]);
+  expect(groups.find(group => group.id === 'policy-volume')?.policy).toBe(policy);
  });
  it('labels origin and creator without exposing an automatic system identity', () => {
   expect(recoveryOrigin(daily)).toContain('backupGroups.automaticTier');
@@ -116,6 +123,27 @@ it.each([['backup', BackupPage], ['snapshot', SnapshotPage]] as const)('%s start
  await fireEvent.click(screen.getByRole('button', { name: 'backupGroups.back' }));
  await screen.findByRole('button', { name: volume.name });
  expect(mocks.url!.searchParams.has('volume')).toBe(false);
+});
+
+it.each([['backup', BackupPage], ['snapshot', SnapshotPage]] as const)('%s lists only volumes that already have a recovery point and keeps empty volumes creatable', async (kind, Page) => {
+ const empty = { ...volume, id: 'volume-empty', name: 'Never backed up' };
+ const baseGet = mocks.get.getMockImplementation()!;
+ mocks.get.mockImplementation(async (path: string) => path === '/api/v1/volumes' ? [volume, empty] : baseGet(path));
+ render(Page);
+ await screen.findByRole('button', { name: volume.name });
+ expect(screen.queryByRole('button', { name: empty.name })).toBeNull();
+ await fireEvent.click(screen.getByRole('button', { name: kind === 'backup' ? 'backupsPage.create' : 'snapshotsPage.create' }));
+ const prefix = kind === 'backup' ? 'backupCreateModal' : 'snapshotCreateModal';
+ const options = within(screen.getByRole('combobox', { name: `${prefix}.volumeLabel` })).getAllByRole('option').map(option => option.textContent ?? '');
+ expect(options.some(text => text.includes(empty.name))).toBe(true);
+});
+
+it.each([['backup', BackupPage, 'backupGroups.empty'], ['snapshot', SnapshotPage, 'snapshotGroups.empty']] as const)('%s shows an explanatory empty state when no volume has a recovery point', async (kind, Page, headline) => {
+ const baseGet = mocks.get.getMockImplementation()!;
+ mocks.get.mockImplementation(async (path: string) => path === '/api/v1/volumes/backups' || path === '/api/v1/volume-snapshots' ? [] : baseGet(path));
+ render(Page);
+ await screen.findByText(headline);
+ expect(screen.queryByRole('button', { name: volume.name })).toBeNull();
 });
 
 it.each([['backup', BackupPage], ['snapshot', SnapshotPage]] as const)('%s opens direct volume URLs after refresh', async (kind, Page) => {

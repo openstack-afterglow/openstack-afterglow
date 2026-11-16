@@ -372,9 +372,27 @@ def _recovery_reader(conn, microversion: str):
     return adapter
 
 
-def _recovery_origin(point: dict, resource: str) -> dict:
+def _caller_project(conn, *, all_projects: bool = False) -> str | None:
+    """Project whose own recovery points a non-cross-project read returns.
+
+    Cinder's `backup:backup_project_attribute` defaults to `rule:admin_api`, so a member session sees
+    `project_id=None` on its own backups. A read without `all_projects` can only return the project the
+    token is scoped to, which is `_afterglow_authenticated_project_id`; `_afterglow_project_id` is the
+    logical workspace and differs for admin-target sessions, so it is never used. Cross-project reads
+    never use this proof.
+    """
+    if all_projects:
+        return None
+    project_id = getattr(conn, "_afterglow_authenticated_project_id", None)
+    return project_id if isinstance(project_id, str) and project_id else None
+
+
+def _recovery_origin(point: dict, resource: str, owner_project_id: str | None = None) -> dict:
     from app.services.auto_backup import classify_recovery_point
 
+    # A visible owner always wins; the caller's project only fills a hidden one.
+    if point.get("project_id") is None and owner_project_id:
+        point = {**point, "project_id": owner_project_id}
     tier = classify_recovery_point(point, point.get("project_id") or "", resource=resource)
     return {**point, "origin": "auto" if tier else "manual", "auto_tier": tier}
 
@@ -390,7 +408,8 @@ def list_backups(
         kwargs["volume_id"] = volume_id
     if all_projects:
         kwargs["all_projects"] = True
-    return [_backup_to_dict(b) for b in _recovery_reader(conn, "3.56").backups(details=True, **kwargs)]
+    owner = _caller_project(conn, all_projects=all_projects)
+    return [_backup_to_dict(b, owner) for b in _recovery_reader(conn, "3.56").backups(details=True, **kwargs)]
 
 
 def list_volume_attachments(conn: openstack.connection.Connection, volume_id: str) -> list[dict]:
@@ -424,7 +443,7 @@ def list_volume_messages(conn: openstack.connection.Connection, volume_id: str) 
 
 def get_backup(conn: openstack.connection.Connection, backup_id: str) -> dict:
     b = _recovery_reader(conn, "3.56").get_backup(backup_id)
-    return _backup_to_dict(b)
+    return _backup_to_dict(b, _caller_project(conn))
 
 
 def create_backup(
@@ -446,7 +465,7 @@ def create_backup(
         adapter = copy(adapter)
         adapter.request = partial(adapter.request, connect_retries=0, status_code_retries=0)
     b = adapter.create_backup(**kwargs)
-    return _backup_to_dict(b)
+    return _backup_to_dict(b, _caller_project(conn))
 
 
 def delete_backup(conn: openstack.connection.Connection, backup_id: str) -> None:
@@ -472,7 +491,8 @@ def list_snapshots(
         kwargs["volume_id"] = volume_id
     if all_projects:
         kwargs["all_projects"] = True
-    snapshots = [_snapshot_to_dict(s) for s in _recovery_reader(conn, "3.41").snapshots(details=True, **kwargs)]
+    owner = _caller_project(conn, all_projects=all_projects)
+    snapshots = [_snapshot_to_dict(s, owner) for s in _recovery_reader(conn, "3.41").snapshots(details=True, **kwargs)]
     if caller_project_id is not None:
         snapshots = [s for s in snapshots if s.get("project_id") == caller_project_id]
     return snapshots
@@ -480,7 +500,7 @@ def list_snapshots(
 
 def get_snapshot(conn: openstack.connection.Connection, snapshot_id: str) -> dict:
     s = _recovery_reader(conn, "3.41").get_snapshot(snapshot_id)
-    return _snapshot_to_dict(s)
+    return _snapshot_to_dict(s, _caller_project(conn))
 
 
 def create_snapshot(
@@ -503,7 +523,7 @@ def create_snapshot(
         adapter = copy(adapter)
         adapter.request = partial(adapter.request, connect_retries=0, status_code_retries=0)
     s = adapter.create_snapshot(**kwargs)
-    return _snapshot_to_dict(s)
+    return _snapshot_to_dict(s, _caller_project(conn))
 
 
 def delete_snapshot(conn: openstack.connection.Connection, snapshot_id: str) -> None:
@@ -514,7 +534,7 @@ def delete_snapshot(conn: openstack.connection.Connection, snapshot_id: str) -> 
     adapter.delete_snapshot(snapshot_id, ignore_missing=True)
 
 
-def _snapshot_to_dict(s) -> dict:
+def _snapshot_to_dict(s, owner_project_id: str | None = None) -> dict:
     return _recovery_origin(
         {
             "id": s.id,
@@ -529,10 +549,11 @@ def _snapshot_to_dict(s) -> dict:
             "metadata": dict(getattr(s, "metadata", None) or {}),
         },
         "snapshot",
+        owner_project_id,
     )
 
 
-def _backup_to_dict(b) -> dict:
+def _backup_to_dict(b, owner_project_id: str | None = None) -> dict:
     return _recovery_origin(
         {
             "id": b.id,
@@ -548,6 +569,7 @@ def _backup_to_dict(b) -> dict:
             "created_at": str(b.created_at) if getattr(b, "created_at", None) else None,
         },
         "backup",
+        owner_project_id,
     )
 
 

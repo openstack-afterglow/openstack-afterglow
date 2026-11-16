@@ -291,6 +291,10 @@ Resampled counter/vCPU는 bounded native-granularity window로 내부 reset/gap/
 
 볼륨 백업·스냅샷 화면은 이미지 저장소와 같은 원본 볼륨 카드→URL `volume` query 상세 구조다. 카드는 볼륨명(목록에 없으면 삭제된 볼륨과 짧은 ID), 포인트 수, 최신 생성 시각, 자동 정책 상태를 보이고 상세는 toolbar에 목록 복귀와 볼륨명을 두고 그 볼륨의 자동 정책과 포인트별 생성 시각·자동/수동(주기)·전체/증분·생성자·상태를 보인다. 포인트가 없고 열 필터도 없으면 빈 상태 문구만 표시한다. 생성자는 Cinder `user_id`(백업 microversion 3.56, 스냅샷 3.41 명시 요청)를 현재 프로젝트 `projectAuthority.members`로만 이름 해석하고 거절되면 짧은 ID를 표시한다. 자동/수동과 주기는 `auto_backup`의 기존 소유권 분류(정확한 metadata·이름 규칙, prefix 단독 불인정)를 공개한 단일 분류기가 결정한다. 수동 백업 생성은 같은 볼륨의 사용 가능한 전체 백업이 없으면 증분을 막는다. Cinder 스냅샷에는 전체/증분 선택이 없으므로 화면은 copy-on-write 증분만 명시하고 독립 사본은 전체 백업으로 안내한다. 자동 스냅샷 정책 목록은 백업과 같이 `GET /api/v1/volume-snapshots/auto-snapshot/configs`(기존 POST 읽기에서 전환, `{volume_id}` 경로보다 먼저 등록)로 읽어 mutation으로 취급된 POST가 동시 GET을 회수하지 않게 한다.
 
+볼륨 백업·스냅샷 화면의 카드 목록은 복구 지점이 하나 이상 있는 볼륨만 보인다(`listedRecoveryGroups`). 지점이 없는 볼륨은 저장된 자동 정책이 있어도 목록에서 빠지지만, 전체 group 집합은 그대로 유지하므로 `?volume=`·`?auto-backup=` URL(볼륨 목록의 자동 백업 설정 링크 포함)과 생성 직후 상세 이동은 어떤 볼륨이든 열린다. 백업·스냅샷은 볼륨 목록(또는 화면의 생성 버튼)에서 만들면 그때 목록에 나타난다. 목록이 비면 검색어가 없을 때 `backupGroups.empty`/`snapshotGroups.empty`가, 검색 중이면 `page.noMatches`가 표시된다.
+
+자동/수동 분류는 소유 프로젝트를 요구한다. DMS Lab Cinder는 `backup:backup_project_attribute`(기본 `rule:admin_api`)로 멤버 세션에서 백업의 `project_id`를 숨기므로, `cinder._recovery_origin`은 `all_projects` 없는 읽기(`list_*`/`get_*`/`create_*`)에서 보이지 않는 `project_id`만 토큰이 실제로 범위를 갖는 `conn._afterglow_authenticated_project_id`로 채워 분류한다. 논리 workspace인 `_afterglow_project_id`는 admin-target 세션에서 이 값과 다르므로 증명으로 쓰지 않는다. 보이는 소유자는 항상 우선하며 `all_projects` 읽기와 인증 프로젝트 증명이 없는 연결은 채우지 않아 수동으로 남는다. 이 보정 전에는 멤버에게 모든 자동 백업이 `수동`으로 표시됐다.
+
 자동 백업 정책은 일별 증분·주별/월별 전체를 사용한다. 증분 부모는 Cinder가 같은 볼륨의 최신 사용 가능한 백업(수동 포함)에서 고르며 Afterglow는 부모 ID를 지정하지 않는다. 마지막 owned 전체 이후 증분이 일별 보관 개수-1에 도달하거나 그 이후 체인에 수동·미완료·불명확 포인트가 섞이면 새 전체로 회전해 체인 길이를 보관 창 안으로 제한한다. 보관 정리는 자식부터 최신 `has_dependent_backups`가 명확히 false일 때만 삭제하고, 수동 백업이 의존하는 owned 부모는 `retained_over_limit`로 남긴다. 비동기 Cinder 삭제 완료를 기다리는 drain은 시한이 있으며 시한이 지나도 삭제 대기 포인트를 삭제됨으로 간주하지 않는다. 스냅샷 lane은 같은 엔진의 CoW 전용 경로로 변화가 없다.
 
 콘솔 정보 위계 변경은 공통 `AutoRefreshControl`의 한 select, `ResourceIdentifier`, 문맥별 StatusChip, semantic editable/input과 light/dark token·typography·row/control geometry를 재사용한다. 인스턴스·네트워크·볼륨은 compact 요약→도구→표/카드→하단 페이지를 우선하며 추이는 접힘/용량 분석으로 옮긴다. Complete-project 배열의 표시 paging과 관리자 native marker paging은 별개로 유지하고 필터/page 변경은 숨겨진 선택을 제거한다. 기존 shared 상세 경로/권한·mutation fence를 새 표시 구조로 대체하지 않는다.
@@ -2214,9 +2218,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "57d0e15e53d217addc4f734e40f70212df698c603da6280f6ca18bab735fae1c",
-  "reviewed_at": "2026-11-16T09:36:25Z",
-  "summary": "Release 1.32.22 production rollout receipt in docs/testing.md; no source change after tag."
+  "source_sha256": "dffae8185dcf767a779308441a7ec0c09c2c343ca24b2890704de9adbefb718d",
+  "reviewed_at": "2026-11-16T09:49:18Z",
+  "summary": "볼륨 백업·스냅샷 목록을 복구 지점이 있는 볼륨으로 한정하고, 멤버 세션에서 숨겨진 Cinder project_id를 토큰 인증 프로젝트로 채워 자동/수동을 분류"
 }
 ```
 <!-- architecture-review:end -->

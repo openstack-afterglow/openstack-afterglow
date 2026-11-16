@@ -66,17 +66,22 @@ def test_classifier_uses_exact_scheduler_ownership(kind, tier):
         )
 
 
-@pytest.fixture(params=["backup", "snapshot"])
+@pytest.fixture(
+    params=[("backup", False), ("snapshot", False), ("backup", True), ("snapshot", True)],
+    ids=["backup", "snapshot", "backup-owner-hidden", "snapshot-owner-hidden"],
+)
 def native_reader(request):
-    kind = request.param
+    kind, owner_hidden = request.param
     plural = kind + "s"
     calls = []
     record = point(kind, "daily")
     native = {**record}
     native.pop("project_id")
-    native[
-        "os-backup-project-attr:project_id" if kind == "backup" else "os-extended-snapshot-attributes:project_id"
-    ] = PROJECT
+    if not owner_hidden:
+        # DMS Lab's Cinder hides the owner attribute from member sessions (`rule:admin_api`).
+        native[
+            "os-backup-project-attr:project_id" if kind == "backup" else "os-extended-snapshot-attributes:project_id"
+        ] = PROJECT
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
@@ -117,6 +122,8 @@ def native_reader(request):
         api_timeout=2,
     )
     conn._afterglow_project_id = PROJECT
+    conn._afterglow_authenticated_project_id = PROJECT
+    conn.owner_hidden_for_test = owner_hidden
     try:
         yield kind, conn, calls
     finally:
@@ -164,3 +171,31 @@ async def test_endpoint_list_get_preserve_recovery_identity(native_reader, monke
     assert detail.json()["user_id"] == "creator-a"
     assert detail.json()["origin"] == "auto"
     assert detail.json()["auto_tier"] == "daily"
+
+
+def test_hidden_owner_is_filled_only_from_the_authenticated_project_of_own_project_reads(native_reader):
+    kind, conn, _ = native_reader
+    read = getattr(cinder, f"list_{kind}s")
+    # Admin-target sessions carry a logical workspace that differs from the project the token is scoped to.
+    conn._afterglow_project_id = "logical-workspace"
+    own = read(conn)[0]
+    assert own["origin"] == "auto" and own["auto_tier"] == "daily"
+    assert own["project_id"] == PROJECT  # the token's project, never the logical workspace
+    if not conn.owner_hidden_for_test:
+        return
+    # A cross-project read never trusts the caller's project for an owner Cinder did not show.
+    cross = read(conn, all_projects=True)[0]
+    assert cross["project_id"] is None and cross["origin"] == "manual" and cross["auto_tier"] is None
+    # The logical workspace alone is not proof of ownership.
+    del conn._afterglow_authenticated_project_id
+    unproven = read(conn)[0]
+    assert unproven["project_id"] is None and unproven["origin"] == "manual"
+
+
+@pytest.mark.parametrize("kind", ["backup", "snapshot"])
+def test_visible_foreign_owner_is_never_replaced_by_the_callers_project(kind):
+    foreign = {**point(kind, "daily"), "project_id": "foreign-project"}
+    assert cinder._recovery_origin(foreign, kind, PROJECT)["origin"] == "manual"
+    hidden = {**point(kind, "daily"), "project_id": None}
+    assert cinder._recovery_origin(hidden, kind, PROJECT)["origin"] == "auto"
+    assert cinder._recovery_origin(hidden, kind, None)["origin"] == "manual"

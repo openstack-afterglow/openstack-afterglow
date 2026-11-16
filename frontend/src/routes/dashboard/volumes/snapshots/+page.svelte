@@ -13,7 +13,7 @@
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import RecoveryVolumeCard from '$lib/components/volume/RecoveryVolumeCard.svelte';
-  import { groupRecoveryPoints, recoveryVolumeName, recoveryVolumeUrl, type RecoveryGroup } from '$lib/components/volume/recoveryPoints';
+  import { groupRecoveryPoints, listedRecoveryGroups, recoveryVolumeName, recoveryVolumeUrl, type RecoveryGroup } from '$lib/components/volume/recoveryPoints';
   import VolumeBackupPolicies from '$lib/components/volume/backups/VolumeBackupPolicies.svelte';
   import { createVolumeBackupPoliciesController } from '$lib/stores/volumeBackupPoliciesController.svelte';
   import { projectAuthority } from '$lib/api/projectAuthority';
@@ -58,7 +58,8 @@
     { key: 'latest', label: t('backupGroups.latest'), value: group => group.latest },
     { key: 'policy', label: t('backupGroups.policy'), value: group => policies.error ? null : group.policy ? group.policy.enabled ? t('backupGroups.policyActive') : t('backupGroups.policyPaused') : t('backupGroups.noPolicy') },
   ]);
-  const groupView = createTableView({ locale: intlLocale, rows: () => groups, columns: () => volumeColumns, search: () => search, searchable: group => [group.id, recoveryVolumeName(group, policies.settled && !policies.volumesError)] });
+  const listedGroups = $derived(listedRecoveryGroups(groups));
+  const groupView = createTableView({ locale: intlLocale, rows: () => listedGroups, columns: () => volumeColumns, search: () => search, searchable: group => [group.id, recoveryVolumeName(group, policies.settled && !policies.volumesError)] });
   let creatorNames = $state<Record<string, string>>({});
   let generation = 0;
   function selectVolume(id: string | null) {
@@ -251,7 +252,7 @@
   {:else}
     {#if policies.volumesError}<Alert tone="danger">{policies.volumesError}</Alert>{/if}
     {#if policies.error}<Alert tone="danger">{policies.error}</Alert>{/if}
-    {#if groupView.rows.length === 0 && !error && !policies.error && !policies.volumesError && policies.settled}<EmptyState headline={t('backupGroups.empty')} />{/if}
+    {#if groupView.rows.length === 0 && !error && !policies.error && !policies.volumesError && policies.settled}<EmptyState headline={search.trim() ? t('page.noMatches') : t('snapshotGroups.empty')} />{/if}
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
       {#each groupView.rows as group (group.id)}<RecoveryVolumeCard {group} kind="snapshot" inventoryKnown={policies.settled && !policies.volumesError} policyKnown={policies.settled && !policies.error} onOpen={() => selectVolume(group.id)} />{/each}
     </div>

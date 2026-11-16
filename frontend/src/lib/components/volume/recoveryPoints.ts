@@ -28,6 +28,11 @@ export function groupRecoveryPoints(volumes: Volume[], points: RecoveryPoint[], 
  }
  return [...groups.values()];
 }
+// The list shows only volumes that already have a recovery point. The complete group set is kept for detail
+// views, so `?volume=` and the volume list's auto-policy link still open any volume, including policy-only ones.
+export function listedRecoveryGroups(groups: RecoveryGroup[]): RecoveryGroup[] {
+ return groups.filter(group => group.points.length > 0);
+}
 export function recoveryVolumeName(group: RecoveryGroup, inventoryKnown = true): string {
  return group.volume?.name || (group.volume ? group.id.slice(0, 8) : t(inventoryKnown ? 'backupGroups.deletedVolume' : 'backupGroups.unknownVolume', { id: group.id.slice(0, 8) }));
 }
