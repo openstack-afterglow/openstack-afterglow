@@ -54,10 +54,19 @@ class ChainCloud(BackupCloud):
             self.records[backup_id].status = "deleting"
             self.deleted.append(backup_id)
             return
-        super().delete_backup(backup_id, **kwargs)
+        self.deleted.append(backup_id)
+        self.finish_deletion(backup_id)
+
+    def finish_deletion(self, backup_id):
+        del self.records[backup_id]
         parent = self.parents.pop(backup_id, None)
         if parent in self.records:
             self.records[parent].has_dependent_backups = any(value == parent for value in self.parents.values())
+
+    def finish_deletions(self):
+        for backup_id, point in list(self.records.items()):
+            if point.status == "deleting":
+                self.finish_deletion(backup_id)
 
     def managed(self, backup_id, tier, day, *, parent=None):
         point = self.add(
@@ -190,6 +199,18 @@ async def test_async_child_deletion_keeps_parent_until_native_dependencies_clear
     assert cloud.deleted == ["leaf"]
     assert cloud.records["base"].has_dependent_backups is True
     assert (await current())["retained_over_limit"] == ["base"]
+    assert await policy_redis.exists(ab._key("active", PROJECT, VOLUME))
+    # Another tick before provider completion must not replay the leaf DELETE.
+    await ab.run_backup_cycle(cloud, PROJECT, VOLUME, now=due(config))
+    assert cloud.deleted == ["leaf"]
+    cloud.finish_deletions()
+    await ab.run_backup_cycle(cloud, PROJECT, VOLUME, now=due(config))
+    assert cloud.deleted == ["leaf", "base"]
+    assert await policy_redis.exists(ab._key("active", PROJECT, VOLUME))
+    cloud.finish_deletions()
+    await ab.run_backup_cycle(cloud, PROJECT, VOLUME, now=due(config))
+    assert (await current())["retained_over_limit"] == []
+    assert not await policy_redis.exists(ab._key("active", PROJECT, VOLUME))
 
 
 @pytest.mark.asyncio
@@ -249,12 +270,20 @@ async def test_parent_disappearing_before_post_rejects_once_without_full_retry(p
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("count", [1, 2, 3, 5])
-async def test_daily_only_rotates_full_and_converges_with_bounded_chain_slack(policy_redis, count):
+@pytest.mark.parametrize("deferred", [False, True])
+async def test_daily_only_rotates_full_and_converges_with_bounded_chain_slack(policy_redis, count, deferred):
     cloud = ChainCloud()
+    cloud.defer_deletion = deferred
     config = await save(max_daily=count, max_weekly=0, max_monthly=0)
     for day in range(3 * count + 1):
         await complete(cloud, config)
         assert cloud.submissions[-1]["is_incremental"] is (day % count != 0)
+        for _ in range(count + 1):
+            if not await policy_redis.exists(ab._key("active", PROJECT, VOLUME)):
+                break
+            cloud.finish_deletions()
+            await ab.run_backup_cycle(cloud, PROJECT, VOLUME, now=due(config))
+        assert not await policy_redis.exists(ab._key("active", PROJECT, VOLUME))
         assert len(cloud.records) <= count + count - 1
         config = await current()
         assert config["last_status"] == "available"
@@ -291,3 +320,23 @@ async def test_weekly_full_resets_daily_chain_length_and_daily_rotation_still_ap
         ("daily", True),
     ]
     assert len(cloud.records) <= 3 + 1 + 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["manual", "failed"])
+async def test_new_full_recovers_incrementals_after_old_manual_or_failed_point(policy_redis, kind):
+    cloud = ChainCloud()
+    cloud.managed("base", "daily", 1)
+    if kind == "manual":
+        cloud.add("old-interruption", "manual", created_at="2026-05-30T03:00:00+00:00")
+    else:
+        cloud.managed("old-interruption", "daily", 30)
+        cloud.records["old-interruption"].status = "error"
+    config = await save(max_daily=3, max_weekly=0, max_monthly=0)
+    await complete(cloud, config)
+    assert cloud.submissions[-1]["is_incremental"] is False
+    config = await current()
+    await complete(cloud, config)
+    assert cloud.submissions[-1]["is_incremental"] is True
+    assert cloud.parents["submitted-2"] == "submitted-1"
+    assert "old-interruption" in cloud.records

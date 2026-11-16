@@ -709,9 +709,9 @@ async def _daily_incremental(conn, project_id, volume_id, max_daily):
     """Bound an owned chain to the daily retention window.
 
     Cinder selects the latest available parent by data_timestamp, including
-    manual points; the public API exposes no parent graph. A manual or
-    incomplete point makes chain membership uncertain, so start a full copy.
-    Otherwise count owned increments since the latest available owned full.
+    manual points; the public API exposes no parent graph. Only points at or
+    after the latest usable owned full can make its chain uncertain. An older
+    failed/manual point must not prevent recovery on a fresh full base.
     Rotate to full when adding another point would exceed max_daily.
     Cinder revalidates on POST; rejection never authorizes a second POST.
     """
@@ -719,23 +719,37 @@ async def _daily_incremental(conn, project_id, volume_id, max_daily):
         return False
     backups = _scoped(conn, project_id, await _sdk(cinder.list_backups, conn, volume_id=volume_id))
     points = [point for point in backups if _owned(point, project_id, volume_id)]
-    if not points or any(_tier(point, project_id, volume_id) is None or not _safe_completed(point) for point in points):
-        return False
-    fulls = [point for point in points if point["is_incremental"] is False]
+    fulls = [
+        point
+        for point in points
+        if _tier(point, project_id, volume_id) is not None
+        and _safe_completed(point)
+        and point["is_incremental"] is False
+    ]
     if not fulls:
         return False
     base = max(fulls, key=_created_time)
+    base_time = _created_time(base)
+    recent = []
+    for point in points:
+        created = _created_time(point)
+        if created is None:
+            return False
+        if created < base_time:
+            continue
+        if _tier(point, project_id, volume_id) is None or not _safe_completed(point):
+            return False
+        recent.append(point)
     # Equal timestamps cannot establish ordering. Count conservatively rather
     # than losing an increment at the boundary of Cinder's timestamp precision.
-    increments = sum(
-        point["is_incremental"] is True and _created_time(point) >= _created_time(base) for point in points
-    )
+    increments = sum(point["is_incremental"] is True and _created_time(point) >= base_time for point in recent)
     return increments < max_daily - 1
 
 
 async def _prune_backups(conn, lease, project_id, volume_id, config):
     backups = _scoped(conn, project_id, await _sdk(cinder.list_backups, conn, volume_id=volume_id))
     candidates = []
+    submitted = False
     for tier in ("monthly", "weekly", "daily"):
         count = config[f"max_{tier}"]
         if count == 0:
@@ -764,7 +778,7 @@ async def _prune_backups(conn, lease, project_id, volume_id, config):
             if not _source_owned(source, project_id) or not await lease.current(
                 project_id, volume_id, config["revision"]
             ):
-                return sorted(retained)
+                return sorted(retained), False
             try:
                 await _sdk(cinder.delete_backup, conn, old["id"])
             except HttpException as exc:
@@ -777,14 +791,20 @@ async def _prune_backups(conn, lease, project_id, volume_id, config):
                 blocked.append(old)
                 continue
             deleted.add(old["id"])
+            submitted = True
             retained.discard(old["id"])
             await _invalidate_backups(project_id)
         if not deleted:
             break
-        # Immediate provider deletions can release parents in this cycle.
-        # Asynchronous deletions keep parents over limit until a later cycle.
+        # Immediate provider deletions can release parents in this pass.
+        # Asynchronous Cinder deletes retain the active journal for later ticks.
         candidates = blocked
-    return sorted(retained)
+    if submitted:
+        backups = _scoped(conn, project_id, await _sdk(cinder.list_backups, conn, volume_id=volume_id))
+    pending = any(
+        _tier(point, project_id, volume_id) is not None and point.get("status") == "deleting" for point in backups
+    )
+    return sorted(retained), pending
 
 
 async def _prune(conn, redis, lease, project_id, volume_id, config):
@@ -862,14 +882,16 @@ async def _reconcile(conn, redis, lease, project_id, volume_id, operation):
         return
     if operation["status"] in ("available", "error"):
         await _invalidate_backups(project_id)
+    prune_pending = False
     if operation["status"] == "available" and _safe_completed(backup):
         config = await get_auto_backup_config(project_id, volume_id)
         if config and await lease.current(project_id, volume_id, operation["revision"]):
             retained = await _prune(conn, redis, lease, project_id, volume_id, config)
             if _resource() == "backup":
+                retained, prune_pending = retained
                 operation["retained_over_limit"] = retained
     if operation["status"] in ("available", "error"):
-        await _result(redis, lease, project_id, volume_id, operation, done=True)
+        await _result(redis, lease, project_id, volume_id, operation, done=not prune_pending)
 
 
 def _peer_active_key(project_id: str, volume_id: str) -> str:
