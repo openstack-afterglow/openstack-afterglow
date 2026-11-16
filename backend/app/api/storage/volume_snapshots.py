@@ -53,7 +53,7 @@ async def list_snapshots(
     is_admin = token_info.get("is_system_admin", False)
     caller_project_id = None if is_admin else pid
     vol_part = volume_id or "all"
-    cache_key = f"afterglow:cinder:{pid}:snapshots:admin={int(is_admin)}:{vol_part}"
+    cache_key = f"afterglow:cinder:{pid}:snapshots:recovery-v2:admin={int(is_admin)}:{vol_part}"
     try:
         return await cached_call(
             cache_key,
@@ -278,7 +278,7 @@ async def get_snapshot(
 ):
     await _assert_snapshot_owner(conn, snapshot_id, token_info)
     pid = conn._afterglow_project_id
-    key = keys.project_key("cinder", pid, "snapshots", sub=snapshot_id)
+    key = keys.project_key("cinder", pid, "snapshots:recovery-v2", sub=snapshot_id)
     try:
         return await cached_call(
             key, ttl_normal(), lambda: cinder.get_snapshot(conn, snapshot_id), enabled=cm.enabled, refresh=cm.refresh

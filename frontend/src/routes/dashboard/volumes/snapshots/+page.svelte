@@ -11,16 +11,21 @@
   import { untrack } from 'svelte';
   import { auth, isMockAuthActive } from '$lib/stores/auth';
   import { page } from '$app/state';
+  import { goto } from '$app/navigation';
+  import RecoveryVolumeCard from '$lib/components/volume/RecoveryVolumeCard.svelte';
+  import { groupRecoveryPoints, recoveryVolumeName, recoveryVolumeUrl, type RecoveryGroup } from '$lib/components/volume/recoveryPoints';
+  import VolumeBackupPolicies from '$lib/components/volume/backups/VolumeBackupPolicies.svelte';
+  import { createVolumeBackupPoliciesController } from '$lib/stores/volumeBackupPoliciesController.svelte';
+  import { projectAuthority } from '$lib/api/projectAuthority';
   import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
   import { api, ApiError } from '$lib/api/client';
   import type { Volume, VolumeSnapshot } from '$lib/types/volume';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
   import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
-  import { Alert, Button, PageHeader, PageShell, ResourceToolbar } from '$lib/components/ui';
+  import { Alert, Button, EmptyState, PageHeader, PageShell, ResourceToolbar } from '$lib/components/ui';
   import VolumeSnapshotCreateModal from '$lib/components/volume/snapshots/VolumeSnapshotCreateModal.svelte';
   import VolumeSnapshotsTable from '$lib/components/volume/snapshots/VolumeSnapshotsTable.svelte';
-  import VolumeSnapshotsEmptyState from '$lib/components/volume/snapshots/VolumeSnapshotsEmptyState.svelte';
   import { toast } from '$lib/stores/toast';
   import { betaFeatures } from '$lib/stores/betaFeatures';
   import BetaFeatureGate from '$lib/components/ui/BetaFeatureGate.svelte';
@@ -41,6 +46,35 @@
   const selection = createResourceSelection();
   // Tutorial mode (synthetic mockup session) shows volume snapshots without touching the stored beta flag.
   const volumeSnapshotsEnabled = $derived($betaFeatures.volumeSnapshots || (page.data?.mockup?.active === true && isMockAuthActive()));
+  const policies = createVolumeBackupPoliciesController('snapshot', () => volumeSnapshotsEnabled);
+  const selectedVolumeId = $derived(page.url.searchParams.get('volume'));
+  const groups = $derived(groupRecoveryPoints(volumes, snapshots, policies.policies));
+  const selectedGroup = $derived(groups.find(group => group.id === selectedVolumeId));
+  const volumeColumns = $derived<TableColumn<RecoveryGroup>[]>([
+    { key: 'name', label: t('backupGroups.volume'), value: group => recoveryVolumeName(group, !policies.volumesError) },
+    { key: 'status', label: t('listTable.status'), value: group => group.volume?.status },
+    { key: 'size', label: t('backupGroups.volumeSize'), value: group => group.volume?.size },
+    { key: 'count', label: t('snapshotGroups.count'), value: group => group.points.length },
+    { key: 'latest', label: t('backupGroups.latest'), value: group => group.latest },
+    { key: 'policy', label: t('backupGroups.policy'), value: group => policies.error ? null : group.policy ? group.policy.enabled ? t('backupGroups.policyActive') : t('backupGroups.policyPaused') : t('backupGroups.noPolicy') },
+  ]);
+  const groupView = createTableView({ locale: intlLocale, rows: () => groups, columns: () => volumeColumns, search: () => search, searchable: group => [group.id, recoveryVolumeName(group, !policies.volumesError)] });
+  let creatorNames = $state<Record<string, string>>({});
+  let generation = 0;
+  function selectVolume(id: string | null) {
+    selection.clear();
+    void goto(recoveryVolumeUrl(page.url, id), { keepFocus: true, noScroll: true });
+  }
+  async function fetchCreators() {
+    const state = $auth;
+    const requestGeneration = generation;
+    if (!state.token || !state.projectId || !volumeSnapshotsEnabled) return;
+    const current = () => volumeSnapshotsEnabled && generation === requestGeneration && $auth.projectId === state.projectId && $auth.userId === state.userId;
+    try {
+      const result = await projectAuthority({ token: () => $auth.token ?? '', domainId: state.domainId ?? '', userId: state.userId ?? '', isCurrent: current, canSubmit: () => false }, state.projectId).members(state.projectId);
+      if (current()) creatorNames = Object.fromEntries(result.items.map(member => [member.user_id, member.username]));
+    } catch { /* Denied member lookup leaves the native short-ID fallback. */ }
+  }
   let search = $state('');
  const columns = $derived<TableColumn<VolumeSnapshot>[]>([
   { key: 'name', label: t('snapshotsTable.name'), value: row => row.name },
@@ -50,7 +84,7 @@
   { key: 'description', label: t('snapshotsTable.description'), value: row => row.description },
   { key: 'created', label: t('snapshotsTable.createdAt'), value: row => row.created_at },
  ]);
- const view = createTableView({ locale: intlLocale, rows: () => snapshots, columns: () => columns, search: () => search, searchable: row => [row.id, ...columns.map(column => column.value(row))].map(value => String(value ?? '')) });
+ const view = createTableView({ locale: intlLocale, rows: () => [...snapshots.filter(snapshot => snapshot.volume_id === selectedVolumeId)].sort((a, b) => (Date.parse(b.created_at ?? '') || 0) - (Date.parse(a.created_at ?? '') || 0)), columns: () => columns });
  const selectableIds = $derived(new Set(view.rows.map((snapshot) => snapshot.id)));
 
   function retainSelection() {
@@ -86,6 +120,7 @@
     lastCreatedId = null;
     volumes = [];
     error = '';
+    creatorNames = {};
   }
 
 
@@ -95,13 +130,18 @@
       loading = false;
       return;
     }
+    const projectId = $auth.projectId;
+    const token = $auth.token;
+    const requestGeneration = generation;
+    if (!projectId || !token) return;
+    const current = () => volumeSnapshotsEnabled && generation === requestGeneration && $auth.projectId === projectId && $auth.token === token;
     try {
-      snapshots = await api.get<VolumeSnapshot[]>('/api/v1/volume-snapshots', $auth.token ?? undefined, $auth.projectId ?? undefined, { refresh: force });
-      error = '';
+      const next = await api.get<VolumeSnapshot[]>('/api/v1/volume-snapshots', token, projectId, { refresh: force });
+      if (current()) { snapshots = next; error = ''; }
     } catch (e) {
-      error = e instanceof ApiError ? t('snapshotsPage.fetchFailed', { status: e.status }) : t('snapshotsPage.serverError');
+      if (current()) error = e instanceof ApiError ? t('snapshotsPage.fetchFailed', { status: e.status }) : t('snapshotsPage.serverError');
     } finally {
-      loading = false;
+      if (current()) loading = false;
     }
   }
 
@@ -110,9 +150,14 @@
       volumes = [];
       return;
     }
+    const projectId = $auth.projectId;
+    const token = $auth.token;
+    const requestGeneration = generation;
+    if (!projectId || !token) return;
     try {
-      volumes = await api.get<Volume[]>('/api/v1/volumes', $auth.token ?? undefined, $auth.projectId ?? undefined);
-    } catch { /* ignore */ }
+      const next = await api.get<Volume[]>('/api/v1/volumes', token, projectId);
+      if (volumeSnapshotsEnabled && generation === requestGeneration && $auth.projectId === projectId && $auth.token === token) volumes = next;
+    } catch { /* Policy controller reports unavailable source inventory. */ }
   }
 
   function prefetchVolumes() {
@@ -154,10 +199,10 @@
 
   async function forceRefresh() {
     refreshing = true;
-    try { await fetchSnapshots(true); } finally { refreshing = false; }
+    try { await Promise.all([fetchSnapshots(true), fetchVolumes(), policies.refresh(), fetchCreators()]); } finally { refreshing = false; }
   }
 
-  const ar = createAutoRefresh(() => fetchSnapshots(), {
+  const ar = createAutoRefresh(async () => { await Promise.all([fetchSnapshots(), fetchVolumes(), policies.refresh()]); }, {
     storageKey: 'dashboard-volume-snapshots',
     invokeOnMount: false,
     defaultActive: true,
@@ -166,15 +211,13 @@
   });
 
   $effect(() => {
-    const pid = $auth.projectId;
-    if (!volumeSnapshotsEnabled) {
-      clearSnapshotsState();
-      selection.clear();
-      loading = false;
-      return;
-    }
-    if (!pid) return;
-    untrack(() => { selection.clear(); lastCreatedId = null; fetchSnapshots(); });
+    const enabled = volumeSnapshotsEnabled;
+    return authDisplayContext.subscribe(() => untrack(() => {
+      generation++;
+      clearSnapshotsState(); selection.clear(); showModal = false;
+      loading = enabled && !!$auth.projectId && !!$auth.token;
+      if (loading) void Promise.all([fetchSnapshots(), fetchVolumes(), fetchCreators()]);
+    }));
   });
   $effect(() => {
     const ids = selectableIds;
@@ -184,7 +227,7 @@
  $effect(() => authDisplayContext.subscribe(({ key }) => {
   if (viewOwner === key) return;
   viewOwner = key;
-  untrack(() => { search = ''; view.reset(); });
+  untrack(() => { search = ''; view.reset(); groupView.reset(); });
  }));
 </script>
 
@@ -193,7 +236,7 @@
     <BetaFeatureGate title={t('snapshotsPage.betaTitle')} />
   </PageShell>
 {:else}
-<VolumeSnapshotCreateModal bind:open={showModal} {volumes} onCreate={createSnapshot} />
+<VolumeSnapshotCreateModal bind:open={showModal} {volumes} initialVolumeId={selectedVolumeId ?? ''} onCreate={createSnapshot} />
 
 <PageShell class="bulk-selection-page space-y-4">
   <PageHeader breadcrumb={t('snapshotsPage.breadcrumb')} title={t('snapshotsPage.title')}>
@@ -203,9 +246,7 @@
     {/snippet}
   </PageHeader>
   <ResourceToolbar label={t('snapshotsPage.toolbar')}>
- {#snippet filters()}<RegexSearch id="VolumeSnapshotsTable-search" bind:value={search} />
- <TableViewControls {view} class={snapshots.length === 0 ? '' : 'lg:hidden'} />
- {/snippet}
+ {#snippet filters()}{#if !selectedVolumeId}<RegexSearch id="VolumeSnapshotsTable-search" bind:value={search} /><TableViewControls view={groupView} />{/if}{/snippet}
     {#snippet actions()}<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={refreshing} onManualRefresh={forceRefresh} />{/snippet}
   </ResourceToolbar>
 
@@ -213,11 +254,22 @@
   <div data-tour="volume-snapshots-list" class="space-y-4">
   {#if loading}
     <LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('snapshotsPage.title') })} />
-  {:else if snapshots.length === 0}
-    <VolumeSnapshotsEmptyState onCreate={openCreate} onintent={prefetchVolumes} />
-  {:else}
-    <VolumeSnapshotsTable snapshots={view.rows} {view} {deleting} highlightId={lastCreatedId} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onDelete={deleteSnapshot} />
+  {:else if selectedVolumeId}
+    <div class="flex flex-wrap items-center gap-3">
+      <Button variant="ghost" onclick={() => selectVolume(null)}>{t('backupGroups.back')}</Button>
+      <h2 class="min-w-0 break-all text-lg font-semibold">{selectedGroup ? recoveryVolumeName(selectedGroup, !policies.volumesError) : selectedVolumeId}</h2>
+    </div>
+    <p class="text-sm text-ink-2">{t('snapshotGroups.methodHelp')}</p>
+    {#key selectedVolumeId}<VolumeBackupPolicies controller={policies} volumeId={selectedVolumeId} resource="snapshot" />{/key}
+    <VolumeSnapshotsTable snapshots={view.rows} {view} {deleting} {creatorNames} currentUserId={$auth.userId} highlightId={lastCreatedId} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onDelete={deleteSnapshot} />
     <BulkSelectionOverlay count={selection.count} ariaLabel={t('snapshotsPage.bulkLabel')} actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
+  {:else}
+    {#if policies.volumesError}<Alert tone="danger">{policies.volumesError}</Alert>{/if}
+    {#if policies.error}<Alert tone="danger">{policies.error}</Alert>{/if}
+    {#if groupView.rows.length === 0 && !error}<EmptyState headline={t('backupGroups.empty')} />{/if}
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+      {#each groupView.rows as group (group.id)}<RecoveryVolumeCard {group} kind="snapshot" inventoryKnown={!policies.volumesError} policyKnown={!policies.loading && !policies.error} onOpen={() => selectVolume(group.id)} />{/each}
+    </div>
   {/if}
   </div>
 </PageShell>

@@ -1,5 +1,6 @@
 <script lang="ts">
-	import type { Volume } from '$lib/types/volume';
+	import type { Volume, VolumeBackup } from '$lib/types/volume';
+	import { hasFullBackup } from '../recoveryPoints';
 	import { formatStorage } from '$lib/utils/format';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/volume';
@@ -9,10 +10,14 @@
 	let {
 		open = $bindable(),
 		volumes,
+		backups = [],
+		initialVolumeId = '',
 		onCreate,
 	}: {
 		open: boolean;
 		volumes: Volume[];
+		backups?: VolumeBackup[];
+		initialVolumeId?: string;
 		onCreate: (form: { volume_id: string; name: string; description: string; incremental: boolean; force: boolean }) => Promise<string | true>;
 	} = $props();
 
@@ -20,6 +25,8 @@
 	const selectedVolume = $derived(volumes.find((volume) => volume.id === form.volume_id));
 	const selectedVolumeId = $derived(selectedVolume?.id);
 	const forceRequired = $derived(selectedVolume?.status === 'in-use');
+	const incrementalAvailable = $derived(hasFullBackup(backups, form.volume_id));
+	$effect(() => { if (!incrementalAvailable) form.incremental = false; });
 	let creating = $state(false);
 	let error = $state('');
 
@@ -33,11 +40,13 @@
 		if (!open) {
 			form = { volume_id: '', name: '', description: '', incremental: false, force: false };
 			error = '';
+		} else if (!form.volume_id && initialVolumeId) {
+			form.volume_id = initialVolumeId;
 		}
 	});
 
 	async function submit() {
-		if (!selectedVolume || !form.name.trim() || creating || (forceRequired && !form.force)) return;
+		if (!selectedVolume || !form.name.trim() || creating || (form.incremental && !incrementalAvailable) || (forceRequired && !form.force)) return;
 		creating = true;
 		error = '';
 		const result = await onCreate({ ...form, force: forceRequired && form.force });
@@ -89,10 +98,12 @@
 						<input bind:value={form.description} type="text" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5" />
 					</label>
 				</div>
-				<div class="flex items-center gap-2">
-					<input type="checkbox" id="incremental" bind:checked={form.incremental} class="rounded border-line-2" />
-					<label for="incremental" class="text-sm text-ink-2">{t('backupCreateModal.incrementalLabel')}</label>
-				</div>
+				<fieldset class="space-y-2">
+					<legend class="text-sm font-medium">{t('backupGroups.method')}</legend>
+					<label class="flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="backup-method" checked={!form.incremental} onchange={() => form.incremental = false} disabled={creating} />{t('backupListTable.full')}</label>
+					<label class="flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="backup-method" checked={form.incremental} onchange={() => form.incremental = true} disabled={creating || !incrementalAvailable} aria-describedby="backup-incremental-help" />{t('backupListTable.incremental')}</label>
+					<p id="backup-incremental-help" class="text-xs text-ink-2">{t(incrementalAvailable ? 'backupGroups.incrementalHelp' : 'backupGroups.fullRequired')}</p>
+				</fieldset>
 				{#if forceRequired}
 					<Alert tone="warning" title={t('backupForce.title')}>
 						<p id="backup-create-force-warning">{t('backupForce.warning')}</p>

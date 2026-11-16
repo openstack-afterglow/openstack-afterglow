@@ -1,20 +1,22 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
 	import { auth, canWrite } from '$lib/stores/auth';
-	import { t } from '$lib/i18n/ns/volume';
+	import { recoveryPolicyText } from '../recoveryPolicyText';
 	import { Alert, Button, Field, FormModal, SelectInput, TextInput } from '$lib/components/ui';
 	import type { Volume } from '$lib/types/volume';
 	import type { VolumeBackupPolicy, VolumeBackupPolicyInput } from '$lib/types/volumeBackupPolicy';
 	import { policyInput } from '$lib/types/volumeBackupPolicy';
 
-	let { volumes, policies, initialVolumeId = '', resume = false, onSave, onclose }: {
+	let { volumes, policies, initialVolumeId = '', resource = 'backup', resume = false, onSave, onclose }: {
 		volumes: Volume[];
 		policies: VolumeBackupPolicy[];
 		initialVolumeId?: string;
+		resource?: 'backup' | 'snapshot';
 		resume?: boolean;
 		onSave: (volumeId: string, input: VolumeBackupPolicyInput) => Promise<true | string>;
 		onclose: () => void;
 	} = $props();
+	const t = (key: Parameters<typeof recoveryPolicyText>[1], params?: Parameters<typeof recoveryPolicyText>[2]) => recoveryPolicyText(resource, key, params);
 
 	function defaults(): VolumeBackupPolicyInput {
 		let timezone = 'UTC';

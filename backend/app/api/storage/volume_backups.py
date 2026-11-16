@@ -56,7 +56,7 @@ async def list_backups(
     pid = conn._afterglow_project_id
     try:
         return await cached_call(
-            keys.project_key("cinder", pid, "backups"),
+            keys.project_key("cinder", pid, "backups:recovery-v2"),
             ttl_slow(),
             lambda: cinder.list_backups(conn),
             enabled=cm.enabled,
@@ -125,7 +125,7 @@ async def get_backup(
 ):
     await _assert_backup_owner(conn, backup_id, token_info)
     pid = conn._afterglow_project_id
-    key = keys.project_key("cinder", pid, "backups", sub=backup_id)
+    key = keys.project_key("cinder", pid, "backups:recovery-v2", sub=backup_id)
     try:
         return await cached_call(
             key, ttl_slow(), lambda: cinder.get_backup(conn, backup_id), enabled=cm.enabled, refresh=cm.refresh

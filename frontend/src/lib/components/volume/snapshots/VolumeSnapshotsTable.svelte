@@ -12,8 +12,10 @@
   import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
   import Button from '$lib/components/ui/Button.svelte';
+  import { recoveryOrigin, recoveryCreator } from '../recoveryPoints';
 
-  let { view, snapshots, deleting, highlightId = null, selectedIds, selectableIds, selectionDisabled, onToggleSelect, onToggleAll, onDelete }: {
+  let { view, snapshots, deleting, highlightId = null, currentUserId = null, creatorNames = {}, selectedIds, selectableIds, selectionDisabled, onToggleSelect, onToggleAll, onDelete }: {
+    currentUserId?: string | null; creatorNames?: Record<string, string>;
     view: TableView<VolumeSnapshot>; snapshots: VolumeSnapshot[]; deleting: string | null; highlightId?: string | null; selectedIds: ReadonlySet<string>;
     selectableIds: ReadonlySet<string>; selectionDisabled: boolean;
     onToggleSelect: (id: string) => void; onToggleAll: () => void;
@@ -40,7 +42,10 @@
         </div>
         <dl>
           <div><dt>{t('snapshotsTable.size')}</dt><dd>{formatStorage(snap.size)}</dd></div>
-          <div><dt>{t('snapshotsTable.volumeId')}</dt><dd class="font-mono break-all">{t('snapshotsTable.shortVolumeId', { id: snap.volume_id.slice(0, 8) })}</dd></div>
+          <div><dt>{t('backupGroups.method')}</dt><dd>{t('snapshotGroups.method')}</dd></div>
+          <div><dt>{t('backupGroups.origin')}</dt><dd>{recoveryOrigin(snap)}</dd></div>
+          <div><dt>{t('backupGroups.creator')}</dt><dd>{recoveryCreator(snap, currentUserId, creatorNames)}</dd></div>
+          <div class="col-span-2"><dt>{t('snapshotsTable.createdAt')}</dt><dd>{snap.created_at ? new Date(snap.created_at).toLocaleString(intlLocale()) : t('snapshotsTable.missingValue')}</dd></div>
         </dl>
         {#snippet details()}
           <p class="font-mono break-all">{snap.id}</p>
@@ -66,8 +71,7 @@
         <TableColumnHeader {view} columnKey="name" />
         <TableColumnHeader {view} columnKey="status" />
         <TableColumnHeader {view} columnKey="size" />
-        <TableColumnHeader {view} columnKey="volume" />
-        <TableColumnHeader {view} columnKey="description" />
+        <th>{t('backupGroups.origin')}</th><th>{t('backupGroups.method')}</th><th>{t('backupGroups.creator')}</th>
         <TableColumnHeader {view} columnKey="created" />
         <th class="text-right py-3">{t('snapshotsTable.actions')}</th>
       </tr>
@@ -79,9 +83,10 @@
           <td class="py-3 pr-6 font-medium text-ink-0"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={snap.name || snap.id}>{snap.name || snap.id.slice(0, 8)}</span></td>
           <td class="py-3 pr-6"><StatusChip status={snap.status} /></td>
           <td class="py-3 pr-6 text-ink-2">{formatStorage(snap.size)}</td>
-          <td class="py-3 pr-6 text-ink-2 font-mono text-xs">{t('snapshotsTable.shortVolumeId', { id: snap.volume_id.slice(0, 8) })}</td>
-          <td class="py-3 pr-6 text-ink-2 text-xs">{snap.description || t('snapshotsTable.missingValue')}</td>
-          <td class="py-3 pr-6 text-ink-2 text-xs">{snap.created_at ? new Date(snap.created_at).toLocaleDateString(intlLocale()) : t('snapshotsTable.missingValue')}</td>
+          <td class="py-3 pr-6 text-xs">{recoveryOrigin(snap)}</td>
+          <td class="py-3 pr-6 text-xs">{t('snapshotGroups.method')}</td>
+          <td class="py-3 pr-6 text-xs" title={snap.origin === 'auto' ? undefined : snap.user_id ?? undefined}>{recoveryCreator(snap, currentUserId, creatorNames)}</td>
+          <td class="py-3 pr-6 text-ink-2 text-xs tabular-nums">{snap.created_at ? new Date(snap.created_at).toLocaleString(intlLocale()) : t('snapshotsTable.missingValue')}</td>
           <td class="py-3 text-right">
             <button
               data-tour={tourDeleteId === snap.id ? 'volume-snapshots-delete' : undefined}

@@ -9,10 +9,12 @@
   let {
     open = $bindable(),
     volumes,
+    initialVolumeId = '',
     onCreate,
   }: {
     open: boolean;
     volumes: Volume[];
+    initialVolumeId?: string;
     onCreate: (form: { volume_id: string; name: string; description: string; force: boolean }) => Promise<string | true>;
   } = $props();
 
@@ -26,7 +28,7 @@
       error = '';
       creating = false;
     } else if (volumes.length > 0 && !form.volume_id) {
-      form.volume_id = volumes[0].id;
+      form.volume_id = initialVolumeId || volumes[0].id;
     }
   });
 
@@ -49,6 +51,7 @@
     <div data-tour="volume-snapshots-create-form" class="motion-pop bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]" onclick={(e) => e.stopPropagation()} role="none">
       <h2 class="text-lg font-semibold text-ink-0 mb-5">{t('snapshotCreateModal.title')}</h2>
       <div class="space-y-4">
+        <Alert tone="info"><p>{t('snapshotGroups.methodHelp')}</p><a class="inline-flex min-h-11 items-center text-warm-text underline" href={`/dashboard/volumes/backups?volume=${encodeURIComponent(form.volume_id)}`}>{t('snapshotGroups.fullBackup')}</a></Alert>
         <div>
           <label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('snapshotCreateModal.volumeLabel')}
             <select bind:value={form.volume_id} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5">

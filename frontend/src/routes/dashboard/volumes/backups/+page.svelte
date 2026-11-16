@@ -8,6 +8,10 @@
 	import { t as tl } from '$lib/i18n/ns/common';
 	import { t } from '$lib/i18n/ns/volume';
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
+	import RecoveryVolumeCard from '$lib/components/volume/RecoveryVolumeCard.svelte';
+	import { groupRecoveryPoints, recoveryVolumeName, recoveryVolumeUrl, type RecoveryGroup } from '$lib/components/volume/recoveryPoints';
+	import { projectAuthority } from '$lib/api/projectAuthority';
 	import VolumeBackupPolicies from '$lib/components/volume/backups/VolumeBackupPolicies.svelte';
 	import { createVolumeBackupPoliciesController } from '$lib/stores/volumeBackupPoliciesController.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -42,6 +46,34 @@
 	let lastCreatedId = $state<string | null>(null);
 	let bulkBusy = $state(false);
 	const policies = createVolumeBackupPoliciesController();
+	const selectedVolumeId = $derived(page.url.searchParams.get('volume') ?? page.url.searchParams.get('auto-backup'));
+	const groups = $derived(groupRecoveryPoints(volumes, backups, policies.policies));
+	const selectedGroup = $derived(groups.find(group => group.id === selectedVolumeId));
+	const volumeColumns = $derived<TableColumn<RecoveryGroup>[]>([
+		{ key: 'name', label: t('backupGroups.volume'), value: group => recoveryVolumeName(group, !policies.volumesError) },
+		{ key: 'status', label: t('listTable.status'), value: group => group.volume?.status },
+		{ key: 'size', label: t('backupGroups.volumeSize'), value: group => group.volume?.size },
+		{ key: 'count', label: t('backupGroups.count'), value: group => group.points.length },
+		{ key: 'latest', label: t('backupGroups.latest'), value: group => group.latest },
+		{ key: 'policy', label: t('backupGroups.policy'), value: group => policies.error ? null : group.policy ? group.policy.enabled ? t('backupGroups.policyActive') : t('backupGroups.policyPaused') : t('backupGroups.noPolicy') },
+	]);
+	const groupView = createTableView({ locale: intlLocale, rows: () => groups, columns: () => volumeColumns, search: () => search, searchable: group => [group.id, recoveryVolumeName(group, !policies.volumesError)] });
+	let creatorNames = $state<Record<string, string>>({});
+	function selectVolume(id: string | null) {
+		selection.clear();
+		void goto(recoveryVolumeUrl(page.url, id), { keepFocus: true, noScroll: true });
+	}
+	async function fetchCreators() {
+		const state = $auth;
+		const projectId = state.projectId;
+		const requestGeneration = generation;
+		if (!state.token || !projectId) return;
+		const current = () => generation === requestGeneration && $auth.projectId === projectId && $auth.userId === state.userId;
+		try {
+			const result = await projectAuthority({ token: () => $auth.token ?? '', domainId: state.domainId ?? '', userId: state.userId ?? '', isCurrent: current, canSubmit: () => false }, projectId).members(projectId);
+			if (current()) creatorNames = Object.fromEntries(result.items.map(member => [member.user_id, member.username]));
+		} catch { /* Project member lookup may be denied; retain short native creator IDs. */ }
+	}
 	let generation = 0;
 	let consumedLink = $state('');
 	const selection = createResourceSelection();
@@ -53,7 +85,7 @@
   { key: 'incremental', label: t('backupListTable.incremental'), value: row => row.is_incremental },
   { key: 'created', label: t('backupListTable.createdAt'), value: row => row.created_at },
  ]);
- const view = createTableView({ locale: intlLocale, rows: () => backups, columns: () => columns, search: () => search, searchable: row => [row.id, ...columns.map(column => column.value(row))].map(value => String(value ?? '')) });
+ const view = createTableView({ locale: intlLocale, rows: () => [...backups.filter(backup => backup.volume_id === selectedVolumeId)].sort((a, b) => (Date.parse(b.created_at ?? '') || 0) - (Date.parse(a.created_at ?? '') || 0)), columns: () => columns });
  const selectableIds = $derived(new Set(view.rows.map((backup) => backup.id)));
 
 	async function fetchBackups(force = false) {
@@ -129,8 +161,8 @@
 	}
 
 	const bulkActions = $derived<BulkSelectionAction[]>([{ key: 'delete', label: t('backupsPage.delete'), tone: 'danger', onAction: runBulkDelete }]);
-	async function forceRefresh() { refreshing = true; try { await Promise.all([fetchBackups(true), policies.refresh()]); } finally { refreshing = false; } }
-	const ar = createAutoRefresh(async () => { await Promise.all([fetchBackups(), policies.refresh()]); }, { storageKey: 'dashboard-volume-backups', defaultActive: true, defaultInterval: 15, intervalOptions: [10, 15, 30, 60], invokeOnMount: false });
+	async function forceRefresh() { refreshing = true; try { await Promise.all([fetchBackups(true), fetchVolumes(), policies.refresh(), fetchCreators()]); } finally { refreshing = false; } }
+	const ar = createAutoRefresh(async () => { await Promise.all([fetchBackups(), fetchVolumes(), policies.refresh()]); }, { storageKey: 'dashboard-volume-backups', defaultActive: true, defaultInterval: 15, intervalOptions: [10, 15, 30, 60], invokeOnMount: false });
 
 	$effect(() => {
 		let previous = '';
@@ -140,10 +172,10 @@
 			previous = key;
 			untrack(() => {
 				generation++;
-				selection.clear(); backups = []; volumes = []; error = ''; selectedBackup = null; lastCreatedId = null;
+				selection.clear(); backups = []; volumes = []; creatorNames = {}; error = ''; selectedBackup = null; lastCreatedId = null;
 				showModal = false; showRestoreModal = false;
 				loading = Boolean(value.projectId && value.token);
-				if (value.projectId && value.token && !switching) void fetchBackups();
+				if (value.projectId && value.token && !switching) void Promise.all([fetchBackups(), fetchVolumes(), fetchCreators()]);
 			});
 		});
 	});
@@ -160,11 +192,11 @@
  $effect(() => authDisplayContext.subscribe(({ key }) => {
   if (viewOwner === key) return;
   viewOwner = key;
-  untrack(() => { search = ''; view.reset(); });
+  untrack(() => { search = ''; view.reset(); groupView.reset(); });
  }));
 </script>
 
-<VolumeBackupCreateModal bind:open={showModal} {volumes} onCreate={createBackup} />
+<VolumeBackupCreateModal bind:open={showModal} {volumes} {backups} initialVolumeId={selectedVolumeId ?? ''} onCreate={createBackup} />
 <VolumeBackupRestoreModal bind:open={showRestoreModal} backup={selectedBackup} onRestore={restoreBackup} />
 <PageShell class="bulk-selection-page space-y-4">
 	<PageHeader breadcrumb={t('backupsPage.breadcrumb')} title={t('backupsPage.title')}>
@@ -174,21 +206,28 @@
 		{/snippet}
 	</PageHeader>
 	<ResourceToolbar label={t('backupsPage.toolbar')}>
- {#snippet filters()}<RegexSearch id="VolumeBackupListTable-search" bind:value={search} />
- <TableViewControls {view} class={backups.length === 0 ? '' : 'lg:hidden'} />
- {/snippet}
+ {#snippet filters()}{#if !selectedVolumeId}<RegexSearch id="VolumeBackupListTable-search" bind:value={search} /><TableViewControls view={groupView} />{/if}{/snippet}
 		{#snippet actions()}<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={refreshing} onManualRefresh={forceRefresh} />{/snippet}
 	</ResourceToolbar>
-	<VolumeBackupPolicies controller={policies} />
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	<div data-tour="volume-backups-list">
 	{#if loading}
 		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('backupsPage.title') })} />
-	{:else if backups.length === 0 && !error}
-		<EmptyState headline={t('backupsPage.emptyTitle')} description={t('backupsPage.emptyDescription')} />
-	{:else if backups.length > 0}
-		<VolumeBackupListTable backups={view.rows} {view} deletingId={deleting} highlightId={lastCreatedId} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onRestore={(b) => { selectedBackup = b; showRestoreModal = true; }} onDelete={deleteBackup} />
+	{:else if selectedVolumeId}
+		<div class="flex flex-wrap items-center gap-3">
+			<Button variant="ghost" onclick={() => selectVolume(null)}>{t('backupGroups.back')}</Button>
+			<h2 class="min-w-0 break-all text-lg font-semibold">{selectedGroup ? recoveryVolumeName(selectedGroup, !policies.volumesError) : selectedVolumeId}</h2>
+		</div>
+		{#key selectedVolumeId}<VolumeBackupPolicies controller={policies} volumeId={selectedVolumeId} />{/key}
+		<VolumeBackupListTable backups={view.rows} {view} {creatorNames} currentUserId={$auth.userId} deletingId={deleting} highlightId={lastCreatedId} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onRestore={(b) => { selectedBackup = b; showRestoreModal = true; }} onDelete={deleteBackup} />
 		<BulkSelectionOverlay count={selection.count} ariaLabel={t('backupsPage.bulkLabel')} actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
+	{:else}
+		{#if policies.volumesError}<Alert tone="danger">{policies.volumesError}</Alert>{/if}
+		{#if policies.error}<Alert tone="danger">{policies.error}</Alert>{/if}
+		{#if groupView.rows.length === 0 && !error}<EmptyState headline={t('backupGroups.empty')} />{/if}
+		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+			{#each groupView.rows as group (group.id)}<RecoveryVolumeCard {group} kind="backup" inventoryKnown={!policies.volumesError} policyKnown={!policies.loading && !policies.error} onOpen={() => selectVolume(group.id)} />{/each}
+		</div>
 	{/if}
 	</div>
 </PageShell>

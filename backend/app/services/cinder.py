@@ -365,6 +365,20 @@ def get_volume_image_metadata(conn: openstack.connection.Connection, volume_id: 
         return None
 
 
+def _recovery_reader(conn, microversion: str):
+    # Keep caller proxy/session unchanged; creator IDs require an explicit version.
+    adapter = copy(conn.block_storage)
+    adapter.default_microversion = microversion
+    return adapter
+
+
+def _recovery_origin(point: dict, resource: str) -> dict:
+    from app.services.auto_backup import classify_recovery_point
+
+    tier = classify_recovery_point(point, point.get("project_id") or "", resource=resource)
+    return {**point, "origin": "auto" if tier else "manual", "auto_tier": tier}
+
+
 def list_backups(
     conn: openstack.connection.Connection,
     *,
@@ -376,7 +390,7 @@ def list_backups(
         kwargs["volume_id"] = volume_id
     if all_projects:
         kwargs["all_projects"] = True
-    return [_backup_to_dict(b) for b in conn.block_storage.backups(details=True, **kwargs)]
+    return [_backup_to_dict(b) for b in _recovery_reader(conn, "3.56").backups(details=True, **kwargs)]
 
 
 def list_volume_attachments(conn: openstack.connection.Connection, volume_id: str) -> list[dict]:
@@ -409,7 +423,7 @@ def list_volume_messages(conn: openstack.connection.Connection, volume_id: str) 
 
 
 def get_backup(conn: openstack.connection.Connection, backup_id: str) -> dict:
-    b = conn.block_storage.get_backup(backup_id)
+    b = _recovery_reader(conn, "3.56").get_backup(backup_id)
     return _backup_to_dict(b)
 
 
@@ -458,14 +472,14 @@ def list_snapshots(
         kwargs["volume_id"] = volume_id
     if all_projects:
         kwargs["all_projects"] = True
-    snapshots = [_snapshot_to_dict(s) for s in conn.block_storage.snapshots(details=True, **kwargs)]
+    snapshots = [_snapshot_to_dict(s) for s in _recovery_reader(conn, "3.41").snapshots(details=True, **kwargs)]
     if caller_project_id is not None:
         snapshots = [s for s in snapshots if s.get("project_id") == caller_project_id]
     return snapshots
 
 
 def get_snapshot(conn: openstack.connection.Connection, snapshot_id: str) -> dict:
-    s = conn.block_storage.get_snapshot(snapshot_id)
+    s = _recovery_reader(conn, "3.41").get_snapshot(snapshot_id)
     return _snapshot_to_dict(s)
 
 
@@ -501,32 +515,40 @@ def delete_snapshot(conn: openstack.connection.Connection, snapshot_id: str) -> 
 
 
 def _snapshot_to_dict(s) -> dict:
-    return {
-        "id": s.id,
-        "name": s.name or "",
-        "status": s.status,
-        "volume_id": s.volume_id,
-        "size": s.size,
-        "description": getattr(s, "description", "") or "",
-        "created_at": str(s.created_at) if getattr(s, "created_at", None) else None,
-        "project_id": getattr(s, "project_id", None),
-        "metadata": dict(getattr(s, "metadata", None) or {}),
-    }
+    return _recovery_origin(
+        {
+            "id": s.id,
+            "name": s.name or "",
+            "status": s.status,
+            "volume_id": s.volume_id,
+            "size": s.size,
+            "description": getattr(s, "description", "") or "",
+            "created_at": str(s.created_at) if getattr(s, "created_at", None) else None,
+            "project_id": getattr(s, "project_id", None),
+            "user_id": getattr(s, "user_id", None),
+            "metadata": dict(getattr(s, "metadata", None) or {}),
+        },
+        "snapshot",
+    )
 
 
 def _backup_to_dict(b) -> dict:
-    return {
-        "id": b.id,
-        "name": b.name or "",
-        "status": b.status,
-        "volume_id": b.volume_id,
-        "size": b.size,
-        "project_id": getattr(b, "project_id", None),
-        "has_dependent_backups": getattr(b, "has_dependent_backups", None),
-        "is_incremental": getattr(b, "is_incremental", None),
-        "description": b.description or "",
-        "created_at": str(b.created_at) if getattr(b, "created_at", None) else None,
-    }
+    return _recovery_origin(
+        {
+            "id": b.id,
+            "name": b.name or "",
+            "status": b.status,
+            "volume_id": b.volume_id,
+            "size": b.size,
+            "project_id": getattr(b, "project_id", None),
+            "user_id": getattr(b, "user_id", None),
+            "has_dependent_backups": getattr(b, "has_dependent_backups", None),
+            "is_incremental": getattr(b, "is_incremental", None),
+            "description": b.description or "",
+            "created_at": str(b.created_at) if getattr(b, "created_at", None) else None,
+        },
+        "backup",
+    )
 
 
 def wait_volume_available(

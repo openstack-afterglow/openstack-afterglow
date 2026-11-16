@@ -10,7 +10,13 @@ export interface Volume {
   created_at?: string | null;
 }
 
-export interface VolumeBackup {
+export interface RecoveryPointIdentity {
+  user_id?: string | null;
+  origin?: 'auto' | 'manual';
+  auto_tier?: 'daily' | 'weekly' | 'monthly' | null;
+}
+
+export interface VolumeBackup extends RecoveryPointIdentity {
   id: string;
   name: string;
   description: string | null;
@@ -32,7 +38,7 @@ export interface Snapshot {
   created_at: string | null;
 }
 
-export interface VolumeSnapshot {
+export interface VolumeSnapshot extends RecoveryPointIdentity {
   id: string;
   name: string;
   status: string;
