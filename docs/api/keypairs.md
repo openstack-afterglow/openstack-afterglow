@@ -29,6 +29,8 @@ Nova SSH 키페어를 관리합니다. 인스턴스 생성 시 SSH 접속에 사
 | `GET` | `/api/v1/keypairs` | 키페어 목록 반환 |
 | `POST` | `/api/v1/keypairs` | 키페어 생성 |
 | `DELETE` | `/api/v1/keypairs/{keypair_name}` | 키페어 삭제 |
+| `GET` | `/api/v1/profile/ssh-key-preference` | 계정의 기본 SSH 키 조회 |
+| `PUT` | `/api/v1/profile/ssh-key-preference` | 기본 SSH 키 지정·해제 |
 
 ---
 
@@ -97,3 +99,11 @@ Nova SSH 키페어를 관리합니다. 인스턴스 생성 시 SSH 접속에 사
 ### 응답
 
 `204 No Content`
+
+삭제한 키가 기본 키이면 설정도 해제합니다. 삭제 처리 중 다른 기본 키로 바꾼 경우 새 설정은 보존합니다. Nova 삭제 후 설정 저장소 정리에 실패하면 `503`을 반환할 수 있으므로 자동 재시도하지 말고 목록과 설정을 다시 조회합니다.
+
+## 기본 SSH 키 설정
+
+`GET /api/v1/profile/ssh-key-preference`는 `{"keypair_name": null}` 또는 저장된 키 이름을 반환합니다. `PUT`은 같은 형태의 본문을 받으며 `keypair_name` 필드는 필수이고 명시적 `null`로 해제합니다. 이름은 1–255자이며 호출자 연결의 현재 Nova 키 목록에 없으면 `404`, 잘못된 본문은 `422`, Redis 장애는 `503`입니다. 응답은 `Cache-Control: private, no-store`입니다.
+
+설정은 원래 소속 도메인 UUID와 사용자 UUID의 해시로 Redis에 저장하며 프로젝트를 전환해도 유지합니다. 권한이나 키 자료를 저장하지 않습니다. 계정 SSH 키 화면은 지정·해제와 기본 배지를 제공합니다. VM 생성은 현재 목록에 저장된 키가 있을 때만 미리 선택하고 사용자가 바꿀 수 있습니다. 사라진 키·설정 없음·설정 조회 실패는 선택하지 않으며, Windows·관리자 생성·GitHub SSH 경로에는 적용하지 않습니다.

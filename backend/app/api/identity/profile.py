@@ -130,6 +130,36 @@ async def update_login_preference(
         return await login_preferences.save(uid, home, req.remember_last_workspace, domain_id=did, project_id=pid)
 
 
+class SshKeyPreferenceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    keypair_name: str | None = Field(min_length=1, max_length=255, strict=True)
+
+
+@router.get("/ssh-key-preference")
+async def get_ssh_key_preference(response: Response, token_info: dict = Depends(get_token_info)):
+    from app.services import ssh_key_preferences
+
+    response.headers["Cache-Control"] = "private, no-store"
+    return await ssh_key_preferences.read(token_info["user_id"], token_info["identity_domain_id"])
+
+
+@router.put("/ssh-key-preference")
+async def update_ssh_key_preference(
+    req: SshKeyPreferenceRequest,
+    response: Response,
+    token_info: dict = Depends(get_token_info),
+    conn=Depends(get_os_conn),
+):
+    from app.services import nova, ssh_key_preferences
+
+    response.headers["Cache-Control"] = "private, no-store"
+    if req.keypair_name is not None:
+        keypairs = await asyncio.to_thread(nova.list_keypairs, conn)
+        if not any(keypair["name"] == req.keypair_name for keypair in keypairs):
+            raise HTTPException(404, "ssh_keypair_not_found")
+    return await ssh_key_preferences.save(token_info["user_id"], token_info["identity_domain_id"], req.keypair_name)
+
+
 @router.get("")
 async def get_profile(
     token_info: dict = Depends(get_token_info),

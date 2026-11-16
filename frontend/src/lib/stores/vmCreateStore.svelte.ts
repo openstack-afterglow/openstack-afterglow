@@ -148,6 +148,8 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	let flavors = $state<FlavorOption[]>([]);
 	let networks = $state<NetworkInfo[]>([]);
 	let keypairs = $state<Keypair[]>([]);
+	let defaultKeyName: string | null = null;
+	let keyDefaultApplied = false;
 	let volumes = $state<Volume[]>([]);
 	let fileStorages = $state<{ id: string; name: string; status: string; share_proto: string }[]>([]);
 	let securityGroups = $state<SecurityGroupInfo[]>([]);
@@ -811,7 +813,13 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		if (!opts.adminMode()) {
 			await Promise.allSettled([
 				loadOption('networks', `public:${projectId ?? ''}`, (signal) => api.get<NetworkInfo[]>('/api/v1/networks', token, projectId, { signal }), value => { networks = value; }),
-				loadOption('keypairs', `public:${projectId ?? ''}`, (signal) => api.get<Keypair[]>('/api/v1/keypairs', token, projectId, { signal }), value => { keypairs = value; }),
+				loadOption('keypairs', `public:${projectId ?? ''}`, async (signal) => {
+					const [rows, preference] = await Promise.all([
+						api.get<Keypair[]>('/api/v1/keypairs', token, projectId, { signal }),
+						api.get<{ keypair_name: string | null }>('/api/v1/profile/ssh-key-preference', token, projectId, { signal, cache: 'no-store' }).catch(() => null),
+					]);
+					return { rows, defaultName: preference?.keypair_name ?? null };
+				}, value => { keypairs = value.rows; defaultKeyName = value.defaultName; }),
 				loadOption('securityGroups', `public:${projectId ?? ''}`, (signal) => api.get<SecurityGroupInfo[]>('/api/v1/security-groups', token, projectId, { signal }), value => { securityGroups = value; }),
 				loadOption('defaultNetwork', `public:${projectId ?? ''}`, (signal) =>
 					api.get<{ network_id: string | null }>('/api/v1/networks/default', token, projectId, { signal }),
@@ -845,8 +853,12 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	function applyConfigurationDefaults() {
 		if (destroyed) return;
 		const current = get(wizard);
-		if (!opts.adminMode() && keypairs.length === 1 && !current.keyName) {
-			wizard.update(w => ({ ...w, keyName: keypairs[0].name }));
+		if (!opts.adminMode() && !isWindowsBoot && current.sshAccessMode === 'keypair'
+			&& !keyDefaultApplied && optionStatus.keypairs === 'loaded') {
+			keyDefaultApplied = true;
+			if (!current.keyName && defaultKeyName && keypairs.some(key => key.name === defaultKeyName)) {
+				wizard.update(w => ({ ...w, keyName: defaultKeyName }));
+			}
 		}
 		if (networks.length > 0 && !current.networkId) {
 			const selected = networks.find(network => network.id === defaultNetworkId)
@@ -1035,6 +1047,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	}
 
 	function resetTargetOptions() {
+		keyDefaultApplied = false;
 		clearWizardPassword();
 		advanceProjectGeneration();
 		for (const key of ['volumes', 'flavors', 'networks', 'securityGroups'] as const) {
@@ -1078,6 +1091,8 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		flavors = [];
 		networks = [];
 		keypairs = [];
+		defaultKeyName = null;
+		keyDefaultApplied = false;
 		securityGroups = [];
 		fileStorages = [];
 		defaultNetworkId = null;
