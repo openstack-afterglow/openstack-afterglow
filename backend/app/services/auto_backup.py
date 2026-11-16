@@ -852,42 +852,50 @@ async def _prune(conn, redis, lease, project_id, volume_id, config):
 
 
 async def _reconcile(conn, redis, lease, project_id, volume_id, operation, now):
-    try:
-        if operation.get(_id_field()):
-            backup = _scoped(conn, project_id, await _sdk(_provider("get"), conn, operation[_id_field()]))
-        else:
-            backups = _scoped(conn, project_id, await _sdk(_provider("list"), conn, volume_id=volume_id))
-            matches = [b for b in backups if _matches_operation(b, project_id, volume_id, operation)]
-            backup = matches[0] if len(matches) == 1 else None
-        if not backup or not _matches_operation(backup, project_id, volume_id, operation):
-            raise ValueError(f"{_resource().title()} identity is not confirmed")
-        operation[_id_field()] = backup["id"]
-        status = backup.get("status")
-        operation["status"] = (
-            "available"
-            if status == "available"
-            else "error"
-            if status == "error"
-            else ("creating" if status in ("creating", "restoring") else "unknown")
-        )
-        operation["error"] = (
-            f"Cinder {_resource()} failed."
-            if status == "error"
-            else (
-                f"{_resource().title()} completion is not yet confirmed." if operation["status"] == "unknown" else None
+    retention_only = _resource() == "backup" and bool(operation.get("retention_started_at"))
+    if retention_only:
+        # The durable drain marker is written only after confirmed completion.
+        # Later deletion/restoration of that backup cannot undo its receipt.
+        operation.update(status="available", error=None)
+    else:
+        try:
+            if operation.get(_id_field()):
+                backup = _scoped(conn, project_id, await _sdk(_provider("get"), conn, operation[_id_field()]))
+            else:
+                backups = _scoped(conn, project_id, await _sdk(_provider("list"), conn, volume_id=volume_id))
+                matches = [b for b in backups if _matches_operation(b, project_id, volume_id, operation)]
+                backup = matches[0] if len(matches) == 1 else None
+            if not backup or not _matches_operation(backup, project_id, volume_id, operation):
+                raise ValueError(f"{_resource().title()} identity is not confirmed")
+            operation[_id_field()] = backup["id"]
+            status = backup.get("status")
+            operation["status"] = (
+                "available"
+                if status == "available"
+                else "error"
+                if status == "error"
+                else ("creating" if status in ("creating", "restoring") else "unknown")
             )
-        )
-    except Exception:
-        operation.update(
-            status="unknown",
-            error=f"{_resource().title()} acceptance or completion could not be confirmed; it will not be resubmitted.",
-        )
+            operation["error"] = (
+                f"Cinder {_resource()} failed."
+                if status == "error"
+                else (
+                    f"{_resource().title()} completion is not yet confirmed."
+                    if operation["status"] == "unknown"
+                    else None
+                )
+            )
+        except Exception:
+            operation.update(
+                status="unknown",
+                error=f"{_resource().title()} acceptance or completion could not be confirmed; it will not be resubmitted.",
+            )
     if not await _result(redis, lease, project_id, volume_id, operation):
         return
     if operation["status"] in ("available", "error"):
         await _invalidate_backups(project_id)
     prune_pending = False
-    if operation["status"] == "available" and _safe_completed(backup):
+    if operation["status"] == "available" and (retention_only or _safe_completed(backup)):
         config = await get_auto_backup_config(project_id, volume_id)
         if config and await lease.current(project_id, volume_id, operation["revision"]):
             retained = await _prune(conn, redis, lease, project_id, volume_id, config)
@@ -914,7 +922,8 @@ async def _cycle(conn, redis, lease, project_id, volume_id, now):
     active = _text(await redis.get(_key("active", project_id, volume_id)))
     if active:
         operation = json.loads(active)
-        if _resource() == "backup" and operation["status"] == "available" and operation.get("retention_started_at"):
+        if _resource() == "backup" and operation.get("retention_started_at"):
+            operation.update(status="available", error=None)
             deadline = _time(operation["retention_started_at"]) + timedelta(seconds=_RETENTION_DRAIN_SECONDS)
             config = await get_auto_backup_config(project_id, volume_id, now=now)
             if config and config.get("next_run_at"):

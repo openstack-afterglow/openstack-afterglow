@@ -397,3 +397,52 @@ async def test_due_backup_slot_ends_retention_before_long_drain_deadline(policy_
     assert (await current())["retained_over_limit"] == ["old"]
     assert cloud.deleted == ["old"]
     assert cloud.records["old"].status == "deleting"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("saved_status", ["available", "unknown"])
+async def test_deleted_completed_backup_does_not_poison_retention_drain(policy_redis, monkeypatch, saved_status):
+    prefix = ab._PREFIX + ":snapshots"
+    monkeypatch.setattr(snapshots, "_PREFIX", prefix)
+    monkeypatch.setattr(snapshots, "_ALL_KEY", prefix + ":all_configs")
+    cloud = SnapshotChainCloud()
+    cloud.managed("base", "monthly", 1)
+    cloud.managed("leaf", "daily", 2, parent="base")
+    cloud.managed("kept-daily", "daily", 3)
+    cloud.defer_deletion = True
+    config = await save(max_daily=1, max_weekly=0, max_monthly=1)
+    await snapshots.enable_auto_snapshot(PROJECT, VOLUME, 1, 0, 0, now=START)
+    await complete(cloud, config)
+    active_key = ab._key("active", PROJECT, VOLUME)
+    operation = json.loads(await policy_redis.get(active_key))
+    assert operation["retention_started_at"]
+    operation["status"] = saved_status
+    await policy_redis.set(active_key, json.dumps(operation))
+    # The user deletes the already-completed replacement during housekeeping.
+    del cloud.records["submitted-1"]
+    reads = []
+    original = cloud.get_backup
+
+    def get_backup(backup_id):
+        reads.append(backup_id)
+        if backup_id == "submitted-1":
+            raise HttpException(http_status=404, message="Already removed")
+        return original(backup_id)
+
+    monkeypatch.setattr(cloud, "get_backup", get_backup)
+    await ab.run_backup_cycle(cloud, PROJECT, VOLUME, now=due(config) + timedelta(seconds=15))
+    assert (await current())["last_status"] == "available"
+    assert await policy_redis.exists(active_key)
+    assert "submitted-1" not in reads
+    expiry = due(config) + timedelta(seconds=ab._RETENTION_DRAIN_SECONDS)
+    await ab.run_backup_cycle(cloud, PROJECT, VOLUME, now=expiry)
+    assert not await policy_redis.exists(active_key)
+    assert (await current())["last_status"] == "available"
+    assert (await current())["retained_over_limit"] == ["leaf"]
+    assert cloud.records["leaf"].status == "deleting"
+    await snapshots.run_snapshot_cycle(cloud, PROJECT, VOLUME, now=expiry)
+    assert len(cloud.snapshot_posts) == 1
+    cloud.snapshot_records["new-snapshot"].status = "available"
+    await snapshots.run_snapshot_cycle(cloud, PROJECT, VOLUME, now=expiry)
+    await ab.run_backup_cycle(cloud, PROJECT, VOLUME, now=due(await current()))
+    assert len(cloud.submissions) == 2
