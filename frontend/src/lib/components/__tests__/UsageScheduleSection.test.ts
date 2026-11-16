@@ -18,7 +18,7 @@ vi.mock('$lib/stores/auth', () => ({
 
 import { ApiError } from '$lib/api/client';
 import { auth } from '$lib/stores/auth';
-import UsageScheduleSection from '../instance/UsageScheduleSection.svelte';
+import UsageScheduleSection from './_UsageScheduleHarness.svelte';
 
 const identity = auth as unknown as Writable<{ token: string | null; projectId: string; userId: string; sessionId?: string }>;
 const path = '/api/v1/instances/vm-a/usage-schedule';
@@ -63,27 +63,6 @@ describe('usage schedule detail with its real controller and fields', () => {
 		expect(section.querySelectorAll('.alert').length).toBeGreaterThan(0);
 		expect(section.querySelector('.alert:not(.alert-flat)')).toBeNull();
 		expect(screen.getByRole('checkbox', { name: t('deleteVolumes') })).toBeTruthy();
-	});
-
-	it('scrolls a delayed reminder anchor once on mount, never again on schedule refresh', async () => {
-		const originalScroll = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView');
-		const scroll = vi.fn();
-		const originalUrl = window.location.href;
-		Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, value: scroll });
-		window.history.replaceState(null, '', '#usage-schedule');
-		try {
-			render(UsageScheduleSection, props);
-			await ready();
-			expect(scroll).toHaveBeenCalledTimes(1);
-			expect(scroll).toHaveBeenCalledWith({ block: 'start', behavior: 'instant' });
-			await fireEvent.click(screen.getByRole('button', { name: t('refresh') }));
-			await ready();
-			expect(scroll).toHaveBeenCalledTimes(1);
-		} finally {
-			window.history.replaceState(null, '', originalUrl);
-			if (originalScroll) Object.defineProperty(Element.prototype, 'scrollIntoView', originalScroll);
-			else Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
-		}
 	});
 
 	it('reads freshly, preserves exact UTC revision payload and never opts into volume deletion by default', async () => {

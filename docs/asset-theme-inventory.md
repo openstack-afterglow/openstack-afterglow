@@ -36,7 +36,7 @@
 
 아래는 테스트를 제외한 `.svelte/.css/.ts` source의 정적 매치 전체다. import만 매치된 파일과 실제 렌더 소유 파일을 구분하려면 해당 source를 읽어야 한다. 동적 runtime URL, backend가 내려주는 사용자 이미지 및 외부 iframe 내부는 정적 source 목록만으로 모두 열거할 수 없다. Static 파일은 아래 별도 목록을 기준으로 한다.
 
-### 공통 로딩·진행 상태 소비자 (445 files)
+### 공통 로딩·진행 상태 소비자 (444 files)
 
 - `frontend/src/lib/components/AdminVolumeDetailPanel.svelte`
 - `frontend/src/lib/components/AutoRefreshControl.svelte`
@@ -297,7 +297,6 @@
 - `frontend/src/lib/components/instance/RenameModal.svelte`
 - `frontend/src/lib/components/instance/ResizeModal.svelte`
 - `frontend/src/lib/components/instance/SecurityGroupUnion.svelte`
-- `frontend/src/lib/components/instance/StorageAttachmentsSection.svelte`
 - `frontend/src/lib/components/instance/UsageScheduleReminders.svelte`
 - `frontend/src/lib/components/instance/UsageScheduleSection.svelte`
 - `frontend/src/lib/components/instance/VolumesSection.svelte`

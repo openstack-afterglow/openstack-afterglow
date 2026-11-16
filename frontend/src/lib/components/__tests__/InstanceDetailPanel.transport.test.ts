@@ -23,8 +23,6 @@ vi.mock('$lib/components/instance/InfoSection.svelte', () => import('./_Unrelate
 vi.mock('$lib/components/instance/ConsoleSection.svelte', () => import('./_UnrelatedInstanceDetailSection.svelte'));
 vi.mock('$lib/components/instance/NetworkSection.svelte', () => import('./_UnrelatedInstanceDetailSection.svelte'));
 vi.mock('$lib/components/instance/VolumesSection.svelte', () => import('./_UnrelatedInstanceDetailSection.svelte'));
-vi.mock('$lib/components/instance/StorageAttachmentsSection.svelte', () => import('./_UnrelatedInstanceDetailSection.svelte'));
-vi.mock('$lib/components/instance/UnionInfoSection.svelte', () => import('./_UnrelatedInstanceDetailSection.svelte'));
 
 import InstanceDetailPanel from '../InstanceDetailPanel.svelte';
 

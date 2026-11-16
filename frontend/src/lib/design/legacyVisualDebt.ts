@@ -977,14 +977,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 		count: 14,
 		tokens: ["bg-gray-600","bg-gray-700","bg-gray-800","bg-gray-900","bg-red-900/40","bg-violet-600","bg-violet-700","border-gray-600","border-gray-700","border-red-700","border-violet-500","text-gray-400","text-gray-500","text-red-300"],
 	},
-	"frontend/src/lib/components/instance/StorageAttachmentsSection.svelte": {
-		count: 47,
-		tokens: ["bg-blue-500","bg-blue-600","bg-gray-700","bg-gray-800","bg-gray-800/50","bg-gray-900","bg-green-900/20","border-blue-500","border-gray-600","border-gray-700/50","border-gray-800","border-green-700/50","text-amber-400","text-blue-300","text-blue-400","text-blue-500","text-cyan-300","text-gray-200","text-gray-300","text-gray-400","text-gray-500","text-gray-600","text-green-400","text-red-400","text-red-400/70"],
-	},
-	"frontend/src/lib/components/instance/UnionInfoSection.svelte": {
-		count: 21,
-		tokens: ["bg-blue-900/40","bg-gray-900","border-gray-800","border-gray-800/50","text-blue-300","text-blue-400","text-gray-300","text-gray-400","text-gray-500"],
-	},
 	"frontend/src/lib/components/instance/VolumesSection.svelte": {
 		count: 64,
 		tokens: ["bg-blue-900/20","bg-gray-700","bg-gray-800","bg-gray-800/50","bg-gray-900","bg-red-900/30","bg-red-900/50","border-blue-500","border-blue-700","border-blue-900","border-gray-600","border-gray-700","border-gray-800","border-green-700","border-green-900","border-orange-700","border-orange-900","border-red-800/50","text-blue-300","text-blue-400","text-gray-200","text-gray-400","text-gray-500","text-gray-600","text-green-300","text-green-400","text-orange-300","text-orange-400","text-red-300"],

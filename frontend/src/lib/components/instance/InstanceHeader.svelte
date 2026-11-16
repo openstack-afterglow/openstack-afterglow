@@ -6,6 +6,7 @@
 	import { mobileViewport } from '$lib/utils/mobileViewport';
 	import { useInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 	import { t } from '$lib/i18n/ns/instance';
+	import { t as tu } from '$lib/i18n/ns/usage-schedule';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import { t as tc } from '$lib/i18n/ns/common';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
@@ -20,11 +21,13 @@
 		onOpenPasswordModal: () => void;
 		onOpenResizeModal: () => void;
 		onOpenEvacuateModal: () => void;
+		/** Present only when this instance has a usage schedule the caller may change. */
+		onOpenUsageModal?: () => void;
 		/** Mobile only: the detail owner's refresh control, shown in the name row. */
 		refresh?: Snippet;
 	}
 
-	let { adminProjectId, canMutate, onOpenMigrateModal, onOpenPasswordModal, onOpenResizeModal, onOpenEvacuateModal, refresh }: Props = $props();
+	let { adminProjectId, canMutate, onOpenMigrateModal, onOpenPasswordModal, onOpenResizeModal, onOpenEvacuateModal, onOpenUsageModal, refresh }: Props = $props();
 
 	const s = useInstanceDetailController();
 	let migrationRequest = $state<'complete' | 'abort' | null>(null);
@@ -57,10 +60,10 @@
 		|| (canMutate && (mobileStatus === 'SHUTOFF' || s.canChangePassword))
 		|| (!!adminProjectId && canMutate)
 	);
-	const hasInlineActions = $derived(canMutate && (
+	const hasInlineActions = $derived(!!onOpenUsageModal || (canMutate && (
 		mobileStatus === 'ACTIVE' || mobileStatus === 'SHUTOFF' || mobileStatus === 'SHELVED_OFFLOADED'
 		|| mobileStatus === 'SHELVED' || mobileStatus === 'VERIFY_RESIZE'
-	));
+	)));
 </script>
 
 {#snippet passwordAction()}
@@ -133,7 +136,12 @@
 			<div class="flex min-w-0 items-center gap-2">
 				{#if hasInlineActions}
 				<div class="flex min-w-0 flex-wrap items-center gap-2" data-testid="instance-mobile-primary-actions">
-					{#if s.instance!.status === 'ACTIVE'}
+					{#if onOpenUsageModal}
+						<Button onclick={onOpenUsageModal} disabled={busy} variant="outline" size="sm">{tu('openExtend')}</Button>
+					{/if}
+					{#if !canMutate}
+						<!-- The usage button alone may populate this row for a read-only caller. -->
+					{:else if s.instance!.status === 'ACTIVE'}
 						<Button onclick={() => s.performAction('stop')} disabled={busy} variant="outline" size="sm">
 							{#if s.actioning === 'stop'}<LoadingState variant="control" label={t('header.stopping')} />{:else}{t('header.stop')}{/if}
 						</Button>
@@ -228,6 +236,9 @@
 	{#snippet actions()}
 		<div class="flex flex-col gap-2 items-end">
 			<div class="flex items-center gap-2 flex-wrap justify-end">
+				{#if onOpenUsageModal}
+					<Button onclick={onOpenUsageModal} disabled={busy} variant="outline" size="sm">{tu('openExtend')}</Button>
+				{/if}
 				{#if canMutate && s.canRename}
 					<Button onclick={s.openRename} disabled={busy || s.renameLoading || s.waygateLocked} title={lockTitle} variant="outline" size="sm">{t('rename.title')}</Button>
 				{/if}
