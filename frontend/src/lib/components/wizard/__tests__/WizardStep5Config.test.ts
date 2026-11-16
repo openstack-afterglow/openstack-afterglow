@@ -88,6 +88,18 @@ describe('WizardStep5Config default SSH key', () => {
 		expect(get(wizard).keyName).toBeNull();
 	});
 
+	it('reselects the saved default after a GitHub SSH round trip', async () => {
+		mocks.apiGet.mockImplementation((path: string) => Promise.resolve(
+			path === '/api/v1/profile/ssh-key-preference' ? { keypair_name: 'project-key' } : { history: [], presets: [] },
+		));
+		await renderConfig();
+		await waitFor(() => expect((screen.getByLabelText(t('config.keypair.label'), { exact: false }) as HTMLSelectElement).value).toBe('project-key'));
+		await fireEvent.click(screen.getByRole('button', { name: t('config.ssh.githubUser') }));
+		expect(get(wizard).keyName).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: t('config.ssh.registeredKeypair') }));
+		expect((screen.getByLabelText(t('config.keypair.label'), { exact: false }) as HTMLSelectElement).value).toBe('project-key');
+	});
+
 	it('does not block manual selection when preferences are unavailable', async () => {
 		mocks.apiGet.mockImplementation((path: string) => path === '/api/v1/profile/ssh-key-preference'
 			? Promise.reject(new Error('unavailable')) : Promise.resolve({ history: [], presets: [] }));

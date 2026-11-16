@@ -333,10 +333,13 @@ describe('account controls follow real pending work', () => {
 	});
 
 	it('disables keypair deletion until the request and refresh settle', async () => {
-		api.get.mockResolvedValueOnce([{ name: 'ssh-key', fingerprint: 'fp', type: 'ssh' }]);
 		const pending = deferred<unknown>();
 		const refresh = deferred<unknown[]>();
-		api.get.mockReturnValueOnce(refresh.promise);
+		const keypairRead = vi.fn()
+			.mockResolvedValueOnce([{ name: 'ssh-key', fingerprint: 'fp', type: 'ssh' }])
+			.mockReturnValueOnce(refresh.promise);
+		api.get.mockImplementation((path: string) => path === '/api/v1/keypairs'
+			? keypairRead() : Promise.resolve({ keypair_name: null }));
 		api.delete.mockReturnValue(pending.promise);
 		const { container } = render(KeypairsSection);
 		const remove = await screen.findByRole('button', { name: '삭제' }) as HTMLButtonElement;
@@ -348,7 +351,7 @@ describe('account controls follow real pending work', () => {
 		await waitFor(() => expect(remove.disabled).toBe(true));
 		expect(screen.getByText('ssh-key')).toBeTruthy();
 		pending.resolve({});
-		await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
+		await waitFor(() => expect(keypairRead).toHaveBeenCalledTimes(2));
 		expect(remove.disabled).toBe(true);
 		expect(screen.getByText('ssh-key')).toBeTruthy();
 		refresh.resolve([]);
