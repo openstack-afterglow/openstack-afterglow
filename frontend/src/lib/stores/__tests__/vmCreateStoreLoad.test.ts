@@ -163,6 +163,7 @@ describe('VM create option loading boundaries', () => {
 				? Promise.resolve({ network_id: null }) : Promise.reject(new ApiError(status, message, code));
 			if (path === '/api/v1/networks') return Promise.resolve([{ id: 'available-network', name: 'Available network' }]);
 			if (path === '/api/v1/keypairs') return Promise.resolve([{ name: 'existing-key' }]);
+			if (path === '/api/v1/profile/ssh-key-preference') return Promise.resolve({ keypair_name: 'existing-key' });
 			if (path === '/api/v1/images') return Promise.resolve([image]);
 			if (path === '/api/v1/flavors?capacity=create') return Promise.resolve([capacityFlavor('f1')]);
 			return Promise.resolve([]);
