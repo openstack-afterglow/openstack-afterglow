@@ -2414,4 +2414,70 @@ describe('ChatPanel explicit sandbox selection', () => {
 			view.unmount();
 		}
 	});
+
+	it.each([
+		['send', 'resolve'], ['send', 'reject'],
+		['retry', 'resolve'], ['retry', 'reject']
+	] as const)('does not let delayed %s conversation creation %s clear another running conversation', async (operation, outcome) => {
+		const oldCreation = Promise.withResolvers<object>();
+		const running = Promise.withResolvers<void>();
+		const finish = Promise.withResolvers<void>();
+		let creations = 0;
+		catalogue();
+		historicalChat();
+		mocks.post.mockImplementation((path: string) => {
+			if (path !== '/api/v1/chat/conversations') return Promise.resolve({});
+			++creations;
+			if (operation === 'retry' && creations === 1) return Promise.reject(new Error('Initial creation failed'));
+			return oldCreation.promise;
+		});
+		mocks.createRun.mockResolvedValue({
+			run_id: 'run-1', conversation_id: 'sandbox-history', temp_thread_id: null,
+			status: 'running', run_kind: 'regenerate', events_url: '/events', cancel_url: '/cancel'
+		});
+		mocks.followRun.mockImplementation(async function* () {
+			yield event(1, 'run.stage.changed', { stage: 'queued', tool_name: null });
+			running.resolve();
+			await finish.promise;
+			yield event(2, 'run.completed', { status: 'completed', message_id: 'saved-answer' });
+		});
+		const view = render(ChatPanel);
+		try {
+			await screen.findByRole('button', { name: 'Model 1' });
+			await waitFor(() => expect(get(managedSandboxTools).catalogLoaded).toBe(true));
+			await submit('Conversation A pending creation');
+			if (operation === 'retry') await fireEvent.click(await screen.findByRole('button', { name: '다시 전송' }));
+			await waitFor(() => expect(creations).toBe(operation === 'retry' ? 2 : 1));
+			expect(mocks.createRun).not.toHaveBeenCalled();
+
+			await fireEvent.click(screen.getByRole('button', { name: '대화 기록과 설정 열기' }));
+			await fireEvent.click(await screen.findByRole('button', { name: 'Sandbox history' }));
+			await screen.findByText('saved answer');
+			await fireEvent.click(screen.getByTitle('다른 모델로 재생성'));
+			await fireEvent.click(screen.getByRole('option', { name: 'Model 1' }));
+			await waitFor(() => expect(mocks.createRun).toHaveBeenCalledTimes(1));
+			await waitFor(() => expect(mocks.followRun).toHaveBeenCalledTimes(1));
+			await running.promise;
+			await screen.findByRole('button', { name: '생성 중단' });
+
+			if (outcome === 'resolve') oldCreation.resolve({
+				id: 'late-A', title: 'LATE-A-CREATION-CANARY', model_name: 'model-1', workspace_id: null, updated_at: at
+			});
+			else oldCreation.reject(new Error('Late A creation rejected'));
+			await oldCreation.promise.catch(() => {});
+			await tick();
+			await tick();
+
+			expect(mocks.createRun).toHaveBeenCalledTimes(1);
+			expect(mocks.createRun.mock.calls[0][0]).toBe('/api/v1/chat/conversations/sandbox-history/messages/saved-answer/regenerate');
+			expect(screen.queryByText('LATE-A-CREATION-CANARY')).toBeNull();
+			expect(screen.queryByText('Late A creation rejected')).toBeNull();
+			await fireEvent.click(screen.getByRole('button', { name: '생성 중단' }));
+			await waitFor(() => expect(mocks.cancelRun).toHaveBeenCalledTimes(1));
+		} finally {
+			finish.resolve();
+			oldCreation.resolve({ id: 'late-A' });
+			view.unmount();
+		}
+	});
 });
