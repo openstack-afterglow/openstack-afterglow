@@ -15,7 +15,9 @@ nav_order: 8
 - 운영 스모크(일회용 API 키, 각 실행 뒤 폐기·401 확인): 네이티브 `/v1/temp-completions`(`gemini/gemini-3.5-flash-lite`, 도구·메모리 끔)가 protocol 2로 worker .12에서 `completed`, 사용량 1행(8/1 tokens, raw `$0.0000049`, `priced`, catalog 단가), 미정산 예약 0. 첫 시도는 키에 `native:runs:read`가 없어 폴링이 403으로 끝나 키를 일찍 폐기했고, 실행은 `inference_authority_revoked`로 실패(사용량 0)했다. 미디어 파이프라인: 1×1 PNG를 세 API 호스트에 직접 올려 상태 `clean`·SHA 일치·다운로드 일치 후 삭제.
 - OpenAI 경로: `gpt-6-luna` 채팅 502, `/v1/decisions` 429. 진단 결과 공급자 계정이 `insufficient_quota`/`credit_balance_exhausted`이고 `GET /models`는 200이다. Decisions 무상태 예약은 `released` 1건으로 정상 해제됐다. OpenAI 이미지·실시간·Decisions 유료 스모크는 크레딧 충전 전까지 불가하다. 임베딩 모델은 등록돼 있지 않다. 총 유료 지출은 약 $0.000005.
 - 운영자 편집: `gpt-realtime-whisper`(119)·`gpt-live-transcribe`(122)를 `stt`→`realtime`으로 바꾸고 잘못된 수동 stt 단가를 지워 카탈로그 `realtime_input_per_minute` 0.017이 적용됨을 확인했다. OpenAI 크레딧 소진 때문에 비활성 상태를 유지했다. 추천 MCP 템플릿 게시: 생성 4, 건너뜀 2(sandbox 관리형 Playwright·Markitdown), 실패 0.
+- BFF→Lumen 연결: 세 `afterglow_backend`에서 BFF와 같은 서비스 계정 catalog 해석(`resolve_service_endpoint("lumen")`)으로 Lumen을 찾아 `/v1/ready` 200, 배포된 OpenAPI에 1.32.25 화면이 쓰는 upstream 경로(`/v1/chat/models`·`/v1/chat/decisions`·`/v1/chat/embeddings`·`/v1/admin/models/native-catalog`·`/v1/mcp-settings`·`/v1/mcp-connections`·도메인 연결·`install-featured`·`/v1/temp-completions`·run events)가 모두 있고, 비인증 `/v1/chat/models`는 Lumen이 401로 거절함을 확인했다. 20:42Z 이후 `lumen_api` 로그에는 스모크 외 실제 사용자 요청이 없어(새벽 시간대) 사용자 트래픽으로 본 2xx 증거는 아직 없다.
 - 실행하지 못한 검증: 사람 사용자 세션의 BFF 채팅 경로(Chrome relay 확장 미연결), OpenAI 모델 실제 호출, 임베딩, 관리형 sandbox 도구(런타임 꺼짐 유지).
+- 게이트: 이 문서 변경에서 로컬 `npm run test:gate`(Python 3.11 우선, `__pycache__` 제거) 통과 — backend 15,515/106 skipped, frontend 8,462(610 files), contract 275, functional 301/46 skipped, Ruff check·format, 아키텍처 stamp 검사.
 
 ## Lumen 대시보드 통합 1.32.25 후보 (2026-11-18, source/local + 합성 HTTP·브라우저)
 
