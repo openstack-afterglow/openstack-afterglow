@@ -1,4 +1,9 @@
 {
+	"mediaReadiness.assets": "Storan media atau pengimbas perisian hasad belum dikonfigurasi. Minta operator menyemak tetapan Lumen S3 dan ClamAV.",
+	"mediaReadiness.route": "Laluan pelaksanaan belum sedia. Minta operator menyemak kunci API penyedia, model yang disokong, asas pengebilan dan kadar wajib.",
+	"mediaReadiness.price": "Harga pelaksanaan belum ditetapkan. Minta operator menetapkan kadar wajib untuk asas pengebilan yang dipilih.",
+	"mediaReadiness.unverified": "Kesediaan pelaksanaan belum disahkan. Muat semula keupayaan model.",
+	"mediaReadiness.ready": "Laluan pelaksanaan dan harga sedia",
 	"embeddingStudio.title": "Studio pembenaman",
 	"embeddingStudio.description": "Tukar teks kepada vektor dan bandingkan keserupaan kosinus.",
 	"embeddingStudio.invalidResponse": "Perkhidmatan pembenaman mengembalikan respons yang tidak sah.",

@@ -383,7 +383,7 @@ describe('Image Studio', () => {
 	it('blocks submission when image route or pricing is unavailable even if a model is listed', async () => {
 		api.models.mockResolvedValue([{ ...ready, capabilities: { feature_gates: { image_output: { available: false, mode: 'none', pricing_available: false, reason_code: 'route_unavailable' } } } }]);
 		render(ImageStudio);
-		await screen.findByText(/route_unavailable/);
+		await screen.findByText(t('mediaReadiness.route'));
 		await fireEvent.input(screen.getByRole('textbox', { name: /프롬프트/ }), { target: { value: 'orange dusk' } });
 		expect((screen.getByRole('button', { name: '이미지 만들기' }) as HTMLButtonElement).disabled).toBe(true);
 		expect(api.submit).not.toHaveBeenCalled();

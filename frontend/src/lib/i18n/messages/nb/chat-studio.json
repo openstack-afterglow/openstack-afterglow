@@ -1,4 +1,9 @@
 {
+	"mediaReadiness.assets": "Medielagring eller skadevareskanner er ikke konfigurert. Be en operatør kontrollere Lumen S3- og ClamAV-innstillingene.",
+	"mediaReadiness.route": "Kjøreruten er ikke klar. Be en operatør kontrollere leverandørens API-nøkkel, støttet modell, faktureringsgrunnlag og påkrevde satser.",
+	"mediaReadiness.price": "Kjørepriser mangler. Be en operatør angi påkrevde satser for valgt faktureringsgrunnlag.",
+	"mediaReadiness.unverified": "Kjøreberedskap er ikke bekreftet. Oppdater modellfunksjonene.",
+	"mediaReadiness.ready": "Kjørerute og priser er klare",
 	"embeddingStudio.title": "Innebyggingsstudio",
 	"embeddingStudio.description": "Gjør tekst om til vektorer og sammenlign kosinuslikheten.",
 	"embeddingStudio.invalidResponse": "Innebyggingstjenesten returnerte et ugyldig svar.",

@@ -23,10 +23,11 @@
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 	import ModelCapabilityBadges from '$lib/components/chat/ModelCapabilityBadges.svelte';
 	import type { ModelCapabilities } from '$lib/api/chatContracts';
+	import { mediaGateReadiness, mediaReadyLabel } from '$lib/api/mediaReadiness';
 	import ModelMediaPricingEditor from './ModelMediaPricingEditor.svelte';
 	import ModelKindEditor from './ModelKindEditor.svelte';
 	import ProviderAccountsPanel from './ProviderAccountsPanel.svelte';
-	import { MODEL_LABELS as MEDIA_LABELS, TOKEN_FIELDS, hasMediaPrices, pricingDraft, pricingError, pricingPayload, pricingEquals, type ModelKind, type MediaPricing } from './modelPricing';
+	import { MODEL_LABELS as MEDIA_LABELS, TOKEN_FIELDS, hasMediaPrices, knownModelKind, modelKindLabel, pricingDraft, pricingError, pricingPayload, pricingEquals, type ModelKind, type MediaPricing } from './modelPricing';
 	import { t as commonT } from '$lib/i18n/ns/common';
 	import { compileRegexSearch } from '$lib/utils/regexSearch';
 	import { createTableView } from '$lib/utils/tableView.svelte';
@@ -156,12 +157,13 @@
 		const tokens = Object.entries(pricing?.token_rates ?? {}).flatMap(([modality, values]) => Object.entries(values).map(([key, value]) => `${modality === 'image' ? t('configuration.image') : modality === 'audio' ? t('pricing.audio') : modality} ${TOKEN_FIELDS.find((field) => field.key === key)?.label ?? key}: ${displayPrice(String(value))} ${t('configuration.usd1mTokens')}`));
 		return [...rates, ...variants, ...tokens, ...(!hasMediaPrices(pricing) ? [t('configuration.rateUnset')] : [])].join(' · ');
 	}
-	function mediaReadiness(model: Model): string {
-		const feature = model.model_kind === 'embedding' ? 'embeddings' : model.model_kind === 'image' ? 'image_output' : model.model_kind === 'stt' ? 'audio_input' : 'audio_output';
-		const gate = model.effective_capabilities?.feature_gates?.[feature];
-		return gate?.reason_code === 'route_unavailable'
-			? t('configuration.noExecutionPathCannotRun')
-			: t('configuration.executionUnverifiedCheckExecutionPath', { v0: gate?.reason_code ? ` (${gate.reason_code})` : '' });
+	function mediaBlockReason(model: Model): string | null {
+		const features = model.model_kind === 'embedding' ? ['embeddings'] : model.model_kind === 'image' ? ['image_output'] : model.model_kind === 'stt' ? ['audio_input'] : model.model_kind === 'realtime' ? ['audio_input', 'audio_output'] : ['audio_output'];
+		for (const feature of features) {
+			const reason = mediaGateReadiness(model.effective_capabilities?.feature_gates?.[feature]);
+			if (reason) return reason;
+		}
+		return null;
 	}
 	function mediaCapability(model: Model): string {
 		const kind = model.model_kind ?? 'text';
@@ -630,8 +632,8 @@
 		columns: () => [{
 			key: 'kind',
 			label: t('pricing.candidateKindFilter'),
-			value: (candidate) => candidate.model_kind ?? (candidate.purpose === 'chat' ? 'text' : 'unknown'),
-			format: (value) => value === 'unknown' ? t('pricing.unknownKind') : MEDIA_LABELS[value as ModelKind],
+			value: (candidate) => knownModelKind(candidate.model_kind) ?? (candidate.model_kind == null && candidate.purpose === 'chat' ? 'text' : 'unknown'),
+			format: (value) => modelKindLabel(value),
 			sortable: false,
 			filterMode: 'single',
 		}]
@@ -1194,7 +1196,7 @@
 		const message = pricingError(mKind, mPricing);
 		if (message) toast.error(message);
 		if (Object.keys(cache.errors).length || message) return;
-		const pricing = pricingPayload(mPricing);
+		const pricing = pricingPayload(mKind, mPricing);
 		const requestToken = token, requestProjectId = projectId, providerId = mProviderId;
 		const generation = ++creationGeneration;
 		const isCurrent = () => !destroyed && creationOpen && creationMethod === 'manual' && generation === creationGeneration && token === requestToken && projectId === requestProjectId && mProviderId === providerId;
@@ -1272,10 +1274,10 @@
 		editCacheErrors = cache.errors;
 		// Untouched text prices stay absent so a media/cache edit does not invalidate models.dev metadata.
 		const prices = Object.fromEntries(
-			Object.entries(pricePayload(editInputPrice, editOutputPrice)).filter(([key, value]) => value !== (model[key as keyof Model] ?? null))
+			Object.entries(pricePayload(editInputPrice, model.model_kind === 'embedding' ? '' : editOutputPrice)).filter(([key, value]) => value !== (model[key as keyof Model] ?? null))
 		);
 		if (Object.keys(cache.errors).length) return;
-		const pricing = pricingPayload(editPricing, model.media_pricing);
+		const pricing = pricingPayload(model.model_kind ?? 'text', editPricing, model.media_pricing);
 		const body = { ...prices, ...cache.values, ...(!pricingEquals(pricing ?? {}, model.media_pricing ?? {}) ? { media_pricing: pricing } : {}) };
 		if (!Object.keys(body).length) { editingPrice = null; return; }
 		priceSaving = true;
@@ -1429,7 +1431,7 @@
 				name: candidate.id,
 				modelName: candidate.id,
 				displayName: candidate.display_name ?? '',
-				kind: candidate.model_kind ?? (candidate.purpose === 'chat' ? 'text' : ''),
+				kind: knownModelKind(candidate.model_kind) ?? (candidate.model_kind == null && candidate.purpose === 'chat' ? 'text' : ''),
 				inputPrice: '',
 				outputPrice: '',
 				inputTokenLimit: candidate.input_token_limit ?? null,
@@ -1488,7 +1490,7 @@
 							...(inputPrice ? { input_price_per_million: inputPrice } : {}),
 							...(outputPrice ? { output_price_per_million: outputPrice } : {}),
 							...cachePrices,
-							...(pricingPayload(entry.mediaPricing) ? { media_pricing: pricingPayload(entry.mediaPricing) } : {}),
+							...(pricingPayload(entry.kind || 'text', entry.mediaPricing) ? { media_pricing: pricingPayload(entry.kind || 'text', entry.mediaPricing) } : {}),
 							is_active: activate
 						},
 						review.token,
@@ -2067,7 +2069,7 @@
 							<div class="flex flex-wrap items-center gap-2 [&_.pill]:max-w-full [&_.pill]:!whitespace-normal [&_.pill]:!break-words">
 								<span class="truncate text-sm font-medium text-[var(--color-ink-1)]">{displayModelTitle(m)}</span>
 							<Pill tone={m.is_active ? 'success' : 'neutral'} size="xs">{(m.model_kind ?? 'text') === 'text' ? (m.is_active ? t('configuration.activeSaved') : t('configuration.inactiveSaved')) : (m.is_active ? t('configuration.adminEnabledExecutionSeparate') : t('configuration.adminDisabledSaved'))}</Pill>
-							<Pill tone="neutral" size="xs">{MEDIA_LABELS[m.model_kind ?? 'text']}</Pill>
+							<Pill tone="neutral" size="xs">{modelKindLabel(m.model_kind ?? 'text')}</Pill>
 								{#if m.is_title_model}
 									<span class="rounded bg-[var(--color-accent)]/15 px-1.5 py-0.5 text-xs text-[var(--color-accent)]">
 										{t('configuration.titleGeneration')}
@@ -2083,8 +2085,8 @@
 								<Pill tone={capabilityState(m) === 'unknown' ? 'neutral' : 'accent'} size="xs">{capabilityStatus(m)}</Pill>
 								<ModelCapabilityBadges caps={m.capabilities || m.effective_capabilities} size="xs" />
 							{:else}
-								<Pill tone={hasMediaPrices(m.media_pricing) ? 'accent' : 'warning'} size="xs">{hasMediaPrices(m.media_pricing) ? t('configuration.mediaRatesConfigured') : t('configuration.mediaRatesUnset')}</Pill>
-								<Pill tone="warning" size="xs">{mediaReadiness(m)}</Pill>
+								<Pill tone={(m.model_kind === 'embedding' ? m.effective_input_price_per_million != null : hasMediaPrices(m.media_pricing)) ? 'accent' : 'warning'} size="xs">{(m.model_kind === 'embedding' ? m.effective_input_price_per_million != null : hasMediaPrices(m.media_pricing)) ? t('configuration.mediaRatesConfigured') : t('configuration.mediaRatesUnset')}</Pill>
+								<Pill tone={mediaBlockReason(m) ? 'warning' : 'success'} size="xs">{mediaBlockReason(m) ?? mediaReadyLabel()}</Pill>
 							{/if}
 							</div>
 							<div class="mt-0.5 text-xs text-[var(--color-ink-3)]">
@@ -2273,7 +2275,7 @@
 										<input class="mt-1" type="checkbox" aria-label={candidate.id} disabled={registeringBulk} bind:checked={selectedAvail[candidate.id]} />
 										<span class="min-w-0 break-all"><span class="block font-mono">{candidate.id}</span>
 											{#if candidate.display_name}<span class="block text-xs text-[var(--color-ink-2)]">{candidate.display_name}</span>{/if}
-											<span class="block text-xs text-[var(--color-ink-2)]">{t('pricing.candidateReadiness', { kind: candidate.model_kind ? MEDIA_LABELS[candidate.model_kind] : candidate.purpose === 'chat' ? t('pricing.textCandidate') : t('pricing.unknownKind') })}</span>
+											<span class="block text-xs text-[var(--color-ink-2)]">{t('pricing.candidateReadiness', { kind: knownModelKind(candidate.model_kind) ? MEDIA_LABELS[knownModelKind(candidate.model_kind)!] : candidate.model_kind == null && candidate.purpose === 'chat' ? t('pricing.textCandidate') : t('pricing.unknownKind') })}</span>
 										</span>
 									</label>
 								{:else}
@@ -2361,7 +2363,7 @@
 	<Modal open={editingPrice !== null} onClose={() => { if (!priceSaving) editingPrice = null; }} dismissible={!priceSaving} ariaLabel={t('configuration.editModelPricing')}>
 		<div class="max-h-[calc(100vh-2rem)] w-[min(32rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-restraint)]">
 			<h3 class="text-base font-semibold text-[var(--color-ink-1)]">{t('configuration.editModelPricing')}</h3>
-			<p class="mt-1 text-sm text-[var(--color-ink-2)]">{MEDIA_LABELS[editingPrice?.model_kind ?? 'text']} · {editingPrice ? displayModelTitle(editingPrice) : ''}</p>
+			<p class="mt-1 text-sm text-[var(--color-ink-2)]">{modelKindLabel(editingPrice?.model_kind ?? 'text')} · {editingPrice ? displayModelTitle(editingPrice) : ''}</p>
 			{#if editingPrice}
 			<ModelMediaPricingEditor kind={editingPrice.model_kind ?? 'text'} bind:draft={editPricing} prefix="model-edit" disabled={priceSaving} hasStoredTextPrices={editingPrice.input_price_per_million != null || editingPrice.output_price_per_million != null || CACHE_PRICE_FIELDS.some(({ key }) => editingPrice?.[key] != null)}>
 				{#snippet textPricing()}
