@@ -1356,3 +1356,63 @@ async def test_empty_discovery_never_proves_a_guarded_mutation_safe(system_keyst
     with pytest.raises(HTTPException) as last:
         await identity_roles.assert_system_admin_remains(**subject)
     assert last.value.status_code == 422
+
+
+@pytest.mark.parametrize("operation", ["revoke", "disable"])
+@pytest.mark.parametrize("home_enabled", [False, True])
+@pytest.mark.asyncio
+async def test_remaining_admin_requires_enabled_home_domain(
+    admin_client, mock_conn, system_keystone, operation, home_enabled
+):
+    ks = system_keystone(_SystemKeystone({"active-admin", "other-admin"}))
+    native_user = ks.users.get
+    ks.users.get = lambda uid: SimpleNamespace(
+        **{**vars(native_user(uid)), "domain_id": "active-domain" if uid == "active-admin" else "other-domain"}
+    )
+    ks.domains.get = lambda did: SimpleNamespace(
+        id=did, enabled=True if did == "active-domain" else home_enabled
+    )
+    mock_conn.identity.update_user.return_value = SimpleNamespace(
+        id="active-admin", name="active-admin", email="", is_enabled=False
+    )
+    with patch("app.api.identity.admin_identity.session_store.revoke_user_sessions", new=AsyncMock()) as revoke:
+        if operation == "revoke":
+            response = await admin_client.post(
+                "/api/v1/admin/identity/system-roles/revoke", json={"user_id": "active-admin"}
+            )
+        else:
+            response = await admin_client.patch("/api/v1/admin/users/active-admin", json={"enabled": False})
+    assert response.status_code == (200 if home_enabled else 422)
+    if not home_enabled:
+        assert ks.calls == []
+        mock_conn.identity.update_user.assert_not_called()
+        revoke.assert_not_awaited()
+
+
+@pytest.mark.parametrize("home", [None, SimpleNamespace(id="different-domain", enabled=True)])
+@pytest.mark.asyncio
+async def test_unverified_admin_home_domain_cannot_prove_a_survivor(system_keystone, home):
+    ks = system_keystone(_SystemKeystone({"admin-1", "admin-2"}))
+    ks.domains.get = Mock(return_value=home)
+    with pytest.raises(HTTPException) as error:
+        await identity_roles.assert_system_admin_remains(users={"admin-1"})
+    assert error.value.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_unreadable_admin_home_domain_cannot_prove_a_survivor(system_keystone):
+    ks = system_keystone(_SystemKeystone({"admin-1", "admin-2"}))
+    ks.domains.get = Mock(side_effect=ConnectionError("domain directory unavailable"))
+    with pytest.raises(HTTPException) as error:
+        await identity_roles.assert_system_admin_remains(users={"admin-1"})
+    assert error.value.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_shared_admin_home_domain_is_read_once_per_fresh_guard(system_keystone):
+    ks = system_keystone(_SystemKeystone({"admin-1", "admin-2"}))
+    ks.domains.get = Mock(wraps=ks.domains.get)
+    assert set(await identity_roles.enabled_system_admins()) == {"admin-1", "admin-2"}
+    ks.domains.get.assert_called_once_with("default")
+    assert set(await identity_roles.enabled_system_admins()) == {"admin-1", "admin-2"}
+    assert ks.domains.get.call_count == 2

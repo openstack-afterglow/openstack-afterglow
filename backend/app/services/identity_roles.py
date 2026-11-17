@@ -236,18 +236,28 @@ LAST_SYSTEM_ADMIN = "마지막 system admin은 제거하거나 비활성화할 �
 async def enabled_system_admins() -> dict:
     """Enabled effective system:all admins, verified through direct native grants.
 
-    Unreadable authority or shared discovery fails closed with 503.
+    User and exact home domain must both be enabled. Unreadable authority or
+    shared discovery fails closed with 503.
     """
 
     def load(ks, users):
         from app.services import backup_system_account
 
         admins = {}
+        domain_enabled = {}
         for uid in users:
             account = ks.users.get(uid)
             if _field(account, "id") != uid:
                 raise ValueError("Keystone returned a different user")
-            if _field(account, "enabled") is True and not backup_system_account.system_account_marker(account):
+            if _field(account, "enabled") is not True or backup_system_account.system_account_marker(account):
+                continue
+            home_id = keystone.validate_system_principal_id(_field(account, "domain_id"))
+            if home_id not in domain_enabled:
+                home = ks.domains.get(home_id)
+                if _field(home, "id") != home_id:
+                    raise ValueError("Keystone returned a different home domain")
+                domain_enabled[home_id] = _field(home, "enabled") is True
+            if domain_enabled[home_id]:
                 admins[uid] = account
         return admins
 
