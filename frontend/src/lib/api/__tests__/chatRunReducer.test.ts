@@ -213,7 +213,7 @@ describe('chat run reducer', () => {
 		expect(state.runKind).toBe('compaction');
 		expect(state.messageId).toBeNull();
 		expect(state.context).toMatchObject({ phase: 'compacting', cause: 'manual', before_tokens: 8000 });
-		expect(state.activity).toEqual([expect.objectContaining({ kind: 'context', phase: 'compacting' })]);
+		expect(state.activity).toEqual([expect.objectContaining({ kind: 'started' }), expect.objectContaining({ kind: 'context', phase: 'compacting' })]);
 	});
 
 	it('deduplicates old events and rejects a sequence gap', () => {

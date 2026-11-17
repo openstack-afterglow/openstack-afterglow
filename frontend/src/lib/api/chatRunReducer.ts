@@ -37,6 +37,7 @@ export interface RunChildView {
 }
 
 export type RunActivityItem =
+	| { id: string; kind: 'started'; seq: number; createdAt: string }
 	| {
 			id: string;
 			kind: 'stage';
@@ -180,6 +181,9 @@ export function reduceRunEvent(state: RunViewState, event: ChatRunEvent): RunVie
 		case 'run.started':
 			next.status = 'running';
 			next.runKind = event.payload.run_kind;
+			next.activity = [...next.activity, {
+				id: `started:${event.seq}`, kind: 'started', seq: event.seq, createdAt: event.created_at
+			}];
 			break;
 		case 'context.updated':
 			next.context = event.payload;

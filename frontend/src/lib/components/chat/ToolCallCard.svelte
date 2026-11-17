@@ -197,8 +197,9 @@
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
 	}
-	.tool-card.failed .tool-status {
-		color: var(--color-state-danger);
+	.tool-card.failed .tool-status,
+	.tool-card.failed .ic {
+		color: var(--color-state-danger-text);
 	}
 	.chevron {
 		margin-left: auto;

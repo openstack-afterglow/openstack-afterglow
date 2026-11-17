@@ -8,7 +8,7 @@
 	import ExecutionTimeline from './ExecutionTimeline.svelte';
 	import ChatBubble from '$lib/components/ui/ChatBubble.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
-	import { activityIsRunning, visibleActivityItems } from './chatActivityPresentation';
+	import { visibleActivityItems } from './chatActivityPresentation';
 	import type { AvailableModel, ChatMessage } from '$lib/api/chatTree';
 	import { formatMetrics, type StreamMetrics } from '$lib/api/chatMetrics';
 	import {
@@ -33,6 +33,8 @@
 		/** A window-level activity already communicates progress for this reply. */
 		progressElsewhere?: boolean;
 		liveMotion?: boolean;
+		approvalBusy?: boolean;
+		onApprovalDecision?: (callId: string, decision: 'approve' | 'deny') => void;
 		/** Server-projected adjacent sibling availability for branch navigation. */
 		hasPreviousVersion?: boolean;
 		hasNextVersion?: boolean;
@@ -57,6 +59,8 @@
 		activityItems = [],
 		progressElsewhere = false,
 		liveMotion = false,
+		approvalBusy = false,
+		onApprovalDecision,
 		hasPreviousVersion = false,
 		hasNextVersion = false,
 		busy = false,
@@ -83,7 +87,7 @@
 	const ttftExplanation = $derived(ttftValue === null ? '' : t('message.ttftExplanation', { seconds: ttftValue }));
 	const visibleActivity = $derived(visibleActivityItems(activityItems, streaming));
 	const hasProgress = $derived(
-		progressElsewhere || visibleActivity.some((item) => activityIsRunning(item, activityItems, streaming)) ||
+		progressElsewhere || visibleActivity.length > 0 ||
 		(!visibleActivity.length && (Boolean(reasoning && reasoningActive) || toolItems.some((item) => item.running)))
 	);
 	// 저장된 assistant 호출 스텝(재로딩) → 호출 카드(인자). role=tool → 결과 카드.
@@ -181,7 +185,7 @@
 				</section>
 			{/if}
 			{#if visibleActivity.length}
-				<ExecutionTimeline items={activityItems} active={streaming} animate={liveMotion} />
+				<ExecutionTimeline items={activityItems} active={streaming} animate={liveMotion} {approvalBusy} {onApprovalDecision} />
 			{:else}
 				{#if reasoning}
 					<ThinkingBlock text={reasoning} active={reasoningActive} animate={liveMotion} />

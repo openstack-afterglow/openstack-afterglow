@@ -78,7 +78,7 @@
 
 	import { MOTION_DURATION_MS } from '$lib/design/tokens';
 	import { prefersReducedMotion } from '$lib/utils/motion';
-	import ChatToolApproval, { type ChatToolApproval as ChatToolApprovalItem } from './ChatToolApproval.svelte';
+	import type { ChatToolApproval as ChatToolApprovalItem } from './ChatToolApproval.svelte';
 	interface Conversation {
 		id: string;
 		title: string | null;
@@ -2092,6 +2092,7 @@
 							expiresAt: evt.payload.expires_at
 						}
 					];
+					projectImmediately();
 				} else if (evt.type === 'tool.approval_resolved') {
 					pendingToolApprovals = pendingToolApprovals.filter(
 						(approval) => approval.runId !== descriptor.run_id || approval.callId !== evt.payload.call_id
@@ -2922,6 +2923,11 @@
 			{modelLocked}
 			{toolActivity}
 			{agentActivity}
+			approvalBusy={Boolean(resolvingToolApprovalId) || !canTools || !canChat}
+			onApprovalDecision={(runId, callId, decision) => {
+				const approval = pendingToolApprovals.find((item) => item.runId === runId && item.callId === callId);
+				if (approval) void resolveToolApproval(approval, decision);
+			}}
 			error={error && tempRunHistoryError ? `${error}\n${tempRunHistoryError}` : error ?? tempRunHistoryError}
 			empty={isEmpty}
 			starterPrompts={lumenStarterPrompts}
@@ -2942,13 +2948,6 @@
 			onSwitchVersion={switchVersion}
 		/>
 
-		{#each pendingToolApprovals as approval (approval.runId + approval.callId)}
-			<ChatToolApproval
-				{approval}
-				busy={resolvingToolApprovalId === approval.callId || !canTools || !canChat}
-				onDecision={(callId, decision) => void resolveToolApproval(approval, decision)}
-			/>
-		{/each}
 
 
 			<div class="composer-anchor" bind:this={composerAnchor}>

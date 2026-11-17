@@ -6,6 +6,7 @@
 	import { taskLabelForTool } from '$lib/api/chatTaskLabels';
 	import { t } from '$lib/i18n/ns/chat-panel';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { t as studioText } from '$lib/i18n/ns/chat-studio';
 
 	export type ChatToolApproval = {
 	callId: string;
@@ -43,7 +44,7 @@
 	<section aria-label={t('approval.ariaLabel', { task: taskName })}>
 		<div class="heading">
 			<div>
-				<p class="eyebrow">{t('approval.required')}</p>
+				<p class="permission-heading">{studioText('executionTimeline.permission')}</p>
 				<h3>{taskName}</h3>
 				<p class="tool-identifier" title={approval.name}>{approval.name}</p>
 			</div>
@@ -67,7 +68,7 @@
 			<p>{t('approval.deadline', { expiry: expiresAt(approval.expiresAt) })}</p>
 			<div class="actions">
 				<Button variant="danger-outline" size="sm" disabled={busy} onclick={() => onDecision(approval.callId, 'deny')}>{t('approval.deny')}</Button>
-				<Button variant="primary" size="sm" disabled={busy} onclick={() => onDecision(approval.callId, 'approve')}>{#if busy}<LoadingState variant="control" label={t('approval.processing')} />{:else}{t('approval.approve')}{/if}</Button>
+				<Button variant="primary" size="sm" disabled={busy} onclick={() => onDecision(approval.callId, 'approve')}>{#if busy}<LoadingState variant="control" label={t('approval.processing')} />{:else}{studioText('executionTimeline.allowOnce')}{/if}</Button>
 			</div>
 		</div>
 	</section>
@@ -75,10 +76,10 @@
 </div>
 
 <style>
-	.approval-card { margin: 0.5rem 1rem; }
+	.approval-card { margin: 0.5rem 0; min-width: 0; }
 	.heading, .footer, .actions { display: flex; align-items: center; }
 	.heading, .footer { justify-content: space-between; gap: 0.75rem; }
-	.eyebrow { margin: 0 0 0.1875rem; color: var(--color-state-warning); font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+	.permission-heading { margin: 0 0 0.25rem; color: var(--color-state-warning-text); font-size: var(--type-support); font-weight: 600; }
 	h3 { margin: 0; color: var(--color-ink-0); font-size: 0.875rem; }
 	.tool-identifier { margin: 0.1875rem 0 0; color: var(--color-ink-2); font-family: var(--font-mono); font-size: 0.6875rem; overflow-wrap: anywhere; }
 	.effect { border: 1px solid var(--color-line-2); border-radius: 999px; color: var(--color-state-warning); font-size: 0.6875rem; padding: 0.1875rem 0.5rem; white-space: nowrap; }
@@ -89,7 +90,8 @@
 	.footer p { margin: 0; font-size: 0.6875rem; }
 	.actions { gap: 0.5rem; }
 	@media (max-width: 40rem) {
-		.approval-card { margin-inline: 0.625rem; }
+		.heading { align-items: flex-start; flex-wrap: wrap; }
+		.actions { flex-wrap: wrap; }
 		.footer { align-items: flex-start; flex-direction: column; }
 	}
 </style>

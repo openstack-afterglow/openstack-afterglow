@@ -286,7 +286,6 @@ describe('ChatPanel', () => {
 		expect(detached.textContent).toContain('대화 내 순서를 확인할 수 없어');
 		expect(detached.textContent).toContain('legacy failed answer');
 		await fireEvent.click(detached.querySelector('.execution-timeline > summary')!);
-		await fireEvent.click(detached.querySelector('.tool-category > summary')!);
 		await fireEvent.click(detached.querySelector<HTMLButtonElement>('.tool-head')!);
 		expect(detached.textContent).toContain('legacy recorded input');
 		expect(detached.textContent).toContain('legacy recorded result');
@@ -571,7 +570,7 @@ describe('ChatPanel', () => {
 			await fireEvent.click(screen.getByRole('button', { name: '전송' }));
 		}
 		await streamed.promise;
-		flushAnimationFrames();
+		flushAnimationFrames(performance.now() + 50);
 		await tick();
 		await waitFor(() => expect(view.container.textContent).toContain(canaries.stream));
 		expect(view.container.textContent).not.toContain(canaries.output);
@@ -580,24 +579,23 @@ describe('ChatPanel', () => {
 		continueStream.resolve();
 		await observed.promise;
 		// The manual RAF fixture must advance past ChatPanel's 50ms projection pacing.
-		flushAnimationFrames(performance.now() + 50);
+		flushAnimationFrames(performance.now() + 100);
 		await tick();
 		await waitFor(() => expect(view.container.textContent).toContain(canaries.output));
 		const timeline = view.container.querySelector<HTMLDetailsElement>('.execution-timeline')!;
 		expect(timeline).toBeTruthy();
 		expect(view.container.querySelectorAll('.execution-timeline')).toHaveLength(1);
-		const category = timeline.querySelector<HTMLDetailsElement>('.tool-category')!;
 		const tool = timeline.querySelector<HTMLButtonElement>('.tool-card .tool-head')!;
 		timeline.open = true;
-		category.open = true;
 		await fireEvent(timeline, new Event('toggle'));
-		await fireEvent(category, new Event('toggle'));
 		await fireEvent.click(tool);
 		const stepLabels = [...timeline.querySelectorAll('ol > li')].map((item) => item.textContent);
 		finish.resolve();
 		await waitFor(() => expect(screen.queryByRole('button', { name: '생성 중단' })).toBeNull());
 		expect(view.container.querySelector('.execution-timeline')).toBe(timeline);
-		expect(timeline.open && category.open).toBe(true);
+		expect(timeline.open).toBe(false);
+		await fireEvent.click(timeline.querySelector('summary')!);
+		expect(timeline.open).toBe(true);
 		expect(tool.getAttribute('aria-expanded')).toBe('true');
 		expect(timeline.querySelectorAll('.tool-card')).toHaveLength(1);
 		expect(timeline.querySelector(`[data-run-outcome="${state.status}"]`)).toBeTruthy();
@@ -1455,7 +1453,7 @@ describe('ChatPanel', () => {
 		});
 		expect(screen.queryByText('이전 본문')).toBeNull();
 
-		await fireEvent.click(screen.getByLabelText('작업 내역 열기'));
+		await fireEvent.click(document.querySelector('.execution-timeline > summary')!);
 		await fireEvent.click(screen.getByRole('button', { name: '추론 과정' }));
 		expect(screen.getByText('이전 추론')).toBeTruthy();
 	});
@@ -1500,7 +1498,7 @@ describe('ChatPanel', () => {
 
 		await waitFor(() => {
 			flushAnimationFrames();
-			expect(screen.getByLabelText('작업 내역 열기')).toBeTruthy();
+			expect(document.querySelector('.execution-timeline > summary')).toBeTruthy();
 			expect(screen.getAllByText('컨텍스트 자동 압축 중')).toHaveLength(2);
 			expect(document.querySelector('.context-activity')).toBeNull();
 		});
@@ -1531,7 +1529,7 @@ describe('ChatPanel', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
 
 		await screen.findByText('Delete: server-1 (current state: ACTIVE)');
-		await fireEvent.click(screen.getByRole('button', { name: '승인' }));
+		await fireEvent.click(screen.getByRole('button', { name: '이번만 허용하기' }));
 
 		expect(mocks.post).toHaveBeenCalledWith(
 			'/api/v1/chat/runs/run-1/approvals/call-1',

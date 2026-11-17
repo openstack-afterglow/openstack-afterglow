@@ -1,98 +1,43 @@
 <script lang="ts">
-	import { t } from '$lib/i18n/ns/chat-studio';
 	import { untrack } from 'svelte';
-	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import type { ToolActivityItem } from '$lib/api/chatToolActivity';
+	import type { ToolActivitySource } from '$lib/api/chatContracts';
 	import ToolCallCard from './ToolCallCard.svelte';
 
 	interface Props {
 		category: string;
 		items: ToolActivityItem[];
-		active?: boolean;
+		source: ToolActivitySource;
 		animate?: boolean;
 	}
-	let { category, items, active = false, animate = false }: Props = $props();
+	let { category, items, source, animate = false }: Props = $props();
 	const initialIds = untrack(() => new Set(items.map((item) => item.id ?? item.name)));
-	let open = $state(false);
-	let wasActive = false;
-
-	$effect(() => {
-		if (active && !wasActive) open = true;
-		wasActive = active;
-	});
-
-	const running = $derived(items.some((item) => item.running));
+	const sourceIcon = $derived(items.some((item) => /web_search|web_fetch/.test(item.name))
+		? 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0M3 12h18M12 3c4 4 4 14 0 18-4-4-4-14 0-18'
+		: source === 'mcp' || source === 'plugin' || source === 'custom_http'
+			? 'm8 15-2 2a3 3 0 0 1-4-4l5-5a3 3 0 0 1 4 0m2 1 2-2a3 3 0 0 1 4 4l-5 5a3 3 0 0 1-4 0m-2-1 6-6'
+			: source === 'managed'
+				? 'M7 18h11a4 4 0 0 0 0-8 6 6 0 0 0-12-1 4.5 4.5 0 0 0 1 9'
+				: source === 'workspace'
+					? 'M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h6'
+					: 'm8 5-6 7 6 7m8-14 6 7-6 7M14 3l-4 18');
 </script>
 
-<details class="tool-category" bind:open>
-	<summary>
-		{#if running && !open}
-			<LoadingState variant="inline" label={t('toolCategoryGroup.running')} />
-		{:else}
-			<span class="category-dot" aria-hidden="true"></span>
-		{/if}
-		<span class="category-title">{category}</span>
-		<span class="category-count">{t('toolCategoryGroup.count', { count: items.length })}</span>
-		<svg class="chevron" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-			<path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
-		</svg>
-	</summary>
+<div class="tool-category">
+	<p class="category-title">
+		<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d={sourceIcon} stroke-linecap="round" stroke-linejoin="round" /></svg>
+		{category}
+	</p>
 	<div class="tool-list">
 		{#each items as item (item.id ?? item.name)}
 			<div class:motion-enter={animate && !initialIds.has(item.id ?? item.name)}><ToolCallCard {item} {animate} /></div>
 		{/each}
 	</div>
-</details>
+</div>
 
 <style>
-	.tool-category {
-		border: 1px solid var(--color-line);
-		border-radius: 0.5rem;
-		background: color-mix(in oklab, var(--color-surface-sunken) 76%, transparent);
-	}
-	summary {
-		display: flex;
-		align-items: center;
-		gap: 0.45rem;
-		padding: 0.45rem 0.55rem;
-		cursor: pointer;
-		list-style: none;
-		color: var(--color-ink-2);
-		font-size: 0.75rem;
-	}
-	summary::-webkit-details-marker {
-		display: none;
-	}
-	.category-dot {
-		width: 0.4rem;
-		height: 0.4rem;
-		border-radius: 50%;
-		background: var(--color-state-info);
-	}
-	.category-title {
-		font-weight: 600;
-		color: var(--color-ink-1);
-	}
-	.category-count {
-		color: var(--color-ink-2);
-	}
-	.chevron {
-		margin-left: auto;
-		color: var(--color-ink-2);
-		transition: transform var(--motion-duration-fast) var(--motion-ease-standard);
-	}
-	details[open] .chevron {
-		transform: rotate(180deg);
-	}
-	.tool-list {
-		display: grid;
-		gap: 0.35rem;
-		border-top: 1px solid var(--color-line);
-		padding: 0.45rem;
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.chevron {
-			transition: none;
-		}
-	}
+	.tool-category { min-width: 0; }
+	.category-title { display: flex; align-items: center; gap: 0.375rem; margin: 0.25rem 0 0.5rem; color: var(--color-ink-2); font-size: var(--type-support); overflow-wrap: anywhere; }
+	.category-title svg { flex-shrink: 0; }
+	.tool-list { display: grid; gap: 0.375rem; min-width: 0; }
 </style>

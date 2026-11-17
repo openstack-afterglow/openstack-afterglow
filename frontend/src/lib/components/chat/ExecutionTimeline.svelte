@@ -11,23 +11,49 @@
 	import ToolCategoryGroup from './ToolCategoryGroup.svelte';
 	import ThinkingBlock from './ThinkingBlock.svelte';
 	import ChildTaskActivity from './ChildTaskActivity.svelte';
+	import ChatToolApproval from './ChatToolApproval.svelte';
+	import { prefersReducedMotion } from '$lib/utils/motion';
 
 	interface Props {
 		items: RunActivityItem[];
 		active?: boolean;
 		animate?: boolean;
+		approvalBusy?: boolean;
+		onApprovalDecision?: (callId: string, decision: 'approve' | 'deny') => void;
 	}
-	let { items, active = false, animate = active }: Props = $props();
+	let { items, active = false, animate = active, approvalBusy = false, onApprovalDecision }: Props = $props();
+	const motionEnabled = $derived(animate && !prefersReducedMotion());
 
 	type TimelineEntry =
-		| { kind: 'item'; item: Exclude<RunActivityItem, { kind: 'tool' }> }
+		| { kind: 'item'; item: Exclude<RunActivityItem, { kind: 'tool' | 'started' }> }
 		| { kind: 'tool-group'; id: string; category: string; items: Extract<RunActivityItem, { kind: 'tool' }>[] };
 	let open = $state(false);
 	const initialIds = untrack(() => new Set(items.map((item) => item.id)));
 	const initialDone = untrack(() => new Set(items.filter((item) => !activityIsRunning(item, items, active)).map((item) => item.id)));
+	let wasActive = false;
+	let now = $state(Date.now());
 	$effect(() => {
-		if (active) open = true;
+		if (active !== wasActive) open = active;
+		wasActive = active;
 	});
+	$effect(() => {
+		if (!active) return;
+		now = Date.now();
+		const timer = window.setInterval(() => { now = Date.now(); }, 1_000);
+		return () => window.clearInterval(timer);
+	});
+	const startedAt = $derived(items.find((item) => item.kind === 'started')?.createdAt);
+	const finishedAt = $derived(items.find((item) => item.kind === 'terminal')?.createdAt);
+	const elapsed = $derived(startedAt && (active || finishedAt)
+		? Math.max(0, Math.floor(((finishedAt ? Date.parse(finishedAt) : now) - Date.parse(startedAt)) / 1_000))
+		: null);
+	const summary = $derived(elapsed !== null && Number.isFinite(elapsed)
+		? t(active ? 'executionTimeline.workingSeconds' : 'executionTimeline.workedSeconds', {
+				seconds: new Intl.NumberFormat(intlLocale()).format(elapsed)
+			})
+		: t(active ? 'executionTimeline.inProgress' : 'executionTimeline.history'));
+	const pendingApprovalId = $derived(active ? items.findLast((item) => item.kind === 'approval' && item.decision === null)?.id : null);
+	$effect(() => { if (pendingApprovalId) open = true; });
 
 	const taskItems = $derived(visibleActivityItems(items, active));
 
@@ -77,7 +103,7 @@
 		};
 	}
 
-	function timelineEntries(items: RunActivityItem[]): TimelineEntry[] {
+	function timelineEntries(items: Exclude<RunActivityItem, { kind: 'started' }>[]): TimelineEntry[] {
 		const entries: TimelineEntry[] = [];
 		for (const item of items) {
 			if (item.kind !== 'tool') {
@@ -104,23 +130,18 @@
 
 {#if entries.length}
 	<details class="execution-timeline" bind:open>
-		<summary aria-label={t('executionTimeline.openHistory')}>
-			{#if active && !open && taskItems.some((item) => isLive(item))}
-				<LoadingState variant="inline" label={t('executionTimeline.inProgress')} />
-			{:else}
-				<span class="summary-mark" aria-hidden="true"></span>
-			{/if}
-			<span class="summary-title">{t('executionTimeline.history')}</span>
-			<span class="summary-count">{t('executionTimeline.steps', { count: taskItems.length })}</span>
+		<summary aria-label={summary} aria-expanded={open}>
+			<span class="summary-title" aria-live="off">{summary}</span>
+			<span class="sr-only" aria-live="polite" aria-atomic="true">{active ? t('executionTimeline.inProgress') : t('executionTimeline.history')}</span>
 			<svg class="summary-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
 				<path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
 			</svg>
 		</summary>
-		<ol aria-label={t('executionTimeline.history')}>
+		<ol role="list" aria-label={t('executionTimeline.history')}>
 			{#each entries as entry (entry.kind === 'tool-group' ? entry.id : entry.item.id)}
-				<li class:motion-enter={animate && active && !(entry.kind === 'tool-group' ? initialIds.has(entry.items[0].id) : initialIds.has(entry.item.id))} class:live={entry.kind === 'tool-group' ? entry.items.some((item) => isLive(item)) : isLive(entry.item)}>
+				<li class:motion-enter={motionEnabled && active && !(entry.kind === 'tool-group' ? initialIds.has(entry.items[0].id) : initialIds.has(entry.item.id))} class:live={entry.kind === 'tool-group' ? entry.items.some((item) => isLive(item)) : isLive(entry.item)}>
 					{#if entry.kind === 'item' && !isLive(entry.item) && (entry.item.kind === 'context' || entry.item.kind === 'stage')}
-						<svg class="timeline-check" class:motion-pop={animate && active && !initialDone.has(entry.item.id)} viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m3 8 3 3 7-7" /></svg>
+						<svg class="timeline-check" class:motion-pop={motionEnabled && active && !initialDone.has(entry.item.id)} viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m3 8 3 3 7-7" /></svg>
 					{:else}
 						<span class="timeline-dot" aria-hidden="true"></span>
 					{/if}
@@ -128,9 +149,9 @@
 						{#if entry.kind === 'tool-group'}
 							<ToolCategoryGroup
 								category={entry.category}
+								source={entry.items[0].source}
 								items={entry.items.map(toolItem)}
-								active={active && entry.items.some((item) => item.status === 'running')}
-								{animate}
+								animate={motionEnabled}
 							/>
 						{:else if entry.item.kind === 'context'}
 							<details class="min-w-0 break-words text-xs">
@@ -154,6 +175,18 @@
 								{#if entry.item.errorCode}<code>{entry.item.errorCode}</code>{/if}
 							</p>
 						{:else if entry.item.kind === 'approval'}
+							{#if active && entry.item.decision === null && entry.item.name && entry.item.expiresAt && onApprovalDecision}
+								<ChatToolApproval
+									approval={{
+										callId: entry.item.callId, name: entry.item.name,
+										effect: entry.item.effect === 'external_mutation' || entry.item.effect === 'workspace_write' || entry.item.effect === 'process' ? entry.item.effect : 'read',
+										argumentKeys: Object.keys(entry.item.arguments), preview: entry.item.preview,
+										expiresAt: entry.item.expiresAt
+									}}
+									busy={approvalBusy}
+									onDecision={onApprovalDecision}
+								/>
+							{:else}
 							<details class="min-w-0 break-words text-xs">
 								<summary class="min-h-11">
 									{panelText(entry.item.decision === 'approve' ? 'approval.approve' : entry.item.decision === 'deny' ? 'approval.deny' : 'approval.required')} · {entry.item.name ?? entry.item.callId}
@@ -171,8 +204,9 @@
 									{:else}<div class="max-h-64 overflow-auto whitespace-pre-wrap break-all p-2 font-mono" role="textbox" aria-readonly="true" aria-multiline="true" aria-label={panelText('toolCall.result')} tabindex="0">{JSON.stringify(part, null, 2)}</div>{/if}
 								{/each}
 							</details>
+							{/if}
 						{:else}
-							<ThinkingBlock text={entry.item.text} active={active && entry.item.active} {animate} />
+							<ThinkingBlock text={entry.item.text} active={active && entry.item.active} animate={motionEnabled} />
 						{/if}
 					</div>
 				</li>
@@ -185,27 +219,33 @@
 	.execution-timeline {
 		margin: 0 0 0.75rem;
 		border: 1px solid var(--color-line);
-		border-radius: 0.65rem;
-		background: color-mix(in oklab, var(--color-surface-sunken) 76%, transparent);
+		border-radius: var(--radius-lg);
+		background: transparent;
 	}
 	:global(:root.light) .execution-timeline {
 		border-color: var(--color-line-2);
 		background: var(--color-surface-sunken);
 	}
+	:global(:root.light) .execution-timeline:not([open]),
+	.execution-timeline:not([open]) {
+		border-color: transparent;
+		background: transparent;
+	}
 	summary {
 		display: flex;
 		align-items: center;
 		gap: 0.45rem;
-		padding: 0.55rem 0.65rem;
+		padding: 0.5rem 0.65rem;
+		min-height: var(--control-touch-height);
+		overflow-wrap: anywhere;
 		cursor: pointer;
 		list-style: none;
 		color: var(--color-ink-2);
-		font-size: 0.75rem;
+		font-size: var(--type-support);
 	}
 	summary::-webkit-details-marker {
 		display: none;
 	}
-	.summary-mark,
 	.timeline-dot {
 		flex: 0 0 auto;
 		width: 0.45rem;
@@ -217,15 +257,12 @@
 		font-weight: 650;
 		color: var(--color-ink-1);
 	}
-	.summary-count {
-		color: var(--color-ink-2);
-	}
 	.summary-chevron {
-		margin-left: auto;
+		flex-shrink: 0;
 		color: var(--color-ink-2);
 		transition: transform var(--motion-duration-fast) var(--motion-ease-standard);
 	}
-	details[open] .summary-chevron {
+	details[open] > summary .summary-chevron {
 		transform: rotate(180deg);
 	}
 	ol {
@@ -262,6 +299,7 @@
 		background: var(--color-accent);
 		box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-accent) 20%, transparent);
 	}
+	li.live .stage-label { color: var(--color-ink-0); font-weight: 600; }
 	.stage-label {
 		margin: 0.27rem 0;
 		display: flex;

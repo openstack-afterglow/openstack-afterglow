@@ -5,7 +5,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { messageEntrance, type MessageEntrance } from './messageMotion';
-	import { activityIsRunning, visibleActivityItems } from './chatActivityPresentation';
+	import { visibleActivityItems } from './chatActivityPresentation';
 	import { type AvailableModel, type ChatMessage as ChatMsg } from '$lib/api/chatTree';
 	import { projectMessagesForDisplay } from '$lib/api/chatTree';
 	import type { StreamMetrics } from '$lib/api/chatMetrics';
@@ -44,6 +44,8 @@
 		toolActivity?: string | null;
 		agentActivity?: AgentActivity | null;
 		manualCompactionActivity?: string | null;
+		approvalBusy?: boolean;
+		onApprovalDecision?: (runId: string, callId: string, decision: 'approve' | 'deny') => void;
 		error?: string | null;
 		empty?: boolean;
 		starterPrompts?: readonly StarterPrompt[];
@@ -79,6 +81,8 @@
 		toolActivity = null,
 		agentActivity = null,
 		manualCompactionActivity = null,
+		approvalBusy = false,
+		onApprovalDecision,
 		error = null,
 		empty = false,
 		starterPrompts = [],
@@ -175,7 +179,7 @@
 		if (!message.streaming) return false;
 		const activity = message.activityItems ?? message.execution?.activity ?? [];
 		const visible = visibleActivityItems(activity, true);
-		return Boolean(message.content.length || visible.some((item) => activityIsRunning(item, activity, true)) ||
+		return Boolean(message.content.length || visible.length ||
 			(!visible.length && (message.reasoning || restoredToolItems(message).some((item) => item.running))));
 	}
 	const replyHasProgress = $derived(displayedPath.some(messageHasProgress) ||
@@ -318,6 +322,8 @@
 							activityItems={msg.activityItems ?? msg.execution?.activity ?? []}
 							progressElsewhere={externalProgress}
 							liveMotion={Boolean(msg.sessionEntrance)}
+							{approvalBusy}
+							onApprovalDecision={onApprovalDecision && msg.execution?.run_id ? (callId, decision) => onApprovalDecision?.(msg.execution!.run_id!, callId, decision) : undefined}
 							hasPreviousVersion={msg.branch?.previous_id !== null && msg.branch?.previous_id !== undefined}
 							hasNextVersion={msg.branch?.next_id !== null && msg.branch?.next_id !== undefined}
 							modelDisplayName={modelDisplay(msg.model_name)}

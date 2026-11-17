@@ -22,7 +22,7 @@ describe('ChatToolApproval', () => {
 		expect(screen.getByText('Delete: server-1 (current state: ACTIVE)')).toBeTruthy();
 		expect(screen.getByText('server_id')).toBeTruthy();
 
-		await fireEvent.click(screen.getByRole('button', { name: '승인' }));
+		await fireEvent.click(screen.getByRole('button', { name: '이번만 허용하기' }));
 		expect(onDecision).toHaveBeenCalledWith('call-1', 'approve');
 	});
 
