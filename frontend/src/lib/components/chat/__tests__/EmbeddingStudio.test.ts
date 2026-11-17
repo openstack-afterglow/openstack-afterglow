@@ -43,6 +43,32 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('Embedding Studio', () => {
+	it('uses published allowed dimensions as choices and sends only the explicit selection', async () => {
+		calls.capabilities.mockResolvedValue(capability({ default_dimensions: 768, min_dimensions: 256, max_dimensions: 768, allowed_dimensions: [256, 768] }));
+		render(EmbeddingStudio);
+		await screen.findByText(t('embeddingStudio.ready'));
+		const selector = screen.getByRole('combobox', { name: t('embeddingStudio.dimensions') });
+		expect(Array.from((selector as HTMLSelectElement).options).map(option => option.value)).toEqual(['', '256', '768']);
+		expect(screen.getByText(t('embeddingStudio.dimensionAllowedHelp', { values: '256, 768', default: 768 }))).toBeTruthy();
+		await fireEvent.change(selector, { target: { value: '256' } });
+		await fireEvent.input(input(1), { target: { value: 'catalog dimensions' } });
+		await fireEvent.click(embedButton());
+		await waitFor(() => expect(calls.embed).toHaveBeenCalledWith(
+			{ model_id: 7, input: ['catalog dimensions'], dimensions: 256 }, expect.anything(), expect.any(AbortSignal)
+		));
+	});
+
+	it('omits dimensions when the published choice selector stays at provider default', async () => {
+		calls.capabilities.mockResolvedValue(capability({ default_dimensions: 768, min_dimensions: 256, max_dimensions: 768, allowed_dimensions: [256, 768] }));
+		render(EmbeddingStudio);
+		await screen.findByText(t('embeddingStudio.ready'));
+		await fireEvent.input(input(1), { target: { value: 'default dimensions' } });
+		await fireEvent.click(embedButton());
+		await waitFor(() => expect(calls.embed).toHaveBeenCalledWith(
+			{ model_id: 7, input: ['default dimensions'] }, expect.anything(), expect.any(AbortSignal)
+		));
+	});
+
 	it('embeds every input and renders vectors, usage and the cosine matrix', async () => {
 		render(EmbeddingStudio);
 		await fillTwoInputs();

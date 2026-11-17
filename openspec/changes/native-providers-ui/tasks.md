@@ -9,3 +9,11 @@
 - [x] Regenerate experience catalog without stamping architecture.
 - [x] Save desktop/mobile browser screenshots and scoped synthetic DOM evidence.
 - [x] Record exact verification and proposed coordinator-owned documentation in local notes.
+
+## Catalog visual review delta
+
+- [x] Replace raw pricing JSON with responsive labeled token/media/embedding data.
+- [x] Bound collapsed provider catalogs with ID/name and kind filters, pagination and status badges.
+- [x] Populate multi-provider tutorial catalog and carry embedding dimensions into Studio controls.
+- [x] Preserve Decision Studio drafts through same-owner permission refresh and fence late responses.
+- [x] Run focused tests, final typecheck and nine-locale checks; refresh desktop/mobile proof.

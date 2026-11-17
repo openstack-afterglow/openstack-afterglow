@@ -6,6 +6,7 @@ import { MAX_DECISION_IMAGE_BYTES } from '$lib/api/decisionStudio';
 import DecisionStudio from '../DecisionStudio.svelte';
 import { t } from '$lib/i18n/ns/decision-studio';
 import { projectSwitching } from '$lib/stores/auth';
+import { tick } from 'svelte';
 
 const calls = vi.hoisted(() => ({ models: vi.fn(), capabilities: vi.fn(), decide: vi.fn() }));
 vi.mock('$lib/api/decisionStudio', async (original) => ({ ...await original<typeof DecisionModule>(), decisionStudioApi: calls }));
@@ -162,12 +163,12 @@ describe('Decision Studio', () => {
 		pending.resolve(result()); await pending.promise; await Promise.resolve();
 		expect(screen.queryByTestId('decision-results')).toBeNull(); expect(calls.decide).toHaveBeenCalledTimes(1);
 	});
-	it.each(['owner', 'authority', 'switching'] as const)('clears drafts and aborts on same-tick %s ABA', async (boundary) => {
+	it.each(['owner', 'denial', 'switching'] as const)('clears drafts and aborts on same-tick %s ABA', async (boundary) => {
 		const pending = Promise.withResolvers<DecisionModule.DecisionResult>(); calls.decide.mockReturnValue(pending.promise);
 		render(DecisionStudio); await fillPredicate(); await fireEvent.click(run());
 		const signal = calls.decide.mock.calls[0][2] as AbortSignal;
 		if (boundary === 'owner') { setVerifiedLumenActor(user('project-2')); setVerifiedLumenActor(user()); }
-		if (boundary === 'authority') { pendingLumen(); grantLumen('lumen-chat_user'); }
+		if (boundary === 'denial') { grantLumen('lumen-images_user'); grantLumen('lumen-chat_user'); }
 		if (boundary === 'switching') { projectSwitching.set(true); projectSwitching.set(false); }
 		expect(signal.aborted).toBe(true);
 		pending.resolve(result()); await pending.promise;
@@ -176,6 +177,76 @@ describe('Decision Studio', () => {
 		expect(screen.queryByTestId('decision-results')).toBeNull();
 		expect((screen.getByRole('textbox', { name: t('decisions.content') }) as HTMLTextAreaElement).value).toBe('');
 		expect(calls.decide).toHaveBeenCalledTimes(1);
+	});
+	it.each(['loading', 'error'] as const)('masks accepted results during permission %s and restores same-owner drafts and results', async (state) => {
+		render(DecisionStudio); await fillPredicate(); await fillOptions(questionAt(), 'choice');
+		await fireEvent.input(within(questionAt()).getByLabelText(t('decisions.name')), { target: { value: 'refund' } });
+		await fireEvent.click(run());
+		const accepted = (await screen.findByTestId('decision-results')).textContent;
+		await fireEvent.input(screen.getByRole('textbox', { name: t('decisions.content') }), { target: { value: 'Unsaved parcel draft.' } });
+		await fireEvent.input(within(questionAt()).getByRole('textbox', { name: t('decisions.instructions') }), { target: { value: 'Unsaved follow-up question.' } });
+		pendingLumen(state === 'error' ? 'Permission lookup unavailable' : '');
+		await tick();
+		expect(screen.queryByTestId('decision-results')).toBeNull();
+		expect(run().hasAttribute('disabled')).toBe(true);
+		expect(questionAt().hasAttribute('disabled')).toBe(true);
+		grantLumen('lumen-chat_user');
+		expect((await screen.findByTestId('decision-results')).textContent).toBe(accepted);
+		expect((screen.getByRole('textbox', { name: t('decisions.content') }) as HTMLTextAreaElement).value).toBe('Unsaved parcel draft.');
+		expect((within(questionAt()).getByRole('textbox', { name: t('decisions.instructions') }) as HTMLTextAreaElement).value).toBe('Unsaved follow-up question.');
+		expect((within(questionAt()).getByLabelText(t('decisions.name')) as HTMLInputElement).value).toBe('refund');
+		expect((within(questionAt()).getByRole('textbox', { name: `${t('decisions.value')} 1` }) as HTMLInputElement).value).toBe('low');
+		expect(run().hasAttribute('disabled')).toBe(false);
+		expect(calls.models).toHaveBeenCalledTimes(1); expect(calls.capabilities).toHaveBeenCalledTimes(1);
+		expect(calls.decide).toHaveBeenCalledTimes(1);
+	});
+	it.each(['unverified', 'restored', 'same-tick'] as const)('ignores a late dispatch completed while permission is %s without clearing drafts', async (timing) => {
+		const pending = Promise.withResolvers<DecisionModule.DecisionResult>(); calls.decide.mockReturnValue(pending.promise);
+		render(DecisionStudio); await fillPredicate(); await fireEvent.click(run());
+		const signal = calls.decide.mock.calls[0][2] as AbortSignal;
+		pendingLumen();
+		expect(signal.aborted).toBe(true);
+		if (timing !== 'same-tick') await tick();
+		if (timing !== 'unverified') grantLumen('lumen-chat_user');
+		pending.resolve(result()); await pending.promise; await tick();
+		expect(screen.queryByTestId('decision-results')).toBeNull();
+		if (timing === 'unverified') grantLumen('lumen-chat_user');
+		await screen.findByText(t('decisions.ready'));
+		expect(screen.queryByTestId('decision-results')).toBeNull();
+		expect((screen.getByRole('textbox', { name: t('decisions.content') }) as HTMLTextAreaElement).value).toBe('A damaged parcel arrived.');
+		expect((within(questionAt()).getByRole('textbox', { name: t('decisions.instructions') }) as HTMLTextAreaElement).value).toBe('Does it need a refund?');
+		expect(calls.models).toHaveBeenCalledTimes(1); expect(calls.capabilities).toHaveBeenCalledTimes(1);
+		expect(calls.decide).toHaveBeenCalledTimes(1);
+	});
+	it('clears accepted results and drafts after confirmed permission denial, even when grants return', async () => {
+		render(DecisionStudio); await fillPredicate(); await fireEvent.click(run());
+		await screen.findByTestId('decision-results');
+		grantLumen('lumen-images_user'); await tick();
+		expect(screen.queryByTestId('decision-results')).toBeNull();
+		grantLumen('lumen-chat_user'); await screen.findByText(t('decisions.ready'));
+		expect(screen.queryByTestId('decision-results')).toBeNull();
+		expect((screen.getByRole('textbox', { name: t('decisions.content') }) as HTMLTextAreaElement).value).toBe('');
+		expect((within(questionAt()).getByRole('textbox', { name: t('decisions.instructions') }) as HTMLTextAreaElement).value).toBe('');
+		expect(calls.decide).toHaveBeenCalledTimes(1);
+	});
+	it.each(['models', 'capabilities'] as const)('restarts pending %s reads after permission ABA and rejects old completion', async (stage) => {
+		const oldModels = Promise.withResolvers<DecisionModule.DecisionModel[]>();
+		const oldCapability = Promise.withResolvers<DecisionModule.DecisionCapabilities>();
+		if (stage === 'models') calls.models.mockReturnValueOnce(oldModels.promise);
+		else calls.capabilities.mockReturnValueOnce(oldCapability.promise);
+		render(DecisionStudio);
+		await waitFor(() => expect(calls[stage]).toHaveBeenCalledTimes(1));
+		const signal = calls[stage].mock.calls[0][stage === 'models' ? 1 : 2] as AbortSignal;
+		pendingLumen(); grantLumen('lumen-chat_user');
+		expect(signal.aborted).toBe(true);
+		await waitFor(() => expect(calls[stage]).toHaveBeenCalledTimes(2));
+		await screen.findByText(t('decisions.ready'));
+		if (stage === 'models') oldModels.resolve([{ ...model, display_name: 'Private stale model' }]);
+		else oldCapability.resolve({ ...capability(), model_capabilities: { ...gate, decisions: false } });
+		await (stage === 'models' ? oldModels.promise : oldCapability.promise); await tick();
+		expect(screen.queryByRole('option', { name: 'Private stale model' })).toBeNull();
+		expect(screen.getByText(t('decisions.ready'))).toBeTruthy();
+		expect(run().hasAttribute('disabled')).toBe(false);
 	});
 	it('keeps same-owner drafts through verified token-only renewal and sends the fresh scope', async () => {
 		render(DecisionStudio); await fillPredicate();

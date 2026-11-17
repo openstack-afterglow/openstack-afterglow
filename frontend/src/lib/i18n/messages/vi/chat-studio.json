@@ -35,6 +35,8 @@
 	"embeddingStudio.ready": "Đường dẫn nhúng và giá đã sẵn sàng.",
 	"embeddingStudio.dimensions": "Số chiều (tùy chọn)",
 	"embeddingStudio.dimensionHelp": "Số nguyên: {min}–{max}. Để trống để dùng mặc định: {default}.",
+	"embeddingStudio.dimensionAllowedHelp": "Số chiều được hỗ trợ: {values}. Để trống để dùng mặc định: {default}.",
+	"embeddingStudio.dimensionChoiceInvalid": "Chọn số chiều được mô hình này hỗ trợ.",
 	"embeddingStudio.noMaximum": "không có giới hạn trên",
 	"embeddingStudio.providerDefault": "mặc định của nhà cung cấp",
 	"embeddingStudio.tokenLimit": "Số token đầu vào tối đa: {count}.",

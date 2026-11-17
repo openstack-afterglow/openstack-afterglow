@@ -1,10 +1,11 @@
 import { ApiError } from '$lib/api/errors';
 import type { MockupProfileId } from './contracts';
 import { onMockupRevisionChange } from './state';
+import type { NativeCatalog, NativeCatalogEntry } from '$lib/api/nativeCatalog';
 
 /** Synthetic registry and Decisions fixtures. No provider or native IAM request runs. */
 const version = '2026-11-17';
-const catalogEntry = {
+const catalogEntry: NativeCatalogEntry = {
 	id: 'gpt-6-luna', aliases: [], kind: 'text', display_name: 'GPT-6 Luna', status: 'active',
 	context_window: 1048576, max_output_tokens: 65536,
 	input_modalities: ['text', 'image'], output_modalities: ['text'],
@@ -13,9 +14,43 @@ const catalogEntry = {
 	media_pricing: null, source_urls: ['https://developers.openai.com/api/docs/pricing'], verified_at: version,
 	notes: 'Synthetic tutorial fixture; not live provider verification.',
 };
-const nativeCatalog = {
+const embeddingDimensions = { default_dimensions: 1536, supports_dimensions: true, min_dimensions: 1, max_dimensions: 1536, allowed_dimensions: null };
+const embeddingEntry: NativeCatalogEntry = {
+	...catalogEntry, id: 'text-embedding-3-small', display_name: 'Text Embedding 3 Small · Tutorial', kind: 'embedding',
+	context_window: 8191, max_output_tokens: null, input_modalities: ['text'], capabilities: {},
+	token_pricing: { input: '0.02' },
+	embedding: embeddingDimensions,
+};
+/** Public-looking tutorial examples are display fixtures, not a second model catalog. */
+function tutorialEntry(id: string, displayName: string, source: string, overrides: Partial<NativeCatalogEntry> = {}): NativeCatalogEntry {
+	return { ...catalogEntry, id, display_name: displayName, source_urls: [source], capabilities: { tool_call: true }, ...overrides };
+}
+const nativeCatalog: NativeCatalog = {
 	schema_version: 1, catalog_version: version,
-	providers: [{ provider_type: 'openai', display_name: 'OpenAI', pricing_sources: catalogEntry.source_urls, models: [catalogEntry] }],
+	providers: [
+		{ provider_type: 'openai', display_name: 'OpenAI', pricing_sources: catalogEntry.source_urls, models: [
+			catalogEntry, embeddingEntry,
+			tutorialEntry('gpt-image-1.5', 'GPT Image · Tutorial', catalogEntry.source_urls[0], { kind: 'image', token_pricing: null, media_pricing: { billing_basis: 'unit', image_per_unit: '0.04', reservation_usd: '0.10' } }),
+			tutorialEntry('tutorial-openai-preview', 'Preview · Synthetic', catalogEntry.source_urls[0], { status: 'preview' }),
+			tutorialEntry('tutorial-openai-deprecated', 'Deprecated · Synthetic', catalogEntry.source_urls[0], { status: 'deprecated' }),
+			tutorialEntry('tutorial-openai-page-two', 'Additional model · Synthetic', catalogEntry.source_urls[0]),
+		] },
+		{ provider_type: 'anthropic', display_name: 'Anthropic', pricing_sources: ['https://platform.claude.com/docs/en/about-claude/pricing'], models: [
+			tutorialEntry('claude-sonnet-5', 'Claude Sonnet · Tutorial', 'https://platform.claude.com/docs/en/about-claude/pricing', { token_pricing: { input: '3', output: '15', cache_read: '0.30', cache_write: '3.75', cache_write_ttl: '5m', cache_write_long: '6', cache_write_long_ttl: '1h', long_context: { threshold_tokens: 200000, input: '6', output: '22.50', cache_read: '0.60', cache_write: '7.50', cache_write_long: '12' } } }),
+			tutorialEntry('tutorial-claude-preview', 'Claude Preview · Synthetic', 'https://platform.claude.com/docs/en/about-claude/pricing', { status: 'preview' }),
+			tutorialEntry('tutorial-claude-deprecated', 'Claude Deprecated · Synthetic', 'https://platform.claude.com/docs/en/about-claude/pricing', { status: 'deprecated' }),
+		] },
+		{ provider_type: 'gemini', display_name: 'Google Gemini', pricing_sources: ['https://ai.google.dev/gemini-api/docs/pricing'], models: [
+			tutorialEntry('gemini-3.1-pro-preview', 'Gemini Pro · Tutorial', 'https://ai.google.dev/gemini-api/docs/pricing', { status: 'preview', token_pricing: { input: '2', output: '12', cache_read: '0.20', long_context: { threshold_tokens: 200000, input: '4', output: '18', cache_read: '0.40' } } }),
+			tutorialEntry('gemini-embedding-001', 'Gemini Embedding · Tutorial', 'https://ai.google.dev/gemini-api/docs/pricing', { kind: 'embedding', input_modalities: ['text'], max_output_tokens: null, token_pricing: { input: '0.15' }, embedding: { default_dimensions: 3072, supports_dimensions: true, min_dimensions: 128, max_dimensions: 3072, allowed_dimensions: null } }),
+			tutorialEntry('tutorial-gemini-image', 'Gemini Image · Synthetic', 'https://ai.google.dev/gemini-api/docs/pricing', { kind: 'image', token_pricing: null, media_pricing: { billing_basis: 'unit', image_per_unit: '0.03', reservation_usd: '0.10' } }),
+		] },
+		{ provider_type: 'perplexity', display_name: 'Perplexity', pricing_sources: ['https://docs.perplexity.ai/guides/pricing'], models: [
+			tutorialEntry('sonar', 'Sonar · Tutorial', 'https://docs.perplexity.ai/guides/pricing', { token_pricing: { input: '1', output: '1' } }),
+			tutorialEntry('tutorial-sonar-preview', 'Sonar Preview · Synthetic', 'https://docs.perplexity.ai/guides/pricing', { status: 'preview' }),
+			tutorialEntry('tutorial-sonar-deprecated', 'Sonar Deprecated · Synthetic', 'https://docs.perplexity.ai/guides/pricing', { status: 'deprecated' }),
+		] },
+	],
 };
 const providers = [
 	{ id: 7, name: 'OpenAI · Tutorial', provider_type: 'openai', provider_family: 'native', api_provider: 'openai', sort_order: 0, api_base: null, auth_mode: 'api_key', has_api_key: true, has_credentials: true, auth_status: 'configured', is_active: true, margin_multiplier: 1, billing_capability: 'openai_admin_usage', has_billing_admin_key: false },
@@ -57,6 +92,20 @@ export function mockNativeProviders(method: string, path: string, params: URLSea
 			model.effective_output_price_per_million = model.output_price_per_million ?? (model.provider_family === 'native' ? '0.50' : null);
 			return model;
 		}
+	}
+	if (method === 'GET' && path === '/api/v1/chat/models' && params.get('model_kind') === 'embedding') {
+		return [{ id: 42, provider_id: 7, provider_type: 'openai', model_name: embeddingEntry.id, api_model_name: embeddingEntry.id, api_provider: 'openai', model_kind: 'embedding', display_name: embeddingEntry.display_name, provider: 'OpenAI', provider_api_key_configured: true, embedding: embeddingDimensions, capabilities: { embedding: embeddingDimensions, feature_gates: { embeddings: { available: true, mode: 'native', pricing_available: true, reason_code: null } } } }];
+	}
+	if (method === 'GET' && path === '/api/v1/chat/capabilities' && params.get('model_kind') === 'embedding') {
+		if (params.get('model_id') !== '42') throw new ApiError(404, 'Not found');
+		return { model_id: 42, model_kind: 'embedding', model_capabilities: { embedding: embeddingDimensions, feature_gates: { embeddings: { available: true, mode: 'native', pricing_available: true, reason_code: null } } }, embedding: embeddingDimensions, ...embeddingDimensions, max_input_tokens: embeddingEntry.context_window, max_inputs: 16 };
+	}
+	if (method === 'POST' && path === '/api/v1/chat/embeddings') {
+		const payload = body as { model_id?: number; input?: string[]; dimensions?: number } | null;
+		const dimension = payload?.dimensions ?? embeddingDimensions.default_dimensions;
+		if (payload?.model_id !== 42 || !Number.isSafeInteger(dimension) || dimension < embeddingDimensions.min_dimensions || dimension > embeddingDimensions.max_dimensions || !payload.input?.length || payload.input.length > 16) throw new ApiError(422, 'Invalid embeddings request');
+		const tokens = payload.input.reduce((sum, text) => sum + text.length, 0);
+		return { model_id: 42, model: embeddingEntry.id, dimensions: dimension, embeddings: payload.input.map((_, index) => ({ index, embedding: Array.from({ length: dimension }, (_, axis) => axis === index ? 1 : 0) })), usage: { prompt_tokens: tokens, total_tokens: tokens, estimated: true }, credited_cost: 0 };
 	}
 	if (method === 'GET' && path === '/api/v1/chat/models' && params.get('model_kind') === 'text') {
 		return [{ id: 43, provider_id: 7, provider_type: 'openai', provider_family: 'native', model_name: 'gpt-6-luna', api_model_name: 'gpt-6-luna', api_provider: 'openai', model_kind: 'text', display_name: 'GPT-6 Luna · Tutorial', provider: 'OpenAI', provider_api_key_configured: true, price_origin: 'native_catalog', catalog_version: version, capabilities: { ...catalogEntry.capabilities, feature_gates: { decisions: { available: true, mode: 'native', pricing_available: true, reason_code: null } } } }];

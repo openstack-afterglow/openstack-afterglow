@@ -387,6 +387,7 @@ describe('mockup transport', () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 	it('serves synthetic embedding models and vectors only in tutorial mode', async () => {
+		// resetModules must recreate the tutorial fixture singleton for this boundary test.
 		const { maybeMockJson } = await import('./transport');
 		const token = 'mock-token-tutorial-scoped';
 		const project = 'mock-project-1';
@@ -397,11 +398,15 @@ describe('mockup transport', () => {
 		const capabilities = await maybeMockJson<{ max_inputs: number }>(
 			'GET', '/api/v1/chat/capabilities?model_id=42&model_kind=embedding', undefined, token, project,
 		);
-		expect(capabilities).toMatchObject({ model_id: 42, max_inputs: 16, supports_dimensions: true });
+		expect(capabilities).toMatchObject({ model_id: 42, max_inputs: 16, supports_dimensions: true, default_dimensions: 1536, min_dimensions: 1, max_dimensions: 1536, allowed_dimensions: null, embedding: { default_dimensions: 1536, supports_dimensions: true } });
 		const result = await maybeMockJson<{ embeddings: { embedding: number[] }[]; usage: { estimated: boolean } }>(
 			'POST', '/api/v1/chat/embeddings', { model_id: 42, input: ['vector'], dimensions: 2 }, token, project,
 		);
 		expect(result).toMatchObject({ dimensions: 2, embeddings: [{ index: 0, embedding: [1, 0] }], usage: { estimated: true } });
+		const defaultResult = await maybeMockJson<{ dimensions: number; embeddings: { embedding: number[] }[] }>('POST', '/api/v1/chat/embeddings', { model_id: 42, input: ['default'] }, token, project);
+		if (typeof defaultResult === 'symbol') throw new Error('Expected synthetic embedding result');
+		expect(defaultResult.dimensions).toBe(1536);
+		expect(defaultResult.embeddings[0].embedding).toHaveLength(1536);
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
@@ -412,7 +417,11 @@ describe('mockup transport', () => {
 		const { maybeMockJson } = await import('./transport');
 		const catalog = await maybeMockJson<{ catalog_version: string; providers: { provider_type: string; models: { id: string; source_urls: string[] }[] }[] }>('GET', '/api/v1/chat/admin/models/native-catalog');
 		if (typeof catalog === 'symbol') throw new Error('Expected synthetic catalog');
-		expect(catalog).toMatchObject({ catalog_version: '2026-11-17', providers: [{ provider_type: 'openai', models: [expect.objectContaining({ id: 'gpt-6-luna' })] }] });
+		expect(catalog).toMatchObject({ catalog_version: '2026-11-17', providers: expect.arrayContaining([
+			expect.objectContaining({ provider_type: 'openai', models: expect.arrayContaining([expect.objectContaining({ id: 'gpt-6-luna', token_pricing: expect.objectContaining({ long_context: expect.objectContaining({ threshold_tokens: 272000 }) }) }), expect.objectContaining({ id: 'text-embedding-3-small', embedding: expect.objectContaining({ default_dimensions: 1536, min_dimensions: 1, max_dimensions: 1536, allowed_dimensions: null }) })]) }),
+			expect.objectContaining({ provider_type: 'anthropic' }), expect.objectContaining({ provider_type: 'gemini' }), expect.objectContaining({ provider_type: 'perplexity' }),
+		]) });
+		expect(catalog.providers.every(provider => provider.models.length >= 3)).toBe(true);
 		const rows = await maybeMockJson<{ id: number; provider_family: string; price_origin: string }[]>('GET', '/api/v1/chat/admin/models');
 		if (typeof rows === 'symbol') throw new Error('Expected synthetic registry');
 		expect(rows).toEqual(expect.arrayContaining([

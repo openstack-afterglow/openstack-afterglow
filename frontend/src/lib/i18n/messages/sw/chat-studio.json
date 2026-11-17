@@ -35,6 +35,8 @@
 	"embeddingStudio.ready": "Njia ya upachikaji na bei ziko tayari.",
 	"embeddingStudio.dimensions": "Vipimo (si lazima)",
 	"embeddingStudio.dimensionHelp": "Namba kamili: {min}–{max}. Acha tupu kutumia chaguomsingi: {default}.",
+	"embeddingStudio.dimensionAllowedHelp": "Vipimo vinavyoruhusiwa: {values}. Acha tupu kutumia chaguomsingi: {default}.",
+	"embeddingStudio.dimensionChoiceInvalid": "Chagua kipimo kinachoruhusiwa na modeli hii.",
 	"embeddingStudio.noMaximum": "hakuna kikomo cha juu",
 	"embeddingStudio.providerDefault": "chaguomsingi la mtoa huduma",
 	"embeddingStudio.tokenLimit": "Idadi ya juu ya tokeni za ingizo: {count}.",

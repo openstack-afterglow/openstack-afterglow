@@ -41,7 +41,8 @@
 	const dimensionError = $derived(capabilities?.supports_dimensions && (dimensionBadInput || (parsedDimensions !== undefined && (
 		!Number.isSafeInteger(parsedDimensions) || parsedDimensions < (capabilities.min_dimensions ?? 1)
 		|| (capabilities.max_dimensions !== null && parsedDimensions > capabilities.max_dimensions)
-	))) ? t('embeddingStudio.dimensionInvalid') : '');
+		|| (capabilities.allowed_dimensions != null && !capabilities.allowed_dimensions.includes(parsedDimensions))
+	))) ? t(capabilities?.allowed_dimensions ? 'embeddingStudio.dimensionChoiceInvalid' : 'embeddingStudio.dimensionInvalid') : '');
 	const ready = $derived(allowed && !loading && !checking && !busy && !loadError && !readiness && !dimensionError
 		&& rows.length >= 1 && rows.length <= maxInputs && rows.every((row) => Boolean(row.text.trim())));
 	const matrix = $derived(result ? cosineMatrix(result) : []);
@@ -210,8 +211,17 @@
 					{:else}<p role="status" class="muted">{t('embeddingStudio.ready')}</p>{/if}
 				{/if}
 				{#if allowed && capabilities?.supports_dimensions}
-					<Field label={t('embeddingStudio.dimensions')} for="embedding-dimensions" error={dimensionError} help={t('embeddingStudio.dimensionHelp', { min: capabilities.min_dimensions ?? 1, max: capabilities.max_dimensions ?? t('embeddingStudio.noMaximum'), default: capabilities.default_dimensions ?? t('embeddingStudio.providerDefault') })}>
-						<TextInput id="embedding-dimensions" type="number" value={dimensions} oninput={(event) => { const input = event.currentTarget as HTMLInputElement; dimensions = input.value; dimensionBadInput = input.validity.badInput; }} min={capabilities.min_dimensions ?? 1} max={capabilities.max_dimensions ?? undefined} step={1} placeholder={capabilities.default_dimensions === null ? t('embeddingStudio.providerDefault') : String(capabilities.default_dimensions)} disabled={!allowed || busy} ariaInvalid={Boolean(dimensionError)} />
+					<Field label={t('embeddingStudio.dimensions')} for="embedding-dimensions" error={dimensionError} help={capabilities.allowed_dimensions
+						? t('embeddingStudio.dimensionAllowedHelp', { values: capabilities.allowed_dimensions.map(value => value.toLocaleString(intlLocale())).join(', '), default: capabilities.default_dimensions ?? t('embeddingStudio.providerDefault') })
+						: t('embeddingStudio.dimensionHelp', { min: capabilities.min_dimensions ?? 1, max: capabilities.max_dimensions ?? t('embeddingStudio.noMaximum'), default: capabilities.default_dimensions ?? t('embeddingStudio.providerDefault') })}>
+						{#if capabilities.allowed_dimensions}
+							<SelectInput id="embedding-dimensions" bind:value={dimensions} disabled={!allowed || busy} ariaInvalid={Boolean(dimensionError)}>
+								<option value="">{t('embeddingStudio.providerDefault')} ({capabilities.default_dimensions?.toLocaleString(intlLocale()) ?? '—'})</option>
+								{#each capabilities.allowed_dimensions as dimension (dimension)}<option value={String(dimension)}>{dimension.toLocaleString(intlLocale())}</option>{/each}
+							</SelectInput>
+						{:else}
+							<TextInput id="embedding-dimensions" type="number" value={dimensions} oninput={(event) => { const input = event.currentTarget as HTMLInputElement; dimensions = input.value; dimensionBadInput = input.validity.badInput; }} min={capabilities.min_dimensions ?? 1} max={capabilities.max_dimensions ?? undefined} step={1} placeholder={capabilities.default_dimensions === null ? t('embeddingStudio.providerDefault') : String(capabilities.default_dimensions)} disabled={!allowed || busy} ariaInvalid={Boolean(dimensionError)} />
+						{/if}
 					</Field>
 				{/if}
 				{#if allowed && capabilities?.max_input_tokens}<p class="muted">{t('embeddingStudio.tokenLimit', { count: capabilities.max_input_tokens })}</p>{/if}
