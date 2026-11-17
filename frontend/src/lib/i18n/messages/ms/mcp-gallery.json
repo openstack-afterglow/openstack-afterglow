@@ -60,7 +60,7 @@
 	"oauthHelp": "Selepas mencipta sambungan, luluskan akses OAuth pada perkhidmatan tersebut.",
 	"credentialsHelp": "Anda atau pengurus organisasi mesti memasukkan pengepala pengesahan.",
 	"configureHelp": "Anda mesti menetapkan pemboleh ubah URL dan kaedah pengesahan.",
-	"publicHelp": "Pelayan jauh ini tidak memerlukan pengesahan. Selepas menyambung, aktifkan versi semasa.",
+	"publicHelp": "Pelayan jauh ini tidak memerlukan pengesahan. Sambungan peribadi diaktifkan sebaik sahaja disimpan; sambungan organisasi dan sambungan yang diterbitkan pentadbir memerlukan kelulusan bagi setiap versi.",
 	"connectPersonal": "Tambah sambungan peribadi",
 	"connectOrganization": "Tambah sambungan organisasi",
 	"install": "Pasang untuk semua pengguna",
@@ -71,5 +71,7 @@
 	"unpublished": "Penerbitan dihentikan",
 	"revokeConfirm": "Putuskan sambungan OAuth untuk {name}? Jika ini sambungan organisasi, pengesahan semua ahli akan dibatalkan.",
 	"tools": "Senarai alat ({count})",
+	"managedUnknown": "Ketersediaan kotak pasir tidak dapat dipastikan. Muat semula untuk menyemak lagi.",
+	"organizationUnavailable": "Status akses semasa kepada sambungan organisasi tidak dapat dipastikan. Status ini sahaja tidak dapat menentukan sama ada sambungan tersebut telah dipadamkan. Muat semula untuk menyemak lagi.",
 	"schemaHelp": "Pengaktifan hanya terpakai pada versi konfigurasi yang dipaparkan. Pengesahan dan konfigurasi alat terkini disahkan semula semasa pelaksanaan."
 }

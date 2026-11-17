@@ -60,7 +60,7 @@
 	"oauthHelp": "Godkjenn OAuth-tilgang hos tjenesten etter at du har opprettet tilkoblingen.",
 	"credentialsHelp": "Du eller en organisasjonsansvarlig må angi autentiseringshoder.",
 	"configureHelp": "Du må angi URL-variabler og autentiseringsmetode.",
-	"publicHelp": "Denne eksterne serveren krever ingen autentisering. Aktiver gjeldende versjon etter tilkobling.",
+	"publicHelp": "Denne eksterne serveren krever ingen autentisering. Personlige tilkoblinger aktiveres straks de lagres; organisasjonstilkoblinger og tilkoblinger publisert av administrator krever godkjenning for hver versjon.",
 	"connectPersonal": "Legg til personlig tilkobling",
 	"connectOrganization": "Legg til organisasjonstilkobling",
 	"install": "Installer for alle brukere",
@@ -71,5 +71,7 @@
 	"unpublished": "Publisering stoppet",
 	"revokeConfirm": "Vil du koble fra OAuth for {name}? Hvis dette er en organisasjonstilkobling, tilbakekalles autentiseringen for alle medlemmer.",
 	"tools": "Verktøyliste ({count})",
+	"managedUnknown": "Kunne ikke bekrefte om sandkassen er tilgjengelig. Oppdater for å sjekke igjen.",
+	"organizationUnavailable": "Kunne ikke bekrefte gjeldende tilgang til organisasjonstilkoblinger. Denne statusen alene sier ikke om tilkoblingene er slettet. Oppdater for å sjekke igjen.",
 	"schemaHelp": "Aktivering gjelder bare den viste konfigurasjonsversjonen. Gjeldende autentisering og verktøykonfigurasjon valideres på nytt ved kjøring."
 }

@@ -60,7 +60,7 @@
 	"oauthHelp": "Sau khi tạo kết nối, hãy phê duyệt quyền truy cập OAuth tại dịch vụ.",
 	"credentialsHelp": "Bạn hoặc người quản lý tổ chức phải nhập tiêu đề xác thực.",
 	"configureHelp": "Bạn phải chỉ định các biến URL và phương thức xác thực.",
-	"publicHelp": "Đây là máy chủ từ xa không yêu cầu xác thực. Sau khi kết nối, hãy kích hoạt phiên bản hiện tại.",
+	"publicHelp": "Đây là máy chủ từ xa không yêu cầu xác thực. Kết nối cá nhân được kích hoạt ngay sau khi lưu; kết nối tổ chức và kết nối do quản trị viên công khai cần được phê duyệt cho từng phiên bản.",
 	"connectPersonal": "Thêm kết nối cá nhân",
 	"connectOrganization": "Thêm kết nối tổ chức",
 	"install": "Cài đặt cho mọi người dùng",
@@ -71,5 +71,7 @@
 	"unpublished": "Đã ngừng công khai",
 	"revokeConfirm": "Ngắt kết nối OAuth của {name}? Nếu đây là kết nối tổ chức, xác thực của tất cả thành viên sẽ bị thu hồi.",
 	"tools": "Danh sách công cụ ({count})",
+	"managedUnknown": "Không thể xác nhận khả năng sử dụng môi trường cách ly. Hãy tải lại để kiểm tra lần nữa.",
+	"organizationUnavailable": "Không thể xác nhận trạng thái truy cập hiện tại của các kết nối tổ chức. Chỉ dựa vào trạng thái này thì không thể biết các kết nối đã bị xóa hay chưa. Hãy tải lại để kiểm tra lần nữa.",
 	"schemaHelp": "Việc kích hoạt chỉ áp dụng cho phiên bản cấu hình đang hiển thị. Thông tin xác thực và cấu hình công cụ mới nhất được xác minh lại khi thực thi."
 }

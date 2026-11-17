@@ -44,7 +44,8 @@ export interface McpSettingsPage {
 	offset: number;
 	limit: number;
 	next_offset: number | null;
-	domain_id: string;
+	domain_id: string | null;
+	organization_available: boolean;
 	can_manage_domain: boolean;
 	custom_connections: McpConnection[];
 }
@@ -55,14 +56,14 @@ export interface McpDomainPage {
 }
 
 /** Never turn another owner's returned row into an action target. Server remains authoritative. */
-export function visibleMcpConnection(row: McpConnection, userId: string, projectId: string, domainId: string): boolean {
-	if (row.scope === 'domain') return row.owner_domain_id === domainId;
+export function visibleMcpConnection(row: McpConnection, userId: string, projectId: string, domainId: string | null): boolean {
+	if (row.scope === 'domain') return !!domainId && row.owner_domain_id === domainId;
 	if (row.scope === 'user') return row.owner_user_id === userId && row.owner_project_id === projectId;
 	return row.scope === 'global';
 }
 
 export function mcpConnectionState(row: McpConnection): 'active' | 'stale' | 'needsAuth' | 'inactive' {
-	if (row.activation_is_active && row.activation_config_version !== row.config_version) return 'stale';
+	if (row.scope !== 'user' && row.activation_is_active && row.activation_config_version !== row.config_version) return 'stale';
 	if (row.auth_mode === 'oauth' && row.auth_connected !== true) return 'needsAuth';
 	if (row.auth_mode === 'admin' && row.has_headers !== true) return 'needsAuth';
 	return row.is_active ? 'active' : 'inactive';

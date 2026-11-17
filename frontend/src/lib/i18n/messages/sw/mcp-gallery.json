@@ -60,7 +60,7 @@
 	"oauthHelp": "Baada ya kuunda muunganisho, idhinisha ufikiaji wa OAuth kwenye huduma hiyo.",
 	"credentialsHelp": "Wewe au msimamizi wa shirika lazima aweke vichwa vya uthibitishaji.",
 	"configureHelp": "Lazima ubainishe vigezo vya URL na njia ya uthibitishaji.",
-	"publicHelp": "Seva hii ya mbali haihitaji uthibitishaji. Baada ya kuunganisha, washa toleo la sasa.",
+	"publicHelp": "Seva hii ya mbali haihitaji uthibitishaji. Miunganisho binafsi huwashwa mara tu inapohifadhiwa; miunganisho ya shirika na iliyochapishwa na msimamizi inahitaji idhini kwa kila toleo.",
 	"connectPersonal": "Ongeza muunganisho binafsi",
 	"connectOrganization": "Ongeza muunganisho wa shirika",
 	"install": "Sakinisha kwa watumiaji wote",
@@ -71,5 +71,7 @@
 	"unpublished": "Uchapishaji umesimamishwa",
 	"revokeConfirm": "Utenganishe OAuth ya {name}? Ikiwa huu ni muunganisho wa shirika, uthibitishaji wa wanachama wote utabatilishwa.",
 	"tools": "Orodha ya zana ({count})",
+	"managedUnknown": "Haikuwezekana kuthibitisha kama mazingira tenga yanapatikana. Onyesha upya ili ukague tena.",
+	"organizationUnavailable": "Haikuwezekana kuthibitisha hali ya sasa ya ufikiaji wa miunganisho ya shirika. Hali hii pekee haiwezi kuonyesha kama miunganisho imefutwa au la. Onyesha upya ili ukague tena.",
 	"schemaHelp": "Uwashaji unatumika tu kwa toleo la usanidi lililoonyeshwa. Uthibitishaji na usanidi wa zana wa hivi karibuni hukaguliwa tena wakati wa utekelezaji."
 }

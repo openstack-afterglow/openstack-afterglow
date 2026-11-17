@@ -60,7 +60,7 @@
 	"oauthHelp": "创建连接后，请在服务中批准 OAuth 访问。",
 	"credentialsHelp": "您或组织管理员必须填写认证请求头。",
 	"configureHelp": "必须指定 URL 变量和认证方式。",
-	"publicHelp": "这是无需认证的远程服务器。连接后，请启用当前版本。",
+	"publicHelp": "这是无需认证的远程服务器。个人连接保存后会立即启用，组织连接和管理员公开的连接则需要逐版本批准。",
 	"connectPersonal": "添加个人连接",
 	"connectOrganization": "添加组织连接",
 	"install": "为所有用户安装",
@@ -71,5 +71,7 @@
 	"unpublished": "已停止公开",
 	"revokeConfirm": "要断开 {name} 的 OAuth 连接吗？如果这是组织连接，所有成员的认证都将被撤销。",
 	"tools": "工具列表（{count}）",
+	"managedUnknown": "无法确认沙箱是否可用。请刷新后再次查看。",
+	"organizationUnavailable": "无法确认组织连接的当前访问状态。仅凭此状态无法判断连接是否已被删除。请刷新后再次查看。",
 	"schemaHelp": "启用仅适用于所显示的配置版本。执行时会重新验证最新的认证和工具配置。"
 }

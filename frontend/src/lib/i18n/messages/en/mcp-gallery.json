@@ -60,7 +60,7 @@
 	"oauthHelp": "After creating the connection, approve OAuth access with the service.",
 	"credentialsHelp": "You or an organization manager must enter authentication headers.",
 	"configureHelp": "You must specify URL variables and an authentication method.",
-	"publicHelp": "This remote server requires no authentication. After connecting, activate the current version.",
+	"publicHelp": "This remote server requires no authentication. Personal connections are activated immediately after saving; organization and admin-published connections require approval for each version.",
 	"connectPersonal": "Add personal connection",
 	"connectOrganization": "Add organization connection",
 	"install": "Install for all users",
@@ -71,5 +71,7 @@
 	"unpublished": "Publication stopped",
 	"revokeConfirm": "Disconnect OAuth for {name}? If this is an organization connection, authentication will be revoked for all members.",
 	"tools": "Tool list ({count})",
+	"managedUnknown": "Could not confirm sandbox availability. Refresh to check again.",
+	"organizationUnavailable": "Could not confirm current access to organization connections. This status alone does not tell us whether the connections have been deleted. Refresh to check again.",
 	"schemaHelp": "Activation applies only to the displayed configuration version. The latest authentication and tool configuration are revalidated at execution time."
 }

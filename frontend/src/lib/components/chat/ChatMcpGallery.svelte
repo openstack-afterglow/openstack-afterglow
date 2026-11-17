@@ -26,8 +26,9 @@
 	let featured = $state<McpTemplate[]>([]);
 	let adminEntries = $state<McpTemplate[]>([]);
 	let connections = $state<McpConnection[]>([]);
-	let domainId = $state('');
+	let domainId = $state<string | null>(null);
 	let canManage = $state(false);
+	let organizationError = $state(false);
 	let loading = $state(false);
 	let error = $state('');
 	let rowErrors = $state<Record<string, string>>({});
@@ -43,11 +44,13 @@
 	let published = $state('true');
 	let variables = $state<Record<string, string>>({});
 	let authMode = $state<'none' | 'oauth' | 'admin'>('none');
-	let headers = $state<{ name: string; value: string }[]>([]);
+	let headers = $state<{ name: string; value: string; fixed: boolean; required: boolean; description?: string }[]>([]);
 	let deleteTarget = $state<McpConnection | null>(null);
 	let revokeTarget = $state<McpConnection | null>(null);
 	let installSummary = $state('');
 	let generation = 0;
+	let editorGeneration = 0;
+	const templates = new Map<string, McpTemplate>();
 	let readController: AbortController | null = null;
 	const mutations = new Set<AbortController>();
 	const limit = 12;
@@ -60,6 +63,7 @@
 	]);
 
 	function clearDraft() {
+		++editorGeneration;
 		headers = [];
 		variables = {};
 		label = '';
@@ -74,8 +78,9 @@
 		for (const controller of mutations) controller.abort();
 		mutations.clear();
 		++generation;
+		templates.clear();
 		entries = []; featured = []; adminEntries = []; connections = [];
-		domainId = ''; canManage = false; error = ''; rowErrors = {}; busy = {};
+		domainId = null; canManage = false; organizationError = false; error = ''; rowErrors = {}; busy = {};
 		loading = false; total = 0; offset = 0; nextOffset = null; query = ''; appliedQuery = '';
 		installSummary = ''; clearDraft();
 	}
@@ -101,11 +106,11 @@
 			if (admin) {
 				const [result, managed] = await Promise.all([
 					api.get<{ entries: McpTemplate[] }>('/api/v1/chat/admin/mcp-registry', scope.token, scope.projectId, options),
-					api.get<McpSettingsPage>('/api/v1/chat/mcp-settings?access=managed&offset=0&limit=100', scope.token, scope.projectId, options)
+					api.get<McpSettingsPage>('/api/v1/chat/mcp-settings?access=managed&offset=0&limit=100', scope.token, scope.projectId, options).catch(() => null)
 				]);
 				if (owner !== scope || ticket !== generation) return;
-				const profiles = new Map(managed.entries.filter((entry) => entry.access === 'managed').map((entry) => [entry.id, entry]));
-				adminEntries = result.entries.map((entry) => profiles.get(entry.id) ?? entry);
+				const profiles = new Map((managed?.entries ?? []).filter((entry) => entry.access === 'managed').map((entry) => [entry.id, entry]));
+				adminEntries = result.entries.map((entry) => entry.access === 'managed' ? { ...entry, managed: profiles.get(entry.id)?.managed ?? null } : entry);
 				featured = adminEntries.filter((entry) => entry.featured);
 				showAdminPage(start, search);
 			} else {
@@ -117,19 +122,29 @@
 				]);
 				if (owner !== scope || ticket !== generation) return;
 				const organization: McpConnection[] = [];
-				let next: number | null = 0;
-				while (page.domain_id && next !== null) {
-					const response: McpDomainPage = await api.get(`/api/v1/chat/domains/${encodeURIComponent(page.domain_id)}/mcp-connections?offset=${next}&limit=100`, scope.token, scope.projectId, options);
-					if (owner !== scope || ticket !== generation) return;
-					organization.push(...response.connections);
-					if (response.next_offset !== null && response.next_offset <= next) throw new Error('Invalid catalog continuation');
-					next = response.next_offset;
+				let organizationUnavailable = page.organization_available === false || !page.domain_id;
+				try {
+					let next: number | null = 0;
+					while (!organizationUnavailable && page.domain_id && next !== null) {
+						const response: McpDomainPage = await api.get(`/api/v1/chat/domains/${encodeURIComponent(page.domain_id)}/mcp-connections?offset=${next}&limit=100`, scope.token, scope.projectId, options);
+						if (owner !== scope || ticket !== generation) return;
+						organization.push(...response.connections);
+						if (response.next_offset !== null && response.next_offset <= next) throw new Error('Invalid catalog continuation');
+						next = response.next_offset;
+					}
+				} catch {
+					if (owner !== scope || ticket !== generation || controller.signal.aborted) return;
+					organizationUnavailable = true;
+					organization.length = 0;
 				}
 				if (owner !== scope || ticket !== generation) return;
 				entries = page.entries; featured = defaults.entries; total = page.total; nextOffset = page.next_offset;
-				domainId = page.domain_id; canManage = page.can_manage_domain === true;
+				domainId = page.domain_id; organizationError = organizationUnavailable;
+				canManage = !organizationUnavailable && page.can_manage_domain === true;
+				if (!canManage && editor?.scope === 'domain') clearDraft();
+				for (const entry of [...page.entries, ...defaults.entries]) templates.set(entry.id, entry);
 				connections = [...new Map([...rows, ...organization, ...page.custom_connections]
-					.filter((row) => visibleMcpConnection(row, scope.userId, scope.projectId, page.domain_id) && (row.scope !== 'global' || !!row.template_key))
+					.filter((row) => (!organizationUnavailable || row.scope !== 'domain') && visibleMcpConnection(row, scope.userId, scope.projectId, page.domain_id) && (row.scope !== 'global' || !!row.template_key))
 					.map((row) => [row.id, row])).values()];
 			}
 			offset = start; appliedQuery = search;
@@ -145,7 +160,10 @@
 	function browse(start: number, search = appliedQuery) { if (owner) void load(owner, start, search); }
 	function editable(row: McpConnection) { return row.scope === 'domain' ? canManage && row.owner_domain_id === domainId : row.scope === 'user' && row.owner_user_id === owner?.userId; }
 	function rowPath(row: McpConnection) {
-		if (row.scope === 'domain') return `/api/v1/chat/domains/${encodeURIComponent(domainId)}/mcp-connections/${row.id}`;
+		if (row.scope === 'domain') {
+			if (!domainId) throw new Error('Organization authority unavailable');
+			return `/api/v1/chat/domains/${encodeURIComponent(domainId)}/mcp-connections/${row.id}`;
+		}
 		return `/api/v1/chat/${row.template_key ? 'mcp-connections' : 'mcp-servers'}/${row.id}`;
 	}
 	async function action(key: string, work: (scope: Owner, signal: AbortSignal) => Promise<void>, allowed: () => boolean = () => canWrite) {
@@ -182,17 +200,52 @@
 			}
 		}, () => (revoke ? canDelete : canWrite) && (row.scope !== 'domain' || editable(row)));
 	}
-	function openEditor(template?: McpTemplate, row?: McpConnection, scope: Editor['scope'] = 'user') {
-		if (!canWrite || (row && !editable(row)) || (scope === 'domain' && !canManage)) return;
+	function resetHeaders() {
+		if (authMode !== 'admin') { headers = []; return; }
+		headers = (editor?.template?.header_hints || []).filter((hint) => hint.name).map((hint) => ({
+			name: hint.name!, value: '', fixed: true, required: !editor?.row && hint.required === true, description: hint.description
+		}));
+		if (!editor?.row && !headers.length) headers = [{ name: 'Authorization', value: '', fixed: false, required: true }];
+	}
+	async function openEditor(template?: McpTemplate, row?: McpConnection, scope: Editor['scope'] = 'user') {
+		if (!owner || !canWrite || (row && !editable(row)) || (scope === 'domain' && !canManage)) return;
 		clearDraft();
-		editor = { template, row, scope };
+		const currentOwner = owner, ticket = editorGeneration;
+		let source = template ?? (row?.template_key ? templates.get(row.template_key) : undefined);
+		if (row?.template_key && !source) {
+			const controller = new AbortController();
+			mutations.add(controller); busy[row.id] = true; rowErrors[row.id] = '';
+			try {
+				let next: number | null = 0;
+				while (next !== null && !source) {
+					const page: McpSettingsPage = await api.get(`/api/v1/chat/mcp-settings?offset=${next}&limit=100`, currentOwner.token, currentOwner.projectId, { refresh: true, signal: controller.signal });
+					if (owner !== currentOwner || ticket !== editorGeneration || controller.signal.aborted || !canWrite || !editable(row)) return;
+					if (row.scope === 'domain' && (page.organization_available === false || page.domain_id !== domainId || page.can_manage_domain !== true)) {
+						canManage = false;
+						throw new Error('Organization manager authority unavailable');
+					}
+					for (const entry of page.entries) templates.set(entry.id, entry);
+					source = templates.get(row.template_key);
+					if (page.next_offset !== null && page.next_offset <= next) throw new Error('Invalid catalog continuation');
+					next = page.next_offset;
+				}
+				if (!source) throw new Error('Template unavailable');
+			} catch {
+				if (owner === currentOwner && ticket === editorGeneration && !controller.signal.aborted) rowErrors[row.id] = t('actionFailed');
+				return;
+			} finally {
+				mutations.delete(controller);
+				if (owner === currentOwner) busy[row.id] = false;
+			}
+		}
+		if (owner !== currentOwner || ticket !== editorGeneration || !canWrite || (row && !editable(row))) return;
+		editor = { template: source, row, scope };
 		label = row?.name || ''; editUrl = row?.url || '';
 		published = row?.server_is_active === false ? 'false' : 'true';
-		authMode = row?.auth_mode ?? (template?.access === 'oauth' ? 'oauth' : template?.access === 'credentials' ? 'admin' : 'none');
-		variables = Object.fromEntries((template?.variables || []).map((name) => [name, '']));
-		headers = (template?.header_hints || []).filter((hint) => hint.name).map((hint) => ({ name: hint.name!, value: '' }));
-		if (!row && authMode === 'admin' && !headers.length) headers = [{ name: 'Authorization', value: '' }];
-		const currentEditor = editor, currentOwner = owner;
+		authMode = row?.auth_mode ?? (source?.access === 'oauth' ? 'oauth' : source?.access === 'credentials' ? 'admin' : 'none');
+		variables = Object.fromEntries((row ? [] : source?.variables || []).map((name) => [name, '']));
+		resetHeaders();
+		const currentEditor = editor;
 		void tick().then(() => {
 			if (editor === currentEditor && owner === currentOwner) document.getElementById('mcp-connection-label')?.focus();
 		});
@@ -205,7 +258,7 @@
 		const body = draft.row
 			? { ...(draft.scope === 'domain' ? { name: label.trim(), url: editUrl.trim(), auth_mode: authMode, is_active: published === 'true' } : {}), ...(Object.keys(secretHeaders).length ? { headers: secretHeaders } : {}) }
 			: { ...(draft.scope !== 'global' ? { template_id: draft.template!.id } : {}), label: label.trim() || undefined, variables: { ...variables }, auth_mode: authMode, ...(Object.keys(secretHeaders).length ? { headers: secretHeaders } : {}) };
-		const path = draft.row ? rowPath(draft.row) : draft.scope === 'global' ? `/api/v1/chat/admin/mcp-registry/${encodeURIComponent(draft.template!.id)}/install` : draft.scope === 'domain' ? `/api/v1/chat/domains/${encodeURIComponent(domainId)}/mcp-connections` : '/api/v1/chat/mcp-connections';
+		const path = draft.row ? rowPath(draft.row) : draft.scope === 'global' ? `/api/v1/chat/admin/mcp-registry/${encodeURIComponent(draft.template!.id)}/install` : draft.scope === 'domain' ? `/api/v1/chat/domains/${encodeURIComponent(domainId!)}/mcp-connections` : '/api/v1/chat/mcp-connections';
 		clearDraft();
 		void action(key, async (scope, signal) => {
 			if (draft.row) await api.patch(path, body, scope.token, scope.projectId, { signal });
@@ -243,11 +296,12 @@
 		<h4>{t('featured')}</h4>
 		<div class="featured-grid">{#each featured as entry (entry.id)}{@render templateCard(entry)}{/each}</div>
 	{/if}
-	{#if !admin && !error && domainId}
-		<div class="scope-note"><span>{t('domain')}: <code>{domainId}</code></span><span>{canManage ? t('managerHelp') : t('memberHelp')}</span></div>
+	{#if !admin && !error && owner}
+		{#if domainId && !organizationError}<div class="scope-note"><span>{t('domain')}: <code>{domainId}</code></span><span>{canManage ? t('managerHelp') : t('memberHelp')}</span></div>{/if}
 		{#each lists as list}
 			<section class="connections" aria-label={list.title}>
 				<h4>{list.title}</h4>
+				{#if list.scope === 'domain' && organizationError}<Alert tone="warning" flat>{t('organizationUnavailable')}</Alert>{/if}
 				{#each connections.filter((row) => row.scope === list.scope) as row (row.id)}
 					{@const state = mcpConnectionState(row)}
 					<div class="connection-row">
@@ -262,7 +316,7 @@
 						{#if deleteTarget?.id === row.id}<div class="row-error"><Alert tone="warning" flat>{t('deleteConfirm', { name: row.name })}</Alert><div class="actions"><Button variant="secondary" size="sm" onclick={() => deleteTarget = null}>{t('cancel')}</Button><Button variant="danger" size="sm" onclick={() => remove(row)}>{t('delete')}</Button></div></div>{/if}
 						{#if revokeTarget?.id === row.id}<div class="row-error"><Alert tone="warning" flat>{t('revokeConfirm', { name: row.name })}</Alert><div class="actions"><Button variant="secondary" size="sm" onclick={() => revokeTarget = null}>{t('cancel')}</Button><Button variant="danger" size="sm" onclick={() => { revokeTarget = null; oauth(row, true); }}>{t('revokeOAuth')}</Button></div></div>{/if}
 					</div>
-				{:else}{#if !loading}<p>{t('emptyConnections')}</p>{/if}{/each}
+				{:else}{#if !loading && !(list.scope === 'domain' && organizationError)}<p>{t('emptyConnections')}</p>{/if}{/each}
 			</section>
 		{/each}
 	{/if}
@@ -273,13 +327,17 @@
 			<p>{t('schemaHelp')}</p>
 			<Field label={editor.row ? settingsT('extensions.mcp.namePlaceholder') : t('label')} for="mcp-connection-label"><TextInput id="mcp-connection-label" bind:value={label} maxlength={100} required={!!editor.row && editor.scope === 'domain'} /></Field>
 			{#if editor.row && editor.scope === 'domain'}<Field label={t('url')} for="mcp-connection-url"><TextInput id="mcp-connection-url" type="url" bind:value={editUrl} required /></Field>{/if}
-			{#each editor.template?.variables || [] as variable}<Field label={t('variable', { name: variable })} for={`mcp-variable-${variable}`}><TextInput id={`mcp-variable-${variable}`} bind:value={variables[variable]} required autocomplete="off" /></Field>{/each}
-			{#if editor.template?.access === 'configure' || (editor.row && editor.scope === 'domain')}<Field label={t('authMode')} for="mcp-connection-auth"><SelectInput id="mcp-connection-auth" bind:value={authMode} onchange={() => headers = []}><option value="none">{t('public')}</option><option value="oauth">OAuth</option><option value="admin">{t('credentials')}</option></SelectInput></Field>{/if}
+			{#each editor.row ? [] : editor.template?.variables || [] as variable}<Field label={t('variable', { name: variable })} for={`mcp-variable-${variable}`}><TextInput id={`mcp-variable-${variable}`} bind:value={variables[variable]} required autocomplete="off" /></Field>{/each}
+			{#if editor.template?.access === 'configure' || (editor.row && editor.scope === 'domain')}<Field label={t('authMode')} for="mcp-connection-auth"><SelectInput id="mcp-connection-auth" bind:value={authMode} onchange={resetHeaders}><option value="none">{t('public')}</option><option value="oauth">OAuth</option><option value="admin">{t('credentials')}</option></SelectInput></Field>{/if}
 			{#if editor.row && editor.scope === 'domain'}<Field label={t('publication')} for="mcp-publication"><SelectInput id="mcp-publication" bind:value={published}><option value="true">{t('published')}</option><option value="false">{t('unpublished')}</option></SelectInput></Field>{/if}
 			{#if authMode === 'admin'}
 				<fieldset><legend>{t('headers')}</legend><p>{t('secretHelp')}</p>
-					{#each headers as header, index}<div class="header-fields"><Field label={t('headerName')} for={`mcp-header-name-${index}`}><TextInput id={`mcp-header-name-${index}`} bind:value={header.name} required autocomplete="off" /></Field><Field label={t('headerValue')} for={`mcp-header-value-${index}`}><TextInput id={`mcp-header-value-${index}`} type="password" bind:value={header.value} required autocomplete="new-password" /></Field><Button variant="subtle" size="sm" onclick={() => headers = headers.filter((_, position) => position !== index)}>{t('removeHeader')}</Button></div>{/each}
-					<Button variant="secondary" size="sm" onclick={() => headers = [...headers, { name: '', value: '' }]}>{t('addHeader')}</Button>
+					{#each headers as header, index}<div class="header-fields" class:declared-header={header.fixed}>
+						{#if !header.fixed}<Field label={t('headerName')} for={`mcp-header-name-${index}`}><TextInput id={`mcp-header-name-${index}`} bind:value={header.name} required autocomplete="off" /></Field>{/if}
+						<Field label={header.fixed ? header.name : t('headerValue')} for={`mcp-header-value-${index}`} help={header.description}><TextInput id={`mcp-header-value-${index}`} type="password" bind:value={header.value} required={header.required} autocomplete="new-password" /></Field>
+						{#if !header.fixed}<Button variant="subtle" size="sm" onclick={() => headers = headers.filter((_, position) => position !== index)}>{t('removeHeader')}</Button>{/if}
+					</div>{/each}
+					{#if !editor.template?.header_hints.some((hint) => !!hint.name)}<Button variant="secondary" size="sm" onclick={() => headers = [...headers, { name: '', value: '', fixed: false, required: true }]}>{t('addHeader')}</Button>{/if}
 				</fieldset>
 			{/if}
 			<div class="actions"><Button variant="secondary" onclick={clearDraft}>{t('cancel')}</Button><Button type="submit">{t('save')}</Button></div>
@@ -295,7 +353,7 @@
 {#snippet templateCard(entry: McpTemplate)}
 	<article class="template" aria-label={entry.name}>
 		<div class="row-copy"><div class="template-heading"><strong>{entry.name}</strong>{#if entry.access === 'managed'}<Pill tone="neutral" size="xs">{t('builtIn')}</Pill>{/if}</div><p>{entry.description}</p><p class="registry-name">{entry.registry_name}</p>
-			{#if entry.access === 'managed'}<p>{entry.managed?.available ? t('managedAvailable') : reason(entry.managed?.reason)}</p>{#if entry.managed?.tools.length}<p>{entry.managed.tools.join(', ')}</p>{/if}
+			{#if entry.access === 'managed'}<p>{entry.managed ? entry.managed.available ? t('managedAvailable') : reason(entry.managed.reason) : t('managedUnknown')}</p>{#if entry.managed?.tools.length}<p>{entry.managed.tools.join(', ')}</p>{/if}
 			{:else if entry.access === 'unavailable' || entry.access === 'unreachable'}<p>{reason(entry.unavailable_reason)}</p>{:else}<p>{entry.access === 'oauth' ? t('oauthHelp') : entry.access === 'credentials' ? t('credentialsHelp') : entry.access === 'configure' ? t('configureHelp') : t('publicHelp')}</p>{/if}
 		</div>
 		{#if !['managed', 'unavailable', 'unreachable'].includes(entry.access)}<div class="actions"><Button variant="outline" size="sm" disabled={!canWrite || loading || !!busy[`template-${entry.id}`]} onclick={() => openEditor(entry, undefined, admin ? 'global' : 'user')}>{admin ? t('install') : t('connectPersonal')}</Button>{#if !admin && canManage}<Button variant="secondary" size="sm" disabled={!canWrite || loading || !!busy[`template-${entry.id}`]} onclick={() => openEditor(entry, undefined, 'domain')}>{t('connectOrganization')}</Button>{/if}</div>{/if}
@@ -330,4 +388,5 @@
 	.search-form :global(.field) { flex: 1 1 16rem; }
 	.count { color: var(--color-ink-2); font-weight: 400; font-variant-numeric: tabular-nums; }
 	@media (min-width: 768px) { .header-fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; } .catalog-list .template { flex-direction: row; align-items: center; flex-wrap: wrap; } .catalog-list .template .row-copy { flex: 1 1 20rem; } }
+	.header-fields.declared-header { grid-template-columns: minmax(0, 1fr); }
 </style>

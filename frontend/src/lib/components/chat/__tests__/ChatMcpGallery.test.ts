@@ -29,19 +29,23 @@ function template(overrides: Partial<McpTemplate> = {}): McpTemplate {
 	};
 }
 function connection(overrides: Partial<McpConnection> = {}): McpConnection {
+	const personal = (overrides.scope ?? 'user') === 'user';
+	const published = overrides.server_is_active ?? !personal;
+	const connected = overrides.auth_mode === 'oauth' ? overrides.auth_connected === true
+		: overrides.auth_mode === 'admin' ? overrides.has_headers === true : true;
 	return {
 		id: 11, name: 'Personal connection', scope: 'user', owner_user_id: 'user-1',
 		owner_project_id: 'project-1', owner_domain_id: 'domain-1',
 		url: 'https://tools.example.test/mcp', transport: 'http', auth_mode: 'none',
-		is_active: false, server_is_active: overrides.scope === 'domain' || overrides.scope === 'global', config_version: 7,
-		activation_is_active: false, activation_config_version: null,
+		is_active: personal && published && connected, server_is_active: published, config_version: 7,
+		activation_is_active: personal && published, activation_config_version: null,
 		template_key: 'catalog-open', ...overrides
 	};
 }
 function settings(overrides: Partial<McpSettingsPage> = {}): McpSettingsPage {
 	return {
 		entries: [template()], total: 1, offset: 0, limit: 12, next_offset: null,
-		domain_id: 'domain-1', can_manage_domain: false, custom_connections: [], ...overrides
+		domain_id: 'domain-1', organization_available: true, can_manage_domain: false, custom_connections: [], ...overrides
 	};
 }
 
@@ -86,6 +90,12 @@ function requestSignal(mock: typeof mocks.get, index: number): AbortSignal {
 }
 async function settle(work: () => void) {
 	await act(async () => { work(); await tick(); });
+}
+function expectFixedHeader(name: string) {
+	expect(screen.queryByLabelText(t('headerName'))).toBeNull();
+	expect((screen.getByLabelText(name) as HTMLInputElement).type).toBe('password');
+	expect(screen.queryByRole('button', { name: t('addHeader') })).toBeNull();
+	expect(screen.queryByRole('button', { name: t('removeHeader') })).toBeNull();
 }
 
 beforeEach(() => {
@@ -269,6 +279,19 @@ describe('ChatMcpGallery authority and visibility', () => {
 		await fireEvent.click(within(row('Personal connection')).getByRole('button', { name: t('deactivate') }));
 		expect(mocks.patch).toHaveBeenCalledWith(path, { is_active: false }, 'token-1', 'project-1', { signal: expect.any(AbortSignal) });
 	});
+
+	it.each([
+		['none', true, 'active'],
+		['oauth', false, 'needsAuth']
+	] as const)('renders published personal %s metadata as %s/%s without stale activation consent', async (authMode, connected, state) => {
+		servers = [connection({ server_is_active: true, auth_mode: authMode, auth_connected: connected })];
+		render(ChatMcpGallery);
+		await loaded();
+		const personal = within(row('Personal connection'));
+		expect(personal.getByText(t(state))).toBeTruthy();
+		expect(personal.queryByText(t('stale'))).toBeNull();
+		expect(mocks.patch).not.toHaveBeenCalled();
+	});
 });
 
 describe('ChatMcpGallery secrets and OAuth', () => {
@@ -279,20 +302,75 @@ describe('ChatMcpGallery secrets and OAuth', () => {
 		render(ChatMcpGallery);
 		await loaded();
 		await fireEvent.click(within(card('Public catalog tool')).getByRole('button', { name: t('connectPersonal') }));
-		const secret = screen.getByLabelText(t('headerValue')) as HTMLInputElement;
+		const secret = screen.getByLabelText('Authorization') as HTMLInputElement;
 		expect(secret.type).toBe('password');
 		expect(secret.autocomplete).toBe('new-password');
+		expectFixedHeader('Authorization');
 		await fireEvent.input(secret, { target: { value: 'Bearer write-only-secret' } });
 		await fireEvent.click(screen.getByRole('button', { name: t('save') }));
 		expect(mocks.post).toHaveBeenCalledWith('/api/v1/chat/mcp-connections', expect.objectContaining({ template_id: 'catalog-open', auth_mode: 'admin', headers: { Authorization: 'Bearer write-only-secret' } }), 'token-1', 'project-1', { signal: expect.any(AbortSignal) });
-		expect(screen.queryByLabelText(t('headerValue'))).toBeNull();
+		expect(screen.queryByLabelText('Authorization')).toBeNull();
 		expect(screen.queryByDisplayValue('Bearer write-only-secret')).toBeNull();
 		await settle(() => pending.reject(new Error('upstream headers Authorization=Bearer write-only-secret')));
 		expect(within(card('Public catalog tool')).getByRole('alert').textContent).toContain(t('actionFailed'));
 		expect(document.body.textContent).not.toContain('write-only-secret');
 		expect(document.body.textContent).not.toContain('upstream headers');
 		await fireEvent.click(within(card('Public catalog tool')).getByRole('button', { name: t('connectPersonal') }));
-		expect((screen.getByLabelText(t('headerValue')) as HTMLInputElement).value).toBe('');
+		expect((screen.getByLabelText('Authorization') as HTMLInputElement).value).toBe('');
+	});
+
+	it.each(['user', 'domain'] as const)('edits declared %s credential values without freeform header names or unsupported PATCH keys', async (scope) => {
+		const entry = template({ access: 'credentials', header_hints: [{ name: 'Authorization', description: 'API token', secret: true }] });
+		page = settings({ entries: [entry], can_manage_domain: scope === 'domain' });
+		const saved = connection({ scope, name: 'Saved credentials', auth_mode: 'admin', has_headers: true, server_is_active: true });
+		if (scope === 'domain') organization = [saved];
+		else servers = [saved];
+		render(ChatMcpGallery);
+		await screen.findByText(t(scope === 'domain' ? 'managerHelp' : 'memberHelp'));
+		await fireEvent.click(within(row(saved.name)).getByRole('button', { name: t('edit') }));
+		const value = await screen.findByLabelText('Authorization') as HTMLInputElement;
+		expectFixedHeader('Authorization');
+		expect(value.value).toBe('');
+		await fireEvent.input(value, { target: { value: 'Bearer replacement-value' } });
+		await fireEvent.click(screen.getByRole('button', { name: t('save') }));
+		expect(mocks.patch).toHaveBeenCalledWith(
+			scope === 'domain' ? '/api/v1/chat/domains/domain-1/mcp-connections/11' : '/api/v1/chat/mcp-connections/11',
+			scope === 'domain'
+				? { name: saved.name, url: saved.url, auth_mode: 'admin', is_active: true, headers: { Authorization: 'Bearer replacement-value' } }
+				: { headers: { Authorization: 'Bearer replacement-value' } },
+			'token-1', 'project-1', { signal: expect.any(AbortSignal) }
+		);
+		expect(screen.queryByDisplayValue('Bearer replacement-value')).toBeNull();
+		expect(mocks.get.mock.calls.some(([path]) => path === '/api/v1/chat/mcp-settings?offset=0&limit=100')).toBe(false);
+	});
+
+	it('paginates exact template ids before editing a credential connection absent from the current catalog page', async () => {
+		const saved = connection({ name: 'Off-page credentials', template_key: 'catalog-offpage', auth_mode: 'admin', has_headers: true, server_is_active: true });
+		servers = [saved];
+		const other = template({
+			id: 'catalog-wrong', registry_name: 'catalog-offpage', access: 'credentials',
+			header_hints: [{ name: 'X-Wrong', description: 'Not this template', secret: true }]
+		});
+		const exact = template({
+			id: 'catalog-offpage', registry_name: 'example/exact-template', access: 'credentials',
+			header_hints: [{ name: 'Authorization', description: 'API token', secret: true }]
+		});
+		mocks.get.mockImplementation((path: string) => {
+			if (path === '/api/v1/chat/mcp-settings?offset=0&limit=100') return Promise.resolve(settings({ entries: [other], total: 101, limit: 100, next_offset: 100 }));
+			if (path === '/api/v1/chat/mcp-settings?offset=100&limit=100') return Promise.resolve(settings({ entries: [exact], total: 101, offset: 100, limit: 100 }));
+			return response(path);
+		});
+		render(ChatMcpGallery);
+		await loaded();
+		await fireEvent.click(within(row(saved.name)).getByRole('button', { name: t('edit') }));
+		const value = await screen.findByLabelText('Authorization') as HTMLInputElement;
+		expectFixedHeader('Authorization');
+		expect(screen.queryByText('X-Wrong', { exact: true })).toBeNull();
+		expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/mcp-settings?offset=0&limit=100', 'token-1', 'project-1', expect.objectContaining({ refresh: true, signal: expect.any(AbortSignal) }));
+		expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/mcp-settings?offset=100&limit=100', 'token-1', 'project-1', expect.objectContaining({ refresh: true, signal: expect.any(AbortSignal) }));
+		await fireEvent.input(value, { target: { value: 'Bearer exact-template-value' } });
+		await fireEvent.click(screen.getByRole('button', { name: t('save') }));
+		expect(mocks.patch).toHaveBeenCalledWith('/api/v1/chat/mcp-connections/11', { headers: { Authorization: 'Bearer exact-template-value' } }, 'token-1', 'project-1', { signal: expect.any(AbortSignal) });
 	});
 
 	it('creates an organization connection using only the live settings domain', async () => {
@@ -503,5 +581,64 @@ describe('ChatMcpGallery catalog browsing and row feedback', () => {
 		expect(managedCard.queryByText('outdated_tool')).toBeNull();
 		expect(managedCard.queryByRole('button')).toBeNull();
 		expect(mocks.post).not.toHaveBeenCalled();
+	});
+
+	it.each([403, 503])('keeps administrator remote installs available when managed settings returns %s', async (status) => {
+		auth.update((actor) => ({ ...actor, isSystemAdmin: true }));
+		const remote = template({ id: 'remote-admin', name: 'Remote administrator tool' });
+		const staleManaged = template({
+			id: 'managed-admin', name: 'Unknown managed tool', access: 'managed',
+			managed: { profile: 'playwright', available: true, reason: null, tools: ['stale_registry_tool'] }
+		});
+		mocks.get.mockImplementation((path: string) => {
+			if (path === '/api/v1/chat/admin/mcp-registry') return Promise.resolve({ entries: [remote, staleManaged] });
+			if (path.includes('/mcp-settings?access=managed')) return Promise.reject(Object.assign(new Error('Managed status unavailable'), { status }));
+			return response(path);
+		});
+		render(ChatMcpGallery, { admin: true, onChanged: mocks.changed });
+		const remoteCard = within(await screen.findByRole('article', { name: remote.name }));
+		expect(remoteCard.getByRole('button', { name: t('install') }).hasAttribute('disabled')).toBe(false);
+		const unknown = within(card(staleManaged.name));
+		expect(unknown.getByText(t('managedUnknown'))).toBeTruthy();
+		expect(unknown.queryByText(t('managedAvailable'))).toBeNull();
+		expect(unknown.queryByText('stale_registry_tool')).toBeNull();
+		expect(unknown.queryByRole('button')).toBeNull();
+		expect(screen.queryByText(t('loadFailed'))).toBeNull();
+		await fireEvent.click(remoteCard.getByRole('button', { name: t('install') }));
+		await fireEvent.click(screen.getByRole('button', { name: t('save') }));
+		expect(mocks.post).toHaveBeenCalledWith('/api/v1/chat/admin/mcp-registry/remote-admin/install', expect.objectContaining({ auth_mode: 'none' }), 'token-1', 'project-1', { signal: expect.any(AbortSignal) });
+		await waitFor(() => expect(mocks.changed).toHaveBeenCalledTimes(1));
+		expect(screen.queryByText(t('loadFailed'))).toBeNull();
+	});
+
+	it.each(['organization GET 503', 'settings organization_available false'] as const)('keeps personal, global and catalog controls usable with %s', async (failure) => {
+		auth.update((actor) => ({ ...actor, isDomainManager: true }));
+		page = failure === 'organization GET 503'
+			? settings({ can_manage_domain: true })
+			: settings({ organization_available: false, domain_id: null, can_manage_domain: false });
+		servers = [
+			connection({ name: 'Personal survivor' }),
+			connection({ id: 12, scope: 'global', name: 'Global survivor' })
+		];
+		mocks.get.mockImplementation((path: string) => path.includes('/domains/domain-1/mcp-connections?')
+			? Promise.reject(Object.assign(new Error('Organization storage unavailable'), { status: 503 }))
+			: response(path));
+		render(ChatMcpGallery, { onChanged: mocks.changed });
+		await screen.findByText(t('organizationUnavailable'));
+		expect(card('Public catalog tool')).toBeTruthy();
+		expect(within(card('Public catalog tool')).getByRole('button', { name: t('connectPersonal') }).hasAttribute('disabled')).toBe(false);
+		expect(within(row('Global survivor')).getByRole('button', { name: t('activate') }).hasAttribute('disabled')).toBe(false);
+		expect(screen.queryByRole('button', { name: t('connectOrganization') })).toBeNull();
+		expect(screen.queryByText(t('managerHelp'))).toBeNull();
+		expect(screen.queryByText(t('loadFailed'))).toBeNull();
+		const unavailable = within(screen.getByRole('region', { name: t('organization') }));
+		expect(unavailable.queryByText(t('emptyConnections'))).toBeNull();
+		expect(unavailable.queryByRole('button')).toBeNull();
+		await fireEvent.click(within(row('Personal survivor')).getByRole('button', { name: t('activate') }));
+		expect(mocks.patch).toHaveBeenCalledWith('/api/v1/chat/mcp-connections/11', { is_active: true }, 'token-1', 'project-1', { signal: expect.any(AbortSignal) });
+		await waitFor(() => expect(mocks.changed).toHaveBeenCalledTimes(1));
+		expect(screen.getByText(t('organizationUnavailable'))).toBeTruthy();
+		expect(screen.queryByText(t('loadFailed'))).toBeNull();
+		expect(mocks.get.mock.calls.some(([path]) => path.includes('/domains/'))).toBe(failure === 'organization GET 503');
 	});
 });
