@@ -13,7 +13,7 @@ nav_order: 20
 
 ### System administrator readback
 
-`GET /identity/system-roles`와 `/identity/security-policy`, `POST /identity/system-roles/{grant,revoke}`의 응답 형태는 유지한다. 권한 판정·회수 확인은 native system user/group 역할 endpoint를 직접 조회한다. Keystone의 computed-assignment 목록 캐시가 새 system grant를 반영하지 않는 동안 Afterglow가 부여한 사용자 ID를 Redis 후보 힌트로 660초간 보관하여 발견을 보완한다. 힌트는 권한이 아니며 사용자 활성·실제 admin 역할을 매번 확인한다. Required store나 native authority 불명은 실패로 반환하며 후보만으로 관리자를 추가하지 않는다. 이 발견 보완은 native cache TTL 600초를 전제로 하고 외부 CLI에서 부여한 새 사용자의 즉시 발견을 보장하지 않는다.
+`GET /identity/system-roles`와 `/identity/security-policy`, `POST /identity/system-roles/{grant,revoke}`의 응답 형태는 유지한다. 권한 판정·회수 확인은 native system user/group 역할 endpoint를 직접 조회한다. Keystone의 computed-assignment 목록 캐시가 새 system grant를 반영하지 않는 동안 Afterglow가 부여한 사용자 ID를 Redis 후보 힌트로 660초간 보관하여 발견을 보완한다. 힌트는 권한이 아니며 사용자 활성·실제 admin 역할을 매번 확인한다. Required store나 native authority 불명은 실패로 반환하며 후보만으로 관리자를 추가하지 않는다. 이 발견 보완은 native cache TTL 600초를 전제로 하고 외부 CLI에서 부여한 새 사용자의 즉시 발견을 보장하지 않는다. `user_id`는 `[A-Za-z0-9][A-Za-z0-9_.-]{0,63}` 형식만 허용하며(그 외 422), native 사용자 조회 결과의 ID가 정확히 일치해야 한다. 존재하지 않는 사용자는 404이고 힌트를 남기지 않는다. 회수·비활성화는 변경 대상이 아닌 검증된 enabled human 관리자가 한 명 이상 남고 그 home domain도 활성일 때만 허용한다. 그렇지 않으면 발견 결과가 비어 있어도 422(마지막 관리자 보호)로 거부하며, 외부 group grant 직후 최대 600초 동안 보수적으로 거부될 수 있다.
 
 관리자 사용자 수정의 난수 비밀번호·등록 메일 전송은 `POST /api/v1/admin/users/{user_id}/password/reset-email`입니다. Fresh system-admin·원 executor·활성 exact 사용자/home·유일한 현재 메일·검증 STARTTLS·회수 store를 확인하고32자 난수를 native setter에 한 번 적용합니다. 성공/메일 실패/회수 실패/감사 실패/결과 불명을 구분하며 비밀번호를 응답·로그·감사에 남기지 않습니다. 상세 strict 본문·응답·운영 위험은 [Profile API의 관리자 재설정](profile.md#관리자-난수-비밀번호-재설정등록-메일-전송)을 따릅니다. 공개 분실 요청만으로 이 관리자 동작을 실행하지 않습니다.
 
