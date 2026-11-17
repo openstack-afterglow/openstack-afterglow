@@ -6,6 +6,10 @@ Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 �
 
 **Lumen 대시보드 통합 — source/local:** 관리자 모델 등록·수정은 임베딩에 입력 토큰 가격만 전송하고 미디어 가격 상태를 배제한다. `frontend/src/lib/api/mediaReadiness.ts`가 레지스트리·Image/Audio Studio의 같은 native feature gate를 해석한다. 미설정된 ClamAV/S3, 미지원 모델·과금 기준, 단가 누락은 서로 다른 차단 상태이며 UI 문구만으로 실행 권한이나 준비 상태를 만들지 않는다.
 
+**Lumen 채팅 작업 내역 — source/local:** `ChatPanel` → `ChatWindow` → `ChatMessage` → `ExecutionTimeline`이 Lumen 공개 run journal로 하나의 실시간/종료 작업 패널을 구성한다. 경과 시간은 실제 UTC run 경계(`execution.started_at`, terminal 시각)를 따르고 종료 시 한 번 접히며, 이후 사용자의 재열기는 독립적으로 유지한다. 승인 카드는 streaming 여부가 아니라 정확한 run/call의 미결 pending 기록에 묶이고, 결정은 기존 owner/project/run 승인 fence가 소유한다. 비공개 모델 추론은 계속 제외한다.
+
+**실시간 전사 — source/local:** Native realtime 전사는 기존 종류 일치 signed-ticket admission과 native event projection을 입력 전용 PCM·구간 commit 및 상관된 부분/확정/실패 항목으로 확장한다. 기존 음성 대화, 현재 권한·단가 확인, 지속 정산과 일회용 ticket 소유를 유지한다. Audio Studio는 기존 mode-aware 실시간 화면으로 연결하며 마이크·worklet·socket·context와 임시 텍스트는 소유자에 묶여 종료 시 정리된다.
+
 **System administrator readback:** `keystone`의 직접 system user/group role endpoint가 권한의 근거다. Computed-assignment 목록은 후보 발견용이며, Afterglow grant의 Redis 후보 힌트(660초, 현재 native cache TTL 600초를 전제, Keystone URL·region·interface별 key)를 합쳐 직접 재검증한다. 힌트 자체는 권한이 아니고 실패 시 닫힌다. 직접 대상 ID는 안전한 opaque 문자만 허용하고 exact `users.get` ID 일치 뒤에만 guard·쓰기·힌트에 사용한다. 동일 reader를 권위·마지막 활성 human 관리자 보호·회수 확인에 사용한다. 마지막 관리자 보호는 발견 결과가 비어도 변경 대상이 아닌 검증된 enabled human 관리자가 남아야 통과하며, 그 관리자의 exact home domain도 live enabled여야 한다. 외부 native grant의 즉시 발견은 별도 문제로 남는다. 관리자 화면의 표와 배너는 같은 snapshot을 사용하고 token-only renewal은 성공 응답을 버리지 않지만 owner/project/session 교체는 차단한다.
 
 **세 번째 시각 정리 (2026-11-16, source/local):** 기존 layout.css semantic text token과 shared embedded/flat/table/card/form 경계를 재사용해 consumer/admin 상세·계정·Lumen 설정의 중첩 외곽선, 제목 단계, 작업 대비와 좁은 상세 header를 수정한다. AuthStudioShell은 기존 resolvedTheme를 SVG color-scheme에 전달하고 보조 글자 크기만 기존 type role로 올린다. 포트 생성창은 기존 localized heading을 dialog 이름으로 연결한다. 자원·credential·권위·API·scope·polling·tutorial 가용성·DB/schema·배포 경계는 바꾸지 않는 presentation-only 변경이다. 실제 렌더·native 조작과 synthetic/redirect 한계는 docs/testing.md에 구분하며 운영 수용으로 승격하지 않는다.
