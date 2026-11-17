@@ -751,7 +751,11 @@ async def _vm_create_preview(context: ConsumerCloudContext, arguments: VmCreateA
     fingerprint = sha256(
         json.dumps({"project_id": context.project_id, **plan}, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
-    effect = f"create one VM with a {plan['boot_volume_size_gb']} GiB boot volume"
+    effect = (
+        f"create one VM with a {plan['boot_volume_size_gb']} GiB boot volume"
+        f"; delete_boot_volume_on_termination={str(plan['delete_boot_volume_on_termination']).lower()}"
+        f"; availability_zone={plan['availability_zone']}"
+    )
     schedule = plan["usage_schedule"]
     if schedule is not None:
         if schedule["expiry_action"] == "delete":
