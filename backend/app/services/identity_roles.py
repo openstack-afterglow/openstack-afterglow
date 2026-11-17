@@ -238,14 +238,10 @@ async def enabled_system_admins() -> dict:
 
     Unreadable authority or shared discovery fails closed with 503.
     """
-    recent = await keystone.recent_system_admin_ids()
 
-    def load():
+    def load(ks, users):
         from app.services import backup_system_account
 
-        admin_role_id = keystone._resolve_admin_role_id()
-        ks = keystone._get_admin_ks_client()
-        users = keystone.system_admin_user_ids(ks, admin_role_id, recent, effective=True)
         admins = {}
         for uid in users:
             account = ks.users.get(uid)
@@ -256,7 +252,11 @@ async def enabled_system_admins() -> dict:
         return admins
 
     try:
-        return await asyncio.to_thread(load)
+        recent = await keystone.recent_system_admin_ids()
+        admin_role_id = await asyncio.to_thread(keystone._resolve_admin_role_id)
+        ks = await asyncio.to_thread(keystone._get_admin_ks_client)
+        users = await keystone.system_admin_user_ids(ks, admin_role_id, recent, effective=True)
+        return await asyncio.to_thread(load, ks, users)
     except Exception as exc:
         raise public_service_error(503, "system_admin_authority_unavailable") from exc
 

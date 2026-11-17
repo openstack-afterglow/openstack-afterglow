@@ -1783,50 +1783,61 @@ async def delete_role_implication(
 class SystemRoleRequest(BaseModel):
     user_id: str
 
+    @field_validator("user_id")
+    @classmethod
+    def validate_user_id(cls, value: str) -> str:
+        return keystone.validate_system_principal_id(value)
+
 
 @router.get("/identity/system-roles", dependencies=[Depends(require_admin)])
 async def list_system_roles():
     """system:all scope에서 admin role을 보유한 사용자 목록 조회."""
-    recent = await keystone.recent_system_admin_ids()
+    def _list(ks, user_ids):
+        result = []
+        for uid in user_ids:
+            try:
+                u = ks.users.get(uid)
+                result.append(
+                    {
+                        "user_id": uid,
+                        "name": getattr(u, "name", ""),
+                        "email": getattr(u, "email", ""),
+                        "enabled": getattr(u, "enabled", False),
+                        "system_account": backup_system_account.system_account_marker(u),
+                    }
+                )
+            except Exception:
+                result.append({"user_id": uid, "name": "", "email": "", "enabled": False})
+        return result
 
-    def _list():
-        try:
-            admin_role_id = keystone._resolve_admin_role_id()
-            ks = keystone._get_admin_ks_client()
-            user_ids = sorted(keystone.system_admin_user_ids(ks, admin_role_id, recent))
-            result = []
-            for uid in user_ids:
-                try:
-                    u = ks.users.get(uid)
-                    result.append(
-                        {
-                            "user_id": uid,
-                            "name": getattr(u, "name", ""),
-                            "email": getattr(u, "email", ""),
-                            "enabled": getattr(u, "enabled", False),
-                            "system_account": backup_system_account.system_account_marker(u),
-                        }
-                    )
-                except Exception:
-                    result.append({"user_id": uid, "name": "", "email": "", "enabled": False})
-            return result
-        except HTTPException:
-            raise
-        except Exception as e:
-            _logger.warning("system role 목록 조회 실패: %s", e)
-            raise HTTPException(status_code=500, detail="system role 목록 조회 실패")
-
-    return await asyncio.to_thread(_list)
+    try:
+        recent = await keystone.recent_system_admin_ids()
+        admin_role_id = await asyncio.to_thread(keystone._resolve_admin_role_id)
+        ks = await asyncio.to_thread(keystone._get_admin_ks_client)
+        user_ids = sorted(await keystone.system_admin_user_ids(ks, admin_role_id, recent))
+        return await asyncio.to_thread(_list, ks, user_ids)
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.warning("system role 목록 조회 실패: %s", e)
+        raise HTTPException(status_code=500, detail="system role 목록 조회 실패")
 
 
 async def _system_admin_change(conn, user_id: str, *, revoke: bool) -> dict:
+    try:
+        keystone.validate_system_principal_id(user_id)
+    except ValueError as exc:
+        raise HTTPException(422, "identity_native_invalid") from exc
     # The shared native role-graph lease serializes this with every other grant,
     # role and implication mutation, so two concurrent revokes cannot both pass.
     async with identity_roles._graph_lock(conn) as lease:
-        await backup_system_account.assert_not_system_account(user_id, conn=conn)
         try:
             admin_role_id = await asyncio.to_thread(keystone._resolve_admin_role_id)
             ks = await asyncio.to_thread(keystone._get_admin_ks_client)
+            account = await asyncio.to_thread(ks.users.get, user_id)
+            if identity_roles._field(account, "id") != user_id:
+                raise public_service_error(503, "identity_unavailable")
+            await backup_system_account.assert_not_system_account(user_id, conn=conn)
             if revoke:
 
                 def check():

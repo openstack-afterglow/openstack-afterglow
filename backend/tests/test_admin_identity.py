@@ -11,7 +11,7 @@ import json
 import threading
 import time
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import fakeredis.aioredis
 import pytest
@@ -1226,6 +1226,84 @@ async def test_slow_committed_grant_lost_reply_refreshes_discovery_deadline(
     assert response.status_code >= 500
     seconds, microseconds = await controlled_time()
     now = seconds + microseconds / 1_000_000
-    expires = await redis.zscore(keystone._RECENT_SYSTEM_ADMIN_KEY, "new-admin")
+    expires = await redis.zscore(keystone._recent_system_admin_key(), "new-admin")
     assert 659 <= expires - now <= 660
     assert "new-admin" in await keystone.recent_system_admin_ids()
+
+
+@pytest.mark.parametrize(
+    "user_id",
+    [
+        "", " admin-1", "admin-1 ", "admin-1/", "admin-1//", "admin/../admin-1",
+        "admin-1?x", "admin-1#x", "admin-1%2f", "admin-1\\x", "admin 1", "admin-1\n", ".", "..",
+    ],
+)
+@pytest.mark.parametrize("operation", ["grant", "revoke"])
+@pytest.mark.asyncio
+async def test_system_role_rejects_path_alias_before_native_or_hint_write(
+    admin_client, system_keystone, monkeypatch, user_id, operation
+):
+    ks = system_keystone(_SystemKeystone({"admin-1"}))
+    users_get = Mock(wraps=ks.users.get)
+    ks.users.get = users_get
+    remember = AsyncMock()
+    monkeypatch.setattr(keystone, "remember_system_admin", remember)
+    with patch("app.api.identity.admin_identity.session_store.revoke_user_sessions", new=AsyncMock()) as revoke:
+        response = await admin_client.post(
+            f"/api/v1/admin/identity/system-roles/{operation}", json={"user_id": user_id}
+        )
+    assert response.status_code == 422
+    assert ks.calls == []
+    users_get.assert_not_called()
+    remember.assert_not_awaited()
+    revoke.assert_not_awaited()
+    assert await keystone.recent_system_admin_ids() == set()
+
+
+@pytest.mark.parametrize("operation", ["grant", "revoke"])
+@pytest.mark.asyncio
+async def test_system_role_missing_user_cannot_poison_hints_or_enter_guard(
+    admin_client, system_keystone, monkeypatch, operation
+):
+    from keystoneclient.exceptions import NotFound
+
+    ks = system_keystone(_SystemKeystone({"admin-1"}))
+    ks.users.get = Mock(side_effect=NotFound("User not found"))
+    remember = AsyncMock()
+    guard = AsyncMock()
+    monkeypatch.setattr(keystone, "remember_system_admin", remember)
+    monkeypatch.setattr(identity_roles, "assert_system_admin_remains", guard)
+    with patch("app.api.identity.admin_identity.session_store.revoke_user_sessions", new=AsyncMock()) as revoke:
+        response = await admin_client.post(
+            f"/api/v1/admin/identity/system-roles/{operation}", json={"user_id": "unknown-user"}
+        )
+    assert response.status_code == 404
+    ks.users.get.assert_called_once_with("unknown-user")
+    assert ks.calls == []
+    remember.assert_not_awaited()
+    guard.assert_not_awaited()
+    revoke.assert_not_awaited()
+    assert await keystone.recent_system_admin_ids() == set()
+
+
+@pytest.mark.parametrize("operation", ["grant", "revoke"])
+@pytest.mark.asyncio
+async def test_system_role_different_native_user_is_not_a_canonical_alias(
+    admin_client, system_keystone, monkeypatch, operation
+):
+    ks = system_keystone(_SystemKeystone({"admin-1"}))
+    ks.users.get = Mock(return_value=SimpleNamespace(id="admin-1", enabled=True))
+    remember = AsyncMock()
+    guard = AsyncMock()
+    monkeypatch.setattr(keystone, "remember_system_admin", remember)
+    monkeypatch.setattr(identity_roles, "assert_system_admin_remains", guard)
+    with patch("app.api.identity.admin_identity.session_store.revoke_user_sessions", new=AsyncMock()) as revoke:
+        response = await admin_client.post(
+            f"/api/v1/admin/identity/system-roles/{operation}", json={"user_id": "another-id"}
+        )
+    assert response.status_code == 503
+    ks.users.get.assert_called_once_with("another-id")
+    assert ks.calls == []
+    remember.assert_not_awaited()
+    guard.assert_not_awaited()
+    revoke.assert_not_awaited()

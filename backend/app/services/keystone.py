@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+import hashlib
+import json
 import logging
+import re
 import threading
 from concurrent.futures import Future
 from typing import TYPE_CHECKING
@@ -10,6 +14,7 @@ from fastapi import HTTPException
 from keystoneauth1.exceptions.http import NotFound, Unauthorized
 from keystoneauth1.identity import v3
 from keystoneauth1.identity.base import BaseIdentityPlugin
+from keystoneclient.exceptions import NotFound as KeystoneNotFound
 from waygate_sdk.proxy import Proxy as WaygateProxy
 
 from app.config import get_settings
@@ -159,6 +164,13 @@ def _resolve_admin_role_id() -> str:
     return _field(roles[0], "id")
 
 
+def validate_system_principal_id(subject: str) -> str:
+    """Accept an opaque native ID, never a URL path, query or encoded alias."""
+    if not isinstance(subject, str) or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", subject) is None:
+        raise ValueError("System grant principal is invalid")
+    return subject
+
+
 def direct_system_assignments(ks, *, user=None, group=None) -> list[dict]:
     """Read exact native system grants, bypassing computed-assignment caching.
 
@@ -171,8 +183,7 @@ def direct_system_assignments(ks, *, user=None, group=None) -> list[dict]:
     if (user is None) == (group is None):
         raise ValueError("Exactly one system grant principal is required")
     principal, subject = ("user", user) if user is not None else ("group", group)
-    if not isinstance(subject, str) or not subject or subject != subject.strip():
-        raise ValueError("System grant principal is invalid")
+    validate_system_principal_id(subject)
     rows = []
     for role in ks.roles.list(system="all", **{principal: subject}):
         role_id = _field(role, "id")
@@ -183,7 +194,12 @@ def direct_system_assignments(ks, *, user=None, group=None) -> list[dict]:
 
 
 _RECENT_SYSTEM_ADMIN_TTL = 660
-_RECENT_SYSTEM_ADMIN_KEY = "afterglow:identity:recent-system-admins"
+
+
+def _recent_system_admin_key() -> str:
+    settings = get_settings()
+    provider = json.dumps([settings.os_auth_url.rstrip("/"), settings.os_region_name, settings.os_interface])
+    return "afterglow:identity:recent-system-admins:" + hashlib.sha256(provider.encode()).hexdigest()
 
 
 async def recent_system_admin_ids() -> set[str]:
@@ -193,15 +209,16 @@ async def recent_system_admin_ids() -> set[str]:
 
     try:
         redis = await session_store._get_redis()
+        key = _recent_system_admin_key()
         seconds, microseconds = await redis.time()
         now = seconds + microseconds / 1_000_000
         async with redis.pipeline(transaction=True) as pipe:
-            pipe.zremrangebyscore(_RECENT_SYSTEM_ADMIN_KEY, "-inf", now)
-            pipe.zrangebyscore(_RECENT_SYSTEM_ADMIN_KEY, f"({now}", "+inf")
+            pipe.zremrangebyscore(key, "-inf", now)
+            pipe.zrangebyscore(key, f"({now}", "+inf")
             _, values = await pipe.execute()
         ids = {value.decode() if isinstance(value, bytes) else value for value in values}
-        if any(not isinstance(uid, str) or not uid or uid != uid.strip() for uid in ids):
-            raise ValueError("System admin discovery metadata is invalid")
+        for uid in ids:
+            validate_system_principal_id(uid)
         return ids
     except Exception as exc:
         raise public_service_error(503, "system_admin_authority_unavailable") from exc
@@ -216,22 +233,35 @@ async def remember_system_admin(user_id: str, *, remove=False) -> None:
     from app.api.common.errors import public_service_error
     from app.services import session_store
 
+    validate_system_principal_id(user_id)
+
     try:
         redis = await session_store._get_redis()
+        key = _recent_system_admin_key()
         if remove:
-            await redis.zrem(_RECENT_SYSTEM_ADMIN_KEY, user_id)
+            await redis.zrem(key, user_id)
             return
         seconds, microseconds = await redis.time()
         expires = seconds + microseconds / 1_000_000 + _RECENT_SYSTEM_ADMIN_TTL
         async with redis.pipeline(transaction=True) as pipe:
-            pipe.zadd(_RECENT_SYSTEM_ADMIN_KEY, {user_id: expires})
-            pipe.expire(_RECENT_SYSTEM_ADMIN_KEY, _RECENT_SYSTEM_ADMIN_TTL)
+            pipe.zadd(key, {user_id: expires})
+            pipe.expire(key, _RECENT_SYSTEM_ADMIN_TTL)
             await pipe.execute()
     except Exception as exc:
         raise public_service_error(503, "system_admin_authority_unavailable") from exc
 
 
-def system_admin_user_ids(ks, admin_role_id: str, recent_user_ids, *, effective=False) -> set[str]:
+async def system_admin_user_ids(ks, admin_role_id: str, recent_user_ids, *, effective=False) -> set[str]:
+    """Verify discovery off-loop and retire only missing hint-only candidates."""
+    result, missing = await asyncio.to_thread(
+        _system_admin_user_ids, ks, admin_role_id, recent_user_ids, effective=effective
+    )
+    for uid in missing:
+        await remember_system_admin(uid, remove=True)
+    return result
+
+
+def _system_admin_user_ids(ks, admin_role_id: str, recent_user_ids, *, effective=False) -> tuple[set[str], set[str]]:
     """Use computed assignments for discovery, never for current authority."""
     from collections.abc import Mapping
 
@@ -239,6 +269,7 @@ def system_admin_user_ids(ks, admin_role_id: str, recent_user_ids, *, effective=
 
     field = identity_roles._field
     users, groups = set(recent_user_ids), set()
+    computed_users = set()
     for row in ks.role_assignments.list(system="all"):
         user, group = field(row, "user"), field(row, "group")
         scope, role = field(row, "scope"), field(row, "role")
@@ -257,9 +288,10 @@ def system_admin_user_ids(ks, admin_role_id: str, recent_user_ids, *, effective=
             raise ValueError("System assignment discovery metadata is invalid")
         subject = user if user is not None else group
         uid = field(subject, "id")
-        if not isinstance(uid, str) or not uid or uid != uid.strip():
-            raise ValueError("System assignment discovery principal is invalid")
+        validate_system_principal_id(uid)
         (users if user is not None else groups).add(uid)
+        if user is not None:
+            computed_users.add(uid)
 
     catalog = None
 
@@ -281,7 +313,19 @@ def system_admin_user_ids(ks, admin_role_id: str, recent_user_ids, *, effective=
                     return True
         return False
 
-    result = {uid for uid in users if grants_admin(direct_system_assignments(ks, user=uid))}
+    result, missing = set(), set()
+    for uid in users:
+        try:
+            rows = direct_system_assignments(ks, user=uid)
+        except (NotFound, KeystoneNotFound):
+            if uid in computed_users:
+                raise
+            # A hint can outlive its native account. It cannot assert authority
+            # or turn a deleted, hint-only user into a directory-wide outage.
+            missing.add(uid)
+            continue
+        if grants_admin(rows):
+            result.add(uid)
     if effective:
         for gid in groups:
             if grants_admin(direct_system_assignments(ks, group=gid)):
@@ -290,7 +334,7 @@ def system_admin_user_ids(ks, admin_role_id: str, recent_user_ids, *, effective=
                     if not isinstance(uid, str) or not uid:
                         raise ValueError("System assignment group membership is unresolved")
                     result.add(uid)
-    return result
+    return result, missing
 
 
 def _has_system_admin_role(user_id: str, *, operation=None) -> bool:
