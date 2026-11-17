@@ -6,6 +6,14 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## Lumen 대시보드 통합 1.32.25 후보 (2026-11-18, source/local + 합성 HTTP·브라우저)
+
+- 범위: 시스템 관리자 직접 조회·마지막 관리자 보호, 임베딩·미디어 실행 준비 상태, 채팅 작업 내역, 실시간 전사, MCP 카탈로그와 개인·조직 연결, 관리형 sandbox 도구 선택기, 네이티브 공급자 카탈로그 UI, Decision Studio. 통합 브랜치 `feat/lumen-consolidate`(`246c381c` 이후). 게시·배포 전이다.
+- 표준 gate(`npm run test:gate`, Python 3.11 우선, `.env`·`afterglow.conf` 없음, `__pycache__` 제거 후): 아키텍처·체험 카탈로그 검사 통과, 백엔드 단위 15,515 통과/106 건너뜀, 프런트엔드 8,462 통과(610 파일), contract 275, functional 301 통과/46 건너뜀, Ruff check·format 통과.
+- 통합 중 찾은 결함: 시스템 관리자 변경 후 보호된 백업 계정의 부여·회수가 고정 403보다 native 역할 조회를 먼저 실행하던 회귀(복구·회귀 테스트 추가), 메일·워크스페이스·그룹 inventory fake의 직접 역할 endpoint 미지원 60건, 병합으로 생긴 BFF 중복 분기, worktree에 복사된 공용 checkout `__pycache__`로 인한 로그 테스트 오판(소스 문제 아님).
+- 실제 로컬 BFF→Lumen HTTP(두 통합 브랜치, 일회용 MariaDB/Redis, 합성 Keystone directory): 기존 MCP 행동 21건과 추가 20건(네이티브 카탈로그 관리자 200·구성원 403·150개 모델, 폐기된 models.dev 경로 404·upstream 호출 없음, Decisions 가짜 OpenAI upstream 왕복·계약식 비용·단일 정산, 기능 꺼진 모델 upstream 전 거부, 대형 잘못된 body bounded 422) 통과. 이전 runner의 computed-assignment 관측 assertion은 직접 역할 endpoint 관측으로만 바꾸고 실패 수신증을 보존했다. 브라우저(관리형 headless, tutorial) 데스크톱·모바일 20상태 가로 넘침 0. 증거 `~/.local/share/afterglow-proofs/integrated-acceptance-20261118/`.
+- 한계: identity·provider·tutorial은 합성이며 실제 Keystone 배포, 공급자 호출, sandbox 실행, 운영 수용은 포함하지 않는다.
+
 ## 운영 1.32.24 릴리스·롤아웃과 Palimpsest 0.3.30 (2026-11-17 KST, UTC 2026-11-16 18:05–18:59)
 
 - Afterglow 1.32.24: `dev` `698e1276`의 exact-SHA CI 통과 뒤 불변 annotated tag `1.32.24`를 붙였고 이미지(api `sha256:4104ae73…`, frontend `sha256:e933e9fb…`, worker `sha256:5573a13b…`)는 amd64 전용, `1.32.24`와 `latest`가 같은 digest, revision 라벨 `698e1276`이다. Helm과 한국어·영어 GitHub Release를 게시했고 릴리스 노트의 검증 문구는 운영에서 재현한 것이 이전 코드의 실패뿐이라고 정정했다. DB 스키마·Redis 키 변경은 없다.
