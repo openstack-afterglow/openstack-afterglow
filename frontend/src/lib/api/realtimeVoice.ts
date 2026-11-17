@@ -4,6 +4,12 @@ import { requireLumenCapability } from './lumenAccess';
 import type { AvailableModel } from './chatTree';
 import type { ExperienceContext } from '$lib/utils/experience';
 
+export type RealtimeMode = 'conversation' | 'transcription';
+export interface RealtimeTranscript {
+	id: string;
+	text: string;
+	state: 'partial' | 'final' | 'failed';
+}
 export interface RealtimeScope { token: string; projectId: string; experience?: ExperienceContext }
 export interface RealtimeModel extends AvailableModel {
 	model_kind: 'realtime';
@@ -18,6 +24,7 @@ export interface RealtimeCapabilities {
 	input_sample_rate_hz: number;
 	output_sample_rate_hz: number;
 	max_duration_seconds: number;
+	realtime_kind?: string;
 }
 export interface RealtimeSession {
 	session_id: string;
@@ -29,19 +36,45 @@ export interface RealtimeSession {
 	websocket_path: string;
 }
 
+export function realtimeMode(capabilities: RealtimeCapabilities | null): RealtimeMode | null {
+	const kind = capabilities?.realtime_kind ?? 'conversation';
+	return kind === 'conversation' || kind === 'transcription' ? kind : null;
+}
+
+/** Ephemeral bounded item-correlated text; final events replace deltas, never append them twice. */
+export function applyTranscriptionFrame(items: RealtimeTranscript[], packet: Record<string, unknown>): RealtimeTranscript[] {
+	if (typeof packet.item_id !== 'string' || !packet.item_id || packet.item_id.length > 190) return items;
+	const old = items.find((item) => item.id === packet.item_id);
+	let item: RealtimeTranscript;
+	if (packet.type === 'transcript.input.delta' && typeof packet.delta === 'string') {
+		if (old && old.state !== 'partial') return items;
+		item = { id: packet.item_id, text: ((old?.text ?? '') + packet.delta).slice(-4096), state: 'partial' };
+	} else if (packet.type === 'transcript.input.completed' && typeof packet.text === 'string') {
+		item = { id: packet.item_id, text: packet.text, state: 'final' };
+	} else if (packet.type === 'transcript.input.failed') {
+		item = { id: packet.item_id, text: old?.text ?? '', state: 'failed' };
+	} else return items;
+	return (old ? items.map((value) => value.id === item.id ? item : value) : [...items, item]).slice(-20);
+}
+
 export function realtimeReadiness(model: RealtimeModel | undefined, current: RealtimeCapabilities | null): string | null {
 	if (!model) return t('realtimeVoiceApi.selectModel');
 	if (model.model_kind !== 'realtime' || !Number.isSafeInteger(model.id) || model.id <= 0) return t('realtimeVoiceApi.unsupportedModel');
 	if (!model.provider_api_key_configured) return t('realtimeVoiceApi.providerKeyMissing');
 	if (!current || current.model_kind !== 'realtime' || current.model_id !== model.id) return t('realtimeVoiceApi.readinessUnverified');
+	const mode = realtimeMode(current);
+	if (!mode) return t('realtimeTranscription.unsupported');
+	if (!Number.isSafeInteger(current.max_duration_seconds) || current.max_duration_seconds < 10 || current.max_duration_seconds > 900) return t('realtimeVoiceApi.streamFormatUnverified');
 	for (const gates of [model.capabilities?.feature_gates, current.model_capabilities?.feature_gates]) {
-		for (const name of ['audio_input', 'audio_output'] as const) {
+		for (const name of mode === 'transcription' ? ['audio_input'] as const : ['audio_input', 'audio_output'] as const) {
 			const gate = gates?.[name];
 			if (!gate || gate.available !== true || gate.mode !== 'native') return t('realtimeVoiceApi.routeUnavailable');
 			if (gate.pricing_available !== true) return t('realtimeVoiceApi.pricingMissing');
 		}
 	}
-	if (!current.available_voices?.length || !current.default_voice || !current.available_voices.includes(current.default_voice) ||
+	if (mode === 'transcription') {
+		if (current.input_sample_rate_hz !== 24000 || current.output_sample_rate_hz !== 0 || current.max_duration_seconds < 10) return t('realtimeVoiceApi.streamFormatUnverified');
+	} else if (!current.available_voices?.length || !current.default_voice || !current.available_voices.includes(current.default_voice) ||
 		![16000, 24000].includes(current.input_sample_rate_hz) || current.output_sample_rate_hz !== 24000 || current.max_duration_seconds < 10) {
 		return t('realtimeVoiceApi.streamFormatUnverified');
 	}
@@ -51,11 +84,11 @@ export function realtimeReadiness(model: RealtimeModel | undefined, current: Rea
 export const realtimeVoiceApi = {
 	models: (scope: RealtimeScope) => api.get<RealtimeModel[]>('/api/v1/chat/models?model_kind=realtime', scope.token, scope.projectId, { refresh: true, experience: scope.experience }),
 	capabilities: (id: number, scope: RealtimeScope) => api.get<RealtimeCapabilities>(`/api/v1/chat/capabilities?model_id=${id}&model_kind=realtime`, scope.token, scope.projectId, { refresh: true, experience: scope.experience }),
-	async createSession(modelId: number, voice: string, scope: RealtimeScope, key: string, signal: AbortSignal): Promise<RealtimeSession> {
+	async createSession(modelId: number, voice: string | null, scope: RealtimeScope, key: string, signal: AbortSignal, kind: RealtimeMode = 'conversation'): Promise<RealtimeSession> {
 		requireLumenCapability('lumen-audio_user', scope.token, scope.projectId);
 		const response = await fetchWithAuth('/api/v1/chat/realtime/sessions', {
 			method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
-			body: JSON.stringify({ model_id: String(modelId), voice, max_duration_seconds: 300 }), signal
+			body: JSON.stringify({ model_id: String(modelId), ...(kind === 'transcription' ? { kind, voice: null } : { voice }), max_duration_seconds: 300 }), signal
 		}, scope.token, scope.projectId, { experience: scope.experience });
 		if (!response.ok) {
 			const payload = await response.json().catch(() => null);

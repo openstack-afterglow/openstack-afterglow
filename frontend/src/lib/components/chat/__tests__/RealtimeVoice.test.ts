@@ -39,7 +39,10 @@ class Socket {
 
 class Capture {
 	static current: Capture | null = null;
-	port: { onmessage: ((event: MessageEvent<ArrayBuffer>) => void) | null } = { onmessage: null };
+	port: { onmessage: ((event: MessageEvent<ArrayBuffer | { type: string; id: number }>) => void) | null; postMessage: (message: { type: string; id: number }) => void } = {
+		onmessage: null,
+		postMessage: (message) => queueMicrotask(() => this.port.onmessage?.({ data: { type: 'flushed', id: message.id } } as MessageEvent))
+	};
 	disconnect = vi.fn();
 	connect = vi.fn();
 	constructor() { Capture.current = this; }
@@ -349,5 +352,64 @@ describe('Realtime Voice', () => {
 			expect(discarded).not.toHaveBeenCalled();
 			expect(applied).not.toHaveBeenCalled();
 		} finally { state.mockRestore(); discarded.mockRestore(); applied.mockRestore(); }
+	});
+
+	it('supports transcription-only capture, commits PCM and retains only confirmed final text after terminal close', async () => {
+		calls.models.mockResolvedValue([{ ...model(), model_name: 'gpt-realtime-whisper', display_name: 'Realtime transcription' }]);
+		calls.capabilities.mockResolvedValue({ ...capability(), realtime_kind: 'transcription', available_voices: [], default_voice: null, output_sample_rate_hz: 0 });
+		const track = { stop: vi.fn(), enabled: true };
+		vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [track] }) } });
+		render(RealtimeVoice);
+		await screen.findByText(t('realtimeTranscription.ready'));
+		expect(screen.queryByRole('combobox', { name: t('realtimeVoice.voice') })).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: t('realtimeTranscription.start') }));
+		await waitFor(() => expect(Socket.instances).toHaveLength(1));
+		expect(calls.createSession).toHaveBeenCalledWith(17, null, expect.anything(), expect.any(String), expect.any(AbortSignal), 'transcription');
+		const socket = Socket.instances[0];
+		socket.open();
+		socket.message({ type: 'session.ready', realtime_kind: 'transcription', input_sample_rate_hz: 24000, output_sample_rate_hz: 0 });
+		await screen.findByText(t('realtimeVoice.connectedMicrophoneOn'));
+		Capture.current?.port.onmessage?.({ data: new Int16Array([10, -10]).buffer } as MessageEvent<ArrayBuffer>);
+		await fireEvent.click(screen.getByRole('button', { name: t('realtimeTranscription.commit') }));
+		await waitFor(() => expect(socket.sent.map((frame) => JSON.parse(frame).type)).toContain('audio.input.commit'));
+		socket.message({ type: 'transcript.input.delta', item_id: 'turn-1', delta: '미확정' });
+		await screen.findByText(t('realtimeTranscription.partial'));
+		expect(screen.queryByText(t('realtimeTranscription.final'))).toBeNull();
+		socket.message({ type: 'transcript.input.completed', item_id: 'turn-1', text: '확정 문장' });
+		await screen.findByText('확정 문장');
+		expect(screen.queryByText('미확정')).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: t('realtimeVoice.endSession') }));
+		await screen.findByText(t('realtimeTranscription.ending'));
+		expect(track.stop).toHaveBeenCalled();
+		expect(socket.closed).toBe(false);
+		socket.message({ type: 'session.closed' });
+		await screen.findByText(t('realtimeTranscription.ended'));
+		expect(screen.getByText('확정 문장')).toBeTruthy();
+		expect(socket.closed).toBe(true);
+		expect(Context.current?.source.start).not.toHaveBeenCalled();
+		setVerifiedLumenActor(user('project-2'));
+		await waitFor(() => expect(screen.queryByText('확정 문장')).toBeNull());
+	});
+
+	it('never promotes a partial or failed transcription to final when its socket closes unexpectedly', async () => {
+		calls.capabilities.mockResolvedValue({ ...capability(), realtime_kind: 'transcription', available_voices: [], default_voice: null, output_sample_rate_hz: 0 });
+		const stopTrack = vi.fn();
+		vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: stopTrack }] }) } });
+		render(RealtimeVoice);
+		await screen.findByText(t('realtimeTranscription.ready'));
+		await fireEvent.click(screen.getByRole('button', { name: t('realtimeTranscription.start') }));
+		await waitFor(() => expect(Socket.instances).toHaveLength(1));
+		const socket = Socket.instances[0]; socket.open();
+		socket.message({ type: 'session.ready', realtime_kind: 'transcription', input_sample_rate_hz: 24000, output_sample_rate_hz: 0 });
+		await screen.findByText(t('realtimeVoice.connectedMicrophoneOn'));
+		socket.message({ type: 'transcript.input.delta', item_id: 'turn-1', delta: 'partial text' });
+		socket.message({ type: 'transcript.input.failed', item_id: 'turn-1' });
+		await screen.findByText(t('realtimeTranscription.failed'));
+		socket.onclose?.();
+		await screen.findByText(t('realtimeVoice.connectionClosed'));
+		expect(screen.getByText('partial text')).toBeTruthy();
+		expect(screen.queryByText(t('realtimeTranscription.final'))).toBeNull();
+		expect(screen.getByText(t('realtimeTranscription.unfinished'))).toBeTruthy();
+		expect(stopTrack).toHaveBeenCalled();
 	});
 });
