@@ -46,6 +46,25 @@ describe('mockup transport', () => {
 		await expect(maybeMockJson('POST', '/api/v1/flavors/compositions', { ...composition, vcpus: 3 }, token, project)).rejects.toMatchObject({ status: 409 });
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
+	it('serves synthetic embedding models and vectors only in tutorial mode', async () => {
+		const { maybeMockJson } = await import('./transport');
+		const token = 'mock-token-tutorial-scoped';
+		const project = 'mock-project-1';
+		const models = await maybeMockJson<Array<{ id: number; model_kind: string }>>(
+			'GET', '/api/v1/chat/models?model_kind=embedding', undefined, token, project,
+		);
+		expect(models).toEqual([expect.objectContaining({ id: 42, model_kind: 'embedding' })]);
+		const capabilities = await maybeMockJson<{ max_inputs: number }>(
+			'GET', '/api/v1/chat/capabilities?model_id=42&model_kind=embedding', undefined, token, project,
+		);
+		expect(capabilities).toMatchObject({ model_id: 42, max_inputs: 16, supports_dimensions: true });
+		const result = await maybeMockJson<{ embeddings: { embedding: number[] }[]; usage: { estimated: boolean } }>(
+			'POST', '/api/v1/chat/embeddings', { model_id: 42, input: ['vector'], dimensions: 2 }, token, project,
+		);
+		expect(result).toMatchObject({ dimensions: 2, embeddings: [{ index: 0, embedding: [1, 0] }], usage: { estimated: true } });
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
 
 	it('serves native Key Manager metadata arrays without payloads and rejects invalid secret creation', async () => {
 		// resetModules must recreate the tutorial singleton for this transport-boundary test.

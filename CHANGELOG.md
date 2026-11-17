@@ -8,6 +8,7 @@
 ## [Unreleased]
 
 ### Changed
+- Lumen 모델 종류에 텍스트 임베딩을 추가하고 `/dashboard/chat/embeddings` Embedding Studio를 제공한다. 모델·차원·가격 권한을 다시 확인한 뒤 1–16개 입력을 취소 가능한 요청으로 처리하며, 벡터 미리보기·norm·cosine similarity·usage/cost와 JSON 복사·다운로드를 보여 준다. 브라우저 요청은 로그인한 Lumen BFF를 거치며 응답에 no-store를 적용한다. Live provider/production 검증은 포함하지 않는다.
 
 - 프런트엔드 런타임 이미지를 `node:20-alpine`에서 `node:22-alpine`으로 올리고(Node 20은 2026년 4월 지원 종료), 태그 푸시 시 쓰는 `setup-node`도 22로 맞췄다. 운영 이미지는 다음 릴리스 빌드부터 바뀐다. 이에 맞춰 `Promise.withResolvers()`(4곳)와 `Map.groupBy()`(1곳)를 적용했다.
 - 프런트엔드 30개 파일의 `[...x].sort()` 복사 정렬을 `toSorted()`로, `[...x].reverse().find()`를 `findLast()`로 바꿨다. 수신자가 배열로 선언된 곳만 바꿨고 동작은 같다. 지연 측정 스크립트(`scripts/latency/api-lane.mjs`)는 `AbortSignal.timeout()`을 쓰며 `deadline` 분류는 그대로다. `withCleanup`은 정리 실패를 다시 던질 때 `{ cause }`를 붙인다.

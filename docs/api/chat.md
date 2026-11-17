@@ -30,7 +30,7 @@ Afterglow 백엔드는 독자적인 AI 모델·에이전트 실행 엔진 및 �
 > **활성화 조건:** `afterglow.conf [services] chat = true` 및 `[services] lumen_internal_url` (또는 Keystone 서비스 카탈로그).
 > 비활성화 상태에서는 `/api/v1/chat` 라우터가 마운트되지 않습니다.
 
-대시보드 사이드바의 **AI 채팅**에는 `Lumen`(`/dashboard/chat`), `이미지 Studio`(`/dashboard/chat/images`), `오디오 Studio`(`/dashboard/chat/audio`)가 있다. 세 항목 모두 공개 site config의 `services.chat`이 true일 때 노출되며, Studio 경로에서 부모 Lumen 항목을 함께 활성 표시하지 않는다. 이미지 생성·편집과 유한 TTS/STT는 각각 `model_kind=image|tts|stt` 카탈로그를 조회한다. 메뉴 노출이나 컨테이너 health는 provider 키·모델·정확한 가격·asset storage/scanner의 준비 또는 실제 생성 성공을 의미하지 않는다.
+대시보드 사이드바의 **AI 채팅**에는 `Lumen`(`/dashboard/chat`), `이미지 Studio`(`/dashboard/chat/images`), `오디오 Studio`(`/dashboard/chat/audio`), `임베딩 Studio`(`/dashboard/chat/embeddings`)가 있다. 네 항목 모두 공개 site config의 `services.chat`이 true일 때 노출되며, Studio 경로에서 부모 Lumen 항목을 함께 활성 표시하지 않는다. 이미지 생성·편집, 유한 TTS/STT, 임베딩은 각각 `model_kind=image|tts|stt|embedding` 카탈로그를 조회한다. 메뉴 노출이나 컨테이너 health는 provider 키·모델·정확한 가격·asset storage/scanner의 준비 또는 실제 생성 성공을 의미하지 않는다.
 
 Lumen 텍스트 채팅 상단에는 모델·에이전트 선택과 기록·출처·임시 채팅 컨트롤만 둔다. 이미지 Studio·오디오 Studio·실시간 음성 바로가기는 상단에서 제거하며, 기존 Studio 사이드바·전체 메뉴·command palette 목적지와 `/dashboard/chat/realtime` 직접 route, 서비스 인가·API는 변경하지 않는다.
 
@@ -84,7 +84,7 @@ Lumen 워크로드가 Afterglow의 MCP 제어면을 호출하는 `/api/v1/mcp/lu
 
 ## 주요 프록시 엔드포인트
 
-Afterglow 백엔드는 대부분의 `/api/v1/chat/{path}` 요청을 내부 Lumen 서비스 URL의 `/v1/{path}` 경로로 위임합니다. `models`, `images/generations`, `images/edits`, `audio/speech`, `audio/transcriptions`는 아래 `/v1/chat/...` 경로로 명시적으로 매핑합니다. 요청 본문과 콘텐츠 유형을 보존하고, SSE 및 바이너리 응답을 재인코딩하지 않고 스트리밍합니다. Realtime admission/WS만 별도 scoped ticket route가 소유합니다.
+Afterglow 백엔드는 대부분의 `/api/v1/chat/{path}` 요청을 내부 Lumen 서비스 URL의 `/v1/{path}` 경로로 위임한다. `models`, `images/generations`, `images/edits`, `audio/speech`, `audio/transcriptions`, `embeddings`는 각각 `/v1/chat/...` 경로로 명시적으로 매핑한다. 요청 본문과 콘텐츠 유형을 보존하고, SSE 및 바이너리 응답을 재인코딩하지 않고 스트리밍한다. Provider/admin metadata와 embedding input/output은 no-store다. Realtime admission/WS만 별도 scoped ticket route가 소유한다.
 
 | 메서드 · 경로 | 상위 위임 경로 | 설명 |
 |--------------|----------------|------|
@@ -92,6 +92,9 @@ Afterglow 백엔드는 대부분의 `/api/v1/chat/{path}` 요청을 내부 Lumen
 | `POST /api/v1/chat/images/generations`, `/images/edits` | `/v1/chat/images/generations`, `/edits` | durable image run 접수. 두 경로 모두 JSON `prompt`와 UUID `Idempotency-Key` 필수. `generations`는 입력 이미지를 받지 않고, `edits`는 소유한 scanned `input_asset_id`를 요구한다 |
 | `POST /api/v1/chat/audio/speech` | `/v1/chat/audio/speech` | 음성 생성 요청을 전달하고 오디오 응답 바이트와 Content-Type을 보존 |
 | `POST /api/v1/chat/audio/transcriptions` | `/v1/chat/audio/transcriptions` | 저장된 오디오 asset ID와 선택 `language`·`prompt`, capability가 광고할 때만 `timestamp_granularities: ["segment"]`를 담은 JSON 전사 요청을 전달하고 응답 바이트와 Content-Type을 보존. 응답은 `{text}` 또는 timing 요청 시 `{text, segments:[{start,end,text}]}` |
+| `GET /api/v1/chat/models?model_kind=embedding` | `/v1/chat/models?model_kind=embedding` | 사용자에게 허용된 embedding model과 `embeddings` readiness gate 조회 |
+| `GET /api/v1/chat/capabilities?model_id={id}&model_kind=embedding` | `/v1/chat/capabilities?...` | 선택 모델의 최대/기본 vector 차원·입력 제한·차원 축소 지원 조회 |
+| `POST /api/v1/chat/embeddings` | `/v1/chat/embeddings` | Keystone 세션으로 1–16개 텍스트를 임베딩; provider key는 브라우저에 전달하지 않으며 응답은 no-store |
 | `POST /api/v1/chat/realtime/sessions` | `/v1/chat/realtime/sessions` | 인증된 current user/project로 Lumen session을 접수하고 60초 one-use browser ticket만 반환 |
 | `WS /api/v1/chat/realtime/ws?ticket=<opaque>` | `WS /v1/chat/realtime/sessions/{session_id}/ws` | 동일 origin 정책과 한 번 쓰는 browser ticket 검사 후 Lumen connect token을 internal 헤더로 전달. Provider key는 브라우저에 미노출 |
 | `GET /api/v1/chat/conversations` | `/v1/conversations` | 대화 목록 조회 |
@@ -147,7 +150,7 @@ Lumen migration `021-provider-identity-catalog-order`를 먼저 적용한 API/wo
 
 ### 모델 종류 수정과 종류별 필터
 
-수동 등록은 `model_kind=text|image|tts|stt|realtime`를 항상 명시합니다. 후보·등록 목록의 종류 필터는 저장된 종류를 사용하며 이름·이미지 입력 단가로 재분류하지 않습니다. 등록 카드의 **모델 종류 수정**은 기존 `PATCH /api/v1/chat/admin/models/{model_id}`에 종류와 `is_active=false`를 함께 보냅니다. 모델 ID, 텍스트·공유 token 단가는 보존하고 이전 종류 전용 media 단가와 미디어에서 지원하지 않는 cache-write는 명시적으로 제거합니다. 새 종류의 가격과 실행 경로 검토 뒤 재활성화는 별도입니다. 제목 요약·메모리 지정 모델은 먼저 지정을 해제해야 미디어로 변경할 수 있으며 active-run mutation fence도 유지됩니다. 운영 데이터의 자동 일괄 재분류는 하지 않습니다.
+수동 등록은 `model_kind=text|image|tts|stt|realtime|embedding`를 항상 명시합니다. 후보·등록 목록의 종류 필터는 저장된 종류를 사용하며 이름·이미지 입력 단가로 재분류하지 않습니다. Embedding은 직접 OpenAI/Gemini API-key route만 등록할 수 있고 input-token 가격만 사용합니다(출력 토큰 단가와 media reservation 불필요). 등록 카드의 **모델 종류 수정**은 기존 `PATCH /api/v1/chat/admin/models/{model_id}`에 종류와 `is_active=false`를 함께 보냅니다. 모델 ID, 텍스트·공유 token 단가는 보존하고 이전 종류 전용 media 단가와 미디어에서 지원하지 않는 cache-write는 명시적으로 제거합니다. 새 종류의 가격과 실행 경로 검토 뒤 재활성화는 별도입니다. 제목 요약·메모리 지정 모델은 먼저 지정을 해제해야 미디어로 변경할 수 있으며 active-run mutation fence도 유지됩니다. 운영 데이터의 자동 일괄 재분류는 하지 않습니다.
 
 ### 여러 provider 키와 명시적 연결 검사
 

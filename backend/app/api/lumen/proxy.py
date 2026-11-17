@@ -32,6 +32,7 @@ class _PrivateProviderRoute(APIRoute):
             )
             private = (
                 source_response
+                or path == "/api/v1/chat/embeddings"
                 or path == "/api/v1/chat/admin/providers"
                 or path.startswith("/api/v1/chat/admin/providers/")
             )
@@ -171,6 +172,8 @@ async def proxy_lumen(path: str = "", *, request: Request) -> Response:
         "audio/transcriptions",
     }:
         upstream_path = f"/v1/chat/{path}"
+    elif path == "embeddings":
+        upstream_path = "/v1/chat/embeddings"
     else:
         upstream_path = "/v1" if not path else f"/v1/{path}"
     if path in {"audio/speech", "audio/transcriptions"}:

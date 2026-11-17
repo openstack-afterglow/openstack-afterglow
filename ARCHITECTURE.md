@@ -1520,7 +1520,9 @@ Lumen keeps caller, ordinary API-key, provider and operator credential domains s
 
 Local architecture qualification used separate `dev` clones with `HEAD` plus explicit current integration paths, then the canonical `scripts/check_architecture.py --stamp --staged` and `--staged` check. Afterglow and all four native services passed that metadata check; original indexes and shared architecture documents were byte-identical across the checks. Exact base revisions, paths and digests are in `afterglow-system-admin-f6gnvztx/architecture-*.json`. This does not stamp the entire concurrently dirty checkout or claim green full gates/image/deployment qualification. The current31 exercised root runtime/test paths match the frozen root proof; the remaining mirrored K3s credential type change is declaration-only (`app_credential_id` nullable plus cleanup-intent metadata).
 
-Lumen 브라우저 BFF는 기존 `/v1/{path}` 기본 전달을 유지하되 `/api/v1/chat/audio/speech`와 `/api/v1/chat/audio/transcriptions`를 각각 `/v1/chat/audio/speech`와 `/v1/chat/audio/transcriptions`로 명시적으로 매핑한다. `service_proxy.py`의 caller/project-scoped 헤더와 요청 본문·Content-Type, 원본 응답 바이트·Content-Type 스트리밍은 그대로 적용되며 오디오 생성·전사는 Lumen이 소유한다.
+Lumen 브라우저 BFF는 기존 `/v1/{path}` 기본 전달을 유지하되 `/api/v1/chat/audio/speech`, `/audio/transcriptions`, `/embeddings`를 각각 `/v1/chat/audio/speech`, `/v1/chat/audio/transcriptions`, `/v1/chat/embeddings`로 명시 매핑한다. 모델 목록과 이미지 generation/edit도 native `/v1/chat/...` 경로로 매핑한다. `service_proxy.py`의 caller/project-scoped 헤더, 본문·Content-Type, 원본 응답 바이트·Content-Type 스트리밍은 그대로 적용된다. Embedding 요청/응답은 private no-store이고, 벡터/원문 입력은 Afterglow 저장소에 기록하지 않는다.
+
+Afterglow Embedding Studio is a session-authenticated text-to-vector surface, separate from chat history. It selects only Lumen `model_kind=embedding` routes, checks current `lumen-chat_user` and model `embeddings`/pricing capability gates, limits input to 1–16 texts, and fences late results by request/user/project ownership. It displays dimensions, bounded vector preview, norm, token/cost and pairwise cosine similarity; it does not persist prompt or vector data. Public OpenAI/Gemini API-key embedding compatibility remains owned by Lumen, not the browser BFF.
 
 대시보드 텍스트 채팅은 API-key 기반 OpenAI 호환 `/v1/responses`(Codex 경로)가 아니라 Keystone 사용자/프로젝트가 소유한 `/v1/conversations/{id}/completions`·`/v1/temp-completions`에서 `202` durable run을 만들고 `/v1/runs/{id}/events`를 구독한다. 따라서 호환 API의 성공만으로 native provider worker의 인증·모델 라우팅을 검증하지 않는다. 접수 전 오류는 BFF가 보존한 HTTP 상태와 안전한 detail을 표시하고, 접수 뒤 `run.failed`는 Lumen의 `error_code`·`safe_message`를 별도로 표시한다. Provider 응답 원문·비밀값은 브라우저로 전달하지 않는다.
 
@@ -2226,9 +2228,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "31dd90c1ab3d45e7a6c2e69505022d1ff0bbf06e2428500c9893ee3e277a00de",
-  "reviewed_at": "2026-11-17T04:18:35Z",
-  "summary": "Frontend runtime image and release tag step move to Node 22; apply Promise.withResolvers and Map.groupBy; toSorted/findLast and AbortSignal.timeout modernization"
+  "source_sha256": "6a0af04dcce16f5e2d1ea23b6c194029d84524772337b3e0b98edfaee7a5ad79",
+  "reviewed_at": "2026-11-17T08:03:04Z",
+  "summary": "Added Lumen embedding BFF proxy and dashboard embedding studio with localized tutorial vector fixture."
 }
 ```
 <!-- architecture-review:end -->

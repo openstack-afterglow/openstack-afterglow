@@ -53,14 +53,18 @@
 		if (busy || !token || kind === originalKind || unavailable || !$authReady || $projectSwitching) return;
 		const generation = epoch, target = model, requestToken = token, requestProject = projectId;
 		const current = () => !destroyed && epoch === generation && model === target && token === requestToken && projectId === requestProject;
-		// Per-kind unit prices cannot be reused as a different operation's prices.
-		// Shared token rates remain explicit; reactivation requires a separate review.
-		const media = target.media_pricing?.token_rates ? { token_rates: target.media_pricing.token_rates } : null;
+		const media = kind === 'embedding' ? null : target.media_pricing?.token_rates ? { token_rates: target.media_pricing.token_rates } : null;
 		const body = {
 			model_kind: kind,
 			is_active: false,
 			media_pricing: media,
-			...(kind !== 'text' ? { cache_write_price_per_million: null, cache_write_1h_price_per_million: null } : {})
+			...(kind === 'embedding' ? {
+				output_price_per_million: null,
+				cache_read_price_per_million: null,
+				cache_write_price_per_million: null,
+				cache_write_1h_price_per_million: null
+			} : {}),
+			...(kind !== 'text' && kind !== 'embedding' ? { cache_write_price_per_million: null, cache_write_1h_price_per_million: null } : {})
 		};
 		busy = true; error = '';
 		try {

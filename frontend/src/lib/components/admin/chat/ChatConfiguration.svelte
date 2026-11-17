@@ -157,7 +157,7 @@
 		return [...rates, ...variants, ...tokens, ...(!hasMediaPrices(pricing) ? [t('configuration.rateUnset')] : [])].join(' · ');
 	}
 	function mediaReadiness(model: Model): string {
-		const feature = model.model_kind === 'image' ? 'image_output' : model.model_kind === 'stt' ? 'audio_input' : 'audio_output';
+		const feature = model.model_kind === 'embedding' ? 'embeddings' : model.model_kind === 'image' ? 'image_output' : model.model_kind === 'stt' ? 'audio_input' : 'audio_output';
 		const gate = model.effective_capabilities?.feature_gates?.[feature];
 		return gate?.reason_code === 'route_unavailable'
 			? t('configuration.noExecutionPathCannotRun')
@@ -165,8 +165,8 @@
 	}
 	function mediaCapability(model: Model): string {
 		const kind = model.model_kind ?? 'text';
-		const features = kind === 'image' ? ['image_output'] : kind === 'stt' ? ['audio_input'] : kind === 'realtime' ? ['audio_input', 'audio_output'] : ['audio_output'];
-		const names: Record<string, string> = { image_output: t('configuration.imageOutput'), audio_input: t('configuration.audioInput'), audio_output: t('configuration.audioOutput') };
+		const features = kind === 'embedding' ? ['embeddings'] : kind === 'image' ? ['image_output'] : kind === 'stt' ? ['audio_input'] : kind === 'realtime' ? ['audio_input', 'audio_output'] : ['audio_output'];
+		const names: Record<string, string> = { embeddings: t('configuration.embedding'), image_output: t('configuration.imageOutput'), audio_input: t('configuration.audioInput'), audio_output: t('configuration.audioOutput') };
 		const priced = features.every((feature) => model.effective_capabilities?.feature_gates?.[feature]?.pricing_available === true);
 		return `${features.map((feature) => names[feature]).join('·')} · ${priced ? t('configuration.rateShownForThisCapability') : t('configuration.rateUnverifiedForThisCapability')}`;
 	}
@@ -651,11 +651,10 @@
 		if (!entry.modelName.trim()) return t('configuration.enterAProviderAndModelName');
 		const mediaError = pricingError(entry.kind || 'text', entry.mediaPricing);
 		if (mediaError) return mediaError;
-		if (Object.keys(parseCachePrices(entry.cachePrices).errors).length) return CACHE_PRICE_ERROR;
+		if (entry.kind !== 'embedding' && Object.keys(parseCachePrices(entry.cachePrices).errors).length) return CACHE_PRICE_ERROR;
 		if (!entry.kind) return t('pricing.kindRequired');
-		if (entry.kind !== 'text' && !mediaProviderSupported(registrationReview?.providerId ?? '')) return t('pricing.directProviderRequired');
 		const input = entry.inputPrice.trim();
-		const output = entry.outputPrice.trim();
+		const output = entry.kind === 'embedding' ? '' : entry.outputPrice.trim();
 		if (!input && !output) return undefined;
 		if ([input, output].some((value) => value && !CACHE_PRICE_PATTERN.test(value))) return t('pricing.reviewRateError');
 		return undefined;
@@ -663,7 +662,8 @@
 
 	function reviewCanActivate(review: RegistrationReview): boolean {
 		return review.entries.filter((entry) => registrationOutcomes[entry.name] !== 'success' && registrationOutcomes[entry.name] !== 'unknown')
-			.every((entry) => entry.kind === 'text' && entry.inputPrice.trim() !== '' && entry.outputPrice.trim() !== '' && !reviewPriceError(entry));
+			.every((entry) => ((entry.kind === 'text' && entry.inputPrice.trim() !== '' && entry.outputPrice.trim() !== '') ||
+				(entry.kind === 'embedding' && entry.inputPrice.trim() !== '')) && !reviewPriceError(entry));
 	}
 
 	function formatBillingAmount(value: string | null): string {
@@ -1185,11 +1185,12 @@
 		if (!creationOpen || creationMethod !== 'manual' || manualOutcomeUnknown || addingModel || !mProviderId || !mName.trim()) { toast.error(t('configuration.enterAProviderAndModelName')); return; }
 		if (registrationUncertain(mProviderId, mName)) { manualOutcomeUnknown = true; return; }
 		if (mKind !== 'text' && !mediaProviderSupported(mProviderId)) { toast.error(t('pricing.mediaProviderRequired')); return; }
-		if (!cachePricingAvailable) { mCachePrices = emptyCachePriceInputs(); mCacheErrors = {}; }
+		if (!cachePricingAvailable || mKind === 'embedding') { mCachePrices = emptyCachePriceInputs(); mCacheErrors = {}; }
 		const cache = parseCachePrices(mCachePrices);
-		if ([mInputPrice, mOutputPrice].some((value) => value.trim() && !CACHE_PRICE_PATTERN.test(value.trim()))) { toast.error(t('pricing.reviewRateError')); return; }
+		if (mInputPrice.trim() && !CACHE_PRICE_PATTERN.test(mInputPrice.trim())) { toast.error(t('pricing.reviewRateError')); return; }
+		if (mKind !== 'embedding' && mOutputPrice.trim() && !CACHE_PRICE_PATTERN.test(mOutputPrice.trim())) { toast.error(t('pricing.reviewRateError')); return; }
 		mCacheErrors = cache.errors;
-		const prices = pricePayload(mInputPrice, mOutputPrice);
+		const prices = pricePayload(mInputPrice, mKind === 'embedding' ? '' : mOutputPrice);
 		const message = pricingError(mKind, mPricing);
 		if (message) toast.error(message);
 		if (Object.keys(cache.errors).length || message) return;
@@ -1267,7 +1268,7 @@
 		const model = editingPrice, requestToken = token, requestProjectId = projectId;
 		const message = pricingError(model.model_kind ?? 'text', editPricing);
 		if (message) { toast.error(message); return; }
-		const cache = cachePricingSupported(model) ? changedCachePrices(editCachePrices, cachePriceInputsFrom(model)) : { values: {}, errors: {} };
+		const cache = cachePricingSupported(model) && model.model_kind !== 'embedding' ? changedCachePrices(editCachePrices, cachePriceInputsFrom(model)) : { values: {}, errors: {} };
 		editCacheErrors = cache.errors;
 		// Untouched text prices stay absent so a media/cache edit does not invalidate models.dev metadata.
 		const prices = Object.fromEntries(
@@ -1474,7 +1475,8 @@
 				}
 				registrationOutcomes = { ...registrationOutcomes, [entry.name]: 'pending' };
 				const inputPrice = entry.inputPrice.trim();
-				const outputPrice = entry.outputPrice.trim();
+				const outputPrice = entry.kind === 'embedding' ? '' : entry.outputPrice.trim();
+				const cachePrices = entry.kind === 'embedding' ? {} : presentCachePrices(parseCachePrices(entry.cachePrices).values);
 				try {
 					await api.post(
 						'/api/v1/chat/admin/models',
@@ -1485,7 +1487,7 @@
 							...(entry.displayName.trim() ? { display_name: entry.displayName.trim() } : {}),
 							...(inputPrice ? { input_price_per_million: inputPrice } : {}),
 							...(outputPrice ? { output_price_per_million: outputPrice } : {}),
-							...presentCachePrices(parseCachePrices(entry.cachePrices).values),
+							...cachePrices,
 							...(pricingPayload(entry.mediaPricing) ? { media_pricing: pricingPayload(entry.mediaPricing) } : {}),
 							is_active: activate
 						},
@@ -2183,9 +2185,13 @@
 											{#snippet textPricing()}
 												<div class="grid gap-3 sm:grid-cols-2">
 													<Field label={t('configuration.reviewInputPrice', { v0: entry.name })} for="review-input-{index}" help={t('configuration.usd1mTokens')} error={reviewPriceError(entry)}><TextInput id="review-input-{index}" inputmode="decimal" placeholder={t('configuration.eG2')} bind:value={entry.inputPrice} disabled={registeringBulk} ariaInvalid={Boolean(reviewPriceError(entry))} /></Field>
-													<Field label={t('configuration.reviewOutputPrice', { v0: entry.name })} for="review-output-{index}" help={t('configuration.usd1mTokens')} error={reviewPriceError(entry)}><TextInput id="review-output-{index}" inputmode="decimal" placeholder={t('configuration.eG8')} bind:value={entry.outputPrice} disabled={registeringBulk} ariaInvalid={Boolean(reviewPriceError(entry))} /></Field>
+													{#if entry.kind === 'embedding'}
+														<p class="text-sm text-ink-2">{t('pricing.embeddingInputOnly')}</p>
+													{:else}
+														<Field label={t('configuration.reviewOutputPrice', { v0: entry.name })} for="review-output-{index}" help={t('configuration.usd1mTokens')} error={reviewPriceError(entry)}><TextInput id="review-output-{index}" inputmode="decimal" placeholder={t('configuration.eG8')} bind:value={entry.outputPrice} disabled={registeringBulk} ariaInvalid={Boolean(reviewPriceError(entry))} /></Field>
+													{/if}
 												</div>
-										{#if cachePricingAvailable}
+										{#if cachePricingAvailable && entry.kind !== 'embedding'}
 											<div class="mt-3 grid gap-3 sm:grid-cols-3">
 												{#each CACHE_PRICE_FIELDS as field (field.key)}<Field label={field.label} for="review-cache-{index}-{field.slug}" help={t('configuration.usd1mTokens')} error={cachePriceError(entry.cachePrices[field.key])}><TextInput id="review-cache-{index}-{field.slug}" bind:value={entry.cachePrices[field.key]} inputmode="decimal" disabled={registeringBulk} /></Field>{/each}
 											</div>
@@ -2296,11 +2302,15 @@
 				<Field label={t('configuration.input')} for="model-create-input-price" help={t('configuration.usd1mTokens')}>
 					<TextInput id="model-create-input-price" inputmode="decimal" placeholder={t('configuration.inputPriceUsd1mTokens')} bind:value={mInputPrice} disabled={addingModel} />
 				</Field>
-				<Field label={t('configuration.output')} for="model-create-output-price" help={t('configuration.usd1mTokens')}>
-					<TextInput id="model-create-output-price" inputmode="decimal" placeholder={t('configuration.outputPriceUsd1mTokens')} bind:value={mOutputPrice} disabled={addingModel} />
-				</Field>
+				{#if mKind === 'embedding'}
+					<p class="text-sm text-ink-2">{t('pricing.embeddingInputOnly')}</p>
+				{:else}
+					<Field label={t('configuration.output')} for="model-create-output-price" help={t('configuration.usd1mTokens')}>
+						<TextInput id="model-create-output-price" inputmode="decimal" placeholder={t('configuration.outputPriceUsd1mTokens')} bind:value={mOutputPrice} disabled={addingModel} />
+					</Field>
+				{/if}
 			</div>
-			{#if cachePricingAvailable}
+			{#if cachePricingAvailable && mKind !== 'embedding'}
 			<div class="mt-4 border-t border-[var(--color-line)] pt-4" role="group" aria-labelledby="model-create-cache-heading" data-testid="model-create-cache-prices">
 				<p id="model-create-cache-heading" class="text-xs font-semibold text-[var(--color-ink-1)]">{t('configuration.promptCacheRatesOptional')}</p>
 				<p class="mt-1 text-xs leading-relaxed text-[var(--color-ink-2)]">
@@ -2360,11 +2370,15 @@
 				<Field label={t('configuration.input')} for="model-edit-input-price">
 					<TextInput id="model-edit-input-price" inputmode="decimal" placeholder={t('configuration.usd1mTokens')} bind:value={editInputPrice} disabled={priceSaving} />
 				</Field>
-				<Field label={t('configuration.output')} for="model-edit-output-price">
-					<TextInput id="model-edit-output-price" inputmode="decimal" placeholder={t('configuration.usd1mTokens')} bind:value={editOutputPrice} disabled={priceSaving} />
-				</Field>
+				{#if editingPrice?.model_kind === 'embedding'}
+					<p class="text-sm text-[var(--color-ink-2)]">{t('pricing.embeddingInputOnly')}</p>
+				{:else}
+					<Field label={t('configuration.output')} for="model-edit-output-price">
+						<TextInput id="model-edit-output-price" inputmode="decimal" placeholder={t('configuration.usd1mTokens')} bind:value={editOutputPrice} disabled={priceSaving} />
+					</Field>
+				{/if}
 			</div>
-			{#if editingPrice && cachePricingSupported(editingPrice)}
+			{#if editingPrice && editingPrice.model_kind !== 'embedding' && cachePricingSupported(editingPrice)}
 			<div class="mt-4 border-t border-[var(--color-line)] pt-4" role="group" aria-labelledby="model-edit-cache-heading">
 				<p id="model-edit-cache-heading" class="text-sm font-semibold text-[var(--color-ink-1)]">{t('configuration.promptCacheRatesOptional')}</p>
 				<p class="mt-1 text-xs leading-relaxed text-[var(--color-ink-2)]">

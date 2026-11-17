@@ -1,4 +1,6 @@
 {
+	"configuration.embedding": "Uwakilishaji wa maandishi",
+	"pricing.embeddingInputOnly": "Miundo ya embedding hutozwa kwa tokeni za ingizo pekee; hakuna gharama ya tokeni za matokeo.",
 	"accounts.currentConnection": "Mipangilio ya sasa ya muunganisho",
 	"accounts.connectionIdentity": "Mtoa huduma #{provider} · Akaunti #{account} · Ufunguo #{credential}",
 	"accounts.currentEndpoint": "Anwani ya sasa ya huduma",

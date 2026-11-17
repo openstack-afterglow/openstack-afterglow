@@ -1,4 +1,6 @@
 {
+	"configuration.embedding": "Benaman teks",
+	"pricing.embeddingInputOnly": "Model benaman dikenakan harga berdasarkan token input sahaja; tiada harga token output.",
 	"accounts.currentConnection": "Tetapan sambungan semasa",
 	"accounts.connectionIdentity": "Penyedia #{provider} · Akaun #{account} · Kunci #{credential}",
 	"accounts.currentEndpoint": "Titik akhir semasa",

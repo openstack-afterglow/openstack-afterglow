@@ -189,6 +189,32 @@ async def test_audio_routes_preserve_bytes_types_and_caller_scope(
 
 
 @pytest.mark.asyncio
+async def test_embedding_playground_proxy_uses_native_route_and_no_store(api_client, current_access):
+    app.dependency_overrides[get_token_info] = _authenticated
+    current_access["roles"].append("lumen-chat_user")
+    request_body = b'{"model_id":1,"input":["hello"],"dimensions":3}'
+    response_body = b'{"model_id":1,"model":"embed","dimensions":3,"embeddings":[],"usage":{"prompt_tokens":1}}'
+    received = []
+
+    async def handler(request):
+        received.append((str(request.url), await request.aread()))
+        return HttpxResponse(200, headers={"content-type": "application/json"}, stream=httpx.ByteStream(response_body))
+
+    upstream = AsyncClient(transport=httpx.MockTransport(handler))
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1"),
+        patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
+    ):
+        response = await api_client.post(
+            "/api/v1/chat/embeddings", content=request_body, headers={"content-type": "application/json"}
+        )
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert received == [("http://isolated.test/v1/chat/embeddings", request_body)]
+
+
+@pytest.mark.asyncio
 async def test_browser_proxy_requires_authentication(api_client):
     with patch("app.api.lumen.proxy.proxy", new=AsyncMock()) as proxy_call:
         response = await api_client.get("/api/v1/chat/conversations")
