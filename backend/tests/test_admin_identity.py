@@ -1307,3 +1307,52 @@ async def test_system_role_different_native_user_is_not_a_canonical_alias(
     remember.assert_not_awaited()
     guard.assert_not_awaited()
     revoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("visible_other", [False, True])
+async def test_revoke_omitted_direct_target_requires_verified_other_human(
+    admin_client, system_keystone, visible_other
+):
+    direct = {"hidden-admin", "visible-admin"} if visible_other else {"hidden-admin"}
+    ks = system_keystone(_SystemKeystone(direct))
+    snapshot = [
+        row for row in ks.role_assignments.list(system="all")
+        if row.user["id"] == "visible-admin"
+    ]
+    ks.role_assignments.list = lambda **kwargs: list(snapshot)
+    assert await keystone.recent_system_admin_ids() == set()
+    with patch("app.api.identity.admin_identity.session_store.revoke_user_sessions", new=AsyncMock()) as revoke:
+        response = await admin_client.post(
+            "/api/v1/admin/identity/system-roles/revoke", json={"user_id": "hidden-admin"}
+        )
+    assert response.status_code == (200 if visible_other else 422)
+    if visible_other:
+        assert ks.direct == {"visible-admin"}
+        assert ks.calls == [("revoke", "hidden-admin")]
+        revoke.assert_awaited_once_with("hidden-admin")
+    else:
+        assert ks.direct == {"hidden-admin"}
+        assert ks.calls == []
+        revoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_disabling_omitted_last_admin_with_no_hint_is_refused(admin_client, mock_conn, system_keystone):
+    ks = system_keystone(_SystemKeystone({"hidden-admin"}))
+    ks.role_assignments.list = lambda **kwargs: []
+    assert await keystone.recent_system_admin_ids() == set()
+    response = await admin_client.patch("/api/v1/admin/users/hidden-admin", json={"enabled": False})
+    assert response.status_code == 422
+    mock_conn.identity.update_user.assert_not_called()
+
+
+@pytest.mark.parametrize("subject", [{"users": {"hidden-admin"}}, {"users": {"other-user"}}, {"domain_id": "default"}])
+@pytest.mark.asyncio
+async def test_empty_discovery_never_proves_a_guarded_mutation_safe(system_keystone, subject):
+    ks = system_keystone(_SystemKeystone({"hidden-admin"}))
+    ks.role_assignments.list = lambda **kwargs: []
+    assert await keystone.recent_system_admin_ids() == set()
+    with pytest.raises(HTTPException) as last:
+        await identity_roles.assert_system_admin_remains(**subject)
+    assert last.value.status_code == 422

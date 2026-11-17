@@ -266,6 +266,8 @@ async def assert_system_admin_remains(*, users=(), domain_id: str | None = None)
 
     Affected admins are the listed users and, for a domain disable, every admin
     whose account lives in that domain. Callers hold the role-graph lease.
+    At least one unaffected enabled human must be positively verified; an
+    empty or stale discovery snapshot never proves a mutation safe.
     """
     admins = await enabled_system_admins()
     affected_users = set(users)
@@ -274,7 +276,7 @@ async def assert_system_admin_remains(*, users=(), domain_id: str | None = None)
         for uid, account in admins.items()
         if uid in affected_users or (domain_id is not None and _field(account, "domain_id") == domain_id)
     }
-    if affected and not set(admins) - affected:
+    if not set(admins) - affected:
         raise HTTPException(status_code=422, detail=LAST_SYSTEM_ADMIN)
     return admins
 
