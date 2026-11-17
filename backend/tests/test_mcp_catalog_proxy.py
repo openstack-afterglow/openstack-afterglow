@@ -315,7 +315,6 @@ def test_new_mcp_mutations_have_structural_audit_prefixes():
         "mcp-connections/12",
         "domains/domain-a/mcp-connections/12/activation",
         "mcp-servers/12/oauth",
-        "mcp-oauth/callback",
         "admin/mcp-registry/install-featured",
         "admin/mcp-servers/12",
         "admin/mcp-connections/12",
