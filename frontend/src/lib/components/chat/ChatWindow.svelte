@@ -13,6 +13,7 @@
 	import type { RunActivityItem } from '$lib/api/chatRunReducer';
 	import type { ChatPart } from '$lib/api/chatContracts';
 	import ExecutionTimeline from './ExecutionTimeline.svelte';
+	import type { ChatToolApproval as ApprovalRequest, PendingChatToolApproval } from './ChatToolApproval.svelte';
 
 	type DisplayMessage = ChatMsg & {
 		streaming?: boolean;
@@ -45,6 +46,7 @@
 		agentActivity?: AgentActivity | null;
 		manualCompactionActivity?: string | null;
 		approvalBusy?: boolean;
+		pendingApprovals?: readonly PendingChatToolApproval[];
 		onApprovalDecision?: (runId: string, callId: string, decision: 'approve' | 'deny') => void;
 		error?: string | null;
 		empty?: boolean;
@@ -82,6 +84,7 @@
 		agentActivity = null,
 		manualCompactionActivity = null,
 		approvalBusy = false,
+		pendingApprovals = [],
 		onApprovalDecision,
 		error = null,
 		empty = false,
@@ -105,6 +108,25 @@
 		onFork,
 		onSwitchVersion
 	}: Props = $props();
+	const noApprovals: readonly ApprovalRequest[] = [];
+	const approvalsByRun = $derived.by(() => {
+		const grouped = new Map<string, ApprovalRequest[]>();
+		for (const approval of pendingApprovals) {
+			const approvals = grouped.get(approval.runId);
+			if (approvals) approvals.push(approval);
+			else grouped.set(approval.runId, [approval]);
+		}
+		return grouped;
+	});
+	function approvalsForRun(runId: string | undefined): readonly ApprovalRequest[] {
+		return runId ? approvalsByRun.get(runId) ?? noApprovals : noApprovals;
+	}
+	let unpositionedOpen = $state(false);
+	const unpositionedApprovalId = $derived.by(() => {
+		const ids = unpositionedTemporaryRuns.flatMap((run) => approvalsForRun(run.run_id).map((approval) => [run.run_id, approval.callId]));
+		return ids.length ? JSON.stringify(ids) : null;
+	});
+	$effect(() => { if (unpositionedApprovalId) unpositionedOpen = true; });
 
 	let scrollEl = $state<HTMLDivElement | null>(null);
 	let followingLatest = $state(true);
@@ -179,7 +201,7 @@
 		if (!message.streaming) return false;
 		const activity = message.activityItems ?? message.execution?.activity ?? [];
 		const visible = visibleActivityItems(activity, true);
-		return Boolean(message.content.length || visible.length ||
+		return Boolean(message.content.length || visible.length || approvalsForRun(message.execution?.run_id).length ||
 			(!visible.length && (message.reasoning || restoredToolItems(message).some((item) => item.running))));
 	}
 	const replyHasProgress = $derived(displayedPath.some(messageHasProgress) ||
@@ -323,6 +345,7 @@
 							progressElsewhere={externalProgress}
 							liveMotion={Boolean(msg.sessionEntrance)}
 							{approvalBusy}
+							pendingApprovals={approvalsForRun(msg.execution?.run_id)}
 							onApprovalDecision={onApprovalDecision && msg.execution?.run_id ? (callId, decision) => onApprovalDecision?.(msg.execution!.run_id!, callId, decision) : undefined}
 							hasPreviousVersion={msg.branch?.previous_id !== null && msg.branch?.previous_id !== undefined}
 							hasNextVersion={msg.branch?.next_id !== null && msg.branch?.next_id !== undefined}
@@ -337,7 +360,7 @@
 					</div>
 				{/each}
 				{#if unpositionedTemporaryRuns.length}
-					<details class="min-w-0 space-y-3 rounded-lg border border-line p-3" data-temporary-unpositioned>
+					<details class="min-w-0 space-y-3 rounded-lg border border-line p-3" data-temporary-unpositioned bind:open={unpositionedOpen}>
 						<summary class="flex min-h-11 cursor-pointer items-center text-sm text-ink-2">{t('window.detachedTemporaryHistory', { count: unpositionedTemporaryRuns.length })}</summary>
 						{#each unpositionedTemporaryRuns as run (run.run_id)}
 							<section class="min-w-0 space-y-2 border-t border-line py-3" data-temporary-run-id={run.run_id}>
@@ -349,7 +372,13 @@
 										<div class="max-h-64 overflow-auto whitespace-pre-wrap break-all font-mono text-xs" role="textbox" tabindex="0" aria-readonly="true" aria-multiline="true" aria-label={t('toolCall.input')}>{JSON.stringify(run.input_parts, null, 2)}</div>
 									</details>
 								{/if}
-								<ExecutionTimeline items={run.message.activityItems ?? run.message.execution?.activity ?? []} active={Boolean(run.message.streaming)} animate={false} />
+								<ExecutionTimeline
+									items={run.message.activityItems ?? run.message.execution?.activity ?? []}
+									startedAt={run.message.execution?.started_at}
+									active={Boolean(run.message.streaming)} animate={false}
+									{approvalBusy} pendingApprovals={approvalsForRun(run.run_id)}
+									onApprovalDecision={onApprovalDecision ? (callId, decision) => onApprovalDecision?.(run.run_id, callId, decision) : undefined}
+								/>
 								{#if run.message.content}<p class="whitespace-pre-wrap break-words text-sm text-ink-1">{run.message.content}</p>{/if}
 							</section>
 						{/each}

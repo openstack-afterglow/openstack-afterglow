@@ -16,6 +16,7 @@
 	preview: ChatPart[];
 	expiresAt: string;
 };
+	export type PendingChatToolApproval = ChatToolApproval & { runId: string };
 
 	interface Props {
 	approval: ChatToolApproval;
@@ -25,6 +26,21 @@
 
 	let { approval, busy = false, onDecision }: Props = $props();
 	const taskName = $derived(taskLabelForTool(approval.name));
+	let now = $state(Date.now());
+	const deadline = $derived(Date.parse(approval.expiresAt));
+	const expired = $derived(Number.isFinite(deadline) && deadline <= now);
+	const disabled = $derived(busy || expired || !Number.isFinite(deadline));
+	$effect(() => {
+		const expires = deadline;
+		const observedNow = Date.now();
+		now = observedNow;
+		if (!Number.isFinite(expires) || expires <= observedNow) return;
+		const timer = window.setInterval(() => {
+			now = Date.now();
+			if (now >= expires) window.clearInterval(timer);
+		}, 1_000);
+		return () => window.clearInterval(timer);
+	});
 
 	function previewText(parts: ChatPart[]): string {
 		return parts
@@ -63,12 +79,13 @@
 				{approval.argumentKeys.join(', ')}
 			</p>
 		{/if}
+		{#if expired}<p class="preview" role="status">{studioText('executionTimeline.permissionExpired')}</p>{/if}
 
 		<div class="footer">
 			<p>{t('approval.deadline', { expiry: expiresAt(approval.expiresAt) })}</p>
 			<div class="actions">
-				<Button variant="danger-outline" size="sm" disabled={busy} onclick={() => onDecision(approval.callId, 'deny')}>{t('approval.deny')}</Button>
-				<Button variant="primary" size="sm" disabled={busy} onclick={() => onDecision(approval.callId, 'approve')}>{#if busy}<LoadingState variant="control" label={t('approval.processing')} />{:else}{studioText('executionTimeline.allowOnce')}{/if}</Button>
+				<Button variant="danger-outline" size="sm" {disabled} onclick={() => { if (!disabled) onDecision(approval.callId, 'deny'); }}>{t('approval.deny')}</Button>
+				<Button variant="primary" size="sm" {disabled} onclick={() => { if (!disabled) onDecision(approval.callId, 'approve'); }}>{#if busy}<LoadingState variant="control" label={t('approval.processing')} />{:else}{studioText('executionTimeline.allowOnce')}{/if}</Button>
 			</div>
 		</div>
 	</section>

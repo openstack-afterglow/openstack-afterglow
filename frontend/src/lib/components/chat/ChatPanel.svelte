@@ -78,7 +78,7 @@
 
 	import { MOTION_DURATION_MS } from '$lib/design/tokens';
 	import { prefersReducedMotion } from '$lib/utils/motion';
-	import type { ChatToolApproval as ChatToolApprovalItem } from './ChatToolApproval.svelte';
+	import type { PendingChatToolApproval as PendingToolApproval } from './ChatToolApproval.svelte';
 	interface Conversation {
 		id: string;
 		title: string | null;
@@ -110,9 +110,11 @@
 		sessionEntrance?: MessageEntrance;
 		temporary_history_order?: [number, number, number];
 	};
-	type TemporaryRunSnapshot = {
+	type TemporaryRunExecution = NonNullable<ChatMsg['execution']> & {
 		run_id: string; run_kind: string; status: string; model_name: string | null;
-		input_parts: ChatPart[]; parts: ChatPart[]; activity: RunActivityItem[]; order_unknown: boolean;
+	};
+	type TemporaryRunSnapshot = TemporaryRunExecution & {
+		input_parts: ChatPart[]; parts: ChatPart[]; order_unknown: boolean;
 	};
 	type TemporaryInspection = {
 		run_id: string; run_kind: string; order_unknown: boolean; input_parts: ChatPart[]; message: DisplayMessage;
@@ -122,6 +124,7 @@
 		public_history?: { role: 'user' | 'assistant'; parts: ChatPart[] }[];
 		unpositioned_runs?: TemporaryRunSnapshot[]; active_run: unknown | null; active_run_positioned?: boolean;
 		run_history_has_more?: boolean; run_history_after?: string | null; run_history_revision?: string;
+		latest_run_execution?: TemporaryRunExecution | null;
 	};
 
 	type AgentActivity = {
@@ -129,7 +132,6 @@
 		startedAt: string;
 	};
 
-	type PendingToolApproval = ChatToolApprovalItem & { runId: string };
 
 	function activityForRunStage(
 		stage: RunStage,
@@ -967,7 +969,7 @@
 		}
 	}
 
-	function mergeTemporarySnapshot(snapshot: TemporarySnapshot, append: boolean): void {
+	function mergeTemporarySnapshot(snapshot: TemporarySnapshot, append: boolean, activeRunId: string | null): void {
 		const incoming: DisplayMessage[] = snapshot.messages ?? (snapshot.public_history ?? []).map((turn, index) => ({
 			id: `temp:${snapshot.temp_thread_id}:${index}`, role: turn.role, parts: turn.parts,
 			content: turn.parts.filter((part): part is Extract<ChatPart, { type: 'text' }> => part.type === 'text').map((part) => part.text).join('\n'),
@@ -990,19 +992,54 @@
 			return left[0] - right[0] || left[1] - right[1] || left[2] - right[2];
 		});
 		const inspections = new Map<string, TemporaryInspection>((append ? tempUnpositionedRuns : []).map((run) => [run.run_id, run]));
-		for (const run of snapshot.unpositioned_runs ?? []) {
+		const runSnapshots = [...(snapshot.unpositioned_runs ?? [])];
+		const latestExecution = snapshot.latest_run_execution;
+		if (latestExecution && !runSnapshots.some((run) => run.run_id === latestExecution.run_id)) {
+			runSnapshots.push({ ...latestExecution, input_parts: [], parts: [], order_unknown: true });
+		}
+		for (const run of runSnapshots) {
 			inspections.set(run.run_id, {
 				run_id: run.run_id, run_kind: run.run_kind, order_unknown: run.order_unknown, input_parts: run.input_parts,
 				message: {
 					id: `inspection:${run.run_id}`, role: 'assistant', conversation_id: '', parent_id: null, created_at: null,
 					model_name: run.model_name, parts: run.parts,
 					content: run.parts.filter((part): part is Extract<ChatPart, { type: 'text' }> => part.type === 'text').map((part) => part.text).join('\n'),
-					execution: { run_id: run.run_id, status: run.status, activity: run.activity }
+					execution: {
+						run_id: run.run_id, status: run.status, started_at: run.started_at, last_seq: run.last_seq,
+						activity: run.activity, activity_status: run.activity_status, activity_error_code: run.activity_error_code
+					}
 				}
 			});
 		}
 		for (const message of tempMessages) if (message.execution?.run_id) inspections.delete(message.execution.run_id);
 		tempUnpositionedRuns = [...inspections.values()];
+		const executionSnapshots = [...incoming.flatMap((message) => message.execution ?? []), ...runSnapshots];
+		for (const execution of executionSnapshots) {
+			if (!execution.run_id || !Array.isArray(execution.activity) || execution.activity_status === 'unavailable') continue;
+			const terminal = execution.activity.some((item) => item.kind === 'terminal');
+			const decided = new Set(execution.activity.flatMap((item) => item.kind === 'approval' && item.decision !== null ? [item.callId] : []));
+			pendingToolApprovals = pendingToolApprovals.filter(
+				(approval) => approval.runId !== execution.run_id || (!terminal && !decided.has(approval.callId))
+			);
+		}
+		const activeExecution = activeRunId ? executionSnapshots.find(
+			(execution) => execution.run_id === activeRunId && Array.isArray(execution.activity)
+		) : null;
+		if (activeRunId && activeExecution?.activity && activeExecution.activity_status !== 'unavailable') {
+			const restored: PendingToolApproval[] = [];
+			if (!activeExecution.activity.some((item) => item.kind === 'terminal')) {
+				for (const item of activeExecution.activity) {
+					if (item.kind !== 'approval' || item.decision !== null || !item.name || !item.expiresAt ||
+						!['read', 'workspace_write', 'process', 'external_mutation'].includes(item.effect ?? '')) continue;
+					restored.push({
+						runId: activeRunId, callId: item.callId, name: item.name,
+						effect: item.effect as PendingToolApproval['effect'], argumentKeys: Object.keys(item.arguments),
+						preview: item.preview, expiresAt: item.expiresAt
+					});
+				}
+			}
+			pendingToolApprovals = [...pendingToolApprovals.filter((approval) => approval.runId !== activeRunId), ...restored];
+		}
 		tempRunHistoryAfter = snapshot.run_history_after ?? null;
 		tempRunHistoryRevision = snapshot.run_history_revision ?? null;
 		tempRunHistoryHasMore = snapshot.run_history_has_more ?? false;
@@ -1034,9 +1071,9 @@
 			tempMode = true;
 			activeConvId = null;
 			rememberTempThread(threadId);
-			mergeTemporarySnapshot(snapshot, append);
-			if (append) return;
 			const descriptor = snapshot.active_run ? parseChatRunDescriptor(snapshot.active_run) : null;
+			mergeTemporarySnapshot(snapshot, append, descriptor?.run_id ?? null);
+			if (append) return;
 			if (!descriptor) return;
 			if (descriptor.run_kind === 'compaction') {
 				currentRun = descriptor;
@@ -1046,7 +1083,7 @@
 			}
 			streaming = true;
 			currentRun = descriptor;
-			if (snapshot.active_run_positioned === false) {
+			if (snapshot.active_run_positioned !== true) {
 				let inspection = tempUnpositionedRuns.find((run) => run.run_id === descriptor.run_id);
 				if (!inspection) {
 					tempUnpositionedRuns = [...tempUnpositionedRuns, {
@@ -1062,7 +1099,7 @@
 			}
 			const previous = tempMessages.find((message) => message.role === 'assistant' && message.execution?.run_id === descriptor.run_id);
 			const base = tempMessages.filter((message) => message.role !== 'assistant' || message.execution?.run_id !== descriptor.run_id);
-			stream = { base, assistant: { ...newAssistantDraft(null, false), temporary_history_order: previous?.temporary_history_order }, conversationId: null, temp: true };
+			stream = { base, assistant: { ...newAssistantDraft(null, false), execution: previous?.execution, temporary_history_order: previous?.temporary_history_order }, conversationId: null, temp: true };
 			const draft = stream.assistant;
 			void followRun(descriptor, draft, (metrics) => {
 				tempMessages = [...base, { ...draft, streaming: false, metrics }];
@@ -1905,7 +1942,9 @@
 		const controller = new AbortController();
 		if (!streamAttachment.attach(controller, generation)) { experienceDiscarded(experience, destroyed ? 'unmounted' : 'stale'); return; }
 		let runState = createRunViewState(descriptor.run_id);
-		draft.execution = { run_id: descriptor.run_id, status: descriptor.status };
+		const knownApprovalSeq = draft.execution?.run_id === descriptor.run_id ? draft.execution.last_seq ?? 0 : 0;
+		if (draft.execution?.run_id === descriptor.run_id) runState.startedAt = draft.execution.started_at ?? null;
+		draft.execution = { ...(draft.execution?.run_id === descriptor.run_id ? draft.execution : {}), run_id: descriptor.run_id, status: descriptor.status };
 		const reveal = createChatRevealBuffer({
 			reducedMotion: prefersReducedMotion()
 		});
@@ -1960,8 +1999,8 @@
 			draft.content = next.text;
 			draft.reasoning = reasoning;
 			draft.citations = runState.sources;
-			draft.activityItems = runState.activity;
-			draft.execution = { ...draft.execution, status: runState.status };
+			if (runState.lastSeq >= knownApprovalSeq) draft.activityItems = runState.activity;
+			draft.execution = { ...draft.execution, status: runState.status, started_at: runState.startedAt };
 			draft.toolItems = toolItemsFromState();
 			draft.metrics = latestMetrics;
 			if (observedStatus !== runState.status) {
@@ -2077,7 +2116,7 @@
 					}
 				} else if (evt.type === 'tool.call.started' || evt.type === 'tool.call.progress' || evt.type === 'tool.call.completed') {
 					toolActivity = evt.type === 'tool.call.completed' ? null : taskLabelForTool(evt.payload.name);
-				} else if (evt.type === 'tool.approval_required') {
+				} else if (evt.type === 'tool.approval_required' && evt.seq > knownApprovalSeq) {
 					pendingToolApprovals = [
 						...pendingToolApprovals.filter(
 							(approval) => approval.runId !== descriptor.run_id || approval.callId !== evt.payload.call_id
@@ -2151,6 +2190,10 @@
 			error = chatFailureMessage(caught, t('panel.errors.runFailed'));
 			// A disconnected follower leaves the native outcome unknown, not failed or cancelled.
 			experienceDiscarded(experience, 'unknown');
+			if (stream?.assistant === draft && !historyHasAfter) {
+				if (stream.temp) tempMessages = [...stream.base, draft];
+				else if (stream.conversationId === activeConvId) allMessages = [...stream.base, draft];
+			}
 			endStream();
 		} finally {
 			document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -2288,6 +2331,9 @@
 	async function resolveToolApproval(approval: PendingToolApproval, decision: 'approve' | 'deny') {
 		if (!canChat || !canTools) return;
 		if (!token || !projectId || resolvingToolApprovalId) return;
+		const requestToken = token;
+		const requestProject = projectId;
+		const requestSelection = selectionGeneration;
 		resolvingToolApprovalId = approval.callId;
 		try {
 			await api.post(
@@ -2296,8 +2342,18 @@
 				token,
 				projectId
 			);
+			if (destroyed || token !== requestToken || projectId !== requestProject || selectionGeneration !== requestSelection) return;
+			if (!streaming && tempMode && tempThreadId) await restoreTemporaryThread(tempThreadId, requestSelection);
+			else if (!streaming && activeConvId) {
+				const conversationId = activeConvId;
+				await replaceHistoryWindow(requestSelection);
+				if (!destroyed && token === requestToken && projectId === requestProject &&
+					selectionGeneration === requestSelection && activeConvId === conversationId) await resumeActiveRun(conversationId);
+			}
 		} catch (cause) {
-			toast.error(cause instanceof Error ? cause.message : t('panel.errors.saveApproval'));
+			if (!destroyed && token === requestToken && projectId === requestProject && selectionGeneration === requestSelection) {
+				toast.error(cause instanceof Error ? cause.message : t('panel.errors.saveApproval'));
+			}
 		} finally {
 			resolvingToolApprovalId = null;
 		}
@@ -2923,6 +2979,7 @@
 			{modelLocked}
 			{toolActivity}
 			{agentActivity}
+			pendingApprovals={pendingToolApprovals}
 			approvalBusy={Boolean(resolvingToolApprovalId) || !canTools || !canChat}
 			onApprovalDecision={(runId, callId, decision) => {
 				const approval = pendingToolApprovals.find((item) => item.runId === runId && item.callId === callId);

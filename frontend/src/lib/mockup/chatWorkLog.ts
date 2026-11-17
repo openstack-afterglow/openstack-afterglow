@@ -88,9 +88,14 @@ export function mockChatWorkLog(method: string, path: string, params: URLSearchP
 	}
 	if (method === 'GET' && path === `/api/v1/chat/conversations/${conversationId}/messages`) {
 		const state = journal.reduce(reduceRunEvent, createRunViewState(runId));
+		const unavailable = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('work-log') === 'unavailable';
 		return { messages: [
 			{ id: 'tutorial-user', role: 'user', conversation_id: conversationId, parent_id: null, content: '작업 내역을 보여 주세요.', created_at: runStartedAt },
-			{ id: messageId, role: 'assistant', conversation_id: conversationId, parent_id: 'tutorial-user', content: live ? '' : answer, created_at: runStartedAt, model_name: 'tutorial-chat', execution: { run_id: runId, status: state.status, activity: state.activity } }
+			{ id: messageId, role: 'assistant', conversation_id: conversationId, parent_id: 'tutorial-user', content: live ? '' : answer, created_at: runStartedAt, model_name: 'tutorial-chat', execution: {
+				run_id: runId, status: state.status, started_at: unavailable ? null : state.startedAt,
+				activity: unavailable ? null : state.activity, activity_status: unavailable ? 'unavailable' : 'available',
+				activity_error_code: unavailable ? 'history_activity_invalid' : null
+			} }
 		], active_leaf_id: messageId, history_revision: 1, has_before: false, has_after: false, before_cursor: null, after_cursor: null };
 	}
 	return undefined;

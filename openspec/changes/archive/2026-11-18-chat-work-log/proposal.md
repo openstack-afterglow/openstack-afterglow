@@ -12,4 +12,4 @@ Afterglow keeps preparation quiet, opens one live work panel, places the existin
 
 ## Delivery boundary
 
-Source/local qualification only. Deploy the updated Afterglow reader before the Lumen history projection, because the additive `started` activity entry is understood by the new reader. Older Lumen history without the boundary receives an honest untimed history label. Temporary-thread expiration remains unchanged. No push, publication, rollout or production-provider/cloud acceptance belongs to this slice.
+Source/local qualification only. Lumen may deploy first: the UTC start boundary is the additive `execution.started_at` metadata field, while every `execution.activity.kind` remains understood by the deployed reader. No new activity enum or reader-only release is required. Older Lumen history without the field receives an honest untimed history label. Temporary-thread expiration remains unchanged. No push, publication, rollout or production-provider/cloud acceptance belongs to this slice.

@@ -11,21 +11,23 @@
 	import ToolCategoryGroup from './ToolCategoryGroup.svelte';
 	import ThinkingBlock from './ThinkingBlock.svelte';
 	import ChildTaskActivity from './ChildTaskActivity.svelte';
-	import ChatToolApproval from './ChatToolApproval.svelte';
+	import ChatToolApproval, { type ChatToolApproval as ApprovalRequest } from './ChatToolApproval.svelte';
 	import { prefersReducedMotion } from '$lib/utils/motion';
 
 	interface Props {
 		items: RunActivityItem[];
+		startedAt?: string | null;
 		active?: boolean;
 		animate?: boolean;
 		approvalBusy?: boolean;
+		pendingApprovals?: readonly ApprovalRequest[];
 		onApprovalDecision?: (callId: string, decision: 'approve' | 'deny') => void;
 	}
-	let { items, active = false, animate = active, approvalBusy = false, onApprovalDecision }: Props = $props();
+	let { items, startedAt = null, active = false, animate = active, approvalBusy = false, pendingApprovals = [], onApprovalDecision }: Props = $props();
 	const motionEnabled = $derived(animate && !prefersReducedMotion());
 
 	type TimelineEntry =
-		| { kind: 'item'; item: Exclude<RunActivityItem, { kind: 'tool' | 'started' }> }
+		| { kind: 'item'; item: Exclude<RunActivityItem, { kind: 'tool' }> }
 		| { kind: 'tool-group'; id: string; category: string; items: Extract<RunActivityItem, { kind: 'tool' }>[] };
 	let open = $state(false);
 	const initialIds = untrack(() => new Set(items.map((item) => item.id)));
@@ -33,7 +35,7 @@
 	let wasActive = false;
 	let now = $state(Date.now());
 	$effect(() => {
-		if (active !== wasActive) open = active;
+		if (active !== wasActive) open = !terminalId && (active || actionableApprovals.length > 0);
 		wasActive = active;
 	});
 	$effect(() => {
@@ -42,7 +44,12 @@
 		const timer = window.setInterval(() => { now = Date.now(); }, 1_000);
 		return () => window.clearInterval(timer);
 	});
-	const startedAt = $derived(items.find((item) => item.kind === 'started')?.createdAt);
+	const terminalId = $derived(items.findLast((item) => item.kind === 'terminal')?.id ?? null);
+	let observedTerminalId = untrack(() => items.findLast((item) => item.kind === 'terminal')?.id ?? null);
+	$effect(() => {
+		if (terminalId && terminalId !== observedTerminalId) open = false;
+		observedTerminalId = terminalId;
+	});
 	const finishedAt = $derived(items.find((item) => item.kind === 'terminal')?.createdAt);
 	const elapsed = $derived(startedAt && (active || finishedAt)
 		? Math.max(0, Math.floor(((finishedAt ? Date.parse(finishedAt) : now) - Date.parse(startedAt)) / 1_000))
@@ -52,7 +59,13 @@
 				seconds: new Intl.NumberFormat(intlLocale()).format(elapsed)
 			})
 		: t(active ? 'executionTimeline.inProgress' : 'executionTimeline.history'));
-	const pendingApprovalId = $derived(active ? items.findLast((item) => item.kind === 'approval' && item.decision === null)?.id : null);
+	const actionableApprovals = $derived(items.some((item) => item.kind === 'terminal') ? [] : pendingApprovals.filter(
+		(approval) => !items.some((item) => item.kind === 'approval' && item.callId === approval.callId && item.decision !== null)
+	));
+	const pendingApprovalId = $derived(actionableApprovals.length ? JSON.stringify(actionableApprovals.map((approval) => approval.callId)) : null);
+	const unmatchedApprovals = $derived(actionableApprovals.filter(
+		(approval) => !items.some((item) => item.kind === 'approval' && item.callId === approval.callId)
+	));
 	$effect(() => { if (pendingApprovalId) open = true; });
 
 	const taskItems = $derived(visibleActivityItems(items, active));
@@ -103,7 +116,7 @@
 		};
 	}
 
-	function timelineEntries(items: Exclude<RunActivityItem, { kind: 'started' }>[]): TimelineEntry[] {
+	function timelineEntries(items: RunActivityItem[]): TimelineEntry[] {
 		const entries: TimelineEntry[] = [];
 		for (const item of items) {
 			if (item.kind !== 'tool') {
@@ -128,7 +141,7 @@
 	const entries = $derived(timelineEntries(taskItems));
 </script>
 
-{#if entries.length}
+{#if entries.length || actionableApprovals.length}
 	<details class="execution-timeline" bind:open>
 		<summary aria-label={summary} aria-expanded={open}>
 			<span class="summary-title" aria-live="off">{summary}</span>
@@ -175,14 +188,11 @@
 								{#if entry.item.errorCode}<code>{entry.item.errorCode}</code>{/if}
 							</p>
 						{:else if entry.item.kind === 'approval'}
-							{#if active && entry.item.decision === null && entry.item.name && entry.item.expiresAt && onApprovalDecision}
+							{@const callId = entry.item.callId}
+							{@const pending = actionableApprovals.find((approval) => approval.callId === callId)}
+							{#if pending && onApprovalDecision}
 								<ChatToolApproval
-									approval={{
-										callId: entry.item.callId, name: entry.item.name,
-										effect: entry.item.effect === 'external_mutation' || entry.item.effect === 'workspace_write' || entry.item.effect === 'process' ? entry.item.effect : 'read',
-										argumentKeys: Object.keys(entry.item.arguments), preview: entry.item.preview,
-										expiresAt: entry.item.expiresAt
-									}}
+									approval={pending}
 									busy={approvalBusy}
 									onDecision={onApprovalDecision}
 								/>
@@ -212,6 +222,11 @@
 				</li>
 			{/each}
 		</ol>
+		{#if onApprovalDecision}
+			{#each unmatchedApprovals as approval (approval.callId)}
+				<div class="px-3 pb-3"><ChatToolApproval {approval} busy={approvalBusy} onDecision={onApprovalDecision} /></div>
+			{/each}
+		{/if}
 	</details>
 {/if}
 

@@ -213,13 +213,19 @@ describe('chat run reducer', () => {
 		expect(state.runKind).toBe('compaction');
 		expect(state.messageId).toBeNull();
 		expect(state.context).toMatchObject({ phase: 'compacting', cause: 'manual', before_tokens: 8000 });
-		expect(state.activity).toEqual([expect.objectContaining({ kind: 'started' }), expect.objectContaining({ kind: 'context', phase: 'compacting' })]);
+		expect(state.startedAt).toBe('2026-07-21T00:00:00Z');
+		expect(state.activity).toEqual([expect.objectContaining({ kind: 'context', phase: 'compacting' })]);
 	});
 
 	it('deduplicates old events and rejects a sequence gap', () => {
 		const state = createRunViewState('run-1');
 		const started = { conversation_id: null, temp_thread_id: null, model_name: 'm', effective_features: {}, run_kind: 'completion' };
 		const afterStarted = reduceRunEvent(state, event(1, 'run.started', started));
+		expect(state.startedAt).toBeNull();
+		expect(afterStarted.startedAt).toBe('2026-07-21T00:00:00Z');
+		expect(afterStarted.activity).toEqual([]);
+		const repeatedStart = reduceRunEvent(afterStarted, { ...event(2, 'run.started', started), created_at: '2026-07-21T00:01:00Z' });
+		expect(repeatedStart.startedAt).toBe(afterStarted.startedAt);
 		expect(reduceRunEvent(afterStarted, event(1, 'run.started', started))).toBe(afterStarted);
 		expect(() => reduceRunEvent(afterStarted, event(3, 'run.started', started))).toThrow(Error);
 	});

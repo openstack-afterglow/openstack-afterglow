@@ -27,6 +27,11 @@ it('uses actual SSE framing, blocks on permission and retains the complete journ
     expect(frames).toContain('tutorial_unavailable');
     const page = mockChatWorkLog('GET', '/api/v1/chat/conversations/tutorial-work-log/messages', new URLSearchParams(), undefined);
     expect(JSON.stringify(page)).toContain('"decision":"deny"');
-    expect(JSON.stringify(page)).toContain('"kind":"started"');
+    expect(JSON.stringify(page)).not.toContain('"kind":"started"');
+    expect(page).toMatchObject({ messages: [expect.anything(), {
+        execution: { started_at: events[0].created_at, activity: expect.arrayContaining([
+            expect.objectContaining({ kind: 'stage' }), expect.objectContaining({ kind: 'terminal' })
+        ]) }
+    }] });
     expect(JSON.stringify(page)).toContain('"kind":"terminal"');
 });
