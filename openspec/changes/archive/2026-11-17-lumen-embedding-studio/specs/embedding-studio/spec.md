@@ -27,3 +27,7 @@ The dashboard SHALL provide an Embedding Studio that accepts 1–16 text inputs,
 
 ### Requirement: Private browser transport
 Embedding requests SHALL use the authenticated Lumen BFF, and successful or handled-failure responses SHALL not be cached. The browser SHALL never receive provider credentials.
+
+#### Scenario: Requests do not persist or cache
+- **WHEN** the dashboard submits text and receives a success or handled failure through the Lumen BFF
+- **THEN** the BFF SHALL use authenticated session scope, return `Cache-Control: no-store`, and never expose provider credentials

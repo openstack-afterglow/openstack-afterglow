@@ -15,4 +15,4 @@
 - [x] Run focused Afterglow BFF/UI tests and i18n checks; inspect rendered desktop/mobile UI.
 - [x] Run Lumen architecture stamp/guard and Afterglow architecture stamp/guard.
 - [x] Run each repository's required canonical gate and record exact results/limits.
-- [ ] Integrate worktrees into their `dev` checkouts only when conflict/dirty-path safety permits; archive changes after evidence is complete.
+- [x] Integrate worktrees into `dev` only where safe and archive after evidence: Afterglow fast-forwarded to `dev`; Lumen remains isolated because its shared checkout is dirty on `feat/drover-managed-sandbox`.

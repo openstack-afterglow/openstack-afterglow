@@ -2229,8 +2229,8 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 {
   "schema_version": 1,
   "source_sha256": "6a0af04dcce16f5e2d1ea23b6c194029d84524772337b3e0b98edfaee7a5ad79",
-  "reviewed_at": "2026-11-17T08:03:04Z",
-  "summary": "Added Lumen embedding BFF proxy and dashboard embedding studio with localized tutorial vector fixture."
+  "reviewed_at": "2026-11-17T08:26:32Z",
+  "summary": "Added Embedding Studio and embedding model admin flow; desktop/mobile tutorial embedding verified, BFF tests and canonical gate passed."
 }
 ```
 <!-- architecture-review:end -->
