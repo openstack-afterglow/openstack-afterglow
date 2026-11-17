@@ -174,21 +174,27 @@ def native_system_directory(monkeypatch):
                 payload = {"users": state.members.get(gid, [])}
             elif url.path.startswith("/v3/users/"):
                 uid = url.path.split("/")[3]
-                payload = {"user": state.users[uid]}
+                if uid not in state.users:
+                    status, payload = 404, {"error": {"message": "User not found"}}
+                else:
+                    payload = {"user": state.users[uid]}
             elif url.path.startswith("/v3/system/") and url.path.endswith("/roles"):
                 _, _, _, kind, subject, _ = url.path.split("/")
                 principal = "user" if kind == "users" else "group"
-                ids = {
-                    row["role"]["id"]
-                    for row in state.assignments
-                    if row.get(principal) == {"id": subject}
-                    and ("user" in row) != ("group" in row)
-                    and set(row["scope"]) == {"system"}
-                    and set(row["scope"]["system"]) == {"all"}
-                    and row["scope"]["system"]["all"] is True
-                }
-                by_id = {role["id"]: role for role in state.roles}
-                payload = {"roles": [by_id.get(rid, {"id": rid}) for rid in ids]}
+                if principal == "user" and subject not in state.users:
+                    status, payload = 404, {"error": {"message": "User not found"}}
+                else:
+                    ids = {
+                        row["role"]["id"]
+                        for row in state.assignments
+                        if row.get(principal) == {"id": subject}
+                        and ("user" in row) != ("group" in row)
+                        and set(row["scope"]) == {"system"}
+                        and set(row["scope"]["system"]) == {"all"}
+                        and row["scope"]["system"]["all"] is True
+                    }
+                    by_id = {role["id"]: role for role in state.roles}
+                    payload = {"roles": [by_id.get(rid, {"id": rid}) for rid in ids]}
             elif url.path == "/v3/role_assignments":
                 if "effective" in query:
                     # Matches the provider path: system rows are omitted even
@@ -387,8 +393,8 @@ async def test_shared_recent_system_admin_hints_expire_individually(monkeypatch)
     current = second
     assert await keystone.recent_system_admin_ids() == {"one"}
     await keystone.remember_system_admin("two")
-    assert await second.ttl(keystone._RECENT_SYSTEM_ADMIN_KEY) >= 658
-    await second.zadd(keystone._RECENT_SYSTEM_ADMIN_KEY, {"one": 1})
+    assert await second.ttl(keystone._recent_system_admin_key()) >= 658
+    await second.zadd(keystone._recent_system_admin_key(), {"one": 1})
     assert await keystone.recent_system_admin_ids() == {"two"}
     await keystone.remember_system_admin("two", remove=True)
     assert await keystone.recent_system_admin_ids() == set()
@@ -431,3 +437,128 @@ async def test_last_human_guard_does_not_count_marked_system_accounts(native_sys
     with pytest.raises(HTTPException) as exc:
         await identity_roles.assert_system_admin_remains(users={"user-1"})
     assert exc.value.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "subject",
+    [
+        "", " realadmin", "realadmin ", "realadmin/", "real/admin", "realadmin?x",
+        "realadmin#x", "realadmin%2f", "realadmin\\x", "real admin", "realadmin\n", ".", "..",
+    ],
+)
+@pytest.mark.parametrize("principal", ["user", "group"])
+def test_direct_system_grants_reject_path_aliases(subject, principal):
+    from unittest.mock import Mock
+
+    ks = SimpleNamespace(roles=SimpleNamespace(list=Mock()))
+    with pytest.raises(ValueError, match="principal is invalid"):
+        keystone.direct_system_assignments(ks, **{principal: subject})
+    ks.roles.list.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_missing_hint_only_user_is_pruned_without_hiding_admins(native_system_directory):
+    from app.api.identity.admin_identity import get_security_policy, list_system_roles
+    from app.services import identity_roles
+
+    state = native_system_directory
+    state.assignments = [assignment({"system": {"all": True}})]
+    state.assignment_snapshot = list(state.assignments)
+    await keystone.remember_system_admin("missing-user")
+    assert [row["user_id"] for row in await list_system_roles()] == ["user-1"]
+    assert "/v3/system/users/missing-user/roles" in [path for path, _ in state.requests]
+    assert await keystone.recent_system_admin_ids() == set()
+    await keystone.remember_system_admin("missing-user")
+    assert await get_security_policy() == {"system_admin_count": 1}
+    await keystone.remember_system_admin("missing-user")
+    with pytest.raises(HTTPException) as last:
+        await identity_roles.assert_system_admin_remains(users={"user-1"})
+    assert last.value.status_code == 422
+    assert await keystone.recent_system_admin_ids() == set()
+
+
+@pytest.mark.asyncio
+async def test_hint_account_deleted_within_ttl_does_not_poison_enumeration(native_system_directory):
+    from app.api.identity.admin_identity import get_security_policy, list_system_roles
+    from app.services import identity_roles
+
+    state = native_system_directory
+    state.assignments = [assignment({"system": {"all": True}})]
+    state.assignment_snapshot = list(state.assignments)
+    state.users["new-admin"] = {"id": "new-admin", "enabled": True}
+    state.assignments.append(assignment({"system": {"all": True}}, user="new-admin"))
+    await keystone.remember_system_admin("new-admin")
+    assert {row["user_id"] for row in await list_system_roles()} == {"user-1", "new-admin"}
+    del state.users["new-admin"]
+    state.assignments.pop()
+    assert await get_security_policy() == {"system_admin_count": 1}
+    assert set(await identity_roles.enabled_system_admins()) == {"user-1"}
+    assert await keystone.recent_system_admin_ids() == set()
+
+
+@pytest.mark.parametrize("status", [403, 503])
+@pytest.mark.asyncio
+async def test_hint_provider_denial_or_failure_is_not_treated_as_missing(native_system_directory, status):
+    from app.services import identity_roles
+
+    state = native_system_directory
+    state.assignments = [assignment({"system": {"all": True}})]
+    state.assignment_snapshot = list(state.assignments)
+    state.failure = "/v3/system/users/hint-user/roles"
+    state.failure_status = status
+    await keystone.remember_system_admin("hint-user")
+    with pytest.raises(HTTPException) as unavailable:
+        await identity_roles.enabled_system_admins()
+    assert unavailable.value.status_code == 503
+    assert await keystone.recent_system_admin_ids() == {"hint-user"}
+
+
+@pytest.mark.asyncio
+async def test_computed_candidate_not_found_still_fails_closed(native_system_directory):
+    from app.services import identity_roles
+
+    state = native_system_directory
+    state.assignments = [assignment({"system": {"all": True}})]
+    state.assignment_snapshot = [*state.assignments, assignment({"system": {"all": True}}, user="hint-user")]
+    await keystone.remember_system_admin("hint-user")
+    with pytest.raises(HTTPException) as unavailable:
+        await identity_roles.enabled_system_admins()
+    assert unavailable.value.status_code == 503
+    assert await keystone.recent_system_admin_ids() == {"hint-user"}
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [("os_auth_url", "https://cloud-b.example.test/v3"), ("os_region_name", "RegionTwo"), ("os_interface", "internal")],
+)
+@pytest.mark.asyncio
+async def test_recent_system_admin_hints_are_provider_scoped(monkeypatch, field, value):
+    settings = SimpleNamespace(
+        os_auth_url="https://cloud-a.example.test/v3", os_region_name="RegionOne", os_interface="public"
+    )
+    monkeypatch.setattr(keystone, "get_settings", lambda: settings)
+    first_value = getattr(settings, field)
+    first_key = keystone._recent_system_admin_key()
+    await keystone.remember_system_admin("cloud-a-admin")
+    setattr(settings, field, value)
+    assert keystone._recent_system_admin_key() != first_key
+    assert await keystone.recent_system_admin_ids() == set()
+    await keystone.remember_system_admin("cloud-b-admin")
+    assert await keystone.recent_system_admin_ids() == {"cloud-b-admin"}
+    await keystone.remember_system_admin("cloud-b-admin", remove=True)
+    setattr(settings, field, first_value)
+    assert await keystone.recent_system_admin_ids() == {"cloud-a-admin"}
+
+
+@pytest.mark.parametrize("user_id", ["", " unknown", "user/name", "user?name", "user#name", "user%2f", "user\\name"])
+@pytest.mark.asyncio
+async def test_invalid_system_admin_hint_never_touches_redis(monkeypatch, user_id):
+    from unittest.mock import AsyncMock
+
+    from app.services import session_store
+
+    store = AsyncMock()
+    monkeypatch.setattr(session_store, "_get_redis", store)
+    with pytest.raises(ValueError, match="principal is invalid"):
+        await keystone.remember_system_admin(user_id)
+    store.assert_not_awaited()
