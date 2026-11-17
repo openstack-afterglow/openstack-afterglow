@@ -68,7 +68,7 @@ def test_nested_context_reuses_identity_domain_project_and_full_graph(domain_nat
     assert counts[("project", "default-a")] == 1
     assert counts[("assignments.list", None, None, None, False, None)] == 1
     assert counts[("assignments.list", "default-a", None, None, True, None)] == 1
-    roles.assert_called_once_with()
+    assert roles.call_args_list == [((), {}), ((), {"system": "all", "user": "creator"})]
     edges.assert_called_once_with()
     client.assert_called_once_with()
     assert n.calls == []
