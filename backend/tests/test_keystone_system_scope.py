@@ -152,7 +152,8 @@ def native_system_directory(monkeypatch):
         requests=[],
         failure=None,
         failure_status=503,
-        users={"user-1": {"id": "user-1", "enabled": True}},
+        users={"user-1": {"id": "user-1", "enabled": True, "domain_id": "home-domain"}},
+        domains={"home-domain": {"id": "home-domain", "enabled": True}},
         members={"operators": [{"id": "user-1"}]},
     )
 
@@ -172,6 +173,12 @@ def native_system_directory(monkeypatch):
             elif url.path.startswith("/v3/groups/") and url.path.endswith("/users"):
                 gid = url.path.split("/")[3]
                 payload = {"users": state.members.get(gid, [])}
+            elif url.path.startswith("/v3/domains/"):
+                did = url.path.split("/")[3]
+                if did not in state.domains:
+                    status, payload = 404, {"error": {"message": "Domain not found"}}
+                else:
+                    payload = {"domain": state.domains[did]}
             elif url.path.startswith("/v3/users/"):
                 uid = url.path.split("/")[3]
                 if uid not in state.users:
@@ -428,7 +435,7 @@ async def test_last_human_guard_does_not_count_marked_system_accounts(native_sys
         assignment({"system": {"all": True}}, user="user-1"),
         assignment({"system": {"all": True}}, user="system-account"),
     ]
-    state.users["system-account"] = {"id": "system-account", "enabled": True}
+    state.users["system-account"] = {"id": "system-account", "enabled": True, "domain_id": "home-domain"}
     monkeypatch.setattr(
         backup_system_account,
         "system_account_marker",
@@ -485,7 +492,7 @@ async def test_hint_account_deleted_within_ttl_does_not_poison_enumeration(nativ
     state = native_system_directory
     state.assignments = [assignment({"system": {"all": True}})]
     state.assignment_snapshot = list(state.assignments)
-    state.users["new-admin"] = {"id": "new-admin", "enabled": True}
+    state.users["new-admin"] = {"id": "new-admin", "enabled": True, "domain_id": "home-domain"}
     state.assignments.append(assignment({"system": {"all": True}}, user="new-admin"))
     await keystone.remember_system_admin("new-admin")
     assert {row["user_id"] for row in await list_system_roles()} == {"user-1", "new-admin"}
@@ -562,3 +569,35 @@ async def test_invalid_system_admin_hint_never_touches_redis(monkeypatch, user_i
     with pytest.raises(ValueError, match="principal is invalid"):
         await keystone.remember_system_admin(user_id)
     store.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_native_disabled_home_domain_is_not_a_usable_remaining_admin(native_system_directory):
+    from app.services import identity_roles
+
+    state = native_system_directory
+    state.assignments = [
+        assignment({"system": {"all": True}}),
+        assignment({"system": {"all": True}}, user="other-admin"),
+    ]
+    state.users["other-admin"] = {"id": "other-admin", "enabled": True, "domain_id": "disabled-home"}
+    state.domains["disabled-home"] = {"id": "disabled-home", "enabled": False}
+    assert set(await identity_roles.enabled_system_admins()) == {"user-1"}
+    assert "/v3/domains/disabled-home" in [path for path, _ in state.requests]
+    with pytest.raises(HTTPException) as last:
+        await identity_roles.assert_system_admin_remains(users={"user-1"})
+    assert last.value.status_code == 422
+
+
+@pytest.mark.parametrize("status", [403, 404, 503])
+@pytest.mark.asyncio
+async def test_native_unavailable_home_domain_never_counts_as_enabled(native_system_directory, status):
+    from app.services import identity_roles
+
+    state = native_system_directory
+    state.assignments = [assignment({"system": {"all": True}})]
+    state.failure = "/v3/domains/home-domain"
+    state.failure_status = status
+    with pytest.raises(HTTPException) as error:
+        await identity_roles.enabled_system_admins()
+    assert error.value.status_code == 503
