@@ -56,6 +56,10 @@ export const ADMIN_ALLOWED_PATHS = [
 	'/admin/object-storage',
 	'/admin/groups',
 	'/admin/system-admins',
+	'/admin/chat/tools',
+	'/admin/chat/settings',
+	'/dashboard/chat/tools',
+	'/dashboard/chat/settings',
 ] as const;
 
 const PROFILE_ALLOWED_PATHS: Record<MockupProfileId, readonly string[]> = {

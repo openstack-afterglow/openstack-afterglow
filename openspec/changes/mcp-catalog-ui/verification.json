@@ -1,0 +1,35 @@
+{
+  "status": "source-local-verified",
+  "frontend": {
+    "command": "cd frontend && npx vitest run src/lib/components/chat/__tests__/ChatMcpGallery.test.ts src/lib/components/chat/__tests__/ChatExtensionsManager.test.ts src/lib/components/chat/__tests__/ChatMcpCatalogue.test.ts src/lib/components/chat/__tests__/ChatMcpCatalogue.lifecycle.test.ts src/lib/mockup/transport.test.ts src/lib/mockup/contracts.test.ts",
+    "passed": 121,
+    "files": 6,
+    "report": "/Users/pieroot/.local/share/afterglow-proofs/mcp-catalog-ui-20261118/frontend-tests.json",
+    "types": {"errors": 0, "existing_warnings": 15},
+    "i18n": {"errors": 0, "warnings": 0, "namespaces": 57, "hard_coded_korean_lines": 0},
+    "design_detector_findings": 0
+  },
+  "bff": {
+    "command": "cd backend && AFTERGLOW_ALLOW_INSECURE=1 UV_PROJECT_ENVIRONMENT=/Users/pieroot/code/afterglow/backend/.venv uv run --no-sync python -m pytest tests/test_mcp_catalog_proxy.py tests/test_lumen_source_proxy.py tests/test_service_authorization.py -q",
+    "passed": 117,
+    "final_changed_proxy_file_recheck": {"file": "tests/test_mcp_catalog_proxy.py", "passed": 48},
+    "real_http_scenarios_passed": 18,
+    "native_lumen_fix": "f424945",
+    "real_http_proof": "/Users/pieroot/.local/share/afterglow-proofs/mcp-catalog-bff-20261118/bff-smoke-result.json",
+    "native_auth_policy_overrides": false,
+    "synthetic_boundaries": ["browser JWT validation identity", "Keystone directory HTTP fixture"],
+    "cleanup": {"remaining_servers": 0, "remaining_activations": 0, "owned_runtime_resources_remaining": 0}
+  },
+  "browser": {
+    "actual_routes": ["/dashboard/chat/settings?section=mcp&tutorial=on", "/dashboard/chat/tools?tutorial=admin", "/admin/chat/tools?tutorial=admin"],
+    "desktop": [1440, 1000],
+    "mobile": [390, 844],
+    "horizontal_overflow": 0,
+    "proof": "/Users/pieroot/.local/share/afterglow-proofs/mcp-catalog-ui-20261118/browser-proof.json",
+    "screenshots": ["desktop-settings.webp", "mobile-settings.webp", "mobile-manager-gallery.webp", "mobile-manager-editor.webp"],
+    "scope": "compiled source components with explicit tutorial identity/provider fixtures, not native browser authentication or provider OAuth acceptance"
+  },
+  "coordinator_owned": ["shared ARCHITECTURE/DESIGN/CHANGELOG/testing document integration", "canonical full gate/build/architecture stamp", "shared-dev integration"],
+  "not_performed": ["push", "tag", "image publication", "production deployment", "sandbox enablement", "provider inference", "tool execution"],
+  "documentation_proposals": "local://mcp-catalog-ui-notes.md"
+}

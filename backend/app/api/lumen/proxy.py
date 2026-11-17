@@ -20,21 +20,28 @@ _PROXY_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
 _NO_STORE = {"Cache-Control": "no-store", "Pragma": "no-cache"}
 
 
-class _PrivateProviderRoute(APIRoute):
+def _noncanonical_path(parts: list[str]) -> bool:
+    return any(part in {"", ".", ".."} or any(char in part for char in "?#\\") for part in parts)
+
+
+class _PrivateLumenRoute(APIRoute):
     def get_route_handler(self) -> Callable:
         handler = super().get_route_handler()
 
         async def private_response(request: Request) -> Response:
-            path = request.url.path.rstrip("/")
-            parts = path.removeprefix("/api/v1/chat/").split("/")
+            path = request.path_params.get("path", "")
+            parts = path.split("/") if path else []
             source_response = (len(parts) == 3 and parts[0] == "assets" and parts[2] == "download-link") or (
                 len(parts) == 4 and parts[0] == "runs" and parts[2] == "sources"
             )
             private = (
-                source_response
-                or path == "/api/v1/chat/embeddings"
-                or path == "/api/v1/chat/admin/providers"
-                or path.startswith("/api/v1/chat/admin/providers/")
+                _noncanonical_path(parts)
+                or source_response
+                or parts[:1] == ["embeddings"]
+                or (bool(parts) and parts[0].startswith("mcp-"))
+                or parts[:2] == ["admin", "providers"]
+                or (len(parts) >= 2 and parts[0] == "admin" and parts[1].startswith("mcp-"))
+                or (len(parts) >= 3 and parts[0] == "domains" and parts[2] == "mcp-connections")
             )
             try:
                 response = await handler(request)
@@ -49,7 +56,7 @@ class _PrivateProviderRoute(APIRoute):
         return private_response
 
 
-router = APIRouter(dependencies=[Depends(get_token_info)], route_class=_PrivateProviderRoute)
+router = APIRouter(dependencies=[Depends(get_token_info)], route_class=_PrivateLumenRoute)
 
 
 class ApproveCloudToolsRequest(BaseModel):
@@ -163,6 +170,10 @@ async def disable_cloud_tools(request: Request) -> Response:
 @router.api_route("", methods=_PROXY_METHODS)
 @router.api_route("/{path:path}", methods=_PROXY_METHODS)
 async def proxy_lumen(path: str = "", *, request: Request) -> Response:
+    parts = path.split("/") if path else []
+    if _noncanonical_path(parts):
+        # Authorization and forwarding must interpret the exact same namespace.
+        raise HTTPException(status_code=400, detail="Non-canonical Lumen API path", headers=_NO_STORE)
     if path == "models":
         upstream_path = "/v1/chat/models"
     elif path in {

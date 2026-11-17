@@ -54,6 +54,14 @@ describe('ChatExtensionsManager MCP OAuth', () => {
 			federated: false, domainId: 'domain-1', domainName: 'Domain', identityDomainId: 'domain-1', identityDomainName: 'Domain', isDomainManager: false
 		});
 		mocks.get.mockImplementation((path: string) => {
+			if (path.includes('/mcp-settings?')) return Promise.resolve({
+				entries: [], total: 0, offset: 0, limit: 12, next_offset: null,
+				domain_id: 'domain-1', can_manage_domain: false, custom_connections: []
+			});
+			if (path.includes('/domains/domain-1/mcp-connections?')) return Promise.resolve({
+				connections: [], total: 0, next_offset: null
+			});
+			if (path.endsWith('/admin/mcp-registry')) return Promise.resolve({ entries: [] });
 			if (path.endsWith('/mcp-servers')) {
 				return Promise.resolve([
 					{
@@ -123,7 +131,8 @@ describe('ChatExtensionsManager MCP OAuth', () => {
 					load_policy: 'preloaded',
 				}),
 				'token',
-				'project-1'
+				'project-1',
+				expect.objectContaining({ signal: expect.any(AbortSignal) })
 			)
 		);
 	});

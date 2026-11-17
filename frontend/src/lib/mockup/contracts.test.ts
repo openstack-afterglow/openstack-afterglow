@@ -29,6 +29,15 @@ describe('administrator mockup route contract', () => {
 		expect(isMockupPathAllowed('admin', '/admin/flavors')).toBe(true);
 	});
 
+	it('allows exact consumer MCP settings for the administrator preview without opening other consumer pages', () => {
+		expect(isMockupPathAllowed('admin', '/dashboard/chat/tools')).toBe(true);
+		expect(isMockupPathAllowed('admin', '/dashboard/chat/settings')).toBe(true);
+		expect(isMockupPathAllowed('admin', '/admin/chat/tools')).toBe(true);
+		expect(isMockupPathAllowed('admin', '/admin/chat/settings')).toBe(true);
+		expect(isMockupPathAllowed('admin', '/dashboard/chat/tools-near-prefix')).toBe(false);
+		expect(isMockupPathAllowed('admin', '/dashboard/instances')).toBe(false);
+	});
+
 	it.each([
 		'/dashboard',
 		'/admin/instances/mock-instance-1',

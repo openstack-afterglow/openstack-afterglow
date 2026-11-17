@@ -7,6 +7,7 @@
 	import { serviceCapabilities } from '$lib/stores/servicePermissions';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
 	import ChatMcpCatalogue, { type ApprovedMcpServer } from './ChatMcpCatalogue.svelte';
+	import ChatMcpGallery from './ChatMcpGallery.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -25,6 +26,7 @@
 		has_oauth_client?: boolean;
 		has_oauth_client_secret?: boolean;
 		load_policy?: 'preloaded' | 'on_demand';
+		template_key?: string | null;
 	}
 	interface McpOAuthStatus {
 		required: boolean;
@@ -59,6 +61,7 @@
 	let loading = $state(true);
 	let catalogLoaded = $state(false);
 	let loadGeneration = 0;
+	let gallery: { refresh: () => void } | undefined = $state();
 
 	const isAdmin = $derived(base.includes('/admin'));
 	const canMcp = $derived(isAdmin ? $auth.isSystemAdmin === true : $serviceCapabilities('lumen-mcp_editor'));
@@ -77,7 +80,7 @@
 	let addingMcp = $state(false);
 
 	let oauthStatus = $state<Record<number, McpOAuthStatus>>({});
-	let connectingOAuthId = $state<number | null>(null);
+	let mcpRequest: AbortController | null = null;
 
 	/** 'Header-Name: value' 형식 줄들을 dict 로 파싱. 빈 줄/':' 없는 줄 무시. */
 	function parseHeaders(text: string): Record<string, string> {
@@ -92,38 +95,6 @@
 		return out;
 	}
 
-
-
-	async function connectOAuth(m: McpServer) {
-		if (!canMcp) return;
-		connectingOAuthId = m.id;
-		try {
-			const result = await api.post<{ authorization_url: string }>(
-				`${base}/mcp-servers/${m.id}/oauth/start`,
-				{},
-				token,
-				projectId
-			);
-			if (!result.authorization_url) throw new Error('missing authorization URL');
-			window.location.assign(result.authorization_url);
-		} catch (e) {
-			toast.error(e instanceof ApiError ? e.message : t('extensions.oauth.startFailed'));
-		} finally {
-			connectingOAuthId = null;
-		}
-	}
-
-	async function disconnectOAuth(m: McpServer) {
-		if (!(await confirmDialog(t('extensions.oauth.disconnectConfirm', { name: m.name })))) return;
-		if (!canDelete) return;
-		try {
-			await api.delete(`${base}/mcp-servers/${m.id}/oauth`, token, projectId);
-			await load();
-			toast.success(t('extensions.oauth.disconnected'));
-		} catch (e) {
-			toast.error(e instanceof ApiError ? e.message : t('extensions.oauth.disconnectFailed'));
-		}
-	}
 	let tName = $state('');
 	let tDesc = $state('');
 	let tMethod = $state('GET');
@@ -158,7 +129,7 @@
 				: Object.fromEntries(
 						await Promise.all(
 							ms
-								.filter((mcp) => mcp.auth_mode === 'oauth')
+								.filter((mcp) => mcp.scope === 'global' && !mcp.template_key && mcp.auth_mode === 'oauth')
 								.map(async (mcp) => [
 									mcp.id,
 									await api.get<McpOAuthStatus>(`${base}/mcp-servers/${mcp.id}/oauth`, requestToken, requestProject)
@@ -213,9 +184,15 @@
 			return;
 		}
 		addingMcp = true;
+		const request = new AbortController();
+		mcpRequest = request;
+		const requestToken = token, requestProject = projectId;
 		try {
 			const headers = parseHeaders(mHeaders);
 			const oauthScopes = mOAuthScopes.split(/[\s,]+/).filter(Boolean);
+			const oauthClientSecret = mOAuthClientSecret;
+			mHeaders = '';
+			mOAuthClientSecret = '';
 			await api.post(
 				`${base}/mcp-servers`,
 				{
@@ -228,14 +205,16 @@
 								...(Object.keys(headers).length ? { headers } : {}),
 								...(oauthScopes.length ? { oauth_scopes: oauthScopes } : {}),
 								...(mOAuthClientId.trim() ? { oauth_client_id: mOAuthClientId.trim() } : {}),
-								...(mOAuthClientSecret ? { oauth_client_secret: mOAuthClientSecret } : {}),
+								...(oauthClientSecret ? { oauth_client_secret: oauthClientSecret } : {}),
 								load_policy: mLoadPolicy
 							}
 						: {})
 				},
-				token,
-				projectId
+				requestToken,
+				requestProject,
+				{ signal: request.signal }
 			);
+			if (request.signal.aborted || mcpRequest !== request) return;
 			mName = '';
 			mUrl = '';
 			mHeaders = '';
@@ -245,11 +224,12 @@
 			mOAuthClientSecret = '';
 			mLoadPolicy = 'on_demand';
 			await load();
+			gallery?.refresh();
 			toast.success(t('extensions.mcp.added'));
 		} catch (e) {
-			toast.error(e instanceof ApiError ? e.message : t('extensions.addFailed'));
+			if (!request.signal.aborted) toast.error(t('extensions.addFailed'));
 		} finally {
-			addingMcp = false;
+			if (mcpRequest === request) { addingMcp = false; mcpRequest = null; }
 		}
 	}
 
@@ -329,19 +309,28 @@
 		}
 	}
 
-	onMount(() => derived([auth, authReady, projectSwitching], ([actor, ready, switching]) =>
-		ready && !switching && actor.token && actor.projectId && actor.userId
-			? `${actor.token}\u0000${actor.userId}\u0000${actor.projectId}` : null
-	).subscribe(() => {
-		++loadGeneration;
-		mcps = [];
-		tools = [];
-		skills = [];
-		oauthStatus = {};
-		catalogLoaded = false;
-	}));
+	onMount(() => {
+		const unsubscribe = derived([auth, authReady, projectSwitching], ([actor, ready, switching]) =>
+			ready && !switching && actor.token && actor.projectId && actor.userId
+				? `${actor.token}\u0000${actor.userId}\u0000${actor.projectId}\u0000${actor.domainId}` : null
+		).subscribe(() => {
+			++loadGeneration;
+			mcpRequest?.abort();
+			mcpRequest = null;
+			addingMcp = false;
+			mHeaders = '';
+			mOAuthClientSecret = '';
+			mName = ''; mUrl = ''; mOAuthClientId = ''; mOAuthScopes = '';
+			mcps = [];
+			tools = [];
+			skills = [];
+			oauthStatus = {};
+			catalogLoaded = false;
+		});
+		return () => { unsubscribe(); mcpRequest?.abort(); mHeaders = ''; mOAuthClientSecret = ''; };
+	});
 	$effect(() => {
-		void [token, projectId, $auth.userId, canAssets];
+		void [token, projectId, $auth.userId, $auth.domainId, canAssets];
 		if (token && $authReady && !$projectSwitching) untrack(() => void load());
 	});
 
@@ -363,8 +352,9 @@
 {#if !only || only === 'mcp'}
 <section class="mb-8">
 	<h2 class="sr-only">{t('settings.sections.mcp')}</h2>
+	<ChatMcpGallery bind:this={gallery} admin={isAdmin} onChanged={load} />
 	{#if !isAdmin}
-		<ChatMcpCatalogue servers={mcps.filter((mcp) => mcp.scope === 'global')} loading={loading && !catalogLoaded} {oauthStatus} onChanged={load} />
+		<ChatMcpCatalogue servers={mcps.filter((mcp) => mcp.scope === 'global' && !mcp.template_key)} loading={loading && !catalogLoaded} {oauthStatus} onChanged={load} />
 	{/if}
 	<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('extensions.mcp.title')}</h3>
 	<p class="mb-3 text-xs text-[var(--color-ink-2)]">{t('extensions.mcp.description', { scope: isAdmin ? t('extensions.scope.global') : t('extensions.scope.personal') })}</p>
@@ -420,14 +410,15 @@
 			<Button onclick={addMcp} disabled={addingMcp || !canMcp}>{#if addingMcp}<LoadingState variant="control" label={t('extensions.actions.adding')} />{:else}{t('extensions.mcp.add')}{/if}</Button>
 		</div>
 	</div>
+	{#if isAdmin}
 	{#if loading && catalogLoaded}<LoadingState variant="inline" label={t('extensions.mcp.loading')} />{/if}
 	{#if loading && !catalogLoaded}
 		<LoadingState label={t('extensions.mcp.loading')} />
-	{:else if mcps.filter((mcp) => isAdmin || mcp.scope !== 'global').length === 0}
+	{:else if mcps.length === 0}
 		<p class="px-1 text-sm text-[var(--color-ink-2)]">{t('extensions.mcp.empty')}</p>
 	{:else}
 		<div class="divide-y divide-[var(--color-line)]">
-			{#each mcps.filter((mcp) => isAdmin || mcp.scope !== 'global') as m (m.id)}
+			{#each mcps as m (m.id)}
 				<div>
 					<div class="flex flex-wrap items-center justify-between gap-3 py-3">
 						<div class="min-w-0">
@@ -443,19 +434,6 @@
 							{#if m.url}<div class="mt-0.5 truncate text-xs text-[var(--color-ink-2)]">{m.url}</div>{/if}
 						</div>
 						<div class="flex shrink-0 items-center gap-3 text-xs">
-							{#if !isAdmin && m.auth_mode === 'oauth'}
-								{#if oauthStatus[m.id]?.connected}
-									<button disabled={!canDelete} class="text-[var(--color-state-success)] hover:opacity-80" onclick={() => disconnectOAuth(m)}>{t('extensions.oauth.connected')}</button>
-								{:else}
-									<button class="text-[var(--color-accent)] hover:opacity-80" disabled={connectingOAuthId === m.id || !canMcp} onclick={() => connectOAuth(m)}>
-										{#if connectingOAuthId === m.id}
-											<LoadingState variant="control" label={t('extensions.oauth.preparing')} />
-										{:else}
-											<RichText segments={t.rich('extensions.oauth.connect', { name: m.name })} />
-										{/if}
-									</button>
-								{/if}
-							{/if}
 							{#if isAdmin}
 								<select
 									class="rounded border border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-1 py-0.5 text-xs text-[var(--color-ink-2)]"
@@ -479,6 +457,7 @@
 				</div>
 			{/each}
 		</div>
+	{/if}
 	{/if}
 </section>
 {/if}
