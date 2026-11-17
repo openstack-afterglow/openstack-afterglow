@@ -207,6 +207,7 @@ async def test_mcp_failures_are_private_without_fallback(catalog_proxy, monkeypa
     elif failure == "membership":
         state.roles = []
     elif failure == "directory":
+
         async def unavailable(*args, **kwargs):
             raise HTTPException(status_code=503, detail="Native directory unavailable")
 

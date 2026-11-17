@@ -14,6 +14,7 @@
 - Audio Studio에서 지원되는 실시간 전사 모델을 마이크로 사용할 수 있도록 기존 실시간 화면과 native signed-ticket 경로를 확장했다. 입력 전용 단가·모드 검증, PCM tail flush, 구간별 미확정/확정/실패 구분과 종료 drain을 적용하며 기존 음성 대화·권한·정산·소유자 정리를 유지한다. 이미지 모델 단가 입력 회귀 테스트를 추가했다.
 - 모델 설정에 Lumen 네이티브 카탈로그(공식 출처·확인일·카탈로그 버전)와 모델별 실제 가격 출처를 표시한다. 공급자 설정은 OpenAI·Anthropic·Gemini·Perplexity와 기존 구독 인증만 제공하고, 서드파티는 OpenAI/Anthropic 호환 API(사용자 지정 base)로만 등록하며 모델 가격을 직접 입력해야 한다. 네이티브 모델은 "공시 가격 따르기"로 저장 단가를 비울 수 있다. models.dev 가져오기 화면과 BFF 경로를 제거했다(이제 404).
 - `/dashboard/chat/decisions` Decision Studio를 추가한다. Decisions 기능이 있는 접근 가능한 모델을 고르고 텍스트·JSON·이미지 입력과 predicate·choice·score 질문을 구성해 확률·선택·점수·거절과 실제 usage·비용을 확인한다. 요청은 로그인한 BFF `POST /api/v1/chat/decisions`를 거치며 입력과 답변은 저장하지 않는다.
+- Lumen 도구 설정에 GitHub MCP Registry 기반 카탈로그(GitHub·Notion·Playwright·Markitdown 등)를 추가하고 개인·조직·전역 연결 상태를 나눠 보여 준다. 조직 연결은 해당 도메인 관리자(또는 human 시스템 관리자)만 설정하며 구성원에게 비밀값을 노출하지 않는다. 채팅 입력의 관리형 도구 선택기는 고른 sandbox 도구 이름만 `features.tool_policy.enabled_sandbox_tools`로 보내며, 선택하지 않으면 sandbox를 만들지 않는다.
 - Lumen 모델 종류에 텍스트 임베딩을 추가하고 `/dashboard/chat/embeddings` Embedding Studio를 제공한다. 모델·차원·가격 권한을 다시 확인한 뒤 1–16개 입력을 취소 가능한 요청으로 처리하며, 벡터 미리보기·norm·cosine similarity·usage/cost와 JSON 복사·다운로드를 보여 준다. 브라우저 요청은 로그인한 Lumen BFF를 거치며 응답에 no-store를 적용한다. Live provider/production 검증은 포함하지 않는다.
 
 - 프런트엔드 런타임 이미지를 `node:20-alpine`에서 `node:22-alpine`으로 올리고(Node 20은 2026년 4월 지원 종료), 태그 푸시 시 쓰는 `setup-node`도 22로 맞췄다. 운영 이미지는 다음 릴리스 빌드부터 바뀐다. 이에 맞춰 `Promise.withResolvers()`(4곳)와 `Map.groupBy()`(1곳)를 적용했다.

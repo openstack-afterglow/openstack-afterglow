@@ -1123,14 +1123,10 @@ async def test_stale_system_snapshot_uses_shared_recent_grant_and_fresh_revocati
         patch("app.api.identity.admin_identity.activity.record", new=AsyncMock()),
         patch("app.api.identity.admin_identity.session_store.revoke_user_sessions", new=AsyncMock()),
     ):
-        grant = await admin_client.post(
-            "/api/v1/admin/identity/system-roles/grant", json={"user_id": "new-admin"}
-        )
+        grant = await admin_client.post("/api/v1/admin/identity/system-roles/grant", json={"user_id": "new-admin"})
         listing = await admin_client.get("/api/v1/admin/identity/system-roles")
         policy = await admin_client.get("/api/v1/admin/identity/security-policy")
-        revoke_old = await admin_client.post(
-            "/api/v1/admin/identity/system-roles/revoke", json={"user_id": "admin-1"}
-        )
+        revoke_old = await admin_client.post("/api/v1/admin/identity/system-roles/revoke", json={"user_id": "admin-1"})
         listing_after = await admin_client.get("/api/v1/admin/identity/system-roles")
         denied_last = await admin_client.post(
             "/api/v1/admin/identity/system-roles/revoke", json={"user_id": "new-admin"}
@@ -1151,12 +1147,8 @@ async def test_stale_system_snapshot_allows_revoke_of_new_grant(admin_client, sy
         patch("app.api.identity.admin_identity.activity.record", new=AsyncMock()),
         patch("app.api.identity.admin_identity.session_store.revoke_user_sessions", new=AsyncMock()),
     ):
-        granted = await admin_client.post(
-            "/api/v1/admin/identity/system-roles/grant", json={"user_id": "new-admin"}
-        )
-        revoked = await admin_client.post(
-            "/api/v1/admin/identity/system-roles/revoke", json={"user_id": "new-admin"}
-        )
+        granted = await admin_client.post("/api/v1/admin/identity/system-roles/grant", json={"user_id": "new-admin"})
+        revoked = await admin_client.post("/api/v1/admin/identity/system-roles/revoke", json={"user_id": "new-admin"})
     assert granted.status_code == revoked.status_code == 200
     assert ks.direct == {"admin-1"}
 
@@ -1174,9 +1166,7 @@ async def test_grant_lost_reply_keeps_discovery_hint(admin_client, system_keysto
 
     ks.roles.grant = lost_reply
     with patch("app.api.identity.admin_identity.session_store.revoke_user_sessions", new=AsyncMock()):
-        response = await admin_client.post(
-            "/api/v1/admin/identity/system-roles/grant", json={"user_id": "new-admin"}
-        )
+        response = await admin_client.post("/api/v1/admin/identity/system-roles/grant", json={"user_id": "new-admin"})
         listing = await admin_client.get("/api/v1/admin/identity/system-roles")
     assert response.status_code >= 500
     assert {row["user_id"] for row in listing.json()} == {"admin-1", "new-admin"}
@@ -1196,9 +1186,7 @@ async def test_system_grant_requires_shared_discovery_before_native_write(admin_
 
 
 @pytest.mark.asyncio
-async def test_slow_committed_grant_lost_reply_refreshes_discovery_deadline(
-    admin_client, system_keystone, monkeypatch
-):
+async def test_slow_committed_grant_lost_reply_refreshes_discovery_deadline(admin_client, system_keystone, monkeypatch):
     ks = system_keystone(_SystemKeystone({"admin-1"}))
     snapshot = list(ks.role_assignments.list(system="all"))
     ks.role_assignments.list = lambda **kwargs: list(snapshot)
@@ -1220,9 +1208,7 @@ async def test_slow_committed_grant_lost_reply_refreshes_discovery_deadline(
 
     ks.roles.grant = slow_lost_reply
     with patch("app.api.identity.admin_identity.session_store.revoke_user_sessions", new=AsyncMock()):
-        response = await admin_client.post(
-            "/api/v1/admin/identity/system-roles/grant", json={"user_id": "new-admin"}
-        )
+        response = await admin_client.post("/api/v1/admin/identity/system-roles/grant", json={"user_id": "new-admin"})
     assert response.status_code >= 500
     seconds, microseconds = await controlled_time()
     now = seconds + microseconds / 1_000_000
@@ -1234,8 +1220,20 @@ async def test_slow_committed_grant_lost_reply_refreshes_discovery_deadline(
 @pytest.mark.parametrize(
     "user_id",
     [
-        "", " admin-1", "admin-1 ", "admin-1/", "admin-1//", "admin/../admin-1",
-        "admin-1?x", "admin-1#x", "admin-1%2f", "admin-1\\x", "admin 1", "admin-1\n", ".", "..",
+        "",
+        " admin-1",
+        "admin-1 ",
+        "admin-1/",
+        "admin-1//",
+        "admin/../admin-1",
+        "admin-1?x",
+        "admin-1#x",
+        "admin-1%2f",
+        "admin-1\\x",
+        "admin 1",
+        "admin-1\n",
+        ".",
+        "..",
     ],
 )
 @pytest.mark.parametrize("operation", ["grant", "revoke"])
@@ -1311,15 +1309,10 @@ async def test_system_role_different_native_user_is_not_a_canonical_alias(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("visible_other", [False, True])
-async def test_revoke_omitted_direct_target_requires_verified_other_human(
-    admin_client, system_keystone, visible_other
-):
+async def test_revoke_omitted_direct_target_requires_verified_other_human(admin_client, system_keystone, visible_other):
     direct = {"hidden-admin", "visible-admin"} if visible_other else {"hidden-admin"}
     ks = system_keystone(_SystemKeystone(direct))
-    snapshot = [
-        row for row in ks.role_assignments.list(system="all")
-        if row.user["id"] == "visible-admin"
-    ]
+    snapshot = [row for row in ks.role_assignments.list(system="all") if row.user["id"] == "visible-admin"]
     ks.role_assignments.list = lambda **kwargs: list(snapshot)
     assert await keystone.recent_system_admin_ids() == set()
     with patch("app.api.identity.admin_identity.session_store.revoke_user_sessions", new=AsyncMock()) as revoke:
@@ -1369,9 +1362,7 @@ async def test_remaining_admin_requires_enabled_home_domain(
     ks.users.get = lambda uid: SimpleNamespace(
         **{**vars(native_user(uid)), "domain_id": "active-domain" if uid == "active-admin" else "other-domain"}
     )
-    ks.domains.get = lambda did: SimpleNamespace(
-        id=did, enabled=True if did == "active-domain" else home_enabled
-    )
+    ks.domains.get = lambda did: SimpleNamespace(id=did, enabled=True if did == "active-domain" else home_enabled)
     mock_conn.identity.update_user.return_value = SimpleNamespace(
         id="active-admin", name="active-admin", email="", is_enabled=False
     )

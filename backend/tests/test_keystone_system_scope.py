@@ -305,7 +305,9 @@ def test_native_sdk_authority_directory_failures_are_503(native_system_directory
 
 @pytest.mark.parametrize("group,inferred", [(False, False), (True, False), (False, True), (True, True)])
 @pytest.mark.asyncio
-async def test_native_last_admin_guard_counts_raw_user_group_and_implied_grants(native_system_directory, group, inferred):
+async def test_native_last_admin_guard_counts_raw_user_group_and_implied_grants(
+    native_system_directory, group, inferred
+):
     from app.services import identity_roles
 
     state = native_system_directory
@@ -449,8 +451,19 @@ async def test_last_human_guard_does_not_count_marked_system_accounts(native_sys
 @pytest.mark.parametrize(
     "subject",
     [
-        "", " realadmin", "realadmin ", "realadmin/", "real/admin", "realadmin?x",
-        "realadmin#x", "realadmin%2f", "realadmin\\x", "real admin", "realadmin\n", ".", "..",
+        "",
+        " realadmin",
+        "realadmin ",
+        "realadmin/",
+        "real/admin",
+        "realadmin?x",
+        "realadmin#x",
+        "realadmin%2f",
+        "realadmin\\x",
+        "real admin",
+        "realadmin\n",
+        ".",
+        "..",
     ],
 )
 @pytest.mark.parametrize("principal", ["user", "group"])

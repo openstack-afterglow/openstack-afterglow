@@ -58,8 +58,11 @@ async def test_realtime_admission_returns_only_project_bound_browser_ticket(monk
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as browser:
         response = await browser.post(
             "/api/v1/chat/realtime/sessions",
-            json={"model_id": "12", **({"voice": "alloy"} if kind != "transcription" else {}),
-                  **({"kind": kind} if kind is not None else {})},
+            json={
+                "model_id": "12",
+                **({"voice": "alloy"} if kind != "transcription" else {}),
+                **({"kind": kind} if kind is not None else {}),
+            },
             headers={"Idempotency-Key": key},
         )
     assert response.status_code == 201
@@ -167,8 +170,11 @@ async def test_realtime_admission_rejects_invalid_kind_before_native_request(mon
     issue = AsyncMock()
     monkeypatch.setattr(ws_ticket, "issue_ticket", issue)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as browser:
-        response = await browser.post("/api/v1/chat/realtime/sessions",
-            json={"model_id": "12", "kind": kind}, headers={"Idempotency-Key": str(uuid4())})
+        response = await browser.post(
+            "/api/v1/chat/realtime/sessions",
+            json={"model_id": "12", "kind": kind},
+            headers={"Idempotency-Key": str(uuid4())},
+        )
     assert response.status_code == 422
     authorize.assert_not_awaited()
     endpoint.assert_not_called()

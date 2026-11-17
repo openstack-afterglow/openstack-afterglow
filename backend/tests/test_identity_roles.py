@@ -58,10 +58,7 @@ class IdentityProvider:
     def roles(self, *, user=None, group=None, system=None, name=None):
         rows = list(self.rows.values())
         if system is not None:
-            ids = {
-                row["role"]["id"]
-                for row in self.native_assignments(user=user, group=group, system=system)
-            }
+            ids = {row["role"]["id"] for row in self.native_assignments(user=user, group=group, system=system)}
             rows = [row for row in rows if row["id"] in ids]
         return iter(SimpleNamespace(**row) for row in rows if name is None or row["name"] == name)
 

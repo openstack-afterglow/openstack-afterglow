@@ -191,9 +191,9 @@ async def proxy_lumen(path: str = "", *, request: Request) -> Response:
         "images/edits",
         "audio/speech",
         "audio/transcriptions",
+        "embeddings",
+        "decisions",
     }:
-        upstream_path = f"/v1/chat/{path}"
-    elif path in {"embeddings", "decisions"}:
         upstream_path = f"/v1/chat/{path}"
     else:
         upstream_path = "/v1" if not path else f"/v1/{path}"

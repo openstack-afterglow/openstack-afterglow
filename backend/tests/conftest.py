@@ -293,8 +293,7 @@ def auth_directory(monkeypatch):
             ids = {
                 row["role"]["id"]
                 for row in assignments(**({"user": user} if user is not None else {"group": group}))
-                if row.get("scope") == {"system": {"all": True}}
-                and ("user" in row) != ("group" in row)
+                if row.get("scope") == {"system": {"all": True}} and ("user" in row) != ("group" in row)
             }
             rows = [role for role in rows if role["id"] in ids]
         return [role for role in rows if name is None or role["name"] == name]

@@ -232,7 +232,8 @@ async def test_decisions_proxy_preserves_wire_scope_and_private_response(api_cli
         patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
     ):
         response = await api_client.post(
-            "/api/v1/chat/decisions", content=body,
+            "/api/v1/chat/decisions",
+            content=body,
             headers={"content-type": "application/json", "authorization": "Bearer synthetic-browser"},
         )
     assert response.status_code == 200
@@ -253,7 +254,9 @@ async def test_native_catalog_requires_current_system_admin_and_preserves_filter
 
     async def handler(request):
         received.append((request.method, str(request.url), request.headers))
-        return HttpxResponse(200, headers={"content-type": "application/json"}, stream=httpx.ByteStream(json.dumps(catalog).encode()))
+        return HttpxResponse(
+            200, headers={"content-type": "application/json"}, stream=httpx.ByteStream(json.dumps(catalog).encode())
+        )
 
     upstream = AsyncClient(transport=httpx.MockTransport(handler))
     with (
@@ -293,8 +296,12 @@ async def test_new_model_routes_require_session(api_client, path):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("method", "path", "allow"),
-    [("GET", "decisions", "POST"), ("PUT", "decisions", "POST"),
-     ("POST", "admin/models/native-catalog", "GET"), ("PATCH", "admin/models/native-catalog", "GET")],
+    [
+        ("GET", "decisions", "POST"),
+        ("PUT", "decisions", "POST"),
+        ("POST", "admin/models/native-catalog", "GET"),
+        ("PATCH", "admin/models/native-catalog", "GET"),
+    ],
 )
 async def test_new_model_routes_reject_wrong_methods(api_client, method, path, allow):
     app.dependency_overrides[get_token_info] = _authenticated

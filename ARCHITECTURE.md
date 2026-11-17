@@ -12,6 +12,8 @@ Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 �
 
 **네이티브 공급자·Decisions — source/local:** Afterglow는 Lumen에 내장된 네이티브 모델 카탈로그를 읽기 전용으로 보여 주며 출처 URL·확인일·카탈로그 버전과 실제 가격 출처(`price_origin`)를 함께 표시한다. 공급자 설정은 네 개 네이티브 family와 기존 구독 인증, 그리고 명시적인 OpenAI/Anthropic 호환 custom base로 제한한다. 호환 모델은 관리자 단가가 필수이며 카탈로그 메타데이터를 상속하지 않는다. "공시 가격 따르기"는 기존 모델 PATCH로 저장 단가만 비운다. endpoint family, 실제 단가·기능, 권한·활성화는 Lumen이 결정한다. Decision Studio는 대화 기록과 분리된 세션·프로젝트 범위 작업 공간이다. BFF는 `POST /api/v1/chat/decisions`를 Lumen `/v1/chat/decisions`로, 시스템 관리자 전용 `GET /api/v1/chat/admin/models/native-catalog`을 Lumen 카탈로그로 전달하며 private no-store 응답을 유지한다. 폐기된 models.dev BFF 경로는 upstream 호출 없이 404를 반환한다.
 
+**MCP 카탈로그·관리형 도구 선택 — source/local:** `ChatExtensionsManager`가 기존 설정/도구 경로에 `ChatMcpGallery`를 넣는다. 브라우저 `/api/v1/chat/*`는 기존 caller-token BFF로 Lumen `/v1/*`에 전달하며, 조직 연결 관리 권한·구성원 여부는 매 요청 Lumen이 다시 판정한다. 인증 없는 실제 OAuth callback은 generic proxy보다 먼저 mount되고 no-store를 적용한다. 채팅의 관리형 도구 선택은 사용자·범위별 선호로 저장되고, 실행 요청에는 정확한 sandbox 도구 이름만 실어 원격 MCP ID와 섞지 않는다. 오래된 admission 응답은 generation fence로 버린다.
+
 **System administrator readback:** `keystone`의 직접 system user/group role endpoint가 권한의 근거다. Computed-assignment 목록은 후보 발견용이며, Afterglow grant의 Redis 후보 힌트(660초, 현재 native cache TTL 600초를 전제, Keystone URL·region·interface별 key)를 합쳐 직접 재검증한다. 힌트 자체는 권한이 아니고 실패 시 닫힌다. 직접 대상 ID는 안전한 opaque 문자만 허용하고 exact `users.get` ID 일치 뒤에만 guard·쓰기·힌트에 사용한다. 동일 reader를 권위·마지막 활성 human 관리자 보호·회수 확인에 사용한다. 마지막 관리자 보호는 발견 결과가 비어도 변경 대상이 아닌 검증된 enabled human 관리자가 남아야 통과하며, 그 관리자의 exact home domain도 live enabled여야 한다. 외부 native grant의 즉시 발견은 별도 문제로 남는다. 관리자 화면의 표와 배너는 같은 snapshot을 사용하고 token-only renewal은 성공 응답을 버리지 않지만 owner/project/session 교체는 차단한다.
 
 **세 번째 시각 정리 (2026-11-16, source/local):** 기존 layout.css semantic text token과 shared embedded/flat/table/card/form 경계를 재사용해 consumer/admin 상세·계정·Lumen 설정의 중첩 외곽선, 제목 단계, 작업 대비와 좁은 상세 header를 수정한다. AuthStudioShell은 기존 resolvedTheme를 SVG color-scheme에 전달하고 보조 글자 크기만 기존 type role로 올린다. 포트 생성창은 기존 localized heading을 dialog 이름으로 연결한다. 자원·credential·권위·API·scope·polling·tutorial 가용성·DB/schema·배포 경계는 바꾸지 않는 presentation-only 변경이다. 실제 렌더·native 조작과 synthetic/redirect 한계는 docs/testing.md에 구분하며 운영 수용으로 승격하지 않는다.
@@ -2238,9 +2240,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "6a0af04dcce16f5e2d1ea23b6c194029d84524772337b3e0b98edfaee7a5ad79",
-  "reviewed_at": "2026-11-17T08:26:32Z",
-  "summary": "Added Embedding Studio and embedding model admin flow; desktop/mobile tutorial embedding verified, BFF tests and canonical gate passed."
+  "source_sha256": "41cffe8f9a1ee48f860fd73cc6212546e5ab443076f038331503bce1673a5abb",
+  "reviewed_at": "2026-11-17T18:24:25Z",
+  "summary": "Lumen dashboard integration: system admin readback/last-admin guard, embedding/media readiness, chat work log, realtime transcription, MCP catalog with personal/organization scopes and managed sandbox tool picker, native provider catalog UI and Decision Studio reviewed against ARCHITECTURE.md"
 }
 ```
 <!-- architecture-review:end -->

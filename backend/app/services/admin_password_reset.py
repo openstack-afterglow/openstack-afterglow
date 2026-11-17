@@ -79,16 +79,14 @@ async def _subject(user_id, ks, catalog):
             raise _error(503, "identity_unavailable")
     expanded = project_service._expanded_role_ids(rows, catalog, user_id)
     sources = [
-        (row, "user_id", user_id)
-        for row in await _provider_call(keystone.direct_system_assignments, ks, user=user_id)
+        (row, "user_id", user_id) for row in await _provider_call(keystone.direct_system_assignments, ks, user=user_id)
     ]
     for group in await _provider_call(lambda: list(ks.groups.list(user=user_id))):
         gid = _field(group, "id")
         if not isinstance(gid, str) or not gid:
             raise _error(503, "identity_unavailable")
         sources.extend(
-            (row, "group_id", gid)
-            for row in await _provider_call(keystone.direct_system_assignments, ks, group=gid)
+            (row, "group_id", gid) for row in await _provider_call(keystone.direct_system_assignments, ks, group=gid)
         )
     for row, principal, subject in sources:
         source = domain_projects._assignment(row, catalog)
