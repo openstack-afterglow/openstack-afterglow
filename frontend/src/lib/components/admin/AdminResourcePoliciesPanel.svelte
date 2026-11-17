@@ -537,12 +537,7 @@
 		return runtimeDefinitions.find(definition => definition.key === setting.key) ?? setting;
 	}
 	function groupedPolicies() {
-		return Object.entries(
-			policies.reduce<Record<string, ResourcePolicy[]>>((groups, policy) => {
-				(groups[policy.group] ??= []).push(policy);
-				return groups;
-			}, {})
-		);
+		return [...Map.groupBy(policies, (policy) => policy.group)];
 	}
 
 	$effect(() => {

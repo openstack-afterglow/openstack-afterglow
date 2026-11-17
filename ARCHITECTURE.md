@@ -1870,9 +1870,9 @@ Kolla의 `effective_config.yml`은 현재 globals/passwords로 `afterglow.conf.j
 
 ### 빌드·배포
 
-`Dockerfile`은 backend/worker에 Python 3.12 slim, frontend build에 Bun 1, runtime에 Node 20을 사용한다. Backend의 OpenTofu acquisition은 runtime package 설치와 분리된 stage에서 BuildKit `TARGETARCH`를 `amd64`/`arm64`로 fail-closed 매핑하고, transient GitHub 오류를 bounded retry하며, 공식 release manifest에서 pin한 architecture별 SHA-256을 확인한 binary만 runtime stage에 복사한다. 현재 [`docker-build.yml`](.github/workflows/docker-build.yml)은 `linux/amd64` matrix만 활성화하며 arm64 항목은 주석 처리되어 있지만, dev source build는 native `arm64`도 지원한다. GitHub Actions가 이미지를 GHCR로 push하고, 배포 구성은 Kubernetes/Kustomize·Helm/ArgoCD 또는 [`deploy/kolla/site.yml`](deploy/kolla/site.yml)의 custom service role 경계를 사용한다. Kolla는 `afterglow`, `waygate`, `drover`, `lumen`, `palimpsest` inventory group을 별도로 검사한다. `deploy/kolla/install.sh`가 stock site import와 inventory/globals.d 연결을 준비하면 `/etc/kolla`에서 `kolla-ansible deploy -i multinode`가 custom 서비스를 함께 실행한다. 서비스·HAProxy 플레이는 `become: true`로 toolbox와 중첩/위임 task의 권한을 선언하며, operator 계정의 기존 sudo 권한을 전제로 한다. 형제 역할은 각 서비스 root distribution(`drover`, `lumen`, `waygate`, `palimpsest`)에서 설치되고 release archive wheel은 tag version과 일치하는 immutable GitHub URL·SHA-256을 사용한다.
+`Dockerfile`은 backend/worker에 Python 3.12 slim, frontend build에 Bun 1, runtime에 Node 22를 사용한다. Backend의 OpenTofu acquisition은 runtime package 설치와 분리된 stage에서 BuildKit `TARGETARCH`를 `amd64`/`arm64`로 fail-closed 매핑하고, transient GitHub 오류를 bounded retry하며, 공식 release manifest에서 pin한 architecture별 SHA-256을 확인한 binary만 runtime stage에 복사한다. 현재 [`docker-build.yml`](.github/workflows/docker-build.yml)은 `linux/amd64` matrix만 활성화하며 arm64 항목은 주석 처리되어 있지만, dev source build는 native `arm64`도 지원한다. GitHub Actions가 이미지를 GHCR로 push하고, 배포 구성은 Kubernetes/Kustomize·Helm/ArgoCD 또는 [`deploy/kolla/site.yml`](deploy/kolla/site.yml)의 custom service role 경계를 사용한다. Kolla는 `afterglow`, `waygate`, `drover`, `lumen`, `palimpsest` inventory group을 별도로 검사한다. `deploy/kolla/install.sh`가 stock site import와 inventory/globals.d 연결을 준비하면 `/etc/kolla`에서 `kolla-ansible deploy -i multinode`가 custom 서비스를 함께 실행한다. 서비스·HAProxy 플레이는 `become: true`로 toolbox와 중첩/위임 task의 권한을 선언하며, operator 계정의 기존 sudo 권한을 전제로 한다. 형제 역할은 각 서비스 root distribution(`drover`, `lumen`, `waygate`, `palimpsest`)에서 설치되고 release archive wheel은 tag version과 일치하는 immutable GitHub URL·SHA-256을 사용한다.
 
-Frontend runtime stage는 builder의 `package.json`·`package-lock.json`을 함께 복사해 `npm ci --omit=dev --ignore-scripts`로 기존 npm graph를 설치한다. Bun build의 frozen `bun.lock`·Node20-Alpine base·nonroot 실행·scripts와 배포 경계는 유지한다. Lock 없이 재해석하던 npm10 Arborist `edgesOut` CI 실패의 국소 수정이며 API·인가·schema·서비스 topology에는 구조 영향이 없다.
+Frontend runtime stage는 builder의 `package.json`·`package-lock.json`을 함께 복사해 `npm ci --omit=dev --ignore-scripts`로 기존 npm graph를 설치한다. Bun build의 frozen `bun.lock`·Node22-Alpine base·nonroot 실행·scripts와 배포 경계는 유지한다. Lock 없이 재해석하던 npm10 Arborist `edgesOut` CI 실패의 국소 수정이며 API·인가·schema·서비스 topology에는 구조 영향이 없다. 2026-11-17에 runtime base를 Node 20-alpine에서 Node 22-alpine으로 올렸다: SSR이 켜진 `adapter-node` 서버가 `Promise.withResolvers`·`Map.groupBy`(Node 22/21 이상)를 쓰는 코드를 렌더하기 때문이며, CI의 vitest·`native-node` stage와 같은 major다. 이 변경은 다음 릴리스 이미지부터 적용되고 운영 이미지는 그대로다.
 
 Docker build의 캐시 경계는 시스템/외부 의존성 → 로컬 패키지 → 애플리케이션 소스 순서다. `backend-runtime`이 ffmpeg·QEMU·Ceph와 검증된 OpenTofu를 준비하고 `native-runtime`이 MariaDB/Redis를, `native-cloud-runtime`이 amd64 kernel/initramfs·boot 패키지를 추가한다. 세 runtime base는 앱 소스를 상속하지 않는다. 최종 backend·worker는 `COPY --chown`으로 가상환경/소스를 조립하고 appuser로 bytecode를 생성한다. `backend-dev`의 writable venv 동기화·소유권 설정도 앱 복사 전에 둔다. Backend/worker builder는 crypto manifest와 lock으로 외부 패키지를 먼저 설치하고 crypto 소스만 뒤에서 설치한다. Frontend runtime의 `npm ci`는 package/lock만 입력으로 사용하며 compiled build·scripts는 그 뒤에 복사한다. Bun 컴파일은 소스 변경 시 계속 실행한다. `.dockerignore`는 local agent/browser 상태·graphify 산출물·datastore 디렉터리·frontend 로그를 제외한다. Target 이름·CMD/ENTRYPOINT·지원 architecture·API·설정·schema·배포 topology는 유지하며 build/source-only cache·격리 runtime 증거는 [`docs/testing.md`](docs/testing.md), 사용법은 [`docs/deployment.md`](docs/deployment.md#docker-빌드-캐시)를 따른다.
 
@@ -2226,9 +2226,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "8a67bd6622880ddeaf73ce6fd0414651c2f58043f814d3f9a2ba1d37801678cf",
-  "reviewed_at": "2026-11-17T03:58:02Z",
-  "summary": "Modernize array copies (toSorted/findLast), request deadline (AbortSignal.timeout) and error cause; no behavior change"
+  "source_sha256": "31dd90c1ab3d45e7a6c2e69505022d1ff0bbf06e2428500c9893ee3e277a00de",
+  "reviewed_at": "2026-11-17T04:18:35Z",
+  "summary": "Frontend runtime image and release tag step move to Node 22; apply Promise.withResolvers and Map.groupBy; toSorted/findLast and AbortSignal.timeout modernization"
 }
 ```
 <!-- architecture-review:end -->

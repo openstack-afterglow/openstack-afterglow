@@ -192,7 +192,11 @@
 			expectedProvider = pending?.providerId ?? null;
 			try { history.replaceState(history.state, '', '/auth/callback'); } catch { /* API one-use state remains authoritative. */ }
 			if ($logoutInProgress || $projectSwitching) { abandoned = true; loading = false; observation.discard('scope_changed'); return; }
-			if (awaitingReadiness) await new Promise<void>(resolve => { settleReadiness = resolve; });
+			if (awaitingReadiness) {
+				const readiness = Promise.withResolvers<void>();
+				settleReadiness = readiness.resolve;
+				await readiness.promise;
+			}
 			settleReadiness = null;
 			if (!active || abandoned) { observation.discard(active ? 'stale' : 'unmounted'); return; }
 			if (providerError || !code || !state) { error = text(providerError ? 'callback.providerDenied' : 'callback.invalidRequest'); loading = false; observation.validation('format'); observation.state('error'); void observation.applied(); return; }

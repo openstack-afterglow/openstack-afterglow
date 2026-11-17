@@ -226,7 +226,7 @@ jobs:
         if: startsWith(needs.changes.outputs.effective_ref, 'refs/tags/')
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Apply tag version (tag push only)
         if: startsWith(needs.changes.outputs.effective_ref, 'refs/tags/')

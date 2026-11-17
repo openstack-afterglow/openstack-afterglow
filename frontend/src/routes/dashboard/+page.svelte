@@ -151,10 +151,7 @@
 	);
 
 	function newBatch(mode: BatchMode, enabled: Domain[]): BatchState {
-		let resolveDone!: () => void;
-		const done = new Promise<void>((resolve) => {
-			resolveDone = resolve;
-		});
+		const { promise: done, resolve: resolveDone } = Promise.withResolvers<void>();
 		return {
 			id: ++nextBatchId,
 			mode,

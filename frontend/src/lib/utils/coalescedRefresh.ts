@@ -30,12 +30,7 @@ export function createCoalescedRefresh(task: (force: boolean) => Promise<void>):
 	let disposed = false;
 
 	function createCycle(force: boolean): Cycle {
-		let resolve!: () => void;
-		let reject!: (error: unknown) => void;
-		const promise = new Promise<void>((res, rej) => {
-			resolve = res;
-			reject = rej;
-		});
+		const { promise, resolve, reject } = Promise.withResolvers<void>();
 		void promise.catch(() => {});
 		return { force, startedMutationEpoch: 0, promise, resolve, reject };
 	}

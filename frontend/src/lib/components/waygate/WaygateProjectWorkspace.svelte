@@ -581,8 +581,7 @@
 		() => {
 			if (!isCurrent() || !selectedServerId) return;
 			const request = fetchClients(selectedServerId);
-			let cancel!: () => void;
-			const cancelled = new Promise<void>((resolve) => { cancel = resolve; });
+			const { promise: cancelled, resolve: cancel } = Promise.withResolvers<void>();
 			cancelPeerRound = cancel;
 			return Promise.race([request, cancelled]).finally(() => {
 				if (cancelPeerRound === cancel) cancelPeerRound = null;

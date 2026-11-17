@@ -9,7 +9,8 @@
 
 ### Changed
 
-- 프런트엔드 30개 파일의 `[...x].sort()` 복사 정렬을 `toSorted()`로, `[...x].reverse().find()`를 `findLast()`로 바꿨다. 수신자가 배열로 선언된 곳만 바꿨고 동작은 같다. 지연 측정 스크립트(`scripts/latency/api-lane.mjs`)는 `AbortSignal.timeout()`을 쓰며 `deadline` 분류는 그대로다. `withCleanup`은 정리 실패를 다시 던질 때 `{ cause }`를 붙인다. `Promise.withResolvers()`와 `Map.groupBy()`는 운영 프런트엔드 이미지가 Node 20이라 적용하지 않았다.
+- 프런트엔드 런타임 이미지를 `node:20-alpine`에서 `node:22-alpine`으로 올리고(Node 20은 2026년 4월 지원 종료), 태그 푸시 시 쓰는 `setup-node`도 22로 맞췄다. 운영 이미지는 다음 릴리스 빌드부터 바뀐다. 이에 맞춰 `Promise.withResolvers()`(4곳)와 `Map.groupBy()`(1곳)를 적용했다.
+- 프런트엔드 30개 파일의 `[...x].sort()` 복사 정렬을 `toSorted()`로, `[...x].reverse().find()`를 `findLast()`로 바꿨다. 수신자가 배열로 선언된 곳만 바꿨고 동작은 같다. 지연 측정 스크립트(`scripts/latency/api-lane.mjs`)는 `AbortSignal.timeout()`을 쓰며 `deadline` 분류는 그대로다. `withCleanup`은 정리 실패를 다시 던질 때 `{ cause }`를 붙인다.
 
 ## [1.32.24] - 2026-11-17
 
