@@ -34,6 +34,7 @@ import { mockNetworkLbRouter } from '$lib/mockup/networkLbRouter';
 import { mockDatabaseContainers } from '$lib/mockup/databaseContainers';
 import { mockDatabaseBackups } from '$lib/mockup/databaseBackups';
 import type { ContainerInfo, OrderInfo, QuotaInfo } from '$lib/api/secrets';
+import { mockChatWorkLog, mockChatWorkLogResponse } from './chatWorkLog';
 
 export const symbolNoMatch = Symbol('mockup-no-match');
 const MOCK_EXPIRES_AT_ISO = '2026-12-31T23:59:59Z';
@@ -833,6 +834,8 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		return { id, name, can_write: permissions.can_write, service_permissions: { drover, palimpsest, waygate }, service_errors: {} };
 	});
 	if (method === 'GET' && pathname === '/api/v1/auth/mcp-tokens') return state.mcpAccess.personalTokens.filter((record) => record.status !== 'revoked' && !record.revoked_at).map((record) => ({ ...record, is_lumen_default: record.status === 'active' && (state.mcpAccess.lumenDefaults[requestProjectId ?? state.selectedProjectId] ?? []).includes(record.id) }));
+	const chatWorkLog = mockChatWorkLog(method, pathname, params, body);
+	if (chatWorkLog !== undefined) return chatWorkLog;
 	if (method === 'GET' && ['/api/v1/chat/custom-tools', '/api/v1/chat/skills', '/api/v1/chat/admin/custom-tools', '/api/v1/chat/admin/skills'].includes(pathname)) {
 		if (pathname.startsWith('/api/v1/chat/admin/') && profile !== 'admin') throw new ApiError(403, 'Forbidden');
 		return [];
@@ -1723,6 +1726,10 @@ export async function maybeMockJson<T>(method: string, path: string, body?: unkn
 	if (normalized.startsWith('/api/v1/') && upperMethod !== 'GET') mockUnsupported();
 	if (normalized.startsWith('/api/v1/')) mockUnsupported();
 	return symbolNoMatch;
+}
+
+export function maybeMockChatResponse(path: string, options: RequestInit): Response | null {
+	return getActiveMockupProfile() ? mockChatWorkLogResponse(path, options) : null;
 }
 
 export async function maybeMockBlob(method: string, path: string, _token?: string, _projectId?: string): Promise<Blob | typeof symbolNoMatch> {

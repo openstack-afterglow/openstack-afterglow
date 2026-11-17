@@ -107,6 +107,7 @@ export type RunActivityItem =
 
 export interface RunViewState {
 	runId: string;
+	startedAt: string | null;
 	lastSeq: number;
 	status: ChatRunStatus;
 	runKind: ChatRunKind;
@@ -128,6 +129,7 @@ export interface RunViewState {
 export function createRunViewState(runId: string): RunViewState {
 	return {
 		runId,
+		startedAt: null,
 		lastSeq: 0,
 		status: 'queued',
 		runKind: 'completion',
@@ -180,6 +182,7 @@ export function reduceRunEvent(state: RunViewState, event: ChatRunEvent): RunVie
 		case 'run.started':
 			next.status = 'running';
 			next.runKind = event.payload.run_kind;
+			next.startedAt ??= event.created_at;
 			break;
 		case 'context.updated':
 			next.context = event.payload;

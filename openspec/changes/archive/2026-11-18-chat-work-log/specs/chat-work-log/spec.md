@@ -1,0 +1,25 @@
+# Chat work log
+
+## Requirements
+
+- Before any public answer/step arrives, show the existing quiet response-preparation line. Once the work panel carries progress, suppress competing preparation and window-level stage indicators.
+- A live panel lists actual journal steps in sequence, with current state emphasized. Reasoning disclosures contain only already-public provider summaries. Tool detail and failed results remain reachable.
+- Pending approval appears inline at its journal position. Reuse `tool.approval_required`, `tool.approval_resolved` and the existing project-scoped approval endpoint. Never infer consent or dispatch a decision from rendering. Newly requested permission reopens a user-collapsed live log. Decision controls disable while authority is unavailable or a decision is pending.
+- A terminal event closes the outer work log once. Its native disclosure remains keyboard operable and can subsequently stay open. The final answer follows the single elapsed-time line.
+- Elapsed seconds derive from the actual `run.started` and terminal event UTC timestamps. Live updates use the same start boundary. Missing history boundaries do not acquire fabricated elapsed values. Completion freezes elapsed time.
+- Lumen's bounded indexed message page includes public `execution.activity` on the owned run's exact final assistant ID, including reachable owned forks. Foreign-user/project run metadata remains excluded. Existing encrypted persistent journals provide history; temporary-thread purge remains unchanged.
+- The additive start boundary is `execution.started_at: string | null`, using the actual UTC `run.started` journal timestamp. Activity entries retain only the existing stage/context/reasoning/tool/approval/child/terminal kinds; no metadata-only task or new enum is introduced. Existing terminal entries supply the finish boundary. A deployed reader safely ignores the additive metadata field, permitting Lumen-first rollout. No new database migration or approval wire event is introduced.
+- Indexed history reads only consumed public activity event types in one batched, streamed SQL query for already-authorized runs. Token deltas are not fetched or decrypted; canonical completed `visibility=user` reasoning is the durable summary boundary. Per-run SQL row and ciphertext budgets prevent unbounded replay. Invalid, missing or over-budget consumed activity sets explicit `activity_status=unavailable`, a fixed safe error code and `activity=null`; the valid answer body remains readable and no complete/empty log is fabricated.
+- All control copy uses the nine-locale chat namespace. Synthetic tutorial transcript/tool payloads are data, not translated UI. Native buttons/disclosures retain focus and expanded-state semantics. Motion uses existing tokens and honors reduced-motion preferences. Mobile controls remain reachable without page overflow.
+
+## Evidence scope
+
+Focused frontend suites cover preparation, live time, approval, completion, reopening, failed tools, reduced motion, existing run/session lifecycle and tutorial transport. Real disposable MariaDB/Redis proves indexed repeated readback, exact stored journal timestamps, owned-fork history and foreign-user denial. Browser proof exercises synthetic tutorial data at desktop/mobile/tablet widths; it does not prove live provider, native IAM or cloud mutation execution.
+
+## Approval reachability and baseline temporary history
+
+- A permission card requires the exact current pending run/call record, independently of SSE streaming. Both positioned messages and unknown-position temporary inspections consume that same pending collection. Historical approval rows alone never become actionable. New pending requests open their containing inspection; truly unmatched requests render outside the ordered journal without fabricated sequence or message position.
+- Busy, expired, decided and terminal requests never dispatch a new decision, including synthetic click dispatch against a disabled control. An actual terminal fact collapses the panel once even if the follower had already stopped.
+- A stopped follower retains its draft and known pending request. Successful explicit decisions may reattach existing owner-fenced native readers; they never retry a mutation. A snapshot's actual journal `last_seq` prevents older replayed required events from resurrecting a known decision or replacing newer public history with a replay prefix.
+- The actual temporary endpoint retains `public_history`, `active_run` and `latest_run`, adding only `latest_run_execution`: actual owned run identity/status/model, `last_seq`, UTC start and bounded public activity/status. This is not a message index or another persisted snapshot. Unknown message association remains unpositioned. Expiry/project/user isolation and native purge policy remain unchanged.
+- Indexed, legacy `list_messages`, and temporary readers share the same bounded journal reader and public execution formatter. Valid final bodies survive invalid consumed activity; no alternate replay/fallback mechanism is introduced.

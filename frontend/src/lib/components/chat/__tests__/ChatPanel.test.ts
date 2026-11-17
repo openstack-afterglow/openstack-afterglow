@@ -171,6 +171,138 @@ beforeEach(() => {
 });
 
 describe('ChatPanel', () => {
+	it.each(['baseline', 'rich'] as const)('keeps %s unpositioned approval usable after SSE failure and restores its actual start after reload', async (shape) => {
+		let decided = false;
+		const descriptor = { run_id: 'run-1', conversation_id: null, temp_thread_id: 'temp-1', status: 'awaiting_input', run_kind: 'completion', events_url: '/events', cancel_url: '/cancel' };
+		const request: RunActivityItem = {
+			id: 'approval:owned-call', kind: 'approval', seq: 3, createdAt: at, callId: 'owned-call',
+			name: 'inspect', effect: 'read', arguments: { target: '<redacted>' },
+			preview: [{ type: 'text', text: 'Owned pending preview' }], expiresAt: '2099-01-01T00:00:00Z',
+			destination: null, decision: null, decidedAt: null
+		};
+		const execution = () => ({
+			run_id: 'run-1', run_kind: 'completion', status: decided ? 'completed' : 'awaiting_input', model_name: 'model-1',
+			started_at: at, last_seq: decided ? 5 : 3, activity_status: 'available', activity_error_code: null,
+			activity: [
+				{ id: 'stage:2', kind: 'stage', seq: 2, createdAt: at, stage: 'model_request', toolName: null },
+				{ ...request, decision: decided ? 'deny' : null, decidedAt: decided ? '2026-07-26T00:00:10Z' : null },
+				...(decided ? [{ id: 'terminal:5', kind: 'terminal', seq: 5, createdAt: '2026-07-26T00:00:12Z', status: 'completed', errorCode: null, message: null }] : [])
+			]
+		});
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {
+			if (path !== '/api/v1/chat/temp-threads/temp-1') return fallback(path, ...args);
+			const base = { temp_thread_id: 'temp-1', active_run: decided ? null : descriptor };
+			return shape === 'baseline' ? {
+				...base, latest_run: descriptor, latest_run_execution: execution(),
+				public_history: [
+					{ role: 'user', parts: [{ type: 'text', text: 'Saved question' }] },
+					{ role: 'assistant', parts: [{ type: 'text', text: 'Saved answer' }] }
+				]
+			} : {
+				...base, active_run_positioned: false,
+				messages: [
+					{ id: 'saved-user', role: 'user', content: 'Saved question', conversation_id: '', parent_id: null, created_at: at },
+					{ id: 'saved-answer', role: 'assistant', content: 'Saved answer', conversation_id: '', parent_id: 'saved-user', created_at: at }
+				],
+				unpositioned_runs: [{ ...execution(), input_parts: [], parts: [], order_unknown: true }]
+			};
+		});
+		mocks.followRun.mockImplementation(async function* () {
+			yield event(1, 'run.started', { conversation_id: null, temp_thread_id: 'temp-1', model_name: 'model-1', effective_features: {}, run_kind: 'completion' });
+			yield event(2, 'run.stage.changed', { stage: 'model_request', tool_name: null });
+			yield event(3, 'tool.approval_required', {
+				call_id: 'owned-call', name: 'inspect', source: 'mcp', effect: 'read', destination: null,
+				redacted_arguments: { target: '<redacted>' }, preview: request.preview,
+				expected_state_revision: null, writer_fence: null, expires_at: request.expiresAt
+			});
+			throw new Error('Follower disconnected');
+		});
+		mocks.post.mockImplementation(async (path: string) => {
+			if (path === '/api/v1/chat/runs/run-1/approvals/owned-call') decided = true;
+			return { run_id: 'run-1', call_id: 'owned-call', decision: 'deny', status: 'denied', run_status: 'completed' };
+		});
+		sessionStorage.setItem('chat:tempThreadId:domain-1:user-1:project-1', 'temp-1');
+		let view = render(ChatPanel);
+		await screen.findByText('Follower disconnected');
+		const detached = view.container.querySelector<HTMLDetailsElement>('[data-temporary-unpositioned]')!;
+		expect(detached.open).toBe(true);
+		expect(detached.querySelector('.execution-timeline[open]')).toBeTruthy();
+		expect(screen.getByText('Owned pending preview')).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: '거부' }));
+		expect(mocks.post).toHaveBeenCalledWith('/api/v1/chat/runs/run-1/approvals/owned-call', { decision: 'deny' }, 'token', 'project-1');
+		await waitFor(() => expect(screen.queryByRole('button', { name: '이번만 허용하기' })).toBeNull());
+		view.unmount();
+		view = render(ChatPanel);
+		await screen.findByText('Saved answer');
+		await fireEvent.click(view.container.querySelector('[data-temporary-unpositioned] > summary')!);
+		const summary = screen.getByText('12초 동안 작업함');
+		expect((summary.closest('details') as HTMLDetailsElement).open).toBe(false);
+		await fireEvent.click(summary);
+		expect(screen.getByText('거부 · inspect')).toBeTruthy();
+		expect(screen.queryByRole('button', { name: '이번만 허용하기' })).toBeNull();
+		expect([...view.container.querySelectorAll('[data-history-message-id] .user-text')].map((node) => node.textContent)).toEqual(['Saved question']);
+		view.unmount();
+	});
+
+	it('retains a positioned temporary pending card after follower error and sends its current run decision', async () => {
+		mocks.followRun.mockImplementation(async function* () {
+			yield event(1, 'tool.approval_required', {
+				call_id: 'positioned-call', name: 'inspect', source: 'mcp', effect: 'read', destination: null,
+				redacted_arguments: {}, preview: [{ type: 'text', text: 'Positioned pending preview' }],
+				expected_state_revision: null, writer_fence: null, expires_at: '2099-01-01T00:00:00Z'
+			});
+			throw new Error('Positioned follower disconnected');
+		});
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => path === '/api/v1/chat/temp-threads/temp-1'
+			? { temp_thread_id: 'temp-1', public_history: [], active_run: null, latest_run: null, latest_run_execution: null }
+			: fallback(path, ...args));
+		const view = render(ChatPanel);
+		await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/models', 'token', 'project-1'));
+		await fireEvent.click(screen.getByTitle('저장되지 않는 임시 채팅'));
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Inspect' } });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		await screen.findByText('Positioned follower disconnected');
+		expect(screen.getByText('Positioned pending preview').closest('[data-history-message-id]')).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: '거부' }));
+		expect(mocks.post).toHaveBeenCalledWith('/api/v1/chat/runs/run-1/approvals/positioned-call', { decision: 'deny' }, 'token', 'project-1');
+		view.unmount();
+	});
+
+	it('does not reactivate a snapshot-decided approval when its older required event replays before another disconnect', async () => {
+		const descriptor = { run_id: 'run-1', conversation_id: null, temp_thread_id: 'temp-1', status: 'running', run_kind: 'completion', events_url: '/events', cancel_url: '/cancel' };
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => path === '/api/v1/chat/temp-threads/temp-1' ? {
+			temp_thread_id: 'temp-1', public_history: [], active_run: descriptor, latest_run: descriptor,
+			latest_run_execution: {
+				run_id: 'run-1', run_kind: 'completion', status: 'running', model_name: 'model-1', started_at: at, last_seq: 4,
+				activity_status: 'available', activity_error_code: null, activity: [{
+					id: 'approval:old-call', kind: 'approval', seq: 3, createdAt: at, callId: 'old-call', name: 'inspect',
+					effect: 'read', arguments: {}, preview: [], expiresAt: '2099-01-01T00:00:00Z',
+					destination: null, decision: 'deny', decidedAt: at
+				}]
+			}
+		} : fallback(path, ...args));
+		mocks.followRun.mockImplementation(async function* () {
+			yield event(1, 'run.started', { conversation_id: null, temp_thread_id: 'temp-1', model_name: 'model-1', effective_features: {}, run_kind: 'completion' });
+			yield event(2, 'run.stage.changed', { stage: 'model_request', tool_name: null });
+			yield event(3, 'tool.approval_required', {
+				call_id: 'old-call', name: 'inspect', source: 'mcp', effect: 'read', destination: null,
+				redacted_arguments: {}, preview: [], expected_state_revision: null, writer_fence: null,
+				expires_at: '2099-01-01T00:00:00Z'
+			});
+			throw new Error('Replay follower disconnected');
+		});
+		sessionStorage.setItem('chat:tempThreadId:domain-1:user-1:project-1', 'temp-1');
+		const view = render(ChatPanel);
+		await screen.findByText('Replay follower disconnected');
+		expect(screen.queryByRole('button', { name: '이번만 허용하기' })).toBeNull();
+		expect(screen.queryByRole('button', { name: '거부' })).toBeNull();
+		expect(screen.getByText('거부 · inspect')).toBeTruthy();
+		view.unmount();
+	});
+
 	it.each(['completed', 'failed', 'canceled'] as const)('restores and pages causal temporary turns while inspecting unpositioned legacy runs separately after %s', async (outcome) => {
 		const finish = Promise.withResolvers<void>();
 		const observed = Promise.withResolvers<void>();
@@ -286,7 +418,6 @@ describe('ChatPanel', () => {
 		expect(detached.textContent).toContain('대화 내 순서를 확인할 수 없어');
 		expect(detached.textContent).toContain('legacy failed answer');
 		await fireEvent.click(detached.querySelector('.execution-timeline > summary')!);
-		await fireEvent.click(detached.querySelector('.tool-category > summary')!);
 		await fireEvent.click(detached.querySelector<HTMLButtonElement>('.tool-head')!);
 		expect(detached.textContent).toContain('legacy recorded input');
 		expect(detached.textContent).toContain('legacy recorded result');
@@ -571,7 +702,7 @@ describe('ChatPanel', () => {
 			await fireEvent.click(screen.getByRole('button', { name: '전송' }));
 		}
 		await streamed.promise;
-		flushAnimationFrames();
+		flushAnimationFrames(performance.now() + 50);
 		await tick();
 		await waitFor(() => expect(view.container.textContent).toContain(canaries.stream));
 		expect(view.container.textContent).not.toContain(canaries.output);
@@ -580,24 +711,23 @@ describe('ChatPanel', () => {
 		continueStream.resolve();
 		await observed.promise;
 		// The manual RAF fixture must advance past ChatPanel's 50ms projection pacing.
-		flushAnimationFrames(performance.now() + 50);
+		flushAnimationFrames(performance.now() + 100);
 		await tick();
 		await waitFor(() => expect(view.container.textContent).toContain(canaries.output));
 		const timeline = view.container.querySelector<HTMLDetailsElement>('.execution-timeline')!;
 		expect(timeline).toBeTruthy();
 		expect(view.container.querySelectorAll('.execution-timeline')).toHaveLength(1);
-		const category = timeline.querySelector<HTMLDetailsElement>('.tool-category')!;
 		const tool = timeline.querySelector<HTMLButtonElement>('.tool-card .tool-head')!;
 		timeline.open = true;
-		category.open = true;
 		await fireEvent(timeline, new Event('toggle'));
-		await fireEvent(category, new Event('toggle'));
 		await fireEvent.click(tool);
 		const stepLabels = [...timeline.querySelectorAll('ol > li')].map((item) => item.textContent);
 		finish.resolve();
 		await waitFor(() => expect(screen.queryByRole('button', { name: '생성 중단' })).toBeNull());
 		expect(view.container.querySelector('.execution-timeline')).toBe(timeline);
-		expect(timeline.open && category.open).toBe(true);
+		expect(timeline.open).toBe(false);
+		await fireEvent.click(timeline.querySelector('summary')!);
+		expect(timeline.open).toBe(true);
 		expect(tool.getAttribute('aria-expanded')).toBe('true');
 		expect(timeline.querySelectorAll('.tool-card')).toHaveLength(1);
 		expect(timeline.querySelector(`[data-run-outcome="${state.status}"]`)).toBeTruthy();
@@ -1455,7 +1585,7 @@ describe('ChatPanel', () => {
 		});
 		expect(screen.queryByText('이전 본문')).toBeNull();
 
-		await fireEvent.click(screen.getByLabelText('작업 내역 열기'));
+		await fireEvent.click(document.querySelector('.execution-timeline > summary')!);
 		await fireEvent.click(screen.getByRole('button', { name: '추론 과정' }));
 		expect(screen.getByText('이전 추론')).toBeTruthy();
 	});
@@ -1500,7 +1630,7 @@ describe('ChatPanel', () => {
 
 		await waitFor(() => {
 			flushAnimationFrames();
-			expect(screen.getByLabelText('작업 내역 열기')).toBeTruthy();
+			expect(document.querySelector('.execution-timeline > summary')).toBeTruthy();
 			expect(screen.getAllByText('컨텍스트 자동 압축 중')).toHaveLength(2);
 			expect(document.querySelector('.context-activity')).toBeNull();
 		});
@@ -1520,7 +1650,7 @@ describe('ChatPanel', () => {
 				preview: [{ type: 'text', text: 'Delete: server-1 (current state: ACTIVE)' }],
 				expected_state_revision: null,
 				writer_fence: null,
-				expires_at: '2026-07-27T12:00:00Z'
+				expires_at: '2099-07-27T12:00:00Z'
 			});
 		});
 
@@ -1531,7 +1661,7 @@ describe('ChatPanel', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
 
 		await screen.findByText('Delete: server-1 (current state: ACTIVE)');
-		await fireEvent.click(screen.getByRole('button', { name: '승인' }));
+		await fireEvent.click(screen.getByRole('button', { name: '이번만 허용하기' }));
 
 		expect(mocks.post).toHaveBeenCalledWith(
 			'/api/v1/chat/runs/run-1/approvals/call-1',

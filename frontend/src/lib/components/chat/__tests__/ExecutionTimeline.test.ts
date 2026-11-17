@@ -108,13 +108,11 @@ it('keeps completed execution details closed until each nested disclosure is ope
 		]
 	});
 
-	const timeline = getByLabelText('작업 내역 열기');
+	const timeline = container.querySelector('.execution-timeline > summary') as HTMLElement;
 	expect((timeline.closest('details') as HTMLDetailsElement).open).toBe(false);
 	await fireEvent.click(timeline);
-	const category = getByText('MCP · 문서');
-	expect((category.closest('details') as HTMLDetailsElement).open).toBe(false);
-	await fireEvent.click(category);
-	expect((category.closest('details') as HTMLDetailsElement).open).toBe(true);
+	expect(getByText('MCP · 문서').closest('.tool-category')).toBeTruthy();
+	expect(container.querySelector('.tool-category details')).toBeNull();
 	const toolButton = container.querySelector('.tool-head') as HTMLButtonElement;
 	expect(toolButton.getAttribute('aria-expanded')).toBe('false');
 	await fireEvent.click(toolButton);
@@ -154,7 +152,7 @@ it('renders durable generated files as owned download actions', async () => {
 		]
 	});
 
-	await fireEvent.click(getByLabelText('작업 내역 열기'));
+	await fireEvent.click(container.querySelector('.execution-timeline > summary') as HTMLElement);
 	await fireEvent.click(getByText('워크스페이스'));
 	await fireEvent.click(container.querySelector('.tool-head') as HTMLButtonElement);
 
