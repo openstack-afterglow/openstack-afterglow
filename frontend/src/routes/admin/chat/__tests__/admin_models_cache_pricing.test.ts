@@ -520,4 +520,48 @@ describe("admin media model registration", () => {
     expect(document.body.textContent).not.toMatch(/\{\w+\}/);
     expect(post).not.toHaveBeenCalled();
   });
+
+  it.each(["gpt-image-2", "gpt-image-2.5-flare"])("requires an explicit token billing choice and entered reservation for %s", async (name) => {
+    const media = { token_rates: { image: { input_per_million: "8", cache_read_per_million: "2", output_per_million: "30" } } };
+    serve([model(1, { provider_id: 2, model_name: name, display_name: name, model_kind: "image",
+      input_price_per_million: "5", effective_input_price_per_million: "5",
+      output_price_per_million: null, effective_output_price_per_million: null, media_pricing: media })], [openai]);
+    render(ModelPage);
+    const modal = await openEditor();
+    const basis = within(modal).getByLabelText(t("pricing.billingBasis", { kind: t("configuration.image") })) as HTMLSelectElement;
+    expect(basis.value).toBe("");
+    expect(document.querySelector("#model-edit-reservation-usd")).toBeNull();
+    await fireEvent.change(basis, { target: { value: "tokens" } });
+    const reservation = within(modal).getByLabelText(t("pricing.reservationCap")) as HTMLInputElement;
+    expect(reservation.value).toBe("");
+    await fireEvent.click(within(modal).getByText("저장"));
+    expect(toastError).toHaveBeenCalledWith(t("pricing.reservationError"));
+    expect(patch).not.toHaveBeenCalled();
+    // This is an explicit test-user input, not a catalog-derived or guessed tariff.
+    await fireEvent.input(reservation, { target: { value: "0.50" } });
+    await fireEvent.click(within(modal).getByText("저장"));
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(JSON.stringify(patch.mock.calls[0][1]))).toStrictEqual({
+      media_pricing: { ...media, billing_basis: "tokens", reservation_usd: "0.50" },
+    });
+  });
+
+  it.each(["gpt-realtime-whisper", "gpt-live-transcribe"])("saves explicit input-only realtime duration pricing for %s", async (name) => {
+    serve([model(1, { provider_id: 2, model_name: name, display_name: name, model_kind: "realtime",
+      input_price_per_million: null, effective_input_price_per_million: null,
+      output_price_per_million: null, effective_output_price_per_million: null, media_pricing: null })], [openai]);
+    render(ModelPage);
+    const modal = await openEditor();
+    await fireEvent.change(within(modal).getByLabelText(t("pricing.billingBasis", { kind: t("configuration.realtimeAudio") })), { target: { value: "duration" } });
+    const input = document.querySelector("#model-edit-realtime_input_per_minute") as HTMLInputElement;
+    const output = document.querySelector("#model-edit-realtime_output_per_minute") as HTMLInputElement;
+    expect(input.value).toBe("");
+    expect(output.value).toBe("");
+    await fireEvent.input(input, { target: { value: "0.017" } });
+    await fireEvent.click(within(modal).getByText("저장"));
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(JSON.stringify(patch.mock.calls[0][1]))).toStrictEqual({
+      media_pricing: { billing_basis: "duration", realtime_input_per_minute: "0.017" },
+    });
+  });
 });
