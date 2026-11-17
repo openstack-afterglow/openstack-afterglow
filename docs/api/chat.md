@@ -13,6 +13,18 @@ Afterglow 백엔드는 독자적인 AI 모델·에이전트 실행 엔진 및 �
 
 직접적인 OpenAI / Anthropic 호환 API 호스팅은 Lumen 서비스가 전담합니다.
 
+## MCP 개인·조직 연결
+
+브라우저의 `/api/v1/chat/mcp-settings`는 Lumen `/v1/mcp-settings`로 전달된다. 브라우저 access JWT는 Afterglow가 검증하고 실제 Lumen 요청에는 검증된 native identity와 프로젝트를 전달한다. 클라이언트가 보낸 domain/manager 표시는 권위가 아니다.
+
+- `GET /mcp-settings`: registry 검색·페이지네이션과 개인/조직/전역 연결 상태, 실제 managed sandbox 가용성을 반환한다.
+- `POST /mcp-connections`, `PATCH|DELETE /mcp-connections/{id}`: 본인 템플릿 연결을 관리한다.
+- `/domains/{domain_id}/mcp-connections`: 해당 domain 구성원은 비밀 없이 조회하고 본인의 활성화만 변경한다. 조직 연결 생성·수정·삭제와 공유 OAuth 관리는 exact-domain manager 또는 unrestricted human system admin만 가능하다. 프로젝트 admin 역할만으로 허용하지 않는다.
+- 기존 `/mcp-servers/{id}/activation` 및 OAuth 흐름은 유지된다. Catalog 설치와 조직 연결은 `implicit_selection=false`이며 활성화한 정확한 `config_version`과 현재 membership을 실행 전 재검증한다.
+- Playwright·Markitdown은 HTTPS 연결을 허위 생성하지 않는다. 검증된 실행별 sandbox profile이 있어야 사용 가능하고 미설정 상태에서는 그 이유를 표시한다.
+
+클라우드 VM 생성은 별도의 Afterglow MCP `manage` 동의와 프로토콜 v2가 필요하다. 모델은 실제 이미지·flavor·네트워크·부팅 볼륨 크기·사용자 SSH 키·보안그룹을 명시하고 사용자가 기존 승인 카드에서 확인한 뒤에만 변경 도구를 실행한다. API 요청 수락은 guest readiness가 아니다.
+
 ## 출처와 진행 이력 (local source, 2026-11-03)
 
 - `source.registered`는 `message_id`와 canonical citation을, `tool.call.progress`는 `call_id/name/text`를 전달한다. Progress는 최대4,000 Unicode code point이며 canonical tool part에 최근32개 실제 업데이트를 보존한다. `child.created`는 요청 시점 정보일 뿐 현재 실행 단계 추정이 아니며, `child.completed`는 실제 완료/실패/취소·summary·artifact metadata다. 내부 사고과정·성공 예측·가상 백분율을 생성하지 않는다.

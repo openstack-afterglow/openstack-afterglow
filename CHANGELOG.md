@@ -8,6 +8,8 @@
 ## [Unreleased]
 
 ### Changed
+- 시스템 관리자 부여 직후 Keystone의 computed-assignment 캐시에 가려진 사용자 grant를 직접 system-role 조회와 660초 Redis 후보 힌트로 확인한다. 부여·회수 결과를 표시하고 목록·배너를 같은 최신 snapshot에서 갱신한다. 힌트는 권한을 부여하지 않으며, Afterglow 외부 변경의 즉시 발견은 보장하지 않는다.
+- 임베딩 등록·단가 수정에서 숨은 미디어·출력 가격을 제거하고 입력 토큰 단가만 전송한다. 모델 레지스트리와 이미지·오디오 Studio가 저장소·스캐너 미설정, 경로·과금 기준 미준비, 단가 누락을 같은 실행 준비 메시지로 표시한다.
 - Lumen 모델 종류에 텍스트 임베딩을 추가하고 `/dashboard/chat/embeddings` Embedding Studio를 제공한다. 모델·차원·가격 권한을 다시 확인한 뒤 1–16개 입력을 취소 가능한 요청으로 처리하며, 벡터 미리보기·norm·cosine similarity·usage/cost와 JSON 복사·다운로드를 보여 준다. 브라우저 요청은 로그인한 Lumen BFF를 거치며 응답에 no-store를 적용한다. Live provider/production 검증은 포함하지 않는다.
 
 - 프런트엔드 런타임 이미지를 `node:20-alpine`에서 `node:22-alpine`으로 올리고(Node 20은 2026년 4월 지원 종료), 태그 푸시 시 쓰는 `setup-node`도 22로 맞췄다. 운영 이미지는 다음 릴리스 빌드부터 바뀐다. 이에 맞춰 `Promise.withResolvers()`(4곳)와 `Map.groupBy()`(1곳)를 적용했다.
