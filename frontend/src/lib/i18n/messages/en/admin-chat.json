@@ -1,5 +1,5 @@
 {
-	"configuration.embedding": "Text embeddings",
+	"configuration.embedding": "Embedding",
 	"pricing.embeddingInputOnly": "Embedding models are priced by input tokens only; no output-token price applies.",
 	"accounts.currentConnection": "Current connection settings",
 	"accounts.connectionIdentity": "Provider #{provider} · Account #{account} · Key #{credential}",

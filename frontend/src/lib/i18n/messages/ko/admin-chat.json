@@ -1,5 +1,5 @@
 {
-	"configuration.embedding": "텍스트 임베딩",
+	"configuration.embedding": "임베딩",
 	"pricing.embeddingInputOnly": "임베딩 모델은 입력 토큰만 과금하며 출력 토큰 단가는 적용되지 않습니다.",
 	"accounts.currentConnection": "현재 연결 설정",
 	"accounts.connectionIdentity": "제공자 #{provider} · 계정 #{account} · 키 #{credential}",

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/sve
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { writable } from "svelte/store";
 import { t } from "$lib/i18n/ns/admin-chat";
+import { t as studioT } from "$lib/i18n/ns/chat-studio";
 import { initLocale } from "$lib/i18n/runtime.svelte";
 
 const mocks = vi.hoisted(() => {
@@ -459,12 +460,64 @@ describe("admin media model registration", () => {
     })], [openai]);
     render(ModelPage);
     await screen.findByText("Image Maker");
-    expect(screen.getByText("실행 경로 없음 · 실행 불가")).toBeTruthy();
+    expect(screen.getByText(studioT("mediaReadiness.route"))).toBeTruthy();
+    expect(screen.queryByText("실행 경로 없음 · 실행 불가")).toBeNull();
     expect(screen.getByText(/1024x1024:high: 0.08 USD \/ 장/)).toBeTruthy();
     const modal = await openEditor();
     await fireEvent.input(within(modal).getByLabelText("이미지 variant 단가"), { target: { value: "0.12" } });
     await fireEvent.click(within(modal).getByText("저장"));
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
     expect(JSON.parse(JSON.stringify(patch.mock.calls[0][1]))).toStrictEqual({ media_pricing: { image_variants: { "1024x1024:high": "0.12" } } });
+  });
+
+  it("shows the asset-pipeline operator reason and a ready success state for media rows", async () => {
+    const gate = (reason_code: string | null, available: boolean) => ({ feature_gates: { image_output: { available, mode: available ? "native" : "none", reason_code, pricing_available: true } } });
+    serve([
+      model(1, { provider_id: 2, display_name: "Blocked Image", model_kind: "image", media_pricing: { image_variants: { "1024x1024:low": "0.02" } }, effective_capabilities: gate("asset_pipeline_unavailable", false) }),
+      model(2, { provider_id: 2, display_name: "Ready Image", model_kind: "image", media_pricing: { image_variants: { "1024x1024:low": "0.02" } }, effective_capabilities: gate(null, true) }),
+    ], [openai]);
+    render(ModelPage);
+    await screen.findByText("Blocked Image");
+    expect(screen.getByText(studioT("mediaReadiness.assets"))).toBeTruthy();
+    expect(screen.getByText(studioT("mediaReadiness.ready"))).toBeTruthy();
+    expect(document.body.textContent).not.toContain("asset_pipeline_unavailable");
+  });
+
+  async function reviewDiscovered(candidates: Record<string, unknown>[]) {
+    get.mockImplementation((path: string) => {
+      if (path === "/api/v1/chat/admin/providers") return Promise.resolve([openai]);
+      if (path === "/api/v1/chat/admin/models") return Promise.resolve([]);
+      if (path === "/api/v1/chat/admin/providers/2/available-models") return Promise.resolve({ provider_id: 2, source: "api", live_status: "success", complete: true, fetched_at: "2026-11-17T00:00:00Z", models: candidates.map((c) => c.id), candidates });
+      return Promise.resolve([]);
+    });
+    render(ModelPage);
+    const add = await screen.findByRole("button", { name: "+ 모델 추가" });
+    await waitFor(() => expect((add as HTMLButtonElement).disabled).toBe(false));
+    await fireEvent.click(add);
+    await fireEvent.click(await screen.findByRole("button", { name: "모델 불러오기" }));
+    for (const candidate of candidates) await fireEvent.click(await screen.findByLabelText(String(candidate.id)));
+    await fireEvent.click(screen.getByRole("button", { name: "선택 모델 검토" }));
+  }
+
+  it("preselects embedding from discovery and registers it with input-token price only", async () => {
+    await reviewDiscovered([{ id: "text-embedding-3-small", model_kind: "embedding", purpose: "non_chat", input_token_limit: 8191 }]);
+    const kind = document.querySelector("#review-kind-0") as HTMLSelectElement;
+    expect(kind.value).toBe("embedding");
+    expect([...kind.options].map((option) => option.value)).toContain("embedding");
+    expect(document.querySelector("#review-output-0")).toBeNull();
+    await fireEvent.input(document.querySelector("#review-input-0")!, { target: { value: "0.02" } });
+    await fireEvent.click(screen.getByRole("button", { name: "비활성으로 저장" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(JSON.stringify(post.mock.calls[0][1]))).toStrictEqual({ provider_id: 2, model_name: "text-embedding-3-small", model_kind: "embedding", input_price_per_million: "0.02", is_active: false });
+  });
+
+  it("requires an explicit kind for a Lumen kind this build does not know and never prints a raw placeholder", async () => {
+    await reviewDiscovered([{ id: "future-model", model_kind: "video", purpose: "non_chat" }]);
+    const kind = document.querySelector("#review-kind-0") as HTMLSelectElement;
+    expect(kind.value).toBe("");
+    expect(await screen.findByText(t("pricing.kindRequired"))).toBeTruthy();
+    expect((screen.getByRole("button", { name: "비활성으로 저장" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(document.body.textContent).not.toMatch(/\{\w+\}/);
+    expect(post).not.toHaveBeenCalled();
   });
 });

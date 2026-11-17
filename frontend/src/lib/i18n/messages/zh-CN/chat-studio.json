@@ -1,4 +1,9 @@
 {
+	"mediaReadiness.assets": "未配置媒体存储或恶意软件扫描器。请联系运维人员检查 Lumen S3 和 ClamAV 设置。",
+	"mediaReadiness.route": "执行路径尚未就绪。请联系运维人员检查提供商 API 密钥、支持的模型、计费依据及必需费率。",
+	"mediaReadiness.price": "缺少执行费率。请联系运维人员设置所选计费依据的必需费率。",
+	"mediaReadiness.unverified": "尚未确认执行准备状态。请刷新模型功能。",
+	"mediaReadiness.ready": "执行路径和费率已就绪",
 	"embeddingStudio.title": "嵌入 Studio",
 	"embeddingStudio.description": "将文本转换为向量，并比较余弦相似度。",
 	"embeddingStudio.invalidResponse": "嵌入服务返回了无效响应。",

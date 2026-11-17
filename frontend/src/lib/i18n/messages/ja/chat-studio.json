@@ -1,4 +1,9 @@
 {
+	"mediaReadiness.assets": "メディア保存先またはウイルス検査が未設定です。運用担当者に Lumen S3・ClamAV 設定の確認を依頼してください。",
+	"mediaReadiness.route": "実行経路が未準備です。運用担当者に API キー、対応モデル、課金基準と必須料金の確認を依頼してください。",
+	"mediaReadiness.price": "実行料金が未設定です。選択した課金基準の必須料金を運用担当者が設定してください。",
+	"mediaReadiness.unverified": "実行準備を確認できません。モデル機能を再取得してください。",
+	"mediaReadiness.ready": "実行経路・料金の準備完了",
 	"embeddingStudio.title": "埋め込みStudio",
 	"embeddingStudio.description": "テキストをベクトルに変換し、コサイン類似度を比較します。",
 	"embeddingStudio.invalidResponse": "埋め込みサービスの応答が無効です。",

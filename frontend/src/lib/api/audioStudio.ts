@@ -5,6 +5,7 @@ import { uploadChatAttachment } from './chatAttachments';
 import type { AvailableModel } from './chatTree';
 import { parseAudioTranscript, type AudioTranscript } from './audioTranscript';
 import type { ExperienceContext } from '$lib/utils/experience';
+import { mediaGateReadiness } from './mediaReadiness';
 
 export type AudioKind = 'tts' | 'stt';
 export type AudioFormat = 'mp3' | 'wav';
@@ -40,12 +41,12 @@ export function audioReadiness(model: AudioModel | undefined, capabilities: Audi
 	if (!model.provider_api_key_configured) return t('audioStudioApi.providerKeyMissing');
 	const feature = kind === 'tts' ? 'audio_output' : 'audio_input';
 	const gate = model.capabilities?.feature_gates?.[feature];
-	if (!gate || gate.available !== true || gate.mode !== 'native') return t('audioStudioApi.nativeRouteUnavailable');
-	if (gate.pricing_available !== true) return t('audioStudioApi.pricingMissing');
+	const listedReason = mediaGateReadiness(gate);
+	if (listedReason) return listedReason;
 	if (!capabilities || capabilities.model_id !== model.id || capabilities.model_kind !== kind) return t('audioStudioApi.readinessUnverified');
 	const exact = capabilities.model_capabilities?.feature_gates?.[feature];
-	if (!exact || exact.available !== true || exact.mode !== 'native') return t('audioStudioApi.currentRouteUnavailable');
-	if (exact.pricing_available !== true) return t('audioStudioApi.currentPricingMissing');
+	const currentReason = mediaGateReadiness(exact);
+	if (currentReason) return currentReason;
 	if (kind === 'tts' && (!capabilities.available_voices?.length || !capabilities.available_formats?.some((format) => format === 'mp3' || format === 'wav'))) return t('audioStudioApi.voiceFormatUnverified');
 	return null;
 }

@@ -16,6 +16,14 @@ export const MODEL_LABELS: Record<ModelKind, string> = {
 	get realtime() { return t('configuration.realtimeAudio'); },
 	get embedding() { return t('configuration.embedding'); }
 };
+/** Lumen may add kinds this build cannot price; unknown values must never reach labels or request payloads. */
+export function knownModelKind(value: unknown): ModelKind | null {
+	return typeof value === 'string' && Object.hasOwn(MODEL_LABELS, value) ? value as ModelKind : null;
+}
+export function modelKindLabel(value: unknown): string {
+	const kind = knownModelKind(value);
+	return kind ? MODEL_LABELS[kind] : t('pricing.unknownKind');
+}
 export const TOKEN_FIELDS = [
 	{ key: 'input_per_million', get label() { return t('configuration.input'); } },
 	{ key: 'cache_read_per_million', get label() { return t('pricing.cacheInput'); } },
@@ -56,10 +64,11 @@ export function effectiveBasis(kind: ModelKind, draft: PricingDraft): string {
 	return kind === 'text' || kind === 'embedding' ? 'tokens' : draft.basis || (kind === 'image' ? 'unit' : 'duration');
 }
 export function pricingError(kind: ModelKind, draft: PricingDraft): string | undefined {
+	if (kind === 'embedding') return;
 	for (const value of [...Object.values(draft.rates), ...Object.values(draft.tokens.image), ...Object.values(draft.tokens.audio)]) {
 		if (value.trim() && !DECIMAL.test(value.trim())) return t('pricing.decimalError');
 	}
-	if (kind !== 'text' && kind !== 'embedding' && effectiveBasis(kind, draft) === 'tokens' && (!draft.rates.reservation_usd.trim() || ZERO.test(draft.rates.reservation_usd.trim()))) return t('pricing.reservationError');
+	if (kind !== 'text' && effectiveBasis(kind, draft) === 'tokens' && (!draft.rates.reservation_usd.trim() || ZERO.test(draft.rates.reservation_usd.trim()))) return t('pricing.reservationError');
 	if (draft.variants.length > 500) return t('pricing.variantLimit');
 	const names = new Set<string>();
 	for (const row of draft.variants) {
@@ -69,7 +78,9 @@ export function pricingError(kind: ModelKind, draft: PricingDraft): string | und
 	}
 }
 /** Merge only edited leaves: hidden units, other billing bases and unknown server keys survive. */
-export function pricingPayload(draft: PricingDraft, baseline?: MediaPricing | null): MediaPricing | null {
+export function pricingPayload(kind: ModelKind, draft: PricingDraft, baseline?: MediaPricing | null): MediaPricing | null {
+	// Embeddings accept only the top-level input-token price, never hidden media drafts.
+	if (kind === 'embedding') return null;
 	const before = pricingDraft(baseline);
 	const result: MediaPricing = JSON.parse(JSON.stringify(baseline ?? {}));
 	if (draft.basis !== before.basis) {

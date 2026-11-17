@@ -1,4 +1,9 @@
 {
+	"mediaReadiness.assets": "Chưa cấu hình kho lưu trữ media hoặc trình quét mã độc. Nhờ người vận hành kiểm tra cài đặt Lumen S3 và ClamAV.",
+	"mediaReadiness.route": "Đường thực thi chưa sẵn sàng. Nhờ người vận hành kiểm tra khóa API, mô hình được hỗ trợ, cơ sở tính phí và các mức phí bắt buộc.",
+	"mediaReadiness.price": "Chưa có giá thực thi. Nhờ người vận hành đặt các mức phí bắt buộc cho cơ sở tính phí đã chọn.",
+	"mediaReadiness.unverified": "Chưa xác minh trạng thái sẵn sàng. Hãy tải lại khả năng của mô hình.",
+	"mediaReadiness.ready": "Đường thực thi và giá đã sẵn sàng",
 	"embeddingStudio.title": "Studio nhúng",
 	"embeddingStudio.description": "Chuyển văn bản thành vectơ và so sánh độ tương đồng cosin.",
 	"embeddingStudio.invalidResponse": "Dịch vụ nhúng trả về phản hồi không hợp lệ.",

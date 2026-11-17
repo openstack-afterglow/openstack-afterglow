@@ -1,4 +1,9 @@
 {
+	"mediaReadiness.assets": "Media storage or malware scanner is not configured. Ask an operator to check Lumen S3 and ClamAV settings.",
+	"mediaReadiness.route": "Execution route is not ready. Ask an operator to check the provider API key, supported model, billing basis and required rates.",
+	"mediaReadiness.price": "Execution pricing is missing. Ask an operator to set the required rates for the selected billing basis.",
+	"mediaReadiness.unverified": "Execution readiness is unverified. Refresh model capabilities.",
+	"mediaReadiness.ready": "Execution route and pricing ready",
 	"embeddingStudio.title": "Embedding Studio",
 	"embeddingStudio.description": "Turn text into vectors and compare their cosine similarity.",
 	"embeddingStudio.invalidResponse": "The embedding service returned an invalid response.",

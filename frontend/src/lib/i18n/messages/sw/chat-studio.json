@@ -1,4 +1,9 @@
 {
+	"mediaReadiness.assets": "Hifadhi ya media au kichanganuzi cha programu hasidi hakijasanidiwa. Mwombe mwendeshaji akague mipangilio ya Lumen S3 na ClamAV.",
+	"mediaReadiness.route": "Njia ya utekelezaji haiko tayari. Mwombe mwendeshaji akague ufunguo wa API, modeli inayotumika, msingi wa utozaji na viwango vinavyohitajika.",
+	"mediaReadiness.price": "Bei ya utekelezaji haijawekwa. Mwombe mwendeshaji aweke viwango vinavyohitajika kwa msingi wa utozaji uliochaguliwa.",
+	"mediaReadiness.unverified": "Utayari wa utekelezaji haujathibitishwa. Onyesha upya uwezo wa modeli.",
+	"mediaReadiness.ready": "Njia ya utekelezaji na bei ziko tayari",
 	"embeddingStudio.title": "Studio ya upachikaji",
 	"embeddingStudio.description": "Badilisha maandishi kuwa vekta na ulinganishe ufanano wa kosaini.",
 	"embeddingStudio.invalidResponse": "Huduma ya upachikaji imerudisha jibu lisilo sahihi.",

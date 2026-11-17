@@ -119,7 +119,7 @@
 		{/if}
 	{/if}
 	{#each orderedModalities as modality (modality)}
-		{#if selected.includes(modality)}
+		{#if kind === 'embedding' ? modality === 'text' : selected.includes(modality)}
 			<div id="{prefix}-{modality}-pricing" class="border-t border-line pt-3" role="group" aria-labelledby="{prefix}-{modality}-tokens">
 				<p id="{prefix}-{modality}-tokens" class="mb-3 text-sm font-semibold text-ink-1">{modalityLabel(modality)}</p>
 				{#if modality === 'text'}
