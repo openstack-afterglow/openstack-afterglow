@@ -18,6 +18,14 @@
     "scope": "ChatPanel, ChatInput, ManagedSandboxToolsPicker after final popup-placement, oversized-saved-selection reset and stale-admission-rejection race fixes",
     "report": "/Users/pieroot/.local/share/afterglow-proofs/mcp-catalog-ui-20261118/selected-sandbox-final-admission-tests.json"
   },
+  "conversation_creation_handoff_regression": {
+    "passed": 102,
+    "failed": 0,
+    "scope": "ChatPanel after guarding preparation/creation cleanup and releasing preparation on explicit view detach; delayed send/retry creation resolve/reject cannot clear another running conversation",
+    "report": "/Users/pieroot/.local/share/afterglow-proofs/mcp-catalog-ui-20261118/conversation-creation-owner-tests.json",
+    "type_errors": 0,
+    "existing_unrelated_warnings": 15
+  },
   "covered": [
     "explicit empty default, exact canonical names and independent remote MCP selection",
     "names-only persistence, exact actor/home/domain/project isolation, same-owner token renewal and ref-counted cancellation",

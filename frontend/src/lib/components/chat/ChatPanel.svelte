@@ -488,6 +488,7 @@
 		for (const frame of revealFrames) cancelAnimationFrame(frame);
 		revealFrames.clear();
 		streaming = false;
+		preparingRun = false;
 		manualCompacting = false;
 		contextPhase = 'ready';
 		contextCause = null;
@@ -1770,11 +1771,12 @@
 		const hasScope = Boolean(activeConvId || (tempMode && tempThreadId));
 		if (!hasScope) return;
 		const prepared = await prepareRunTools(activeModelName);
-		if (!prepared) return;
+		if (!prepared || !ownsRunTools(prepared)) return;
 
 		const experience = beginExperienceAction('lumen', 'start', 'shared.stream');
 		experienceState(experience, 'loading', 3);
 		const previewState = await executeContextPreview({ emptyDraft: true, experience });
+		if (!ownsRunTools(prepared)) { experienceDiscarded(experience, 'stale'); return; }
 		if (!previewState) { preparingRun = false; return; }
 		if (!previewState.can_compact) {
 			contextError = t('panel.compact.noHistory');
@@ -1814,7 +1816,6 @@
 				idempotencyKey: crypto.randomUUID()
 			});
 			if (destroyed || generation !== streamGeneration) {
-				manualCompacting = false;
 				experienceDiscarded(experience, 'stale');
 				return;
 			}
@@ -1823,6 +1824,7 @@
 			void experienceApplied(experience, {}, () => !destroyed && generation === streamGeneration && currentRun === appliedRun);
 			await followCompactionRun(descriptor, generation, experience);
 		} catch (caught) {
+			if (!ownsRunTools(prepared)) { experienceDiscarded(experience, destroyed ? 'unmounted' : 'stale'); return; }
 			preparingRun = false;
 			manualCompacting = false;
 			contextPhase = 'failed';
@@ -2265,9 +2267,17 @@
 	class SandboxModelUnsupportedError extends Error {}
 
 
+	function ownsRunPreparation(generation: number, selection: number, ownerKey: string | null): boolean {
+		return !destroyed && generation === streamGeneration && selection === selectionGeneration
+			&& ownerKey === $managedSandboxTools.ownerKey && $authReady && !$projectSwitching;
+	}
+	function ownsRunTools(prepared: PreparedRunTools): boolean {
+		return ownsRunPreparation(prepared.generation, prepared.selection, prepared.sandbox.ownerKey);
+	}
+
 	function assertRunTools(prepared: PreparedRunTools, modelName: string): void {
 		assertPreparedSandboxTools(prepared.sandbox);
-		if (destroyed || prepared.generation !== streamGeneration || prepared.selection !== selectionGeneration) {
+		if (!ownsRunTools(prepared)) {
 			throw new ManagedSandboxSelectionError('owner_changed', []);
 		}
 		if (prepared.modelName !== modelName) throw new ManagedSandboxSelectionError('selection_changed', []);
@@ -2281,6 +2291,7 @@
 		preparingRun = true;
 		const generation = streamGeneration;
 		const selection = selectionGeneration;
+		const ownerKey = $managedSandboxTools.ownerKey;
 		try {
 			// Store captures owner and selection synchronously, then refreshes availability.
 			const sandbox = await prepareManagedSandboxTools();
@@ -2295,6 +2306,7 @@
 			}
 			return prepared;
 		} catch (caught) {
+			if (!ownsRunPreparation(generation, selection, ownerKey)) return null;
 			preparingRun = false;
 			if (!destroyed) error = caught instanceof ManagedSandboxSelectionError
 				? managedSandboxIssueMessage(caught.code, caught.names)
@@ -2493,14 +2505,16 @@
 		const inputParts: UserInputPart[] = [{ type: 'text', text }, ...toInputParts(draftAttachments)];
 		const requestFeatures = selectedFeatureOptions();
 		const prepared = await prepareRunTools(activeModelName);
-		if (!prepared) return;
+		if (!prepared || !ownsRunTools(prepared)) return;
 		if (!tempMode && activeConvId && historyHasAfter) {
 			const loadedLatest = await replaceHistoryWindow(selectionGeneration, experience);
+			if (!ownsRunTools(prepared)) { experienceDiscarded(experience, 'stale'); return; }
 			if (!loadedLatest) { preparingRun = false; return; }
 		}
 		try {
 			assertRunTools(prepared, activeModelName);
 		} catch (caught) {
+			if (!ownsRunTools(prepared)) { experienceDiscarded(experience, destroyed ? 'unmounted' : 'stale'); return; }
 			preparingRun = false;
 			error = chatFailureMessage(caught, t('panel.errors.runFailed'));
 			return;
@@ -2519,6 +2533,7 @@
 		try {
 			convId = await ensureConversation(experience, prepared);
 		} catch (e) {
+			if (!ownsRunTools(prepared)) { experienceDiscarded(experience, destroyed ? 'unmounted' : 'stale'); return; }
 			error = chatFailureMessage(e, t('panel.errors.createConversation'));
 			endStream();
 			preparingRun = false;
@@ -2559,6 +2574,7 @@
 			};
 			return;
 		}
+		if (!ownsRunTools(prepared)) { experienceDiscarded(experience, 'stale'); return; }
 		if (!convId) {
 			endStream();
 			preparingRun = false;
@@ -2692,7 +2708,7 @@
 		const experience = beginExperienceAction('lumen', 'retry', 'shared.stream');
 		const submittedAtMs = performance.now();
 		const prepared = await prepareRunTools(activeAgent?.model_name || modelName || selectedModel);
-		if (!prepared) return;
+		if (!prepared || !ownsRunTools(prepared)) return;
 		invalidateContextPreview();
 		streaming = true;
 		stream = { base: activePath.slice(0, idx), assistant: newAssistantDraft(modelName || selectedModel), conversationId, temp: false };
@@ -2736,7 +2752,7 @@
 			const submittedAtMs = performance.now();
 			error = null;
 			const prepared = await prepareRunTools(submission.effectiveModelName, submission);
-			if (!prepared) return;
+			if (!prepared || !ownsRunTools(prepared)) return;
 			invalidateContextPreview();
 			streaming = true;
 			let convId = submission.conversationId || activeConvId;
@@ -2744,12 +2760,14 @@
 				try {
 					convId = await ensureConversation(experience, prepared);
 				} catch (e) {
+					if (!ownsRunTools(prepared)) { experienceDiscarded(experience, destroyed ? 'unmounted' : 'stale'); return; }
 					error = chatFailureMessage(e, t('panel.errors.createConversation'));
 					endStream();
 					preparingRun = false;
 					return;
 				}
 			}
+			if (!ownsRunTools(prepared)) { experienceDiscarded(experience, 'stale'); return; }
 			if (!convId) {
 				endStream();
 				preparingRun = false;
