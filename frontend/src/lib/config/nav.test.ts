@@ -19,6 +19,14 @@ describe('allNavItems service inheritance', () => {
 		expect(byHref.get('/dashboard/compute/instances')?.service).toBeNull();
 	});
 
+	it('exposes Decision Studio with the same chat service gate and localized label', () => {
+		expect(allNavItems(false, DEFAULT_BETA_FEATURES).find(item => item.href === '/dashboard/chat/decisions'))
+			.toMatchObject({ service: 'chat', label: '의사결정 Studio' });
+		initLocale('en');
+		expect(allNavItems(false, DEFAULT_BETA_FEATURES).find(item => item.href === '/dashboard/chat/decisions'))
+			.toMatchObject({ service: 'chat', label: 'Decision Studio' });
+	});
+
 	it('includes volume and database backups while keeping snapshots gated by default', () => {
 		const hrefs = allNavItems(false, DEFAULT_BETA_FEATURES).map(item => item.href);
 

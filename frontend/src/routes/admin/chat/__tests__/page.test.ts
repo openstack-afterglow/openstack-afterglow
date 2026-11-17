@@ -8,6 +8,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { writable } from "svelte/store";
 import { t } from '$lib/i18n/ns/admin-chat';
+import { t as nativeT } from '$lib/i18n/ns/native-providers';
 import { t as commonT } from '$lib/i18n/ns/common';
 
 const mocks = vi.hoisted(() => {
@@ -90,7 +91,7 @@ const provider = {
   has_api_key: true,
   has_billing_admin_key: false,
   billing_capability: "openai_admin_usage" as const,
-  models_dev_provider_id: "openai",
+  provider_family: "native",
   is_active: true,
   margin_multiplier: 1,
   // Every account-native provider DTO carries its endpoint policy (NOT NULL, default 'priority').
@@ -192,9 +193,10 @@ const models = [
     output_price_per_million: "8",
     effective_input_price_per_million: "2",
     effective_output_price_per_million: "8",
-    effective_price_source: "models.dev",
-    models_dev_model_id: "openai/gpt-test",
-    price_source: "models.dev",
+    effective_price_source: "manual",
+    provider_family: "native",
+    price_origin: "manual",
+    price_source: "manual",
   },
   {
     id: 11,
@@ -208,6 +210,8 @@ const models = [
     output_price_per_million: "9",
     models_dev_model_id: null,
     price_source: "manual",
+    provider_family: "native",
+    price_origin: "manual",
     effective_input_price_per_million: "3",
     effective_output_price_per_million: "9",
     effective_price_source: "manual",
@@ -224,8 +228,9 @@ const models = [
     output_price_per_million: null,
     effective_input_price_per_million: "5.000000",
     effective_output_price_per_million: "22.500000",
-    effective_price_source: "litellm",
-    models_dev_model_id: null,
+    effective_price_source: "native_catalog",
+    provider_family: "native",
+    price_origin: "native_catalog",
     price_source: null,
   },
 ];
@@ -540,8 +545,8 @@ describe("admin chat model pricing", () => {
 
   it("renders price values and their source", async () => {
     render(ModelPage);
-    await screen.findByText("models.dev");
-    expect(screen.getByText("수동")).toBeTruthy();
+    await screen.findByText(nativeT('price.nativeCatalog'));
+    expect(screen.getAllByText(nativeT('price.manual'))).toHaveLength(2);
     expect(screen.getByText(/입력 2 · 출력 8 USD/)).toBeTruthy();
     expect(screen.getByText(/입력 5 · 출력 22\.5 USD/)).toBeTruthy();
   });
@@ -766,7 +771,7 @@ describe("admin chat model pricing", () => {
     });
     post.mockResolvedValue({});
     render(ModelPage);
-    await screen.findByText("models.dev");
+    await screen.findByText(nativeT('price.nativeCatalog'));
     const dialog = await openModelCreation();
     if (method === "manual") {
       await fireEvent.click(within(dialog).getByRole("button", { name: "직접 입력" }));
@@ -801,7 +806,8 @@ describe("admin chat model pricing", () => {
     for (const request of [get, post, patch, put, deleteRequest]) {
       expect(request.mock.calls.some(([path]) => String(path).includes("/pricing/models-dev"))).toBe(false);
     }
-    expect(screen.getByText("models.dev")).toBeTruthy();
+    expect(screen.queryByText("models.dev")).toBeNull();
+    expect(screen.getByText(nativeT('price.nativeCatalog'))).toBeTruthy();
     expect(screen.getByText(/입력 2 · 출력 8 USD/)).toBeTruthy();
   });
 
@@ -815,13 +821,14 @@ describe("admin chat model pricing", () => {
     post.mockImplementationOnce(() => { created = true; return Promise.resolve(chatgptProvider); });
     render(ProviderPage);
     await screen.findByRole("option", { name: "ChatGPT 구독 (실험)" });
-    await fireEvent.input(screen.getByLabelText("API Base"), { target: { value: "https://private.example/v1" } });
+    await fireEvent.change(screen.getByRole('combobox', { name: t('configuration.connectionMethod') }), { target: { value: "openai-compatible" } });
+    await fireEvent.input(screen.getByRole('textbox', { name: nativeT('compatible.baseUrl') }), { target: { value: "https://private.example/v1" } });
     await fireEvent.input(screen.getByLabelText("API 키"), { target: { value: "must-be-cleared" } });
     const connection = screen.getByRole("combobox");
     await fireEvent.change(connection, { target: { value: "chatgpt-subscription" } });
     expect(screen.queryByLabelText("API 키")).toBeNull();
     await fireEvent.change(connection, { target: { value: "openai" } });
-    expect((screen.getByLabelText("API Base") as HTMLInputElement).value).toBe("");
+    expect(screen.queryByLabelText(nativeT('compatible.baseUrl'))).toBeNull();
     expect((screen.getByLabelText("API 키") as HTMLInputElement).value).toBe("");
     await fireEvent.change(connection, { target: { value: "chatgpt-subscription" } });
     await fireEvent.input(screen.getByPlaceholderText("예: openai-prod"), { target: { value: "shared-chatgpt" } });
@@ -1216,7 +1223,7 @@ describe("admin chat model pricing", () => {
     await fireEvent.input(screen.getByRole("textbox", { name: "컨텍스트 한도" }), { target: { value: "16000" } });
     await fireEvent.click(screen.getByRole("button", { name: "기능 설정 저장" }));
     await waitFor(() => expect(patch).toHaveBeenCalledWith("/api/v1/chat/admin/models/10", {
-      capabilities: { vision: true, reasoning: false, tool_call: false, attachment: false, modalities: null, reasoning_options: [], context_limit: 16000 },
+      capabilities: { vision: true, reasoning: false, tool_call: false, attachment: false, decisions: false, modalities: null, reasoning_options: [], context_limit: 16000 },
     }, "token", "project"));
     expect(patch.mock.calls[0][1]).not.toHaveProperty("input_price_per_million");
     expect(JSON.stringify(patch.mock.calls[0][1])).not.toContain("web_search");
@@ -1254,7 +1261,7 @@ describe("admin chat model pricing", () => {
     await fireEvent.click(screen.getByRole("button", { name: "기능 수정" }));
     await fireEvent.click(screen.getByRole("button", { name: "기능 설정 저장" }));
     await waitFor(() => expect(patch).toHaveBeenCalledWith("/api/v1/chat/admin/models/10", {
-      capabilities: { vision: true, reasoning: true, tool_call: false, attachment: false, modalities, reasoning_options: reasoningOptions, context_limit: 32000 },
+      capabilities: { vision: true, reasoning: true, tool_call: false, attachment: false, decisions: false, modalities, reasoning_options: reasoningOptions, context_limit: 32000 },
     }, "token", "project"));
   });
 

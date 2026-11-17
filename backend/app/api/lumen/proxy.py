@@ -37,7 +37,8 @@ class _PrivateLumenRoute(APIRoute):
             private = (
                 _noncanonical_path(parts)
                 or source_response
-                or parts[:1] == ["embeddings"]
+                or parts[:1] in (["embeddings"], ["decisions"])
+                or parts[:3] == ["admin", "models", "native-catalog"]
                 or (bool(parts) and parts[0].startswith("mcp-"))
                 or parts[:2] == ["admin", "providers"]
                 or (len(parts) >= 2 and parts[0] == "admin" and parts[1].startswith("mcp-"))
@@ -174,6 +175,15 @@ async def proxy_lumen(path: str = "", *, request: Request) -> Response:
     if _noncanonical_path(parts):
         # Authorization and forwarding must interpret the exact same namespace.
         raise HTTPException(status_code=400, detail="Non-canonical Lumen API path", headers=_NO_STORE)
+    if parts[:4] == ["admin", "models", "pricing", "models-dev"]:
+        raise HTTPException(status_code=404, detail="Lumen browser route not found", headers=_NO_STORE)
+    expected_method = {"decisions": "POST", "admin/models/native-catalog": "GET"}.get(path)
+    if expected_method is not None and request.method != expected_method:
+        raise HTTPException(
+            status_code=405,
+            detail="Method not allowed",
+            headers={**_NO_STORE, "Allow": expected_method},
+        )
     if path == "models":
         upstream_path = "/v1/chat/models"
     elif path in {
@@ -183,8 +193,8 @@ async def proxy_lumen(path: str = "", *, request: Request) -> Response:
         "audio/transcriptions",
     }:
         upstream_path = f"/v1/chat/{path}"
-    elif path == "embeddings":
-        upstream_path = "/v1/chat/embeddings"
+    elif path in {"embeddings", "decisions"}:
+        upstream_path = f"/v1/chat/{path}"
     else:
         upstream_path = "/v1" if not path else f"/v1/{path}"
     if path in {"audio/speech", "audio/transcriptions"}:

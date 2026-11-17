@@ -200,7 +200,8 @@ export const userNavSections: NavSection[] = [
       withLabel('items.lumen', { href: '/dashboard/chat', icon: navIcons.chat, service: 'chat' }),
       withLabel('items.imageStudio', { href: '/dashboard/chat/images', icon: navIcons.image, service: 'chat' }),
       withLabel('items.audioStudio', { href: '/dashboard/chat/audio', icon: navIcons.audio, service: 'chat' }),
-      withLabel('items.embeddingStudio', { href: '/dashboard/chat/embeddings', icon: navIcons.cluster, service: 'chat' })
+      withLabel('items.embeddingStudio', { href: '/dashboard/chat/embeddings', icon: navIcons.cluster, service: 'chat' }),
+      withLabel('items.decisionStudio', { href: '/dashboard/chat/decisions', icon: navIcons.balance, service: 'chat' })
     ],
   }),
   withLabel('sections.domainIam', {

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/sve
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { writable } from "svelte/store";
 import { t } from "$lib/i18n/ns/admin-chat";
+import { t as nativeT } from '$lib/i18n/ns/native-providers';
 import { t as studioT } from "$lib/i18n/ns/chat-studio";
 import { initLocale } from "$lib/i18n/runtime.svelte";
 
@@ -156,10 +157,10 @@ describe("admin chat model prompt-cache pricing", () => {
     await screen.findByText("Claude 4");
     const lines = Array.from(document.querySelectorAll('[data-testid="model-cache-prices"]'), (node) => node.textContent?.replace(/\s+/g, " ").trim());
     expect(lines).toEqual([
-      t("configuration.cachePriceSummary", { v0: "0.3", v1: "3.75", v2: "6", v3: "" }),
-      t("configuration.cachePriceSummary", { v0: "0.3", v1: t("configuration.unset"), v2: t("configuration.unset"), v3: t("configuration.unsetRatesAreBilledAt0Usd") }),
+      nativeT("price.cacheSummary", { read: "0.3", write: "3.75", long: "6" }),
+      nativeT("price.cacheSummary", { read: "0.3", write: t("configuration.unset"), long: t("configuration.unset") }),
       t("configuration.cacheRatesUnsupportedThisLumenVersionDoesNotAccept"),
-      t("configuration.cacheRatesUnsetCacheTokensAreBilledAt0"),
+      nativeT("price.cacheHelp"),
     ]);
   });
 
@@ -187,8 +188,8 @@ describe("admin chat model prompt-cache pricing", () => {
     await fireEvent.click(within(cleanDraft).getAllByRole('button', { name: '닫기' }).at(-1)!);
     const editor = await openEditor();
     expect((within(editor).getByLabelText("캐시 읽기") as HTMLInputElement).value).toBe("0.3");
-    expect((within(editor).getByLabelText("캐시 쓰기 5분") as HTMLInputElement).value).toBe("");
-    expect((within(editor).getByLabelText("캐시 쓰기 1시간") as HTMLInputElement).value).toBe("");
+    expect((within(editor).getByLabelText(nativeT("price.cacheWrite")) as HTMLInputElement).value).toBe("");
+    expect((within(editor).getByLabelText(nativeT("price.cacheWriteLong")) as HTMLInputElement).value).toBe("");
     expect((within(editor).getByLabelText("입력") as HTMLInputElement).value).toBe("");
     expect((within(editor).getByLabelText("출력") as HTMLInputElement).value).toBe("");
     expect(toastError).not.toHaveBeenCalled();
@@ -219,8 +220,8 @@ describe("admin chat model prompt-cache pricing", () => {
       target: { value: "anthropic/claude-bad" },
     });
     const group = createCacheGroup();
-    const write5m = within(group).getByLabelText("캐시 쓰기 5분") as HTMLInputElement;
-    const write1h = within(group).getByLabelText("캐시 쓰기 1시간") as HTMLInputElement;
+    const write5m = within(group).getByLabelText(nativeT("price.cacheWrite")) as HTMLInputElement;
+    const write1h = within(group).getByLabelText(nativeT("price.cacheWriteLong")) as HTMLInputElement;
     await fireEvent.input(write5m, { target: { value: "-1" } });
     await fireEvent.input(write1h, { target: { value: "1e3" } });
     await fireEvent.click(within(screen.getByRole('dialog', { name: '+ 모델 추가' })).getByRole('button', { name: '+ 모델 추가' }));
@@ -249,8 +250,8 @@ describe("admin chat model prompt-cache pricing", () => {
     await screen.findByText("Claude 2");
     const lines = Array.from(document.querySelectorAll('[data-testid="model-cache-prices"]'), (node) => node.textContent?.replace(/\s+/g, " ").trim());
     expect(lines).toEqual([
-      t("configuration.cachePriceSummary", { v0: "0", v1: "3.75", v2: "6", v3: "" }),
-      t("configuration.cachePriceSummary", { v0: "0", v1: t("configuration.unset"), v2: t("configuration.unset"), v3: t("configuration.unsetRatesAreBilledAt0Usd") }),
+      nativeT("price.cacheSummary", { read: "0", write: "3.75", long: "6" }),
+      nativeT("price.cacheSummary", { read: "0", write: t("configuration.unset"), long: t("configuration.unset") }),
     ]);
     expect(document.body.textContent).not.toContain("0E-10");
   });
@@ -331,11 +332,11 @@ describe("admin chat model prompt-cache pricing", () => {
     const modal = await openEditor();
     const read = within(modal).getByLabelText("캐시 읽기") as HTMLInputElement;
     expect(read.value).toBe("0.3");
-    expect((within(modal).getByLabelText("캐시 쓰기 5분") as HTMLInputElement).value).toBe("3.75");
-    expect((within(modal).getByLabelText("캐시 쓰기 1시간") as HTMLInputElement).value).toBe("");
+    expect((within(modal).getByLabelText(nativeT("price.cacheWrite")) as HTMLInputElement).value).toBe("3.75");
+    expect((within(modal).getByLabelText(nativeT("price.cacheWriteLong")) as HTMLInputElement).value).toBe("");
 
     await fireEvent.input(read, { target: { value: "" } });
-    await fireEvent.input(within(modal).getByLabelText("캐시 쓰기 1시간"), { target: { value: "6" } });
+    await fireEvent.input(within(modal).getByLabelText(nativeT("price.cacheWriteLong")), { target: { value: "6" } });
     await fireEvent.click(within(modal).getByText("저장"));
 
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
@@ -359,7 +360,7 @@ describe("admin chat model prompt-cache pricing", () => {
     expect(createCacheGroup()).toBeNull();
     await fireEvent.click(within(creation).getAllByRole('button', { name: '닫기' }).at(-1)!);
     const modal = await openEditor();
-    for (const label of ["캐시 읽기", "캐시 쓰기 5분", "캐시 쓰기 1시간"]) {
+    for (const label of ["캐시 읽기", nativeT("price.cacheWrite"), nativeT("price.cacheWriteLong")]) {
       expect(within(modal).queryByLabelText(label)).toBeNull();
     }
     await fireEvent.input(within(modal).getByLabelText("출력"), { target: { value: "16" } });
