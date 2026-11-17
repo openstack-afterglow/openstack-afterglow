@@ -16,11 +16,13 @@ export interface ModelCapabilities {
 	attachment?: boolean;
 	function_calling?: boolean;
 	structured_output?: boolean;
+	prompt_caching?: boolean;
 	web_search?: boolean;
 	web_search_required?: boolean;
 	web_fetch?: boolean;
 	advisor?: boolean;
 	responses_api?: boolean;
+	decisions?: boolean;
 	mcp?: boolean;
 	code_interpreter?: boolean;
 	computer_use?: boolean;

@@ -405,6 +405,33 @@ describe('mockup transport', () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
+	it('serves synthetic native catalog, manual compatible prices and Decisions without upstream calls', async () => {
+		sessionStorage.setItem(MOCKUP_SESSION_KEY, 'admin');
+		window.history.replaceState({}, '', '/?tutorial=admin');
+		// resetModules recreates tutorial mutable state; exercise the module-loading boundary.
+		const { maybeMockJson } = await import('./transport');
+		const catalog = await maybeMockJson<{ catalog_version: string; providers: { provider_type: string; models: { id: string; source_urls: string[] }[] }[] }>('GET', '/api/v1/chat/admin/models/native-catalog');
+		if (typeof catalog === 'symbol') throw new Error('Expected synthetic catalog');
+		expect(catalog).toMatchObject({ catalog_version: '2026-11-17', providers: [{ provider_type: 'openai', models: [expect.objectContaining({ id: 'gpt-6-luna' })] }] });
+		const rows = await maybeMockJson<{ id: number; provider_family: string; price_origin: string }[]>('GET', '/api/v1/chat/admin/models');
+		if (typeof rows === 'symbol') throw new Error('Expected synthetic registry');
+		expect(rows).toEqual(expect.arrayContaining([
+			expect.objectContaining({ provider_family: 'native', price_origin: 'native_catalog' }),
+			expect.objectContaining({ provider_family: 'compatible', price_origin: 'manual' }),
+		]));
+		expect(await maybeMockJson('PATCH', '/api/v1/chat/admin/models/43', { input_price_per_million: '1.25' })).toMatchObject({ price_origin: 'manual' });
+		expect(await maybeMockJson('PATCH', '/api/v1/chat/admin/models/43', { input_price_per_million: null, output_price_per_million: null })).toMatchObject({ price_origin: 'native_catalog' });
+		await expect(maybeMockJson('GET', '/api/v1/chat/admin/models/pricing/models-dev/providers')).rejects.toMatchObject({ status: 404 });
+		await expect(maybeMockJson('PATCH', '/api/v1/chat/admin/models/44', { input_price_per_million: null })).rejects.toMatchObject({ status: 422 });
+		await expect(maybeMockJson('POST', '/api/v1/chat/admin/models/native-catalog', {})).rejects.toMatchObject({ status: 405 });
+		sessionStorage.setItem(MOCKUP_SESSION_KEY, 'on');
+		window.history.replaceState({}, '', '/?tutorial=on');
+		expect(await maybeMockJson('GET', '/api/v1/chat/models?model_kind=text')).toEqual([expect.objectContaining({ id: 43, capabilities: expect.objectContaining({ decisions: true }) })]);
+		expect(await maybeMockJson('POST', '/api/v1/chat/decisions', { model: 'gpt-6-luna', input: 'Synthetic', questions: [{ type: 'predicate', name: 'safe', instructions: 'Is it safe?' }] })).toMatchObject({ model: 'gpt-6-luna', answers: [{ type: 'predicate', name: 'safe', probability: 0.92 }], cost_usd: 0.000012 });
+		await expect(maybeMockJson('GET', '/api/v1/chat/admin/models/native-catalog')).rejects.toMatchObject({ status: 403 });
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
 
 	it('serves native Key Manager metadata arrays without payloads and rejects invalid secret creation', async () => {
 		// resetModules must recreate the tutorial singleton for this transport-boundary test.

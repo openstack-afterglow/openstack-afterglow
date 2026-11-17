@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { writable } from 'svelte/store';
+import { t as nativeT } from '$lib/i18n/ns/native-providers';
 
 const mocks = vi.hoisted(() => {
 	const { writable } = require('svelte/store');
@@ -156,14 +157,15 @@ describe('provider catalog administration', () => {
 		await fireEvent.input(screen.getByRole('textbox', { name: '이름' }), { target: { value: 'New NVIDIA' } });
 		await fireEvent.input(screen.getByRole('textbox', { name: 'API provider' }), { target: { value: 'nvidia' } });
 		await fireEvent.input(screen.getByRole('textbox', { name: '프로바이더 표시 순서' }), { target: { value: '3' } });
-		await fireEvent.input(screen.getByLabelText('API Base'), { target: { value: 'https://new.example/v1' } });
+		await fireEvent.change(screen.getByRole('combobox', { name: '연결 방식' }), { target: { value: 'openai-compatible' } });
+		await fireEvent.input(screen.getByRole('textbox', { name: nativeT('compatible.baseUrl') }), { target: { value: 'https://new.example/v1' } });
 		await fireEvent.input(screen.getByLabelText('API 키'), { target: { value: 'draft-secret' } });
 		mocks.post.mockRejectedValueOnce(new mocks.ApiError('draft-secret', 503));
 		await fireEvent.click(screen.getByRole('button', { name: '+ 프로바이더 추가' }));
 		await screen.findByRole('alert');
 		expect((screen.getByRole('textbox', { name: 'API provider' }) as HTMLInputElement).value).toBe('nvidia');
 		expect((screen.getByRole('textbox', { name: '프로바이더 표시 순서' }) as HTMLInputElement).value).toBe('3');
-		expect((screen.getByLabelText('API Base') as HTMLInputElement).value).toBe('https://new.example/v1');
+		expect((screen.getByRole('textbox', { name: nativeT('compatible.baseUrl') }) as HTMLInputElement).value).toBe('https://new.example/v1');
 		expect((screen.getByLabelText('API 키') as HTMLInputElement).value).toBe('');
 		await fireEvent.input(screen.getByLabelText('API 키'), { target: { value: 'fresh-retry-secret' } });
 		mocks.post.mockImplementationOnce(async (_path: string, body: Record<string, unknown>) => {

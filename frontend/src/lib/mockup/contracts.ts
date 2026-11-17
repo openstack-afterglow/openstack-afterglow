@@ -56,6 +56,8 @@ export const ADMIN_ALLOWED_PATHS = [
 	'/admin/object-storage',
 	'/admin/groups',
 	'/admin/system-admins',
+	'/admin/chat',
+	'/admin/chat/models',
 	'/admin/chat/tools',
 	'/admin/chat/settings',
 	'/dashboard/chat/tools',

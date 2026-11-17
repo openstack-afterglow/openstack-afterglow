@@ -35,6 +35,7 @@ import { mockDatabaseContainers } from '$lib/mockup/databaseContainers';
 import { mockDatabaseBackups } from '$lib/mockup/databaseBackups';
 import type { ContainerInfo, OrderInfo, QuotaInfo } from '$lib/api/secrets';
 import { mockChatWorkLog, mockChatWorkLogResponse } from './chatWorkLog';
+import { mockNativeProviders } from './nativeProviders';
 
 export const symbolNoMatch = Symbol('mockup-no-match');
 const MOCK_EXPIRES_AT_ISO = '2026-12-31T23:59:59Z';
@@ -774,6 +775,8 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	const state = getMockupState();
 	const [pathname, query = ''] = normalized.split('?');
 	const params = new URLSearchParams(query);
+	const nativeProviders = mockNativeProviders(method, pathname, params, body, profile);
+	if (nativeProviders !== undefined) return nativeProviders;
 	const mcpCatalog = mockMcpFixture(method, pathname, params, body, profile, requestProjectId);
 	if (mcpCatalog !== symbolNoMatch) return mcpCatalog;
 	const computePolicy = mockComputePolicy(method, pathname, params, body, profile);

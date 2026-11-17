@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/chat-studio';
+	import { t as nativeT } from '$lib/i18n/ns/native-providers';
 	import type { ModelCapabilities } from '$lib/api/chatContracts';
 
 	interface Props {
@@ -25,6 +26,7 @@
 		if (caps.reasoning) out.push({ key: 'think', label: t('modelCapabilityBadges.think'), title: t('modelCapabilityBadges.thinkHelp') });
 		if (caps.tool_call) out.push({ key: 'tools', label: t('modelCapabilityBadges.tools'), title: t('modelCapabilityBadges.toolsHelp') });
 		if (caps.web_search && !hideSearch) out.push({ key: 'search', label: t('modelCapabilityBadges.search'), title: t('modelCapabilityBadges.searchHelp') });
+		if (caps.decisions) out.push({ key: 'decisions', label: nativeT('decisions.label'), title: nativeT('decisions.help') });
 		if (caps.attachment && !caps.vision)
 			out.push({ key: 'files', label: t('modelCapabilityBadges.files'), title: t('modelCapabilityBadges.filesHelp') });
 		return out;
@@ -43,6 +45,8 @@
 					<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.5-2.5 2.5-2.5z" stroke-linejoin="round" /></svg>
 				{:else if b.key === 'search'}
 					<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" stroke-linecap="round" /></svg>
+				{:else if b.key === 'decisions'}
+					<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="m4 12 5 5L20 6" stroke-linecap="round" stroke-linejoin="round" /></svg>
 				{:else}
 					<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M21 8l-9 9a5 5 0 0 1-7-7l9-9a3.5 3.5 0 0 1 5 5l-9 9a2 2 0 0 1-3-3l8-8" stroke-linecap="round" stroke-linejoin="round" /></svg>
 				{/if}
