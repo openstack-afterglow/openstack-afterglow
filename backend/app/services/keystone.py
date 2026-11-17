@@ -159,6 +159,140 @@ def _resolve_admin_role_id() -> str:
     return _field(roles[0], "id")
 
 
+def direct_system_assignments(ks, *, user=None, group=None) -> list[dict]:
+    """Read exact native system grants, bypassing computed-assignment caching.
+
+    Keystoneclient maps this to /system/{users,groups}/{id}/roles, not
+    /role_assignments. Normalize only the scope and principal proven by that
+    endpoint so existing role-ID graph checks retain their validation.
+    """
+    from app.services.identity_roles import _field
+
+    if (user is None) == (group is None):
+        raise ValueError("Exactly one system grant principal is required")
+    principal, subject = ("user", user) if user is not None else ("group", group)
+    if not isinstance(subject, str) or not subject or subject != subject.strip():
+        raise ValueError("System grant principal is invalid")
+    rows = []
+    for role in ks.roles.list(system="all", **{principal: subject}):
+        role_id = _field(role, "id")
+        if not isinstance(role_id, str) or not role_id or role_id != role_id.strip():
+            raise ValueError("System grant role is invalid")
+        rows.append({principal: {"id": subject}, "role": {"id": role_id}, "scope": {"system": {"all": True}}})
+    return rows
+
+
+_RECENT_SYSTEM_ADMIN_TTL = 660
+_RECENT_SYSTEM_ADMIN_KEY = "afterglow:identity:recent-system-admins"
+
+
+async def recent_system_admin_ids() -> set[str]:
+    """Shared discovery hints only; every candidate still needs a native read."""
+    from app.api.common.errors import public_service_error
+    from app.services import session_store
+
+    try:
+        redis = await session_store._get_redis()
+        seconds, microseconds = await redis.time()
+        now = seconds + microseconds / 1_000_000
+        async with redis.pipeline(transaction=True) as pipe:
+            pipe.zremrangebyscore(_RECENT_SYSTEM_ADMIN_KEY, "-inf", now)
+            pipe.zrangebyscore(_RECENT_SYSTEM_ADMIN_KEY, f"({now}", "+inf")
+            _, values = await pipe.execute()
+        ids = {value.decode() if isinstance(value, bytes) else value for value in values}
+        if any(not isinstance(uid, str) or not uid or uid != uid.strip() for uid in ids):
+            raise ValueError("System admin discovery metadata is invalid")
+        return ids
+    except Exception as exc:
+        raise public_service_error(503, "system_admin_authority_unavailable") from exc
+
+
+async def remember_system_admin(user_id: str, *, remove=False) -> None:
+    """Atomically retain each grant for longer than Keystone's computed TTL.
+
+    A pre-write hint also covers a committed grant whose reply is lost. It
+    never conveys authority, and successful grants refresh their own expiry.
+    """
+    from app.api.common.errors import public_service_error
+    from app.services import session_store
+
+    try:
+        redis = await session_store._get_redis()
+        if remove:
+            await redis.zrem(_RECENT_SYSTEM_ADMIN_KEY, user_id)
+            return
+        seconds, microseconds = await redis.time()
+        expires = seconds + microseconds / 1_000_000 + _RECENT_SYSTEM_ADMIN_TTL
+        async with redis.pipeline(transaction=True) as pipe:
+            pipe.zadd(_RECENT_SYSTEM_ADMIN_KEY, {user_id: expires})
+            pipe.expire(_RECENT_SYSTEM_ADMIN_KEY, _RECENT_SYSTEM_ADMIN_TTL)
+            await pipe.execute()
+    except Exception as exc:
+        raise public_service_error(503, "system_admin_authority_unavailable") from exc
+
+
+def system_admin_user_ids(ks, admin_role_id: str, recent_user_ids, *, effective=False) -> set[str]:
+    """Use computed assignments for discovery, never for current authority."""
+    from collections.abc import Mapping
+
+    from app.services import identity_roles
+
+    field = identity_roles._field
+    users, groups = set(recent_user_ids), set()
+    for row in ks.role_assignments.list(system="all"):
+        user, group = field(row, "user"), field(row, "group")
+        scope, role = field(row, "scope"), field(row, "role")
+        system = field(scope, "system")
+        if (
+            (user is None) == (group is None)
+            or not isinstance(scope, Mapping)
+            or set(scope) != {"system"}
+            or not isinstance(system, Mapping)
+            or set(system) != {"all"}
+            or system["all"] is not True
+            or not isinstance(role, Mapping)
+            or not isinstance(role.get("id"), str)
+            or not role["id"]
+        ):
+            raise ValueError("System assignment discovery metadata is invalid")
+        subject = user if user is not None else group
+        uid = field(subject, "id")
+        if not isinstance(uid, str) or not uid or uid != uid.strip():
+            raise ValueError("System assignment discovery principal is invalid")
+        (users if user is not None else groups).add(uid)
+
+    catalog = None
+
+    def grants_admin(rows):
+        nonlocal catalog
+        for row in rows:
+            rid = row["role"]["id"]
+            if rid == admin_role_id:
+                return True
+            if effective:
+                if catalog is None:
+                    catalog = {item["id"]: item for item in identity_roles._trusted_catalog()}
+                if rid not in catalog:
+                    raise ValueError("System assignment role is unresolved")
+                expanded = {rid, *catalog[rid]["inherited_role_ids"]}
+                if any(catalog[item]["domain_id"] is not None for item in expanded):
+                    raise ValueError("System assignment role graph crosses its authority domain")
+                if admin_role_id in expanded:
+                    return True
+        return False
+
+    result = {uid for uid in users if grants_admin(direct_system_assignments(ks, user=uid))}
+    if effective:
+        for gid in groups:
+            if grants_admin(direct_system_assignments(ks, group=gid)):
+                for member in ks.users.list(group=gid):
+                    uid = field(member, "id")
+                    if not isinstance(uid, str) or not uid:
+                        raise ValueError("System assignment group membership is unresolved")
+                    result.add(uid)
+    return result
+
+
 def _has_system_admin_role(user_id: str, *, operation=None) -> bool:
     """Only a live exact system:all effective canonical admin grant authorizes."""
     from app.services.domain_scope import has_scope_authority

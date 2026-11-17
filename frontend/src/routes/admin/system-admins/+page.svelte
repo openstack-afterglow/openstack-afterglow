@@ -1,8 +1,9 @@
 <script lang="ts">
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
-	import { onMount } from 'svelte';
+	import { untrack } from 'svelte';
 	import { auth, authReady, isAdmin, isMockAuthActive } from '$lib/stores/auth';
+	import { authDisplayContext } from '$lib/stores/authDisplayContext';
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import { api } from '$lib/api/client';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
@@ -12,7 +13,6 @@
 	import SystemAdminTable from '$lib/components/admin/system-admins/SystemAdminTable.svelte';
 	import SystemAdminGrantModal from '$lib/components/admin/system-admins/SystemAdminGrantModal.svelte';
 	import SecurityPolicyBanner from '$lib/components/admin/system-admins/SecurityPolicyBanner.svelte';
-	import type { AdminSecurityPolicy } from '$lib/types/adminSecurityPolicy';
 	import { t } from '$lib/i18n/ns/admin-identity';
 
 	interface SystemAdmin {
@@ -23,60 +23,43 @@
 	}
 
 	let admins = $state<SystemAdmin[]>([]);
-	let policy = $state<AdminSecurityPolicy | null>(null);
 	let loading = $state(true);
 	let refreshing = $state(false);
-	let policyLoading = $state(true);
 	let adminsError = $state('');
-	let policyError = $state('');
 	let loadGeneration = 0;
 	let showGrant = $state(false);
+	let notice = $state<'granted' | 'revoked' | null>(null);
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
+	const ownerKey = $derived($authDisplayContext.key);
 
 	async function load(force = false) {
 		const requestToken = token;
 		const requestProjectId = projectId;
+		const requestOwner = $authDisplayContext.key;
 		const generation = ++loadGeneration;
+		const current = () => generation === loadGeneration && requestOwner === $authDisplayContext.key;
 		if (admins.length === 0) loading = true;
 		else refreshing = true;
-		policyLoading = true;
 		adminsError = '';
-		policyError = '';
-		const adminsPromise = api.get<SystemAdmin[]>('/api/v1/admin/identity/system-roles', requestToken, requestProjectId, { refresh: force });
-		const policyPromise = api.get<AdminSecurityPolicy>('/api/v1/admin/identity/security-policy', requestToken, requestProjectId, { refresh: force })
-			.then((value) => {
-				if (generation === loadGeneration && token === requestToken && projectId === requestProjectId) policy = value;
-				if (generation === loadGeneration && token === requestToken && projectId === requestProjectId) policyError = '';
-			})
-			.catch((loadError) => {
-				if (generation === loadGeneration && token === requestToken && projectId === requestProjectId) {
-					policy = null;
-					policyError = loadError instanceof Error ? loadError.message : t('systemPage.policyFailed');
-				}
-			})
-			.finally(() => {
-				if (generation === loadGeneration && token === requestToken && projectId === requestProjectId) policyLoading = false;
-			});
 		try {
-			const value = await adminsPromise;
-			if (generation === loadGeneration && token === requestToken && projectId === requestProjectId) admins = value;
+			const value = await api.get<SystemAdmin[]>('/api/v1/admin/identity/system-roles', requestToken, requestProjectId, { refresh: force });
+			if (current()) admins = value;
 		} catch (loadError) {
-			if (generation === loadGeneration && token === requestToken && projectId === requestProjectId) {
+			if (current()) {
 				admins = [];
 				adminsError = loadError instanceof Error ? loadError.message : t('systemPage.adminsFailed');
 			}
 		} finally {
-			if (generation === loadGeneration && token === requestToken && projectId === requestProjectId) {
+			if (current()) {
 				loading = false;
 				refreshing = false;
 			}
 		}
-		void policyPromise;
 	}
 
-	const ar = createAutoRefresh(load, {
+	const ar = createAutoRefresh((force?: boolean) => { notice = null; return load(force); }, {
 		storageKey: 'admin-system-admins',
 		invokeOnMount: false,
 		defaultActive: true,
@@ -84,7 +67,23 @@
 		intervalOptions: [30, 60],
 	});
 
-	onMount(load);
+	function mutationSucceeded(result: 'granted' | 'revoked') {
+		notice = result;
+		void load(true);
+	}
+
+	$effect(() => {
+		ownerKey;
+		untrack(() => {
+			admins = [];
+			adminsError = '';
+			notice = null;
+			showGrant = false;
+			loading = $authDisplayContext.ready;
+			if ($authDisplayContext.ready) void load();
+		});
+		return () => { loadGeneration++; };
+	});
 </script>
 
 <PageShell>
@@ -110,15 +109,14 @@
 		{/snippet}
 	</PageHeader>
 
+	{#if notice}
+		<Alert tone="success" class="mb-3">{t(notice === 'granted' ? 'systemPage.granted' : 'systemPage.revoked')}</Alert>
+	{/if}
 	{#if loading}
 		<LoadingState variant="surface" />
 	{:else}
-			{#if policyLoading}
-				<Alert tone="neutral" class="mb-3"><span class="inline-flex items-center gap-2"><LoadingState variant="control" label="" aria-hidden="true" />{t('systemPage.policyLoading')}</span></Alert>
-			{:else if policyError}
-				<Alert tone="danger" class="mb-3" title={t('systemPage.policyFailed')}>{policyError}</Alert>
-			{:else if policy}
-				<div data-tour="admin-system-admins-policy"><SecurityPolicyBanner {policy} /></div>
+			{#if !adminsError && $authDisplayContext.ready}
+				<div data-tour="admin-system-admins-policy"><SecurityPolicyBanner policy={{ system_admin_count: admins.length }} /></div>
 			{/if}
 
 			{#if adminsError}
@@ -126,10 +124,12 @@
 			{/if}
 	{/if}
 	<div data-tour="admin-system-admins-list">
-		<SystemAdminTable {admins} onRevoked={load} />
+		{#key $authDisplayContext.key}
+			<SystemAdminTable {admins} onRevoked={() => mutationSucceeded('revoked')} />
+		{/key}
 	</div>
 </PageShell>
 
 {#if showGrant}
-	<SystemAdminGrantModal onClose={() => (showGrant = false)} onGranted={load} />
+	<SystemAdminGrantModal onClose={() => (showGrant = false)} onGranted={() => mutationSucceeded('granted')} />
 {/if}

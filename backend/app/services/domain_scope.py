@@ -104,7 +104,7 @@ def assert_project_domain(domain_id: str, project_id: str, *, operation=None) ->
 
 def _system_group_grants(ks, group_id, *, operation):
     def load():
-        return list(ks.role_assignments.list(group=group_id, system="all"))
+        return keystone.direct_system_assignments(ks, group=group_id)
 
     if operation is None:
         return load()
@@ -149,10 +149,10 @@ def has_scope_authority(user_id: str, *, domain_id: str | None = None, operation
         user_grants = (
             operation.read(
                 ("domain_scope", "system_user_grants", user_id),
-                lambda: list(ks.role_assignments.list(user=user_id, system="all")),
+                lambda: keystone.direct_system_assignments(ks, user=user_id),
             )
             if operation is not None
-            else ks.role_assignments.list(user=user_id, system="all")
+            else keystone.direct_system_assignments(ks, user=user_id)
         )
         rows = [(row, "user", user_id) for row in user_grants]
         groups = (

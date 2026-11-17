@@ -102,7 +102,7 @@ describe('system administrator grants across explicit domains', () => {
 		expect(screen.getByText('Bob')).toBeTruthy();
 	});
 
-	it.each(['token', 'projectId'] as const)('clears domain and user selection when %s changes and rejects stale user responses', async field => {
+	it.each(['projectId'] as const)('clears domain and user selection when %s changes and rejects stale user responses', async field => {
 		const pending = Promise.withResolvers<{ items: typeof alice[]; next_marker: null }>();
 		mocks.get.mockImplementation((path: string) => path === '/api/v1/admin/domains'
 			? Promise.resolve({ items: domains }) : pending.promise);
@@ -113,7 +113,7 @@ describe('system administrator grants across explicit domains', () => {
 		pending.resolve({ items: [alice], next_marker: null });
 		await tick();
 		expect(screen.queryByText('Alice')).toBeNull();
-		expect(mocks.get).toHaveBeenLastCalledWith('/api/v1/admin/domains', field === 'token' ? 'changed-authority' : 'system-token', field === 'projectId' ? 'changed-authority' : 'operator-project');
+		expect(mocks.get).toHaveBeenLastCalledWith('/api/v1/admin/domains', 'system-token', 'changed-authority');
 	});
 
 	it('keeps a native grant denial visible without publishing success', async () => {
@@ -129,7 +129,7 @@ describe('system administrator grants across explicit domains', () => {
 		expect(onClose).not.toHaveBeenCalled();
 	});
 
-	it.each(['domain', 'token', 'projectId'] as const)('discards a late grant completion after %s changes', async field => {
+	it.each(['projectId'] as const)('discards a late grant completion after %s changes', async field => {
 		const pending = Promise.withResolvers<{ status: string }>();
 		mocks.post.mockReturnValue(pending.promise);
 		const onGranted = vi.fn();
@@ -138,15 +138,53 @@ describe('system administrator grants across explicit domains', () => {
 		await selectDomain('Tenant A');
 		await screen.findByText('Alice');
 		await fireEvent.click(screen.getByRole('button', { name: t('systemGrant.grant') }));
-		if (field === 'domain') await selectDomain('Tenant B');
-		else {
-			auth.update(state => ({ ...state, [field]: 'changed-authority' }));
-			await screen.findByText(t('scope.required'));
-		}
+		auth.update(state => ({ ...state, [field]: 'changed-authority' }));
+		await screen.findByText(t('scope.required'));
 		pending.resolve({ status: 'granted' });
 		await tick();
 		expect(onGranted).not.toHaveBeenCalled();
 		expect(onClose).not.toHaveBeenCalled();
+	});
+
+	it.each(['resolve', 'reject'] as const)('keeps a pending grant across token renewal (%s)', async outcome => {
+		const pending = Promise.withResolvers<{ status: string }>();
+		mocks.post.mockReturnValue(pending.promise);
+		const onGranted = vi.fn();
+		const onClose = vi.fn();
+		render(SystemAdminGrantModal, { onGranted, onClose });
+		await selectDomain('Tenant A');
+		await screen.findByText('Alice');
+		await fireEvent.click(screen.getByRole('button', { name: t('systemGrant.grant') }));
+		auth.update(state => ({ ...state, token: 'renewed-token' }));
+		await tick();
+		expect(screen.getByText('Alice')).toBeTruthy();
+		if (outcome === 'resolve') {
+			pending.resolve({ status: 'granted' });
+			await waitFor(() => expect(onGranted).toHaveBeenCalledOnce());
+			expect(onClose).toHaveBeenCalledOnce();
+		} else {
+			pending.reject(new Error('native denied after renewal'));
+			expect(await screen.findByText('native denied after renewal')).toBeTruthy();
+			expect(onGranted).not.toHaveBeenCalled();
+		}
+	});
+
+	it('keeps the pending grant owner mounted until the response settles', async () => {
+		const pending = Promise.withResolvers<{ status: string }>();
+		mocks.post.mockReturnValue(pending.promise);
+		const onGranted = vi.fn();
+		const onClose = vi.fn();
+		render(SystemAdminGrantModal, { onGranted, onClose });
+		await selectDomain('Tenant A');
+		await screen.findByText('Alice');
+		await fireEvent.click(screen.getByRole('button', { name: t('systemGrant.grant') }));
+		expect((screen.getByRole('button', { name: t('scope.domain') }) as HTMLButtonElement).disabled).toBe(true);
+		await fireEvent.keyDown(document, { key: 'Escape' });
+		await fireEvent.click(screen.getByRole('dialog'));
+		expect(onClose).not.toHaveBeenCalled();
+		pending.resolve({ status: 'granted' });
+		await waitFor(() => expect(onGranted).toHaveBeenCalledOnce());
+		expect(onClose).toHaveBeenCalledOnce();
 	});
 });
 

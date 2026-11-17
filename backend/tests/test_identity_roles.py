@@ -55,8 +55,15 @@ class IdentityProvider:
         response._content = json.dumps(payload or {}).encode()
         return response
 
-    def roles(self):
-        return iter(SimpleNamespace(**row) for row in self.rows.values())
+    def roles(self, *, user=None, group=None, system=None, name=None):
+        rows = list(self.rows.values())
+        if system is not None:
+            ids = {
+                row["role"]["id"]
+                for row in self.native_assignments(user=user, group=group, system=system)
+            }
+            rows = [row for row in rows if row["id"] in ids]
+        return iter(SimpleNamespace(**row) for row in rows if name is None or row["name"] == name)
 
     def get(self, path):
         assert path == "/role_inferences"
@@ -196,7 +203,10 @@ class IdentityProvider:
         self._project_assignment(pid, "group", gid, rid, remove=True)
 
     def native_assignments(self, **query):
-        return list(self.role_assignments(**query))
+        rows = list(self.role_assignments(**{key: value for key, value in query.items() if value is not None}))
+        if query.get("system") is not None:
+            rows = [row for row in rows if row["scope"] == {"system": {"all": True}}]
+        return rows
 
     def group_users(self, gid):
         return iter(SimpleNamespace(id=uid) for uid in self.groups[gid])

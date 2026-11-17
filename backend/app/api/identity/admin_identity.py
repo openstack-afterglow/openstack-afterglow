@@ -361,7 +361,7 @@ async def update_user(
                 try:
                     if req.enabled is False:
                         await project_ownership_journal.assert_user_resolved(user_id)
-                        await asyncio.to_thread(identity_roles.assert_system_admin_remains, users={user_id})
+                        await identity_roles.assert_system_admin_remains(users={user_id})
                         await asyncio.to_thread(project_service.assert_user_ownership_mutation_safe, user_id)
                     affected = await asyncio.to_thread(
                         domain_projects.assert_managers_remain,
@@ -434,7 +434,7 @@ async def delete_user(
             await account_spaces.assert_user_deletion_safe(
                 user_id, ks=ks, enrollment_id=identity_roles._field(native_target, "afterglow_enrollment_id")
             )
-            await asyncio.to_thread(identity_roles.assert_system_admin_remains, users={user_id})
+            await identity_roles.assert_system_admin_remains(users={user_id})
             # Native automation may carry only admin on a service project, not
             # a service role. Privileged identities require guarded grant removal
             # first; never infer account safety from names or federation alone.
@@ -1787,13 +1787,13 @@ class SystemRoleRequest(BaseModel):
 @router.get("/identity/system-roles", dependencies=[Depends(require_admin)])
 async def list_system_roles():
     """system:all scope에서 admin role을 보유한 사용자 목록 조회."""
+    recent = await keystone.recent_system_admin_ids()
 
     def _list():
         try:
             admin_role_id = keystone._resolve_admin_role_id()
             ks = keystone._get_admin_ks_client()
-            assignments = ks.role_assignments.list(role=admin_role_id, system="all")
-            user_ids = [a.user["id"] for a in assignments if hasattr(a, "user")]
+            user_ids = sorted(keystone.system_admin_user_ids(ks, admin_role_id, recent))
             result = []
             for uid in user_ids:
                 try:
@@ -1830,24 +1830,36 @@ async def _system_admin_change(conn, user_id: str, *, revoke: bool) -> dict:
             if revoke:
 
                 def check():
-                    direct = list(ks.role_assignments.list(role=admin_role_id, system="all", user=user_id))
-                    if not direct:
+                    direct = keystone.direct_system_assignments(ks, user=user_id)
+                    if not any(row["role"]["id"] == admin_role_id for row in direct):
                         raise HTTPException(404, "system_admin_grant_not_found")
-                    identity_roles.assert_system_admin_remains(users={user_id})
 
                 await asyncio.to_thread(check)
+                await identity_roles.assert_system_admin_remains(users={user_id})
         except Exception as exc:
             raise _identity_error(exc) from exc
         await identity_roles._session_ready({user_id})
+        if not revoke:
+            # Reserve discovery before the native call: an error reply may follow
+            # a committed grant. Hints cannot authorize without direct readback.
+            await keystone.remember_system_admin(user_id)
         method = ks.roles.revoke if revoke else ks.roles.grant
         try:
             await identity_roles._write(lease, method, role=admin_role_id, user=user_id, system="all")
+            if revoke:
+                await keystone.remember_system_admin(user_id, remove=True)
         finally:
             # A failed reply may follow a committed native authority change.
+            # Refresh after the write settles so a slow lost reply still covers
+            # the full computed-assignment cache lifetime.
             try:
-                await invalidate_authority()
+                if not revoke:
+                    await keystone.remember_system_admin(user_id)
             finally:
-                await session_store.revoke_user_sessions(user_id)
+                try:
+                    await invalidate_authority()
+                finally:
+                    await session_store.revoke_user_sessions(user_id)
     return {"status": "revoked" if revoke else "granted"}
 
 

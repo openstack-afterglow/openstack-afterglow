@@ -91,7 +91,7 @@ class Membership:
                     if user is None or user in members
                 ],
             ),
-            roles=SimpleNamespace(grant=self.grant, revoke=self.revoke, list=lambda: list(self.catalog)),
+            roles=SimpleNamespace(grant=self.grant, revoke=self.revoke, list=self.roles),
             inference_rules=SimpleNamespace(
                 list_inference_roles=lambda: [
                     {"prior_role": {"id": row["id"]}, "implies": [{"id": child} for child in row["implied_role_ids"]]}
@@ -111,6 +111,17 @@ class Membership:
                 ],
             ),
         )
+
+    def roles(self, *, user=None, group=None, system=None, name=None):
+        rows = self.catalog
+        if system is not None:
+            ids = {
+                identity_roles._field(row, "role")["id"]
+                for row in self.ks.role_assignments.list(system=system, user=user, group=group)
+                if identity_roles._field(row, "scope") == {"system": {"all": True}}
+            }
+            rows = [role for role in rows if role["id"] in ids]
+        return [role for role in rows if name is None or role["name"] == name]
 
     def user_inventory(self, *, group=None, domain=None, name=None):
         ids = (

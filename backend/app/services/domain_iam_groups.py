@@ -48,8 +48,8 @@ def _manageable(ks, catalog, group_id, domain_id, *, reads):
     """Only project roles a domain manager may assign, on this domain's projects."""
     managed = project_service._managed_roles(catalog)
     rows = [
-        *ks.role_assignments.list(group=group_id),
-        *ks.role_assignments.list(group=group_id, system="all"),
+        *(row for row in ks.role_assignments.list(group=group_id) if "system" not in _field(row, "scope", {})),
+        *keystone.direct_system_assignments(ks, group=group_id),
     ]
     for row in rows:
         meta = domain_projects._assignment(row, catalog)

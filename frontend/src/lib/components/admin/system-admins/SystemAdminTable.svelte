@@ -10,12 +10,14 @@
 	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { auth } from '$lib/stores/auth';
-	import { api, ApiError } from '$lib/api/client';
+	import { authDisplayContext } from '$lib/stores/authDisplayContext';
+	import { api } from '$lib/api/client';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { t } from '$lib/i18n/ns/admin-identity';
   import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
   import Button from '$lib/components/ui/Button.svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
   import Pill from '$lib/components/ui/Pill.svelte';
 
 	interface SystemAdmin extends SystemAccountIdentity {
@@ -42,18 +44,22 @@
 
 	async function revoke(admin: SystemAdmin) {
 		if (isSystemAccount(admin)) return;
+		if (revoking) return;
+		const requestOwner = $authDisplayContext.key;
 		const isSelf = admin.user_id === currentUserId;
 		if (isSelf) {
 			if (!(await confirmDialog(t('systemTable.revokeSelfConfirm')))) return;
 		}
+		if (requestOwner !== $authDisplayContext.key) return;
 		if (isSystemAccount(admin)) return;
 		revoking = admin.user_id;
 		revokeError = '';
 		try {
 			await api.post('/api/v1/admin/identity/system-roles/revoke', { user_id: admin.user_id }, token, projectId);
+			if (requestOwner !== $authDisplayContext.key) return;
 			onRevoked();
 		} catch (e) {
-			revokeError = e instanceof ApiError ? e.message : t('systemTable.revokeFailed');
+			if (requestOwner === $authDisplayContext.key) revokeError = e instanceof Error ? e.message : t('systemTable.revokeFailed');
 		} finally {
 			revoking = null;
 		}
@@ -64,7 +70,7 @@
 </script>
 
 {#if revokeError}
-	<div class="mb-3 bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{revokeError}</div>
+	<Alert tone="danger" class="mb-3">{revokeError}</Alert>
 {/if}
 
 <RegexSearch id={tableSearchId} bind:value={tableSearch} /><TableViewControls view={tableView} />

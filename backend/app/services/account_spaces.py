@@ -446,7 +446,7 @@ async def provision_primary(row, session, mutation):
 
 
 async def _human(user_id, mutation):
-    from app.services import backup_system_account, domain_projects, identity_roles, project_service
+    from app.services import backup_system_account, domain_projects, identity_roles, keystone, project_service
     from app.services.project_service import _provider_call
 
     _, ks, catalog = mutation
@@ -468,7 +468,7 @@ async def _human(user_id, mutation):
     if any(role["name"] == "service" and role["domain_id"] is None for role in catalog):
         system_rows = [
             (row, "user_id", user_id)
-            for row in await _provider_call(lambda: list(ks.role_assignments.list(user=user_id, system="all")))
+            for row in await _provider_call(keystone.direct_system_assignments, ks, user=user_id)
         ]
         groups = await _provider_call(lambda: list(ks.groups.list(user=user_id)))
         for group in groups:
@@ -477,7 +477,7 @@ async def _human(user_id, mutation):
                 raise HTTPException(503, "Human identity group membership is unavailable")
             system_rows.extend(
                 (row, "group_id", gid)
-                for row in await _provider_call(lambda gid=gid: list(ks.role_assignments.list(group=gid, system="all")))
+                for row in await _provider_call(keystone.direct_system_assignments, ks, group=gid)
             )
         for row, principal, subject in system_rows:
             source = domain_projects._assignment(row, catalog)

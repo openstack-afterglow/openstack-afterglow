@@ -25,6 +25,7 @@ import { mockAdminResources } from '$lib/mockup/adminResources';
 import { mockAdminFloatingIps } from '$lib/mockup/adminFloatingIps';
 import { mockAdminPorts } from '$lib/mockup/adminPorts';
 import { mockAdminUsers } from '$lib/mockup/adminUsers';
+import { mockAdminSystemAdmins } from '$lib/mockup/adminSystemAdmins';
 import { mockAdminGroups } from '$lib/mockup/adminGroups';
 import { mockAdminRolesDomains } from '$lib/mockup/adminRolesDomains';
 import { mockAdminObjectStorage } from '$lib/mockup/adminObjectStorage';
@@ -395,6 +396,8 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	if (adminPorts !== undefined) return adminPorts;
 	const adminUsers = mockAdminUsers(method, pathname, params, body, profile);
 	if (adminUsers !== undefined) return adminUsers;
+	const adminSystemAdmins = mockAdminSystemAdmins(method, pathname, body, profile);
+	if (adminSystemAdmins !== undefined) return adminSystemAdmins;
 	const adminGroups = mockAdminGroups(method, pathname, params, body, profile);
 	if (adminGroups !== undefined) return adminGroups;
 	const adminRolesDomains = mockAdminRolesDomains(method, pathname, body, profile);

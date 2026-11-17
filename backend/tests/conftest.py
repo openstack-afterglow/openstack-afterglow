@@ -287,6 +287,18 @@ def auth_directory(monkeypatch):
             rows = [row for row in rows if "system" in row.get("scope", {})]
         return rows
 
+    def roles(*, user=None, group=None, system=None, name=None):
+        rows = state.roles
+        if system is not None:
+            ids = {
+                row["role"]["id"]
+                for row in assignments(**({"user": user} if user is not None else {"group": group}))
+                if row.get("scope") == {"system": {"all": True}}
+                and ("user" in row) != ("group" in row)
+            }
+            rows = [role for role in rows if role["id"] in ids]
+        return [role for role in rows if name is None or role["name"] == name]
+
     ks = SimpleNamespace(
         domains=SimpleNamespace(
             get=domain_get, list=lambda name=None: [d for d in domains.values() if name is None or d["name"] == name]
@@ -301,7 +313,7 @@ def auth_directory(monkeypatch):
         ),
         groups=SimpleNamespace(list=lambda **kwargs: []),
         projects=SimpleNamespace(get=project_get, list=project_list),
-        roles=SimpleNamespace(list=lambda: state.roles),
+        roles=SimpleNamespace(list=roles),
         inference_rules=SimpleNamespace(list_inference_roles=lambda: state.inferences),
         role_assignments=SimpleNamespace(list=assignments),
     )

@@ -86,7 +86,7 @@ class Directory:
             {"prior_role": {"id": "project_member"}, "implies": [{"id": "project_reader"}, {"id": "member"}]},
             {"prior_role": {"id": "alias"}, "implies": [{"id": "manager"}]},
         ]
-        self.roles = row(list=lambda: self.role_rows, grant=self.assign, revoke=self.revoke)
+        self.roles = row(list=self.list_roles, grant=self.assign, revoke=self.revoke)
         self.inference_rules = row(list_inference_roles=lambda: self.edges)
         self.domains = row(
             get=lambda id: self.get_row("domain", self.domain_rows, id),
@@ -115,6 +115,13 @@ class Directory:
             remove_from_group=self.remove_group,
         )
         self.role_assignments = row(list=self.assignments)
+
+    def list_roles(self, *, user=None, group=None, system=None, name=None):
+        rows = self.role_rows
+        if system is not None:
+            ids = {item.role["id"] for item in self.assignments(user=user, group=group, system=system)}
+            rows = [role for role in rows if role.id in ids]
+        return [role for role in rows if name is None or role.name == name]
 
     def get_row(self, kind, rows, id):
         self.read_calls.append((kind, id))
