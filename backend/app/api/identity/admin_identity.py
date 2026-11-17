@@ -1792,6 +1792,7 @@ class SystemRoleRequest(BaseModel):
 @router.get("/identity/system-roles", dependencies=[Depends(require_admin)])
 async def list_system_roles():
     """system:all scope에서 admin role을 보유한 사용자 목록 조회."""
+
     def _list(ks, user_ids):
         result = []
         for uid in user_ids:
@@ -1831,13 +1832,13 @@ async def _system_admin_change(conn, user_id: str, *, revoke: bool) -> dict:
     # The shared native role-graph lease serializes this with every other grant,
     # role and implication mutation, so two concurrent revokes cannot both pass.
     async with identity_roles._graph_lock(conn) as lease:
+        await backup_system_account.assert_not_system_account(user_id, conn=conn)
         try:
             admin_role_id = await asyncio.to_thread(keystone._resolve_admin_role_id)
             ks = await asyncio.to_thread(keystone._get_admin_ks_client)
             account = await asyncio.to_thread(ks.users.get, user_id)
             if identity_roles._field(account, "id") != user_id:
                 raise public_service_error(503, "identity_unavailable")
-            await backup_system_account.assert_not_system_account(user_id, conn=conn)
             if revoke:
 
                 def check():

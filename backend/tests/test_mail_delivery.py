@@ -2,6 +2,7 @@
 
 import asyncio
 import copy
+import inspect
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import UUID, uuid4
@@ -10,6 +11,7 @@ import httpx
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI, HTTPException
+from keystoneclient.v3.roles import RoleManager
 from sqlalchemy import Integer, MetaData, func, select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -47,6 +49,7 @@ async def state(monkeypatch, tmp_path):
         admin=True,
         sent=[],
         service_users=set(),
+        system_roles={},
         disabled_homes=set(),
         status="accepted",
         transport_hook=None,
@@ -88,10 +91,31 @@ async def state(monkeypatch, tmp_path):
         return []
 
     roles = [{"id": name, "name": name, "domain_id": None} for name in ("service", "reader", "admin")]
+
+    def list_roles(
+        user=None,
+        group=None,
+        system=None,
+        domain=None,
+        project=None,
+        os_inherit_extension_inherited=False,
+        **kwargs,
+    ):
+        selected = roles
+        if user or group:
+            assert bool(user) != bool(group)
+            assert (system, domain, project) == ("all", None, None)
+            assert os_inherit_extension_inherited is False
+            principal = ("user", user) if user else ("group", group)
+            selected = [role for role in roles if role["id"] in state.system_roles.get(principal, set())]
+        return [
+            copy.deepcopy(role) for role in selected if all(role.get(key) == value for key, value in kwargs.items())
+        ]
+
     state.ks = SimpleNamespace(
         users=SimpleNamespace(get=get_user),
         domains=SimpleNamespace(get=lambda did: {"id": did, "enabled": did not in state.disabled_homes}),
-        roles=SimpleNamespace(list=lambda: roles),
+        roles=SimpleNamespace(list=list_roles),
         inference_rules=SimpleNamespace(list_inference_roles=lambda: []),
         role_assignments=SimpleNamespace(list=assignments),
         groups=SimpleNamespace(list=lambda **kw: []),
@@ -191,6 +215,37 @@ async def announcement(state, **changes):
             )
             result["email_operation"] = await svc._summary(session, operation)
     return result
+
+
+async def test_mail_role_manager_matches_installed_keystone_contract(state):
+    manager = state.ks.roles
+    for name, method in vars(manager).items():
+        assert callable(getattr(RoleManager, name))
+        expected = inspect.signature(getattr(RoleManager, name))
+        assert inspect.signature(method).parameters == {
+            key: value for key, value in expected.parameters.items() if key != "self"
+        }
+    assert {role["id"] for role in manager.list()} == {"service", "reader", "admin"}
+    assert manager.list(name="admin") == [{"id": "admin", "name": "admin", "domain_id": None}]
+    assert keystone.direct_system_assignments(state.ks, user=USER) == []
+    assert keystone.direct_system_assignments(state.ks, group="mail-team") == []
+
+
+@pytest.mark.parametrize("principal", ["user", "group"])
+async def test_explicit_system_service_role_excludes_mail_recipient(state, monkeypatch, principal):
+    subject = USER if principal == "user" else "mail-team"
+    state.system_roles[(principal, subject)] = {"service"}
+    if principal == "group":
+        monkeypatch.setattr(state.ks.groups, "list", lambda user=None: [{"id": subject}] if user == USER else [])
+    assert keystone.direct_system_assignments(state.ks, **{principal: subject}) == [
+        {principal: {"id": subject}, "role": {"id": "service"}, "scope": {"system": {"all": True}}}
+    ]
+    with pytest.raises(HTTPException) as denied:
+        await individual(state)
+    assert denied.value.status_code == 409
+    assert denied.value.detail == {"code": "mail_recipient_ineligible"}
+    assert await rows(state) == []
+    assert state.sent == []
 
 
 async def test_encrypted_intent_and_stable_message_id_sql_dispatch(state):

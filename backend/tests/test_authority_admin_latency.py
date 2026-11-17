@@ -65,7 +65,9 @@ async def test_admin_chat_round_trip_benchmark(delayed_browser, monkeypatch, adm
     assert len(recorder.calls) == (82 if admin_source == "direct" else 84)
     assert counts[("users.get", ("user",), ())] == 2
     assert counts[("domains.get", ("tenant-a",), ())] == 2
-    assert counts[("role_assignments.list", (), (("system", "all"), ("user", "user")))] == 2
+    assert counts[("roles.list", (), (("system", "all"), ("user", "user")))] == 2
+    assert counts[("roles.list", (), (("group", "team-0"), ("system", "all")))] == (2 if admin_source == "group" else 0)
+    assert counts[("role_assignments.list", (), (("system", "all"), ("user", "user")))] == 0
     assert 2 <= recorder.peak <= 4
 
 

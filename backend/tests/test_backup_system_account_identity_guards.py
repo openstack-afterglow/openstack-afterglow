@@ -672,3 +672,18 @@ async def test_public_native_oidc_hydrates_before_first_personal_proof(
             await call
         assert denied.value.status_code == 503
         revoke.assert_awaited_once_with("human-native-token")
+
+
+@pytest.mark.parametrize("operation", ["grant", "revoke"])
+@pytest.mark.asyncio
+async def test_protected_system_role_target_is_rejected_before_native_discovery(
+    protected_identity, monkeypatch, operation
+):
+    discovery = MagicMock(side_effect=AssertionError("Protected identity must not start native discovery"))
+    monkeypatch.setattr(keystone, "_resolve_admin_role_id", discovery)
+    monkeypatch.setattr(keystone, "_get_admin_ks_client", discovery)
+    async with AsyncClient(transport=ASGITransport(app=protected_identity.app), base_url="http://test") as client:
+        response = await client.post(f"/api/v1/admin/identity/system-roles/{operation}", json={"user_id": SYSTEM_ID})
+    assert response.status_code == 403
+    assert response.json() == {"detail": "system_account_protected"}
+    discovery.assert_not_called()

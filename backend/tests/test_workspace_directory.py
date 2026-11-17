@@ -507,6 +507,18 @@ def native_http_directory(cached_directory, monkeypatch):
                 return self.respond(200, {"roles": native.role_rows, "links": {"next": None}})
             if path == "/v3/role_inferences":
                 return self.respond(200, {"role_inferences": native.edges, "links": {"next": None}})
+            if path.startswith("/v3/system/") and path.endswith("/roles"):
+                _, _, _, kind, subject, _ = path.split("/")
+                principal = "user" if kind == "users" else "group"
+                ids = {
+                    assignment.role["id"]
+                    for assignment in native.raw
+                    if getattr(assignment, principal, {}).get("id") == subject
+                    and assignment.scope == {"system": {"all": True}}
+                }
+                return self.respond(
+                    200, {"roles": [role for role in native.role_rows if role.id in ids], "links": {"next": None}}
+                )
             if path == "/v3/role_assignments":
                 rows = native.assignments(
                     project=param("scope.project.id"),
