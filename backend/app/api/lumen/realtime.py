@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID
 
@@ -28,6 +29,7 @@ class SessionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     model_id: str = Field(min_length=1, max_length=190)
     provider_id: int | str | None = None
+    kind: Literal["conversation", "transcription"] = "conversation"
     voice: str | None = Field(default=None, max_length=100)
     instructions: str | None = Field(default=None, max_length=4096)
     max_duration_seconds: int = Field(default=300, ge=10, le=900)
