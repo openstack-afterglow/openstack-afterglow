@@ -139,6 +139,13 @@ async def test_vm_create_approval_fingerprint_covers_resource_selections_schedul
     assert "shelve and offload" in first.estimated_effect and "retain attached volumes" in first.estimated_effect
     assert parsed.model_dump(mode="json")["usage_schedule"]["expires_at"] in first.estimated_effect
     assert "study" in first.estimated_effect
+    assert "delete_boot_volume_on_termination=false" in first.estimated_effect
+    assert "availability_zone=nova" in first.estimated_effect
+    public_preview = first.model_dump(mode="json")
+    assert all(value in public_preview["resource_identity"] for value in ("project-a", raw["name"]))
+    for field in ("image_id", "flavor_id", "network_id", "key_name"):
+        assert any(raw[field] in resource for resource in public_preview["dependent_resources"])
+    assert raw["security_group_ids"][0] in " ".join(public_preview["dependent_resources"])
     assert not first.destructive
     fingerprints = {first.fingerprint}
     variants = [
@@ -147,6 +154,7 @@ async def test_vm_create_approval_fingerprint_covers_resource_selections_schedul
         {"usage_schedule": {**schedule, "expiry_action": "delete"}},
         {"usage_schedule": {**schedule, "expiry_action": "delete", "delete_volumes": True}},
         {"delete_boot_volume_on_termination": True},
+        {"availability_zone": "zone-b"},
         {"boot_volume_size_gb": 21},
         {"key_name": "another-user-key"},
         {"flavor_id": "other-flavor"},
@@ -172,6 +180,11 @@ async def test_vm_create_approval_fingerprint_covers_resource_selections_schedul
         )
         assert preview.fingerprint not in fingerprints
         fingerprints.add(preview.fingerprint)
+        assert (
+            f"delete_boot_volume_on_termination={str(change.get('delete_boot_volume_on_termination', False)).lower()}"
+            in preview.estimated_effect
+        )
+        assert f"availability_zone={change.get('availability_zone', 'nova')}" in preview.estimated_effect
         if change.get("usage_schedule", {}).get("expiry_action") == "delete":
             assert preview.destructive and "stop then delete the VM" in preview.estimated_effect
             if change["usage_schedule"].get("delete_volumes"):

@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-chat';
+	import { t as nativeT } from '$lib/i18n/ns/native-providers';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import { onDestroy, tick, untrack } from 'svelte';
-	import { auth } from '$lib/stores/auth';
+	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
@@ -23,10 +24,13 @@
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 	import ModelCapabilityBadges from '$lib/components/chat/ModelCapabilityBadges.svelte';
 	import type { ModelCapabilities } from '$lib/api/chatContracts';
+	import { mediaGateReadiness, mediaReadyLabel } from '$lib/api/mediaReadiness';
 	import ModelMediaPricingEditor from './ModelMediaPricingEditor.svelte';
 	import ModelKindEditor from './ModelKindEditor.svelte';
+	import NativeCatalogPanel from './NativeCatalogPanel.svelte';
+	import { FOLLOW_NATIVE_CATALOG_PRICES, catalogSourceUrl, type ProviderFamily, type PriceOrigin, type NativeCatalogSummary, type NativeCatalogEntry } from '$lib/api/nativeCatalog';
 	import ProviderAccountsPanel from './ProviderAccountsPanel.svelte';
-	import { MODEL_LABELS as MEDIA_LABELS, TOKEN_FIELDS, hasMediaPrices, pricingDraft, pricingError, pricingPayload, pricingEquals, type ModelKind, type MediaPricing } from './modelPricing';
+	import { MODEL_LABELS as MEDIA_LABELS, TOKEN_FIELDS, hasMediaPrices, knownModelKind, modelKindLabel, pricingDraft, pricingError, pricingPayload, pricingEquals, type ModelKind, type MediaPricing } from './modelPricing';
 	import { t as commonT } from '$lib/i18n/ns/common';
 	import { compileRegexSearch } from '$lib/utils/regexSearch';
 	import { createTableView } from '$lib/utils/tableView.svelte';
@@ -48,7 +52,7 @@
 		auth_status?: 'disconnected' | 'configured' | 'reauth_required';
 		auth_expires_at?: string | null;
 		has_api_key: boolean;
-		models_dev_provider_id: string | null;
+		provider_family?: ProviderFamily;
 		is_active: boolean;
 		margin_multiplier: number;
 		billing_capability?: 'openrouter_key' | 'deepseek_balance' | 'openai_admin_usage' | 'anthropic_admin_usage' | null;
@@ -130,43 +134,39 @@
 
 	// Form selection values are UI-only. Provider type and authentication mode are sent explicitly.
 	let PROVIDER_TYPES: ProviderChoice[] = $derived([
-		{ value: 'openai', label: t('configuration.openaiApiAndOpenaiCompatibleApis'), providerType: 'openai', authMode: 'api_key' },
+		{ value: 'openai', label: 'OpenAI API', providerType: 'openai', authMode: 'api_key' },
 		{ value: 'anthropic', label: 'Claude API', providerType: 'anthropic', authMode: 'api_key' },
+		{ value: 'gemini', label: 'Google Gemini (AI Studio)', providerType: 'gemini', authMode: 'api_key' },
+		{ value: 'perplexity', label: 'Perplexity (Agent API · Router · Sonar)', providerType: 'perplexity', authMode: 'api_key' },
 		{ value: 'chatgpt-subscription', label: t('configuration.chatgptSubscriptionExperimental'), providerType: 'chatgpt', authMode: 'chatgpt_device' },
 		{ value: 'claude-subscription', label: t('configuration.claudeSubscriptionExperimental'), providerType: 'anthropic', authMode: 'anthropic_subscription' },
-		{ value: 'gemini', label: 'Google Gemini (AI Studio)', providerType: 'gemini', authMode: 'api_key' },
-		{ value: 'vertex_ai', label: 'Google Vertex AI (GCP)', providerType: 'vertex_ai', authMode: 'api_key' },
-		{ value: 'azure', label: 'Azure OpenAI', providerType: 'azure', authMode: 'api_key' },
-		{ value: 'bedrock', label: 'AWS Bedrock', providerType: 'bedrock', authMode: 'api_key' },
-		{ value: 'ollama', label: t('configuration.ollamaLocal'), providerType: 'ollama', authMode: 'api_key' },
-		{ value: 'mistral', label: 'Mistral', providerType: 'mistral', authMode: 'api_key' },
-		{ value: 'cohere', label: 'Cohere', providerType: 'cohere', authMode: 'api_key' },
-		{ value: 'groq', label: 'Groq', providerType: 'groq', authMode: 'api_key' },
-		{ value: 'deepseek', label: 'DeepSeek', providerType: 'deepseek', authMode: 'api_key' },
-		{ value: 'together_ai', label: 'Together AI', providerType: 'together_ai', authMode: 'api_key' },
-		{ value: 'openrouter', label: 'OpenRouter', providerType: 'openrouter', authMode: 'api_key' },
-		{ value: 'perplexity', label: 'Perplexity (Agent API · Router · Sonar)', providerType: 'perplexity', authMode: 'api_key' },
-		{ value: 'xai', label: 'xAI (Grok)', providerType: 'xai', authMode: 'api_key' }
+		{ value: 'openai-compatible', label: nativeT('compatible.openai'), providerType: 'openai', authMode: 'api_key' },
+		{ value: 'anthropic-compatible', label: nativeT('compatible.anthropic'), providerType: 'anthropic', authMode: 'api_key' }
 	]);
+	function effectiveMediaPricing(model: Model): MediaPricing | null | undefined {
+		// Older DTOs omit this field; an explicit null in a current DTO is authoritative.
+		return model.effective_media_pricing === undefined ? model.media_pricing : model.effective_media_pricing;
+	}
 	function mediaPriceSummary(model: Model): string {
-		const pricing = model.media_pricing;
+		const pricing = effectiveMediaPricing(model);
 		const rates = Object.entries(pricing ?? {}).filter(([key, value]) => key !== 'token_rates' && key !== 'image_variants' && typeof value === 'string')
 			.map(([key, value]) => `${key}: ${displayPrice(String(value))}`);
 		const variants = Object.entries(pricing?.image_variants ?? {}).map(([name, price]) => t('configuration.usdImageAlternate', { v0: name, v1: displayPrice(price) }));
 		const tokens = Object.entries(pricing?.token_rates ?? {}).flatMap(([modality, values]) => Object.entries(values).map(([key, value]) => `${modality === 'image' ? t('configuration.image') : modality === 'audio' ? t('pricing.audio') : modality} ${TOKEN_FIELDS.find((field) => field.key === key)?.label ?? key}: ${displayPrice(String(value))} ${t('configuration.usd1mTokens')}`));
 		return [...rates, ...variants, ...tokens, ...(!hasMediaPrices(pricing) ? [t('configuration.rateUnset')] : [])].join(' · ');
 	}
-	function mediaReadiness(model: Model): string {
-		const feature = model.model_kind === 'image' ? 'image_output' : model.model_kind === 'stt' ? 'audio_input' : 'audio_output';
-		const gate = model.effective_capabilities?.feature_gates?.[feature];
-		return gate?.reason_code === 'route_unavailable'
-			? t('configuration.noExecutionPathCannotRun')
-			: t('configuration.executionUnverifiedCheckExecutionPath', { v0: gate?.reason_code ? ` (${gate.reason_code})` : '' });
+	function mediaBlockReason(model: Model): string | null {
+		const features = model.model_kind === 'embedding' ? ['embeddings'] : model.model_kind === 'image' ? ['image_output'] : model.model_kind === 'stt' ? ['audio_input'] : model.model_kind === 'realtime' ? ['audio_input', 'audio_output'] : ['audio_output'];
+		for (const feature of features) {
+			const reason = mediaGateReadiness(model.effective_capabilities?.feature_gates?.[feature]);
+			if (reason) return reason;
+		}
+		return null;
 	}
 	function mediaCapability(model: Model): string {
 		const kind = model.model_kind ?? 'text';
-		const features = kind === 'image' ? ['image_output'] : kind === 'stt' ? ['audio_input'] : kind === 'realtime' ? ['audio_input', 'audio_output'] : ['audio_output'];
-		const names: Record<string, string> = { image_output: t('configuration.imageOutput'), audio_input: t('configuration.audioInput'), audio_output: t('configuration.audioOutput') };
+		const features = kind === 'embedding' ? ['embeddings'] : kind === 'image' ? ['image_output'] : kind === 'stt' ? ['audio_input'] : kind === 'realtime' ? ['audio_input', 'audio_output'] : ['audio_output'];
+		const names: Record<string, string> = { embeddings: t('configuration.embedding'), image_output: t('configuration.imageOutput'), audio_input: t('configuration.audioInput'), audio_output: t('configuration.audioOutput') };
 		const priced = features.every((feature) => model.effective_capabilities?.feature_gates?.[feature]?.pricing_available === true);
 		return `${features.map((feature) => names[feature]).join('·')} · ${priced ? t('configuration.rateShownForThisCapability') : t('configuration.rateUnverifiedForThisCapability')}`;
 	}
@@ -185,21 +185,25 @@
 		is_active: boolean;
 		model_kind?: ModelKind;
 		media_pricing?: MediaPricing | null;
+		effective_media_pricing?: MediaPricing | null;
 		is_title_model?: boolean;
 		is_memory_model?: boolean;
 		input_price_per_million: string | null;
 		output_price_per_million: string | null;
 		effective_input_price_per_million: string | null;
 		effective_output_price_per_million: string | null;
-		effective_price_source: 'manual' | 'models.dev' | 'litellm' | 'partial' | 'unpriced' | `perplexity_agent_api_${string}` | null;
-		// Prompt-cache prices are manual-only (no catalog fallback). Absent/null means the
-		// component is billed at 0 USD until an administrator sets it. Optional because an
-		// older Lumen may not return them yet.
+		effective_price_source: string | null;
 		cache_read_price_per_million?: string | null;
 		cache_write_price_per_million?: string | null;
 		cache_write_1h_price_per_million?: string | null;
-		models_dev_model_id: string | null;
-		price_source: 'manual' | 'models.dev' | null;
+		effective_cache_read_price_per_million?: string | null;
+		effective_cache_write_price_per_million?: string | null;
+		effective_cache_write_1h_price_per_million?: string | null;
+		price_source?: string | null;
+		provider_family?: ProviderFamily;
+		price_origin?: PriceOrigin;
+		catalog_version?: string | null;
+		catalog_entry?: NativeCatalogSummary | null;
 		capabilities?: ModelCapabilities | null;
 		effective_capabilities?: ModelCapabilities | null;
 		capability_source?: string | null;
@@ -217,8 +221,8 @@
 	// Cache prices are optional and independent of each other and of text input/output rates.
 	let CACHE_PRICE_FIELDS: { key: CachePriceKey; label: string; slug: string }[] = $derived([
 		{ key: 'cache_read_price_per_million', label: t('configuration.cacheRead'), slug: 'read' },
-		{ key: 'cache_write_price_per_million', label: t('configuration.cacheWriteFiveMinutes'), slug: 'write-5m' },
-		{ key: 'cache_write_1h_price_per_million', label: t('configuration.cacheWriteOneHour'), slug: 'write-1h' }
+		{ key: 'cache_write_price_per_million', label: nativeT('price.cacheWrite'), slug: 'write-5m' },
+		{ key: 'cache_write_1h_price_per_million', label: nativeT('price.cacheWriteLong'), slug: 'write-1h' }
 	]);
 	// Plain non-negative decimal; rejects exponent, hex, sign, Infinity/NaN. Lumen owns precision.
 	const CACHE_PRICE_PATTERN = /^\d+(?:\.\d+)?$/;
@@ -311,7 +315,7 @@
 	}
 
 	function cachePriceState(model: Model): 'none' | 'partial' | 'all' {
-		const set = CACHE_PRICE_FIELDS.filter(({ key }) => model[key] !== null && model[key] !== undefined && model[key] !== '').length;
+		const set = CACHE_PRICE_FIELDS.filter(({ key }) => (model[`effective_${key}` as keyof Model] ?? model[key]) != null && (model[`effective_${key}` as keyof Model] ?? model[key]) !== '').length;
 		if (set === 0) return 'none';
 		return set === CACHE_PRICE_FIELDS.length ? 'all' : 'partial';
 	}
@@ -327,6 +331,7 @@
 	let providers = $state<Provider[]>([]);
 	let accountPanels = $state<Record<number, { show: () => void } | undefined>>({});
 	let accountScopeGeneration = 0;
+	let registryScopeRevision = $state(0);
 	let accountScopeIdentity = '';
 	let models = $state<Model[]>([]);
 	// An empty list cannot tell the Lumen version apart, so the create form keeps its cache inputs then.
@@ -356,6 +361,7 @@
 	let editProviderName = $state('');
 	let editApiProvider = $state('');
 	let editProviderOrder = $state('0');
+	let editApiBase = $state('');
 	let providerEditAttempted = $state(false);
 	let providerSaving = $state(false);
 	let providerEditError = $state('');
@@ -374,6 +380,23 @@
 	}
 	const selectedProviderChoice = $derived(PROVIDER_TYPES.find((choice) => choice.value === pType) ?? PROVIDER_TYPES[0]!);
 	const isSubscriptionChoice = $derived(selectedProviderChoice.authMode !== 'api_key');
+	const isCompatibleChoice = $derived(pType.endsWith('-compatible'));
+	function compatibleBaseError(value: string, protocol: string): string | undefined {
+		try {
+			const url = new URL(value.trim());
+			const officialHosts = protocol === 'openai' ? ['api.openai.com'] : ['api.anthropic.com'];
+			if (url.protocol === 'https:' && !url.username && !url.password && !url.search && !url.hash && !officialHosts.includes(url.hostname.toLowerCase())) return;
+		} catch { /* The field reports malformed and missing URLs identically. */ }
+		return nativeT('compatible.baseError');
+	}
+	function compatibleProvider(providerId: number | ''): boolean {
+		return providers.find((provider) => provider.id === providerId)?.provider_family === 'compatible';
+	}
+	function requiredManualRates(kind: ModelKind | '', input: string, output: string, pricing: ReturnType<typeof pricingDraft>): boolean {
+		if (kind === 'text') return input.trim() !== '' && output.trim() !== '';
+		if (kind === 'embedding') return input.trim() !== '';
+		return Boolean(kind && hasMediaPrices(pricingPayload(kind, pricing)));
+	}
 
 
 	let mProviderId = $state<number | ''>('');
@@ -388,6 +411,7 @@
 	let addingModel = $state(false);
 	let creationOpen = $state(false);
 	let creationMethod = $state<'discover' | 'manual'>('discover');
+	let manualPricingAttempted = $state(false);
 	let creationGeneration = 0;
 	let manualOutcomeUnknown = $state(false);
 	let uncertainRegistrations = $state<Record<string, boolean>>({});
@@ -398,6 +422,7 @@
 	function resetManualDraft() {
 		++creationGeneration;
 		mName = ''; mDisplay = ''; mKind = 'text'; mInputPrice = ''; mOutputPrice = '';
+		manualPricingAttempted = false;
 		mPricing = pricingDraft(); mCachePrices = emptyCachePriceInputs(); mCacheErrors = {};
 		manualOutcomeUnknown = false;
 		addingModel = false;
@@ -447,12 +472,16 @@
 	let priceSaving = $state(false);
 	let priceScopeToken: string | undefined;
 	let priceScopeProjectId: string | undefined;
+	let priceScopeGeneration = 0;
+	let followPriceUnknown = $state(false);
 	let editingCapabilities = $state<Model | null>(null);
 	let editingKind = $state<Model | null>(null);
 	let capVision = $state(false);
 	let capReasoning = $state(false);
 	let capToolCall = $state(false);
 	let capAttachment = $state(false);
+	let capDecisions = $state(false);
+	let capScopeGeneration = 0;
 	let capContextLimit = $state('');
 	let capSuggestedInputLimit = $state<number | null>(null);
 	let capSaving = $state(false);
@@ -495,6 +524,9 @@
 		generation_methods?: string[];
 		input_token_limit?: number | null;
 		output_token_limit?: number | null;
+		provider_family?: ProviderFamily;
+		requires_manual_pricing?: boolean;
+		catalog_entry?: NativeCatalogEntry | null;
 	}
 	interface DiscoveryResult {
 		provider_id: number;
@@ -516,6 +548,7 @@
 		inputTokenLimit: number | null;
 		outputTokenLimit: number | null;
 		purpose: 'chat' | 'non_chat' | 'unknown';
+		catalogEntry: NativeCatalogEntry | null;
 		mediaPricing: ReturnType<typeof pricingDraft>;
 		cachePrices: CachePriceInputs;
 	}
@@ -630,8 +663,8 @@
 		columns: () => [{
 			key: 'kind',
 			label: t('pricing.candidateKindFilter'),
-			value: (candidate) => candidate.model_kind ?? (candidate.purpose === 'chat' ? 'text' : 'unknown'),
-			format: (value) => value === 'unknown' ? t('pricing.unknownKind') : MEDIA_LABELS[value as ModelKind],
+			value: (candidate) => knownModelKind(candidate.model_kind) ?? (candidate.model_kind == null && candidate.purpose === 'chat' ? 'text' : 'unknown'),
+			format: (value) => modelKindLabel(value),
 			sortable: false,
 			filterMode: 'single',
 		}]
@@ -651,19 +684,26 @@
 		if (!entry.modelName.trim()) return t('configuration.enterAProviderAndModelName');
 		const mediaError = pricingError(entry.kind || 'text', entry.mediaPricing);
 		if (mediaError) return mediaError;
-		if (Object.keys(parseCachePrices(entry.cachePrices).errors).length) return CACHE_PRICE_ERROR;
+		if (entry.kind !== 'embedding' && Object.keys(parseCachePrices(entry.cachePrices).errors).length) return CACHE_PRICE_ERROR;
 		if (!entry.kind) return t('pricing.kindRequired');
-		if (entry.kind !== 'text' && !mediaProviderSupported(registrationReview?.providerId ?? '')) return t('pricing.directProviderRequired');
+		if (compatibleProvider(registrationReview?.providerId ?? '') && !requiredManualRates(entry.kind, entry.inputPrice, entry.outputPrice, entry.mediaPricing)) return nativeT('compatible.requiredRates');
 		const input = entry.inputPrice.trim();
-		const output = entry.outputPrice.trim();
+		const output = entry.kind === 'embedding' ? '' : entry.outputPrice.trim();
 		if (!input && !output) return undefined;
 		if ([input, output].some((value) => value && !CACHE_PRICE_PATTERN.test(value))) return t('pricing.reviewRateError');
 		return undefined;
 	}
 
+	function catalogCanPrice(entry: RegistrationEntry): boolean {
+		const catalog = entry.catalogEntry;
+		if (!catalog || catalog.kind !== entry.kind || entry.modelName.trim() !== entry.name) return false;
+		return entry.kind === 'text' ? catalog.token_pricing?.input != null && catalog.token_pricing?.output != null
+			: entry.kind === 'embedding' ? catalog.token_pricing?.input != null : hasMediaPrices(catalog.media_pricing);
+	}
 	function reviewCanActivate(review: RegistrationReview): boolean {
 		return review.entries.filter((entry) => registrationOutcomes[entry.name] !== 'success' && registrationOutcomes[entry.name] !== 'unknown')
-			.every((entry) => entry.kind === 'text' && entry.inputPrice.trim() !== '' && entry.outputPrice.trim() !== '' && !reviewPriceError(entry));
+			.every((entry) => (requiredManualRates(entry.kind, entry.inputPrice, entry.outputPrice, entry.mediaPricing) ||
+				(!compatibleProvider(review.providerId) && catalogCanPrice(entry))) && !reviewPriceError(entry));
 	}
 
 	function formatBillingAmount(value: string | null): string {
@@ -781,8 +821,9 @@
 
 	async function load({ freshBilling = false, preserveRows = false }: { freshBilling?: boolean; preserveRows?: boolean } = {}) {
 		const scopeToken = token, scopeProjectId = projectId;
+		const requestScope = accountScopeGeneration;
 		if (modelOrderSaveTask) await modelOrderSaveTask;
-		if (!token || scopeToken !== token || scopeProjectId !== projectId || destroyed) return;
+		if (!token || !$authReady || $projectSwitching || requestScope !== accountScopeGeneration || scopeToken !== token || scopeProjectId !== projectId || destroyed) return;
 		const generation = ++loadGeneration;
 		resetModelDrag();
 		const requestToken = token;
@@ -796,7 +837,7 @@
 				api.get<Provider[]>('/api/v1/chat/admin/providers', requestToken, requestProjectId),
 				api.get<Model[]>('/api/v1/chat/admin/models', requestToken, requestProjectId)
 			]);
-			if (generation !== loadGeneration || requestToken !== token || requestProjectId !== projectId || destroyed) return;
+			if (generation !== loadGeneration || requestScope !== accountScopeGeneration || requestToken !== token || requestProjectId !== projectId || destroyed) return;
 			providers = ps.toSorted((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id - b.id);
 			if (mProviderId === '' && ps.length === 1) mProviderId = ps[0].id;
 			models = sortModels(ms);
@@ -819,7 +860,7 @@
 
 	async function addProvider() {
 		providerCreateAttempted = true;
-		if (addingProvider || !pName.trim() || qualifierError(pApiProvider) || orderError(pSortOrder)) return;
+		if (addingProvider || !pName.trim() || qualifierError(pApiProvider) || orderError(pSortOrder) || (isCompatibleChoice && compatibleBaseError(pApiBase, selectedProviderChoice.providerType))) return;
 		providerCreateError = '';
 		const choice = selectedProviderChoice;
 		const requestToken = token, requestProjectId = projectId;
@@ -834,7 +875,7 @@
 				auth_mode: choice.authMode
 			};
 			if (choice.authMode === 'api_key') {
-				body.api_base = pApiBase.trim() || null;
+				body.api_base = isCompatibleChoice ? pApiBase.trim() : null;
 				body.api_key = pApiKey.trim() || null;
 			}
 			pApiKey = '';
@@ -861,38 +902,42 @@
 		} catch (e) {
 			if (requestScope === accountScopeGeneration && requestToken === token && requestProjectId === projectId && !destroyed) providerCreateError = metadataSaveError(e);
 		} finally {
-			addingProvider = false;
+			if (requestScope === accountScopeGeneration && !destroyed) addingProvider = false;
 		}
 	}
 
 	function openProviderEditor(provider: Provider) {
+		if (!providers.includes(provider) || !$authReady || $projectSwitching) return;
 		editingProvider = provider;
 		editProviderName = provider.name;
 		editApiProvider = provider.api_provider;
 		editProviderOrder = String(provider.sort_order ?? 0);
+		editApiBase = provider.api_base ?? '';
 		providerEditAttempted = false;
 		providerEditError = '';
 	}
 
 	async function saveProviderMetadata() {
 		providerEditAttempted = true;
-		if (!editingProvider || providerSaving || !editProviderName.trim() || qualifierError(editApiProvider) || orderError(editProviderOrder)) return;
+		if (!editingProvider || providerSaving || !editProviderName.trim() || qualifierError(editApiProvider) || orderError(editProviderOrder) || (editingProvider.provider_family === 'compatible' && compatibleBaseError(editApiBase, editingProvider.provider_type))) return;
 		const requestToken = token, requestProjectId = projectId;
+		const requestScope = accountScopeGeneration, provider = editingProvider;
 		providerSaving = true;
 		providerEditError = '';
 		try {
 			await api.patch(`/api/v1/chat/admin/providers/${editingProvider.id}`, {
-				name: editProviderName.trim(), api_provider: editApiProvider.trim(), sort_order: Number(editProviderOrder.trim())
+				name: editProviderName.trim(), api_provider: editApiProvider.trim(), sort_order: Number(editProviderOrder.trim()),
+				...(provider.provider_family === 'compatible' ? { api_base: editApiBase.trim() } : {})
 			}, requestToken, requestProjectId);
-			if (requestToken !== token || requestProjectId !== projectId || destroyed) return;
+			if (requestScope !== accountScopeGeneration || requestToken !== token || requestProjectId !== projectId || destroyed) return;
 			invalidateChatModels();
 			editingProvider = null;
 			await load();
 			toast.success(t('pricing.providerSaved'));
 		} catch (e) {
-			if (requestToken === token && requestProjectId === projectId && !destroyed) providerEditError = metadataSaveError(e);
+			if (requestScope === accountScopeGeneration && requestToken === token && requestProjectId === projectId && !destroyed) providerEditError = metadataSaveError(e);
 		} finally {
-			providerSaving = false;
+			if (requestScope === accountScopeGeneration && !destroyed) providerSaving = false;
 		}
 	}
 
@@ -1182,18 +1227,21 @@
 
 
 	async function addModel() {
+		manualPricingAttempted = true;
 		if (!creationOpen || creationMethod !== 'manual' || manualOutcomeUnknown || addingModel || !mProviderId || !mName.trim()) { toast.error(t('configuration.enterAProviderAndModelName')); return; }
 		if (registrationUncertain(mProviderId, mName)) { manualOutcomeUnknown = true; return; }
 		if (mKind !== 'text' && !mediaProviderSupported(mProviderId)) { toast.error(t('pricing.mediaProviderRequired')); return; }
-		if (!cachePricingAvailable) { mCachePrices = emptyCachePriceInputs(); mCacheErrors = {}; }
+		if (!cachePricingAvailable || mKind === 'embedding') { mCachePrices = emptyCachePriceInputs(); mCacheErrors = {}; }
 		const cache = parseCachePrices(mCachePrices);
-		if ([mInputPrice, mOutputPrice].some((value) => value.trim() && !CACHE_PRICE_PATTERN.test(value.trim()))) { toast.error(t('pricing.reviewRateError')); return; }
+		if (mInputPrice.trim() && !CACHE_PRICE_PATTERN.test(mInputPrice.trim())) { toast.error(t('pricing.reviewRateError')); return; }
+		if (mKind !== 'embedding' && mOutputPrice.trim() && !CACHE_PRICE_PATTERN.test(mOutputPrice.trim())) { toast.error(t('pricing.reviewRateError')); return; }
 		mCacheErrors = cache.errors;
-		const prices = pricePayload(mInputPrice, mOutputPrice);
+		const prices = pricePayload(mInputPrice, mKind === 'embedding' ? '' : mOutputPrice);
 		const message = pricingError(mKind, mPricing);
 		if (message) toast.error(message);
 		if (Object.keys(cache.errors).length || message) return;
-		const pricing = pricingPayload(mPricing);
+		if (compatibleProvider(mProviderId) && !requiredManualRates(mKind, mInputPrice, mOutputPrice, mPricing)) { toast.error(nativeT('compatible.requiredRates')); return; }
+		const pricing = pricingPayload(mKind, mPricing);
 		const requestToken = token, requestProjectId = projectId, providerId = mProviderId;
 		const generation = ++creationGeneration;
 		const isCurrent = () => !destroyed && creationOpen && creationMethod === 'manual' && generation === creationGeneration && token === requestToken && projectId === requestProjectId && mProviderId === providerId;
@@ -1253,8 +1301,11 @@
 	}
 
 	function openPriceEditor(model: Model) {
+		if (!models.includes(model) || !$authReady || $projectSwitching) return;
 		editingPrice = model;
 		priceScopeToken = token; priceScopeProjectId = projectId;
+		priceScopeGeneration = accountScopeGeneration;
+		followPriceUnknown = false;
 		editInputPrice = model.input_price_per_million ?? '';
 		editOutputPrice = model.output_price_per_million ?? '';
 		editCachePrices = cachePriceInputsFrom(model);
@@ -1263,39 +1314,61 @@
 	}
 
 	async function savePrice() {
-		if (!editingPrice || priceSaving || destroyed || token !== priceScopeToken || projectId !== priceScopeProjectId) return;
-		const model = editingPrice, requestToken = token, requestProjectId = projectId;
+		if (!editingPrice || priceSaving || destroyed || accountScopeGeneration !== priceScopeGeneration || token !== priceScopeToken || projectId !== priceScopeProjectId) return;
+		const model = editingPrice, requestToken = token, requestProjectId = projectId, scope = accountScopeGeneration;
 		const message = pricingError(model.model_kind ?? 'text', editPricing);
 		if (message) { toast.error(message); return; }
-		const cache = cachePricingSupported(model) ? changedCachePrices(editCachePrices, cachePriceInputsFrom(model)) : { values: {}, errors: {} };
+		const cache = cachePricingSupported(model) && model.model_kind !== 'embedding' ? changedCachePrices(editCachePrices, cachePriceInputsFrom(model)) : { values: {}, errors: {} };
 		editCacheErrors = cache.errors;
-		// Untouched text prices stay absent so a media/cache edit does not invalidate models.dev metadata.
+		// Untouched text prices stay absent; cache/media edits never rewrite independent stored rates.
 		const prices = Object.fromEntries(
-			Object.entries(pricePayload(editInputPrice, editOutputPrice)).filter(([key, value]) => value !== (model[key as keyof Model] ?? null))
+			Object.entries(pricePayload(editInputPrice, model.model_kind === 'embedding' ? '' : editOutputPrice)).filter(([key, value]) => value !== (model[key as keyof Model] ?? null))
 		);
 		if (Object.keys(cache.errors).length) return;
-		const pricing = pricingPayload(editPricing, model.media_pricing);
+		const pricing = pricingPayload(model.model_kind ?? 'text', editPricing, model.media_pricing);
 		const body = { ...prices, ...cache.values, ...(!pricingEquals(pricing ?? {}, model.media_pricing ?? {}) ? { media_pricing: pricing } : {}) };
+		if (model.provider_family === 'compatible' && !requiredManualRates(model.model_kind ?? 'text', editInputPrice, editOutputPrice, editPricing)) { toast.error(nativeT('compatible.requiredRates')); return; }
 		if (!Object.keys(body).length) { editingPrice = null; return; }
 		priceSaving = true;
 		try {
 			await api.patch(`/api/v1/chat/admin/models/${model.id}`, body, requestToken, requestProjectId);
 			invalidateChatModels();
-			if (destroyed || editingPrice !== model || token !== requestToken || projectId !== requestProjectId) return;
+			if (destroyed || scope !== accountScopeGeneration || editingPrice !== model || token !== requestToken || projectId !== requestProjectId) return;
 			editingPrice = null;
 			await load();
-			if (!destroyed && token === requestToken && projectId === requestProjectId) toast.success(t('configuration.modelPricingSaved'));
+			if (!destroyed && scope === accountScopeGeneration && token === requestToken && projectId === requestProjectId) toast.success(t('configuration.modelPricingSaved'));
 		} catch (e) {
-			if (!destroyed && editingPrice === model && token === requestToken && projectId === requestProjectId) toast.error(e instanceof ApiError ? e.message : t('configuration.couldNotSavePricing'));
+			if (!destroyed && scope === accountScopeGeneration && editingPrice === model && token === requestToken && projectId === requestProjectId) toast.error(e instanceof ApiError ? e.message : t('configuration.couldNotSavePricing'));
 		} finally {
-			priceSaving = false;
+			if (!destroyed && scope === accountScopeGeneration) priceSaving = false;
 		}
+	}
+
+	async function followPublishedPrices() {
+		const model = editingPrice;
+		if (!model || model.provider_family !== 'native' || !model.catalog_entry || priceSaving || followPriceUnknown || accountScopeGeneration !== priceScopeGeneration || !$authReady || $projectSwitching) return;
+		const scope = accountScopeGeneration, requestToken = token, requestProjectId = projectId;
+		const current = () => !destroyed && scope === accountScopeGeneration && editingPrice === model;
+		priceSaving = true;
+		try {
+			await api.patch(`/api/v1/chat/admin/models/${model.id}`, { ...FOLLOW_NATIVE_CATALOG_PRICES }, requestToken, requestProjectId);
+			invalidateChatModels();
+			if (!current()) return;
+			editingPrice = null;
+			await load();
+			if (!destroyed && scope === accountScopeGeneration) toast.success(nativeT('price.followSaved'));
+		} catch (caught) {
+			if (current()) {
+				followPriceUnknown = !knownRegistrationFailure(caught);
+				toast.error(followPriceUnknown ? t('configuration.registrationOutcomeUnknown') : metadataSaveError(caught));
+			}
+		} finally { if (!destroyed && scope === accountScopeGeneration) priceSaving = false; }
 	}
 
 	function capabilityState(model: Model): 'override' | 'metadata' | 'unknown' {
 		if (model.capability_source === 'override') return 'override';
 		const caps = model.effective_capabilities ?? model.capabilities;
-		if ((model.effective_capability_source || model.capability_source) && (caps?.vision || caps?.reasoning || caps?.tool_call || caps?.attachment || caps?.context_limit)) {
+		if ((model.effective_capability_source || model.capability_source) && (caps?.vision || caps?.reasoning || caps?.tool_call || caps?.attachment || caps?.context_limit || caps?.decisions)) {
 			return 'metadata';
 		}
 		return 'unknown';
@@ -1309,12 +1382,15 @@
 	}
 
 	function openCapabilityEditor(model: Model) {
+		if (!models.includes(model) || !$authReady || $projectSwitching) return;
 		editingCapabilities = model;
+		capScopeGeneration = accountScopeGeneration;
 		const caps = model.capabilities ?? model.effective_capabilities;
 		capVision = caps?.vision ?? false;
 		capReasoning = caps?.reasoning ?? false;
 		capToolCall = caps?.tool_call ?? false;
 		capAttachment = caps?.attachment ?? false;
+		capDecisions = caps?.decisions ?? false;
 		capSuggestedInputLimit = !model.capabilities && !model.effective_capabilities?.context_limit && discoverId === model.provider_id
 			? discovery?.candidates?.find((candidate) => candidate.id === model.model_name)?.input_token_limit ?? null
 			: null;
@@ -1335,11 +1411,13 @@
 	}
 
 	async function saveCapabilities() {
-		if (!editingCapabilities || capSaving) return;
+		if (!editingCapabilities || capSaving || capScopeGeneration !== accountScopeGeneration || !$authReady || $projectSwitching) return;
 		const value = capContextLimit.trim();
 		if (contextLimitError(value)) return;
 		const contextLimit = value ? Number(value) : null;
 		const model = editingCapabilities;
+		const scope = accountScopeGeneration, requestToken = token, requestProjectId = projectId;
+		const current = () => !destroyed && accountScopeGeneration === scope && editingCapabilities === model;
 		capSaving = true;
 		capError = '';
 		try {
@@ -1349,19 +1427,24 @@
 					reasoning: capReasoning,
 					tool_call: capToolCall,
 					attachment: capAttachment,
-					modalities: model.capabilities?.modalities ?? null,
-					reasoning_options: model.capabilities?.reasoning_options ?? [],
+					decisions: capDecisions,
+					...(model.capabilities?.prompt_caching !== undefined ? { prompt_caching: model.capabilities.prompt_caching } : {}),
+					...(model.capabilities?.structured_output !== undefined ? { structured_output: model.capabilities.structured_output } : {}),
+					...(model.capabilities?.web_search !== undefined ? { web_search: model.capabilities.web_search } : {}),
+					modalities: (model.capabilities ?? model.effective_capabilities)?.modalities ?? null,
+					reasoning_options: (model.capabilities ?? model.effective_capabilities)?.reasoning_options ?? [],
 					context_limit: contextLimit
 				}
-			}, token, projectId);
+			}, requestToken, requestProjectId);
 			invalidateChatModels();
+			if (!current()) return;
 			editingCapabilities = null;
 			await load();
-			toast.success(t('configuration.modelCapabilitiesSavedVerifyExecutionSupportSeparately'));
+			if (!destroyed && scope === accountScopeGeneration) toast.success(t('configuration.modelCapabilitiesSavedVerifyExecutionSupportSeparately'));
 		} catch (e) {
-			capError = e instanceof ApiError ? e.message : t('configuration.couldNotSaveCapabilitiesTryAgain');
+			if (current()) capError = e instanceof ApiError ? e.message : t('configuration.couldNotSaveCapabilitiesTryAgain');
 		} finally {
-			capSaving = false;
+			if (!destroyed && scope === accountScopeGeneration) capSaving = false;
 		}
 	}
 
@@ -1428,12 +1511,13 @@
 				name: candidate.id,
 				modelName: candidate.id,
 				displayName: candidate.display_name ?? '',
-				kind: candidate.model_kind ?? (candidate.purpose === 'chat' ? 'text' : ''),
+				kind: knownModelKind(candidate.model_kind) ?? (candidate.model_kind == null && candidate.purpose === 'chat' ? 'text' : ''),
 				inputPrice: '',
 				outputPrice: '',
 				inputTokenLimit: candidate.input_token_limit ?? null,
 				outputTokenLimit: candidate.output_token_limit ?? null,
 				purpose: candidate.purpose ?? 'unknown',
+				catalogEntry: candidate.catalog_entry ?? null,
 				mediaPricing: pricingDraft(),
 				cachePrices: emptyCachePriceInputs(),
 			})),
@@ -1474,7 +1558,8 @@
 				}
 				registrationOutcomes = { ...registrationOutcomes, [entry.name]: 'pending' };
 				const inputPrice = entry.inputPrice.trim();
-				const outputPrice = entry.outputPrice.trim();
+				const outputPrice = entry.kind === 'embedding' ? '' : entry.outputPrice.trim();
+				const cachePrices = entry.kind === 'embedding' ? {} : presentCachePrices(parseCachePrices(entry.cachePrices).values);
 				try {
 					await api.post(
 						'/api/v1/chat/admin/models',
@@ -1485,8 +1570,8 @@
 							...(entry.displayName.trim() ? { display_name: entry.displayName.trim() } : {}),
 							...(inputPrice ? { input_price_per_million: inputPrice } : {}),
 							...(outputPrice ? { output_price_per_million: outputPrice } : {}),
-							...presentCachePrices(parseCachePrices(entry.cachePrices).values),
-							...(pricingPayload(entry.mediaPricing) ? { media_pricing: pricingPayload(entry.mediaPricing) } : {}),
+							...cachePrices,
+							...(pricingPayload(entry.kind || 'text', entry.mediaPricing) ? { media_pricing: pricingPayload(entry.kind || 'text', entry.mediaPricing) } : {}),
 							is_active: activate
 						},
 						review.token,
@@ -1581,6 +1666,10 @@
 	}
 
 	async function toggleModel(m: Model) {
+		if (!m.is_active && m.provider_family === 'compatible' && !requiredManualRates(m.model_kind ?? 'text', m.input_price_per_million ?? '', m.output_price_per_million ?? '', pricingDraft(m.media_pricing))) {
+			toast.error(nativeT('compatible.requiredRates'));
+			return;
+		}
 		if ((m.model_kind ?? 'text') === 'text' && !m.is_active && (m.effective_input_price_per_million == null || m.effective_output_price_per_million == null)) {
 			toast.error(t('configuration.inputAndOutputRatesAreUnverifiedEditPricingOr'));
 			return;
@@ -1616,20 +1705,26 @@
 	}
 
 	$effect(() => {
-		if (token) untrack(() => void load());
+		void registryScopeRevision;
+		if (token && $authReady && !$projectSwitching) untrack(() => void load());
 	});
 
+	function invalidateRegistryOwner() {
+		++accountScopeGeneration; ++registryScopeRevision; ++loadGeneration; ++billingRequestGeneration;
+		providers = []; models = []; billingByProvider = {}; billingLoading = false; billingError = ''; loading = true; error = '';
+		resetCreation(); editingKind = null; editingCapabilities = null; editingPrice = null; editingProvider = null;
+		capSaving = false; priceSaving = false; providerSaving = false; addingProvider = false;
+		clearProviderSecrets(); closeBillingKeyModal();
+		++modelOrderGeneration; ++modelOrderRevision; pendingModelOrders.clear(); savedModelOrders.clear();
+		modelOrderSaveTask = null; modelOrderSaving = false; modelOrderRecovering = false; modelOrderStatus = ''; modelOrderSaveError = '';
+		selectedModelIds = {}; resetModelDrag();
+	}
 	const unsubscribeAuthScope = auth.subscribe((state) => {
 		const identity = JSON.stringify([state.token, state.projectId, state.userId, state.sessionId, state.identityDomainId, state.domainId, state.isSystemAdmin, state.roles]);
 		if (identity !== accountScopeIdentity) {
 			accountScopeIdentity = identity;
-			++accountScopeGeneration;
-			++loadGeneration;
+			invalidateRegistryOwner();
 			uncertainRegistrations = {};
-			resetCreation();
-			editingKind = null;
-			clearProviderSecrets();
-			closeBillingKeyModal();
 		}
 		const nextToken = state.token ?? undefined;
 		const nextProjectId = state.projectId ?? undefined;
@@ -1656,12 +1751,19 @@
 			resetModelDrag();
 		}
 	});
+	const stopRegistryReady = authReady.subscribe((ready) => {
+		if (!ready) invalidateRegistryOwner();
+	});
+	const stopRegistrySwitching = projectSwitching.subscribe((switching) => {
+		if (switching) invalidateRegistryOwner();
+	});
 
 	onDestroy(() => {
 		destroyed = true;
 		++loadGeneration;
 		resetCreation();
 		unsubscribeAuthScope();
+		stopRegistryReady(); stopRegistrySwitching();
 	});
 
 	const inputCls =
@@ -1712,9 +1814,11 @@
 					<TextInput id="provider-sort-order" inputmode="numeric" bind:value={pSortOrder} required ariaInvalid={Boolean(orderError(pSortOrder))} />
 				</Field>
 				{#if !isSubscriptionChoice}
-					<Field label={t('configuration.apiBaseUrl')} for="provider-api-base" help={t('configuration.enterOnlyForOpenaiCompatibleOrCustomEndpoints')}>
-						<TextInput id="provider-api-base" type="url" placeholder="https://api.example.com/v1" bind:value={pApiBase} />
+					{#if isCompatibleChoice}
+					<Field label={nativeT('compatible.baseUrl')} for="provider-api-base" required help={nativeT('compatible.baseHelp')} error={providerCreateAttempted ? compatibleBaseError(pApiBase, selectedProviderChoice.providerType) : undefined}>
+						<TextInput id="provider-api-base" type="url" placeholder="https://api.example.com/v1" bind:value={pApiBase} required ariaInvalid={providerCreateAttempted && Boolean(compatibleBaseError(pApiBase, selectedProviderChoice.providerType))} />
 					</Field>
+					{/if}
 					<Field label={t('configuration.apiKey')} for="provider-api-key">
 						<TextInput id="provider-api-key" type="password" placeholder={t('configuration.apiKey')} bind:value={pApiKey} />
 					</Field>
@@ -1725,6 +1829,8 @@
 				<Alert tone="warning" title={t('configuration.experimental')} class="mt-4">
 					<RichText segments={t.rich('configuration.sharedSubscriptionPolicy')} tags={{ markup1: rich2markup1 }} />
 				</Alert>
+			{:else if isCompatibleChoice}
+				<Alert tone="info" class="mt-4">{nativeT('compatible.help')}</Alert>
 			{:else if selectedProviderChoice.providerType === 'perplexity'}
 				{#snippet rich4markup1(text: string)}<code>{text}</code>{/snippet}
 				{#snippet rich4markup2(text: string)}<code>{text}</code>{/snippet}
@@ -1778,6 +1884,7 @@
 										<Pill tone="warning" size="xs">{t('configuration.experimental')}</Pill>
 									{/if}
 									<Pill tone="neutral" size="xs">{t('pricing.connection', { type: p.provider_type })}</Pill>
+									{#if p.provider_family}<Pill tone="neutral" size="xs">{nativeT(p.provider_family === 'native' ? 'family.native' : 'family.compatible')}</Pill>{/if}
 								</div>
 								<p class="mt-1 break-all text-xs text-[var(--color-ink-2)]"><RichText segments={t.rich('pricing.providerMetadata', { provider: p.api_provider, order: formatNumber(p.sort_order ?? 0) })} /></p>
 								{#if p.api_base}
@@ -1945,6 +2052,12 @@
 				<Field label={t('pricing.providerOrder')} for="provider-edit-sort-order" required help={ORDER_HELP} error={editProviderOrder || providerEditAttempted ? orderError(editProviderOrder) : undefined}>
 					<TextInput id="provider-edit-sort-order" inputmode="numeric" bind:value={editProviderOrder} required disabled={providerSaving} ariaInvalid={Boolean(orderError(editProviderOrder))} />
 				</Field>
+				{#if editingProvider?.provider_family === 'compatible'}
+					<p class="text-xs text-ink-2">{nativeT('compatible.protocol')}: {editingProvider.provider_type}</p>
+					<Field label={nativeT('compatible.baseUrl')} for="provider-edit-api-base" required help={nativeT('compatible.baseHelp')} error={providerEditAttempted ? compatibleBaseError(editApiBase, editingProvider.provider_type) : undefined}>
+						<TextInput id="provider-edit-api-base" type="url" bind:value={editApiBase} required disabled={providerSaving} ariaInvalid={providerEditAttempted && Boolean(compatibleBaseError(editApiBase, editingProvider.provider_type))} />
+					</Field>
+				{/if}
 				{#if providerEditError}<Alert tone="danger">{providerEditError}</Alert>{/if}
 			</div>
 			{#snippet actions()}
@@ -1986,6 +2099,7 @@
 
 	{#if section === 'models'}
 	<!-- 모델 -->
+	<NativeCatalogPanel />
 	<section>
 		<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('configuration.models')}</h3>
 		<p class="mb-3 text-xs text-[var(--color-ink-2)]">
@@ -2065,24 +2179,24 @@
 							<div class="flex flex-wrap items-center gap-2 [&_.pill]:max-w-full [&_.pill]:!whitespace-normal [&_.pill]:!break-words">
 								<span class="truncate text-sm font-medium text-[var(--color-ink-1)]">{displayModelTitle(m)}</span>
 							<Pill tone={m.is_active ? 'success' : 'neutral'} size="xs">{(m.model_kind ?? 'text') === 'text' ? (m.is_active ? t('configuration.activeSaved') : t('configuration.inactiveSaved')) : (m.is_active ? t('configuration.adminEnabledExecutionSeparate') : t('configuration.adminDisabledSaved'))}</Pill>
-							<Pill tone="neutral" size="xs">{MEDIA_LABELS[m.model_kind ?? 'text']}</Pill>
+							<Pill tone="neutral" size="xs">{modelKindLabel(m.model_kind ?? 'text')}</Pill>
+							{#if m.provider_family}<Pill tone="neutral" size="xs">{nativeT(m.provider_family === 'native' ? 'family.native' : 'family.compatible')}</Pill>{/if}
+							<Pill tone={m.price_origin === 'manual' ? 'success' : m.price_origin === 'native_catalog' ? 'accent' : 'neutral'} size="xs">{nativeT(m.price_origin === 'manual' ? 'price.manual' : m.price_origin === 'native_catalog' ? 'price.nativeCatalog' : 'price.unpriced')}</Pill>
+								{#if m.catalog_version}<span class="text-xs text-ink-2">{nativeT('catalog.version', { version: m.catalog_version })}</span>{/if}
 								{#if m.is_title_model}
 									<span class="rounded bg-[var(--color-accent)]/15 px-1.5 py-0.5 text-xs text-[var(--color-accent)]">
 										{t('configuration.titleGeneration')}
 									</span>
 								{/if}
 							{#if (m.model_kind ?? 'text') === 'text'}
-								<Pill tone={m.price_source === 'manual' ? 'success' : m.price_source === 'models.dev' ? 'accent' : 'neutral'} size="xs">
-									{m.price_source === 'manual' ? t('configuration.manual') : m.price_source === 'models.dev' ? 'models.dev' : m.effective_price_source?.startsWith('perplexity_agent_api_') ? t('configuration.officialPerplexityPricing') : m.effective_price_source === 'litellm' ? t('configuration.litellmDefaults') : t('configuration.pricingSourceUnknown')}
-								</Pill>
 								<Pill tone={m.effective_input_price_per_million != null && m.effective_output_price_per_million != null ? 'accent' : 'warning'} size="xs">
 									{m.effective_input_price_per_million != null && m.effective_output_price_per_million != null ? t('configuration.defaultTextRatesShown') : t('configuration.pricingUnverified')}
 								</Pill>
 								<Pill tone={capabilityState(m) === 'unknown' ? 'neutral' : 'accent'} size="xs">{capabilityStatus(m)}</Pill>
 								<ModelCapabilityBadges caps={m.capabilities || m.effective_capabilities} size="xs" />
 							{:else}
-								<Pill tone={hasMediaPrices(m.media_pricing) ? 'accent' : 'warning'} size="xs">{hasMediaPrices(m.media_pricing) ? t('configuration.mediaRatesConfigured') : t('configuration.mediaRatesUnset')}</Pill>
-								<Pill tone="warning" size="xs">{mediaReadiness(m)}</Pill>
+								<Pill tone={(m.model_kind === 'embedding' ? m.effective_input_price_per_million != null : hasMediaPrices(effectiveMediaPricing(m))) ? 'accent' : 'warning'} size="xs">{(m.model_kind === 'embedding' ? m.effective_input_price_per_million != null : hasMediaPrices(effectiveMediaPricing(m))) ? t('configuration.mediaRatesConfigured') : t('configuration.mediaRatesUnset')}</Pill>
+								<Pill tone={mediaBlockReason(m) ? 'warning' : 'success'} size="xs">{mediaBlockReason(m) ?? mediaReadyLabel()}</Pill>
 							{/if}
 							</div>
 							<div class="mt-0.5 text-xs text-[var(--color-ink-3)]">
@@ -2092,6 +2206,7 @@
 								{/if}
 								<div class="mt-0.5">{providerName(m.provider_id)}</div>
 								<div class="mt-0.5">{t('pricing.displayOrder', { order: formatNumber(m.sort_order ?? 0) })}</div>
+								{#if m.catalog_entry}<div class="mt-1 text-xs text-ink-2">{nativeT('catalog.verified', { date: m.catalog_entry.verified_at })}</div><div class="flex flex-wrap gap-2">{#each m.catalog_entry.source_urls as source (source)}{#if catalogSourceUrl(source)}<a class="break-all underline" href={catalogSourceUrl(source)} target="_blank" rel="noreferrer">{nativeT('catalog.source')}</a>{/if}{/each}</div>{/if}
 							</div>
 							<div class="mt-1 text-xs text-[var(--color-ink-2)]">
 								{t((m.model_kind ?? 'text') === 'text' ? 'configuration.inputOutputPriceSummary' : 'pricing.mediaTextSummary', (m.model_kind ?? 'text') === 'text' ? { v0: displayPrice(m.effective_input_price_per_million), v1: displayPrice(m.effective_output_price_per_million) } : { input: displayPrice(m.effective_input_price_per_million ?? m.input_price_per_million), output: displayPrice(m.effective_output_price_per_million ?? m.output_price_per_million) })}
@@ -2102,14 +2217,14 @@
 								</div>
 							{:else if cachePriceState(m) === 'none'}
 								<div class="mt-0.5 text-xs text-[var(--color-ink-2)]" data-testid="model-cache-prices">
-									{(m.model_kind ?? 'text') === 'text' ? t('configuration.cacheRatesUnsetCacheTokensAreBilledAt0') : t('pricing.mediaCacheUnset')}
+									{nativeT('price.cacheHelp')}
 								</div>
 							{:else}
 								<div class="mt-0.5 text-xs tabular-nums text-[var(--color-ink-2)]" data-testid="model-cache-prices">
-									{t('configuration.cachePriceSummary', { v0: formatCachePrice(m.cache_read_price_per_million), v1: formatCachePrice(m.cache_write_price_per_million), v2: formatCachePrice(m.cache_write_1h_price_per_million), v3: cachePriceState(m) === 'partial' ? (m.model_kind ?? 'text') === 'text' ? t('configuration.unsetRatesAreBilledAt0Usd') : t('pricing.mediaCachePartial') : '' })}
+									{nativeT('price.cacheSummary', { read: formatCachePrice(m.effective_cache_read_price_per_million ?? m.cache_read_price_per_million), write: formatCachePrice(m.effective_cache_write_price_per_million ?? m.cache_write_price_per_million), long: formatCachePrice(m.effective_cache_write_1h_price_per_million ?? m.cache_write_1h_price_per_million) })}
 								</div>
 							{/if}
-							{#if (m.model_kind ?? 'text') !== 'text' || m.media_pricing?.token_rates}
+							{#if (m.model_kind ?? 'text') !== 'text' || effectiveMediaPricing(m)?.token_rates}
 								<div class="mt-1 break-words text-xs text-[var(--color-ink-2)]" data-testid="model-media-prices">{mediaPriceSummary(m)}</div>
 								{#if (m.model_kind ?? 'text') !== 'text'}<div class="mt-0.5 text-xs text-[var(--color-ink-2)]">{t('configuration.mediaCapabilityExecutionWarning', { v0: mediaCapability(m) })}</div>{/if}
 							{/if}
@@ -2148,6 +2263,7 @@
 						{#each providers as provider (provider.id)}<option value={String(provider.id)}>{provider.name}</option>{/each}
 					</SelectInput>
 				</Field>
+				{#if compatibleProvider(mProviderId)}<Alert tone="warning" class="mt-3">{nativeT('compatible.help')}</Alert>{/if}
 				<div class="my-4 flex flex-wrap gap-2" role="group" aria-label={t('configuration.modelRegistrationMethod')}>
 					<Button variant={creationMethod === 'discover' ? 'secondary' : 'ghost'} onclick={() => changeCreationMethod('discover')} disabled={creationBusy} ariaPressed={creationMethod === 'discover'}>{t('configuration.discoverModelsMethod')}</Button>
 					<Button variant={creationMethod === 'manual' ? 'secondary' : 'ghost'} onclick={() => changeCreationMethod('manual')} disabled={creationBusy} ariaPressed={creationMethod === 'manual'}>{t('configuration.manualModelMethod')}</Button>
@@ -2158,7 +2274,7 @@
 				{#if registrationReview}
 					<div data-testid="model-registration-review">
 						<p class="text-sm text-ink-2">{t('configuration.registrationReviewProviderCount', { v0: registrationReview.providerName, v1: formatNumber(registrationReview.entries.length) })}</p>
-						<Alert tone="warning" class="mt-3">{t('pricing.registrationGuidance')}</Alert>
+						<Alert tone="info" class="mt-3">{nativeT(compatibleProvider(registrationReview.providerId) ? 'compatible.help' : 'price.precedence')}</Alert>
 						<div class="mt-4 space-y-4">
 							{#each registrationReview.entries as entry, index (entry.name)}
 								<div class="border-t border-line pt-4" data-testid="registration-entry">
@@ -2183,9 +2299,13 @@
 											{#snippet textPricing()}
 												<div class="grid gap-3 sm:grid-cols-2">
 													<Field label={t('configuration.reviewInputPrice', { v0: entry.name })} for="review-input-{index}" help={t('configuration.usd1mTokens')} error={reviewPriceError(entry)}><TextInput id="review-input-{index}" inputmode="decimal" placeholder={t('configuration.eG2')} bind:value={entry.inputPrice} disabled={registeringBulk} ariaInvalid={Boolean(reviewPriceError(entry))} /></Field>
-													<Field label={t('configuration.reviewOutputPrice', { v0: entry.name })} for="review-output-{index}" help={t('configuration.usd1mTokens')} error={reviewPriceError(entry)}><TextInput id="review-output-{index}" inputmode="decimal" placeholder={t('configuration.eG8')} bind:value={entry.outputPrice} disabled={registeringBulk} ariaInvalid={Boolean(reviewPriceError(entry))} /></Field>
+													{#if entry.kind === 'embedding'}
+														<p class="text-sm text-ink-2">{t('pricing.embeddingInputOnly')}</p>
+													{:else}
+														<Field label={t('configuration.reviewOutputPrice', { v0: entry.name })} for="review-output-{index}" help={t('configuration.usd1mTokens')} error={reviewPriceError(entry)}><TextInput id="review-output-{index}" inputmode="decimal" placeholder={t('configuration.eG8')} bind:value={entry.outputPrice} disabled={registeringBulk} ariaInvalid={Boolean(reviewPriceError(entry))} /></Field>
+													{/if}
 												</div>
-										{#if cachePricingAvailable}
+										{#if cachePricingAvailable && entry.kind !== 'embedding'}
 											<div class="mt-3 grid gap-3 sm:grid-cols-3">
 												{#each CACHE_PRICE_FIELDS as field (field.key)}<Field label={field.label} for="review-cache-{index}-{field.slug}" help={t('configuration.usd1mTokens')} error={cachePriceError(entry.cachePrices[field.key])}><TextInput id="review-cache-{index}-{field.slug}" bind:value={entry.cachePrices[field.key]} inputmode="decimal" disabled={registeringBulk} /></Field>{/each}
 											</div>
@@ -2211,7 +2331,7 @@
 					>
 						{#if discovering}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{discovering ? t('configuration.fetching') : t('configuration.loadModels')}
 					</Button>
-			<p class="mt-2 text-xs text-[var(--color-ink-2)]">{t('pricing.discoveryGuidance')}</p>
+			<p class="mt-2 text-xs text-[var(--color-ink-2)]">{nativeT(compatibleProvider(mProviderId) ? 'compatible.help' : 'catalog.description')}</p>
 			{#if discoverId === mProviderId && discoverId !== null}
 				<div class="mt-4 border-t border-[var(--color-line)] pt-4" data-testid="model-discovery">
 					<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -2245,7 +2365,7 @@
 							<Alert tone="info">{t('configuration.noCandidatesProvidedCheckTheLookupStatusOrAdd')}</Alert>
 						{/if}
 						{#if discovery.models.length > 0 && discovery.live_status !== 'error'}
-							<Alert tone="info" class="mb-3">{t('configuration.discoveryCandidatesDoNotVerifyPricingOrExecutionSupport')}</Alert>
+							<Alert tone="info" class="mb-3">{nativeT(compatibleProvider(mProviderId) ? 'compatible.help' : 'price.precedence')}</Alert>
 							{#if isSubscriptionProviderId(mProviderId)}
 								<Alert tone="info" class="mb-3">{t('configuration.theseAreSubscriptionCatalogCandidatesAvailabilityUnderYourCurrent')}</Alert>
 							{/if}
@@ -2267,7 +2387,7 @@
 										<input class="mt-1" type="checkbox" aria-label={candidate.id} disabled={registeringBulk} bind:checked={selectedAvail[candidate.id]} />
 										<span class="min-w-0 break-all"><span class="block font-mono">{candidate.id}</span>
 											{#if candidate.display_name}<span class="block text-xs text-[var(--color-ink-2)]">{candidate.display_name}</span>{/if}
-											<span class="block text-xs text-[var(--color-ink-2)]">{t('pricing.candidateReadiness', { kind: candidate.model_kind ? MEDIA_LABELS[candidate.model_kind] : candidate.purpose === 'chat' ? t('pricing.textCandidate') : t('pricing.unknownKind') })}</span>
+											<span class="block text-xs text-[var(--color-ink-2)]">{t('pricing.candidateReadiness', { kind: knownModelKind(candidate.model_kind) ? MEDIA_LABELS[knownModelKind(candidate.model_kind)!] : candidate.model_kind == null && candidate.purpose === 'chat' ? t('pricing.textCandidate') : t('pricing.unknownKind') })}</span>
 										</span>
 									</label>
 								{:else}
@@ -2293,18 +2413,22 @@
 			<ModelMediaPricingEditor kind={mKind} bind:draft={mPricing} prefix="model-create" disabled={addingModel}>
 				{#snippet textPricing()}
 			<div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-				<Field label={t('configuration.input')} for="model-create-input-price" help={t('configuration.usd1mTokens')}>
-					<TextInput id="model-create-input-price" inputmode="decimal" placeholder={t('configuration.inputPriceUsd1mTokens')} bind:value={mInputPrice} disabled={addingModel} />
+				<Field label={t('configuration.input')} for="model-create-input-price" required={compatibleProvider(mProviderId)} help={t('configuration.usd1mTokens')} error={manualPricingAttempted && compatibleProvider(mProviderId) && !mInputPrice.trim() ? nativeT('compatible.requiredRates') : undefined}>
+					<TextInput id="model-create-input-price" inputmode="decimal" placeholder={t('configuration.inputPriceUsd1mTokens')} bind:value={mInputPrice} required={compatibleProvider(mProviderId)} disabled={addingModel} ariaInvalid={manualPricingAttempted && compatibleProvider(mProviderId) && !mInputPrice.trim()} />
 				</Field>
-				<Field label={t('configuration.output')} for="model-create-output-price" help={t('configuration.usd1mTokens')}>
-					<TextInput id="model-create-output-price" inputmode="decimal" placeholder={t('configuration.outputPriceUsd1mTokens')} bind:value={mOutputPrice} disabled={addingModel} />
-				</Field>
+				{#if mKind === 'embedding'}
+					<p class="text-sm text-ink-2">{t('pricing.embeddingInputOnly')}</p>
+				{:else}
+					<Field label={t('configuration.output')} for="model-create-output-price" required={compatibleProvider(mProviderId)} help={t('configuration.usd1mTokens')} error={manualPricingAttempted && compatibleProvider(mProviderId) && !mOutputPrice.trim() ? nativeT('compatible.requiredRates') : undefined}>
+						<TextInput id="model-create-output-price" inputmode="decimal" placeholder={t('configuration.outputPriceUsd1mTokens')} bind:value={mOutputPrice} required={compatibleProvider(mProviderId)} disabled={addingModel} ariaInvalid={manualPricingAttempted && compatibleProvider(mProviderId) && !mOutputPrice.trim()} />
+					</Field>
+				{/if}
 			</div>
-			{#if cachePricingAvailable}
+			{#if cachePricingAvailable && mKind !== 'embedding'}
 			<div class="mt-4 border-t border-[var(--color-line)] pt-4" role="group" aria-labelledby="model-create-cache-heading" data-testid="model-create-cache-prices">
 				<p id="model-create-cache-heading" class="text-xs font-semibold text-[var(--color-ink-1)]">{t('configuration.promptCacheRatesOptional')}</p>
 				<p class="mt-1 text-xs leading-relaxed text-[var(--color-ink-2)]">
-					{mKind === 'text' ? t('configuration.eachRateIsSavedSeparatelyFromInputAndOutput') : t('pricing.mediaCacheCreateHelp')}
+					{nativeT('price.cacheHelp')}
 				</p>
 				<div class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
 					{#each CACHE_PRICE_FIELDS as field (field.key)}
@@ -2351,8 +2475,13 @@
 	<Modal open={editingPrice !== null} onClose={() => { if (!priceSaving) editingPrice = null; }} dismissible={!priceSaving} ariaLabel={t('configuration.editModelPricing')}>
 		<div class="max-h-[calc(100vh-2rem)] w-[min(32rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-restraint)]">
 			<h3 class="text-base font-semibold text-[var(--color-ink-1)]">{t('configuration.editModelPricing')}</h3>
-			<p class="mt-1 text-sm text-[var(--color-ink-2)]">{MEDIA_LABELS[editingPrice?.model_kind ?? 'text']} · {editingPrice ? displayModelTitle(editingPrice) : ''}</p>
+			<p class="mt-1 text-sm text-[var(--color-ink-2)]">{modelKindLabel(editingPrice?.model_kind ?? 'text')} · {editingPrice ? displayModelTitle(editingPrice) : ''}</p>
 			{#if editingPrice}
+			{#if editingPrice?.provider_family === 'native' && editingPrice.catalog_entry}
+				<Alert tone="info" class="mt-3">{nativeT('price.followHelp')}</Alert>
+				<Button variant="outline" size="sm" class="mt-3" onclick={followPublishedPrices} disabled={priceSaving || followPriceUnknown}>{nativeT('price.follow')}</Button>
+				{#if followPriceUnknown}<Alert tone="warning" class="mt-3">{t('configuration.registrationOutcomeUnknown')}</Alert>{/if}
+			{/if}
 			<ModelMediaPricingEditor kind={editingPrice.model_kind ?? 'text'} bind:draft={editPricing} prefix="model-edit" disabled={priceSaving} hasStoredTextPrices={editingPrice.input_price_per_million != null || editingPrice.output_price_per_million != null || CACHE_PRICE_FIELDS.some(({ key }) => editingPrice?.[key] != null)}>
 				{#snippet textPricing()}
 				<p class="mt-1 text-sm text-[var(--color-ink-2)]">{t('pricing.independentTextEditHelp')}</p>
@@ -2360,15 +2489,19 @@
 				<Field label={t('configuration.input')} for="model-edit-input-price">
 					<TextInput id="model-edit-input-price" inputmode="decimal" placeholder={t('configuration.usd1mTokens')} bind:value={editInputPrice} disabled={priceSaving} />
 				</Field>
-				<Field label={t('configuration.output')} for="model-edit-output-price">
-					<TextInput id="model-edit-output-price" inputmode="decimal" placeholder={t('configuration.usd1mTokens')} bind:value={editOutputPrice} disabled={priceSaving} />
-				</Field>
+				{#if editingPrice?.model_kind === 'embedding'}
+					<p class="text-sm text-[var(--color-ink-2)]">{t('pricing.embeddingInputOnly')}</p>
+				{:else}
+					<Field label={t('configuration.output')} for="model-edit-output-price">
+						<TextInput id="model-edit-output-price" inputmode="decimal" placeholder={t('configuration.usd1mTokens')} bind:value={editOutputPrice} disabled={priceSaving} />
+					</Field>
+				{/if}
 			</div>
-			{#if editingPrice && cachePricingSupported(editingPrice)}
+			{#if editingPrice && editingPrice.model_kind !== 'embedding' && cachePricingSupported(editingPrice)}
 			<div class="mt-4 border-t border-[var(--color-line)] pt-4" role="group" aria-labelledby="model-edit-cache-heading">
 				<p id="model-edit-cache-heading" class="text-sm font-semibold text-[var(--color-ink-1)]">{t('configuration.promptCacheRatesOptional')}</p>
 				<p class="mt-1 text-xs leading-relaxed text-[var(--color-ink-2)]">
-					{(editingPrice.model_kind ?? 'text') === 'text' ? t('configuration.eachRateIsSavedIndependentlyInputAndOutputPrices') : t('pricing.mediaCacheEditHelp')}
+					{nativeT('price.cacheHelp')}
 				</p>
 				<div class="mt-3 grid gap-3 sm:grid-cols-3">
 					{#each CACHE_PRICE_FIELDS as field (field.key)}
@@ -2415,6 +2548,9 @@
 					<label class="flex items-center gap-2 text-sm text-[var(--color-ink-1)]"><input type="checkbox" bind:checked={capReasoning} disabled={capSaving} />{t('configuration.reasoning')}</label>
 					<label class="flex items-center gap-2 text-sm text-[var(--color-ink-1)]"><input type="checkbox" bind:checked={capToolCall} disabled={capSaving} />{t('configuration.toolCalls')}</label>
 					<label class="flex items-center gap-2 text-sm text-[var(--color-ink-1)]"><input type="checkbox" bind:checked={capAttachment} disabled={capSaving} />{t('configuration.fileAttachments')}</label>
+					{#if providerType(editingCapabilities.provider_id) === 'openai'}
+						<label class="flex min-h-11 items-center gap-2 text-sm text-ink-1"><input type="checkbox" bind:checked={capDecisions} disabled={capSaving} />{nativeT('decisions.label')}</label>
+					{/if}
 				</div>
 				<div class="mt-4">
 					<Field label={t('configuration.contextLimit')} for="model-capability-context" help={t('configuration.totalContextTokensLeaveBlankIfUnknown')} error={contextLimitError(capContextLimit)}>

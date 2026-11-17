@@ -8,6 +8,12 @@
 	import { serviceCapabilities } from '$lib/stores/servicePermissions';
 	import { chatRequestPermission, permissionReason, textOnlyToolPolicy } from '$lib/api/lumenPermissions';
 	import { onChatModelsInvalidated } from '$lib/stores/chatModels';
+	import {
+		managedSandboxTools, prepareManagedSandboxTools, assertPreparedSandboxTools,
+		ManagedSandboxSelectionError, managedSandboxIssueMessage,
+		type PreparedSandboxTools
+	} from '$lib/stores/managedSandboxTools';
+	import { t as mcpT } from '$lib/i18n/ns/mcp-gallery';
 	import { api, ApiError } from '$lib/api/client';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
@@ -78,7 +84,7 @@
 
 	import { MOTION_DURATION_MS } from '$lib/design/tokens';
 	import { prefersReducedMotion } from '$lib/utils/motion';
-	import ChatToolApproval, { type ChatToolApproval as ChatToolApprovalItem } from './ChatToolApproval.svelte';
+	import type { PendingChatToolApproval as PendingToolApproval } from './ChatToolApproval.svelte';
 	interface Conversation {
 		id: string;
 		title: string | null;
@@ -110,9 +116,11 @@
 		sessionEntrance?: MessageEntrance;
 		temporary_history_order?: [number, number, number];
 	};
-	type TemporaryRunSnapshot = {
+	type TemporaryRunExecution = NonNullable<ChatMsg['execution']> & {
 		run_id: string; run_kind: string; status: string; model_name: string | null;
-		input_parts: ChatPart[]; parts: ChatPart[]; activity: RunActivityItem[]; order_unknown: boolean;
+	};
+	type TemporaryRunSnapshot = TemporaryRunExecution & {
+		input_parts: ChatPart[]; parts: ChatPart[]; order_unknown: boolean;
 	};
 	type TemporaryInspection = {
 		run_id: string; run_kind: string; order_unknown: boolean; input_parts: ChatPart[]; message: DisplayMessage;
@@ -122,6 +130,7 @@
 		public_history?: { role: 'user' | 'assistant'; parts: ChatPart[] }[];
 		unpositioned_runs?: TemporaryRunSnapshot[]; active_run: unknown | null; active_run_positioned?: boolean;
 		run_history_has_more?: boolean; run_history_after?: string | null; run_history_revision?: string;
+		latest_run_execution?: TemporaryRunExecution | null;
 	};
 
 	type AgentActivity = {
@@ -129,7 +138,6 @@
 		startedAt: string;
 	};
 
-	type PendingToolApproval = ChatToolApprovalItem & { runId: string };
 
 	function activityForRunStage(
 		stage: RunStage,
@@ -255,6 +263,9 @@
 			selectedToolIds === null ? null : selectedToolIds.map(String);
 		features.tool_policy.enabled_mcp_ids = selectedMcpIds;
 		if (!canTools) textOnlyToolPolicy(features);
+		// Preview reflects explicit intent even when permission loss blocks sending.
+		features.tool_policy.enabled_sandbox_tools = [...$managedSandboxTools.selected];
+		if (features.tool_policy.enabled_sandbox_tools.length) features.tool_policy.mode = 'agent_default';
 		return features;
 	}
 	let selectionGeneration = 0;
@@ -296,6 +307,7 @@
 		requestAnimationFrame(() => composerAnchor?.querySelector<HTMLTextAreaElement>('textarea')?.focus());
 	}
 	let streaming = $state(false);
+	let preparingRun = $state(false);
 	let runningConversationIds = $state<Set<string>>(new Set());
 	let historyPages = $state<MessagesResponse[]>([]);
 	let tempThreadId = $state<string | null>(null);
@@ -412,6 +424,8 @@
 		body: unknown;
 		idempotencyKey: string;
 		modelName: string;
+		effectiveModelName: string;
+		sandboxOwnerKey: string;
 	};
 	let failedSubmission = $state<FailedPersistentSubmission | null>(null);
 	let stream = $state<{
@@ -474,6 +488,7 @@
 		for (const frame of revealFrames) cancelAnimationFrame(frame);
 		revealFrames.clear();
 		streaming = false;
+		preparingRun = false;
 		manualCompacting = false;
 		contextPhase = 'ready';
 		contextCause = null;
@@ -549,7 +564,7 @@
 			return [...stream.base, stream.assistant];
 		}
 		if (tempMode) return tempMessages;
-		if (failedSubmission?.conversationId === activeConvId) return [...activePath, failedSubmission.message];
+		if (failedSubmission?.conversationId === activeConvId && failedSubmission.sandboxOwnerKey === $managedSandboxTools.ownerKey) return [...activePath, failedSubmission.message];
 		return activePath;
 	});
 	const isEmpty = $derived(displayPath.length === 0 && (!tempMode || tempUnpositionedRuns.length === 0));
@@ -575,7 +590,7 @@
 			}
 		});
 	});
-	const tempToggleLocked = $derived(streaming || activeConvId !== null || tempMessages.length > 0);
+	const tempToggleLocked = $derived(streaming || preparingRun || activeConvId !== null || tempMessages.length > 0);
 
 	const compactCommandReason = $derived.by(() => {
 		if (manualCompacting) return null;
@@ -967,7 +982,7 @@
 		}
 	}
 
-	function mergeTemporarySnapshot(snapshot: TemporarySnapshot, append: boolean): void {
+	function mergeTemporarySnapshot(snapshot: TemporarySnapshot, append: boolean, activeRunId: string | null): void {
 		const incoming: DisplayMessage[] = snapshot.messages ?? (snapshot.public_history ?? []).map((turn, index) => ({
 			id: `temp:${snapshot.temp_thread_id}:${index}`, role: turn.role, parts: turn.parts,
 			content: turn.parts.filter((part): part is Extract<ChatPart, { type: 'text' }> => part.type === 'text').map((part) => part.text).join('\n'),
@@ -990,19 +1005,54 @@
 			return left[0] - right[0] || left[1] - right[1] || left[2] - right[2];
 		});
 		const inspections = new Map<string, TemporaryInspection>((append ? tempUnpositionedRuns : []).map((run) => [run.run_id, run]));
-		for (const run of snapshot.unpositioned_runs ?? []) {
+		const runSnapshots = [...(snapshot.unpositioned_runs ?? [])];
+		const latestExecution = snapshot.latest_run_execution;
+		if (latestExecution && !runSnapshots.some((run) => run.run_id === latestExecution.run_id)) {
+			runSnapshots.push({ ...latestExecution, input_parts: [], parts: [], order_unknown: true });
+		}
+		for (const run of runSnapshots) {
 			inspections.set(run.run_id, {
 				run_id: run.run_id, run_kind: run.run_kind, order_unknown: run.order_unknown, input_parts: run.input_parts,
 				message: {
 					id: `inspection:${run.run_id}`, role: 'assistant', conversation_id: '', parent_id: null, created_at: null,
 					model_name: run.model_name, parts: run.parts,
 					content: run.parts.filter((part): part is Extract<ChatPart, { type: 'text' }> => part.type === 'text').map((part) => part.text).join('\n'),
-					execution: { run_id: run.run_id, status: run.status, activity: run.activity }
+					execution: {
+						run_id: run.run_id, status: run.status, started_at: run.started_at, last_seq: run.last_seq,
+						activity: run.activity, activity_status: run.activity_status, activity_error_code: run.activity_error_code
+					}
 				}
 			});
 		}
 		for (const message of tempMessages) if (message.execution?.run_id) inspections.delete(message.execution.run_id);
 		tempUnpositionedRuns = [...inspections.values()];
+		const executionSnapshots = [...incoming.flatMap((message) => message.execution ?? []), ...runSnapshots];
+		for (const execution of executionSnapshots) {
+			if (!execution.run_id || !Array.isArray(execution.activity) || execution.activity_status === 'unavailable') continue;
+			const terminal = execution.activity.some((item) => item.kind === 'terminal');
+			const decided = new Set(execution.activity.flatMap((item) => item.kind === 'approval' && item.decision !== null ? [item.callId] : []));
+			pendingToolApprovals = pendingToolApprovals.filter(
+				(approval) => approval.runId !== execution.run_id || (!terminal && !decided.has(approval.callId))
+			);
+		}
+		const activeExecution = activeRunId ? executionSnapshots.find(
+			(execution) => execution.run_id === activeRunId && Array.isArray(execution.activity)
+		) : null;
+		if (activeRunId && activeExecution?.activity && activeExecution.activity_status !== 'unavailable') {
+			const restored: PendingToolApproval[] = [];
+			if (!activeExecution.activity.some((item) => item.kind === 'terminal')) {
+				for (const item of activeExecution.activity) {
+					if (item.kind !== 'approval' || item.decision !== null || !item.name || !item.expiresAt ||
+						!['read', 'workspace_write', 'process', 'external_mutation'].includes(item.effect ?? '')) continue;
+					restored.push({
+						runId: activeRunId, callId: item.callId, name: item.name,
+						effect: item.effect as PendingToolApproval['effect'], argumentKeys: Object.keys(item.arguments),
+						preview: item.preview, expiresAt: item.expiresAt
+					});
+				}
+			}
+			pendingToolApprovals = [...pendingToolApprovals.filter((approval) => approval.runId !== activeRunId), ...restored];
+		}
 		tempRunHistoryAfter = snapshot.run_history_after ?? null;
 		tempRunHistoryRevision = snapshot.run_history_revision ?? null;
 		tempRunHistoryHasMore = snapshot.run_history_has_more ?? false;
@@ -1034,9 +1084,9 @@
 			tempMode = true;
 			activeConvId = null;
 			rememberTempThread(threadId);
-			mergeTemporarySnapshot(snapshot, append);
-			if (append) return;
 			const descriptor = snapshot.active_run ? parseChatRunDescriptor(snapshot.active_run) : null;
+			mergeTemporarySnapshot(snapshot, append, descriptor?.run_id ?? null);
+			if (append) return;
 			if (!descriptor) return;
 			if (descriptor.run_kind === 'compaction') {
 				currentRun = descriptor;
@@ -1046,7 +1096,7 @@
 			}
 			streaming = true;
 			currentRun = descriptor;
-			if (snapshot.active_run_positioned === false) {
+			if (snapshot.active_run_positioned !== true) {
 				let inspection = tempUnpositionedRuns.find((run) => run.run_id === descriptor.run_id);
 				if (!inspection) {
 					tempUnpositionedRuns = [...tempUnpositionedRuns, {
@@ -1062,7 +1112,7 @@
 			}
 			const previous = tempMessages.find((message) => message.role === 'assistant' && message.execution?.run_id === descriptor.run_id);
 			const base = tempMessages.filter((message) => message.role !== 'assistant' || message.execution?.run_id !== descriptor.run_id);
-			stream = { base, assistant: { ...newAssistantDraft(null, false), temporary_history_order: previous?.temporary_history_order }, conversationId: null, temp: true };
+			stream = { base, assistant: { ...newAssistantDraft(null, false), execution: previous?.execution, temporary_history_order: previous?.temporary_history_order }, conversationId: null, temp: true };
 			const draft = stream.assistant;
 			void followRun(descriptor, draft, (metrics) => {
 				tempMessages = [...base, { ...draft, streaming: false, metrics }];
@@ -1717,16 +1767,20 @@
 
 	async function startManualCompaction() {
 		if (!canChat || (activeAgent && !canTools)) return;
-		if (!token || !projectId || streaming || manualCompacting || destroyed) return;
+		if (!token || !projectId || streaming || preparingRun || manualCompacting || destroyed) return;
 		const hasScope = Boolean(activeConvId || (tempMode && tempThreadId));
 		if (!hasScope) return;
+		const prepared = await prepareRunTools(activeModelName);
+		if (!prepared || !ownsRunTools(prepared)) return;
 
 		const experience = beginExperienceAction('lumen', 'start', 'shared.stream');
 		experienceState(experience, 'loading', 3);
 		const previewState = await executeContextPreview({ emptyDraft: true, experience });
-		if (!previewState) return;
+		if (!ownsRunTools(prepared)) { experienceDiscarded(experience, 'stale'); return; }
+		if (!previewState) { preparingRun = false; return; }
 		if (!previewState.can_compact) {
 			contextError = t('panel.compact.noHistory');
+			preparingRun = false;
 			return;
 		}
 
@@ -1753,6 +1807,8 @@
 		const generation = streamGeneration;
 
 		try {
+			assertRunTools(prepared, activeModelName);
+			preparingRun = false;
 			const descriptor = await createChatRun(path, body, {
 				token,
 				projectId,
@@ -1760,7 +1816,6 @@
 				idempotencyKey: crypto.randomUUID()
 			});
 			if (destroyed || generation !== streamGeneration) {
-				manualCompacting = false;
 				experienceDiscarded(experience, 'stale');
 				return;
 			}
@@ -1769,6 +1824,8 @@
 			void experienceApplied(experience, {}, () => !destroyed && generation === streamGeneration && currentRun === appliedRun);
 			await followCompactionRun(descriptor, generation, experience);
 		} catch (caught) {
+			if (!ownsRunTools(prepared)) { experienceDiscarded(experience, destroyed ? 'unmounted' : 'stale'); return; }
+			preparingRun = false;
 			manualCompacting = false;
 			contextPhase = 'failed';
 			contextCause = null;
@@ -1845,7 +1902,7 @@
 		}
 	}
 
-	async function ensureConversation(experience?: ExperienceContext): Promise<string | null> {
+	async function ensureConversation(experience?: ExperienceContext, prepared?: PreparedRunTools): Promise<string | null> {
 		if (!canChat) return null;
 		if (activeConvId) return activeConvId;
 		if (!token || !projectId) return null;
@@ -1860,6 +1917,8 @@
 			token,
 			projectId
 		);
+		// The native POST may outlive its originating owner or conversation view.
+		if (prepared) assertRunTools(prepared, prepared.frozenSnapshot ? prepared.modelName : activeModelName);
 		pendingWorkspaceId = null;
 		activeConvId = conv.id;
 		localMutationEpoch += 1;
@@ -1874,6 +1933,7 @@
 
 	// --- Durable run journal ---
 	function endStream() {
+		preparingRun = false;
 		streaming = false;
 		toolActivity = null;
 		agentActivity = null;
@@ -1905,7 +1965,9 @@
 		const controller = new AbortController();
 		if (!streamAttachment.attach(controller, generation)) { experienceDiscarded(experience, destroyed ? 'unmounted' : 'stale'); return; }
 		let runState = createRunViewState(descriptor.run_id);
-		draft.execution = { run_id: descriptor.run_id, status: descriptor.status };
+		const knownApprovalSeq = draft.execution?.run_id === descriptor.run_id ? draft.execution.last_seq ?? 0 : 0;
+		if (draft.execution?.run_id === descriptor.run_id) runState.startedAt = draft.execution.started_at ?? null;
+		draft.execution = { ...(draft.execution?.run_id === descriptor.run_id ? draft.execution : {}), run_id: descriptor.run_id, status: descriptor.status };
 		const reveal = createChatRevealBuffer({
 			reducedMotion: prefersReducedMotion()
 		});
@@ -1960,8 +2022,8 @@
 			draft.content = next.text;
 			draft.reasoning = reasoning;
 			draft.citations = runState.sources;
-			draft.activityItems = runState.activity;
-			draft.execution = { ...draft.execution, status: runState.status };
+			if (runState.lastSeq >= knownApprovalSeq) draft.activityItems = runState.activity;
+			draft.execution = { ...draft.execution, status: runState.status, started_at: runState.startedAt };
 			draft.toolItems = toolItemsFromState();
 			draft.metrics = latestMetrics;
 			if (observedStatus !== runState.status) {
@@ -2077,7 +2139,7 @@
 					}
 				} else if (evt.type === 'tool.call.started' || evt.type === 'tool.call.progress' || evt.type === 'tool.call.completed') {
 					toolActivity = evt.type === 'tool.call.completed' ? null : taskLabelForTool(evt.payload.name);
-				} else if (evt.type === 'tool.approval_required') {
+				} else if (evt.type === 'tool.approval_required' && evt.seq > knownApprovalSeq) {
 					pendingToolApprovals = [
 						...pendingToolApprovals.filter(
 							(approval) => approval.runId !== descriptor.run_id || approval.callId !== evt.payload.call_id
@@ -2092,6 +2154,7 @@
 							expiresAt: evt.payload.expires_at
 						}
 					];
+					projectImmediately();
 				} else if (evt.type === 'tool.approval_resolved') {
 					pendingToolApprovals = pendingToolApprovals.filter(
 						(approval) => approval.runId !== descriptor.run_id || approval.callId !== evt.payload.call_id
@@ -2150,6 +2213,10 @@
 			error = chatFailureMessage(caught, t('panel.errors.runFailed'));
 			// A disconnected follower leaves the native outcome unknown, not failed or cancelled.
 			experienceDiscarded(experience, 'unknown');
+			if (stream?.assistant === draft && !historyHasAfter) {
+				if (stream.temp) tempMessages = [...stream.base, draft];
+				else if (stream.conversationId === activeConvId) allMessages = [...stream.base, draft];
+			}
 			endStream();
 		} finally {
 			document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -2158,19 +2225,95 @@
 		}
 	}
 
+	function sandboxNativeErrorMessage(code: string): string | null {
+		if (['sandbox_tool_unavailable', 'sandbox_unavailable', 'runtime_kubernetes_manifest'].includes(code)) return mcpT('selectionNativeUnavailable');
+		if (['sandbox_selection_invalid', 'sandbox_selection_ambiguous', 'sandbox_selection_multiple_pools', 'sandbox_tool_unselected'].includes(code)) return mcpT('selectionNativeInvalid');
+		if (['child_budget_exhausted', 'sandbox_pool_full'].includes(code)) return mcpT('selectionNativeQuota');
+		if (code === 'sandbox_configuration_changed') return mcpT('selectionNativeChanged');
+		if (code === 'sandbox_code_combination_unsupported') return mcpT('selectionNativeCodeUnsupported');
+		return null;
+	}
+
 	function chatFailureMessage(caught: unknown, fallback: string): string {
-		if (caught instanceof ChatHttpError) return t('panel.errors.httpFailure', { status: caught.status, detail: caught.message });
+		if (caught instanceof ManagedSandboxSelectionError) return managedSandboxIssueMessage(caught.code, caught.names);
+		if (caught instanceof ChatHttpError) return sandboxNativeErrorMessage(caught.message.trim()) ?? t('panel.errors.httpFailure', { status: caught.status, detail: caught.message });
 		if (caught instanceof ApiError) return t('panel.errors.httpFailure', { status: caught.status, detail: fallback });
 		return caught instanceof Error ? caught.message : fallback;
 	}
 
 	function runFailureMessage(payload: { error_code: string; safe_message: string }, runId: string): string {
+		const sandboxMessage = sandboxNativeErrorMessage(payload.error_code);
+		if (sandboxMessage) return sandboxMessage;
 		const code = /^[\w.-]{1,80}$/.test(payload.error_code) ? payload.error_code : 'run_failed';
 		const detail = payload.safe_message.trim();
 		const safeDetail = detail.length <= 300 && !/[\x00-\x1f\x7f]/.test(detail) ? detail : t('panel.errors.runFailed');
 		return /^[\w-]{1,64}$/.test(runId)
 			? t('panel.errors.runFailureReference', { code, detail: safeDetail, runId })
 			: t('panel.errors.runFailure', { code, detail: safeDetail });
+	}
+	type PreparedRunTools = {
+		sandbox: PreparedSandboxTools;
+		generation: number;
+		selection: number;
+		modelName: string;
+		frozenSnapshot: boolean;
+		onAdmit?: () => void;
+	};
+	type FrozenRetryScope = {
+		ownerKey: string | null;
+		generation: number;
+		selection: number;
+	};
+	class SandboxModelUnsupportedError extends Error {}
+
+
+	function ownsRunPreparation(generation: number, selection: number, ownerKey: string | null): boolean {
+		return !destroyed && generation === streamGeneration && selection === selectionGeneration
+			&& ownerKey === $managedSandboxTools.ownerKey && $authReady && !$projectSwitching;
+	}
+	function ownsRunTools(prepared: PreparedRunTools): boolean {
+		return ownsRunPreparation(prepared.generation, prepared.selection, prepared.sandbox.ownerKey);
+	}
+
+	function assertRunTools(prepared: PreparedRunTools, modelName: string): void {
+		assertPreparedSandboxTools(prepared.sandbox);
+		if (!ownsRunTools(prepared)) {
+			throw new ManagedSandboxSelectionError('owner_changed', []);
+		}
+		if (prepared.modelName !== modelName) throw new ManagedSandboxSelectionError('selection_changed', []);
+		if (prepared.sandbox.names.length && !models.find((model) => model.model_name === modelName)?.capabilities?.tool_call) {
+			throw new SandboxModelUnsupportedError(mcpT('selectionModelUnsupported'));
+		}
+	}
+
+	async function prepareRunTools(modelName: string, snapshot?: FailedPersistentSubmission): Promise<PreparedRunTools | null> {
+		if (preparingRun) return null;
+		preparingRun = true;
+		const generation = streamGeneration;
+		const selection = selectionGeneration;
+		const ownerKey = $managedSandboxTools.ownerKey;
+		try {
+			// Store captures owner and selection synchronously, then refreshes availability.
+			const sandbox = await prepareManagedSandboxTools();
+			const prepared = { sandbox, generation, selection, modelName, frozenSnapshot: snapshot !== undefined };
+			assertRunTools(prepared, modelName);
+			if (snapshot) {
+				if (snapshot.sandboxOwnerKey !== sandbox.ownerKey) throw new ManagedSandboxSelectionError('owner_changed', []);
+				const savedNames = (snapshot.body as { features?: ReturnType<typeof selectedFeatureOptions> }).features?.tool_policy.enabled_sandbox_tools ?? [];
+				if (savedNames.length !== sandbox.names.length || savedNames.some((name, index) => name !== sandbox.names[index])) {
+					throw new ManagedSandboxSelectionError('selection_changed', []);
+				}
+			}
+			return prepared;
+		} catch (caught) {
+			if (!ownsRunPreparation(generation, selection, ownerKey)) return null;
+			preparingRun = false;
+			if (!destroyed) error = caught instanceof ManagedSandboxSelectionError
+				? managedSandboxIssueMessage(caught.code, caught.names)
+				: caught instanceof SandboxModelUnsupportedError ? caught.message
+				: managedSandboxIssueMessage('catalog_failed');
+			return null;
+		}
 	}
 
 	async function runStream(
@@ -2181,7 +2324,8 @@
 		submittedAtMs: number,
 		onStarted?: (descriptor: ChatRunDescriptor) => void,
 		idempotencyKey?: string,
-		experience = beginExperienceAction('lumen', 'submit', 'shared.stream')
+		experience = beginExperienceAction('lumen', 'submit', 'shared.stream'),
+		prepared?: PreparedRunTools | FrozenRetryScope
 	): Promise<boolean> {
 		const generation = streamGeneration;
 		let admissionAttempted = false;
@@ -2191,6 +2335,18 @@
 			if (denied) throw new Error(permissionReason(denied));
 			const modelId = (body as { model_id?: string } | null)?.model_id;
 			if (!canTools && models.find((model) => model.model_name === modelId)?.capabilities?.web_search_required) throw new Error(permissionReason('lumen-tools_user'));
+			if (!prepared) throw new ManagedSandboxSelectionError('selection_changed', []);
+			if ('sandbox' in prepared) {
+				assertRunTools(prepared, prepared.frozenSnapshot ? prepared.modelName : activeAgent?.model_name || modelId || activeModelName);
+				const requestedNames = (body as { features?: ReturnType<typeof selectedFeatureOptions> } | null)?.features?.tool_policy.enabled_sandbox_tools;
+				if (requestedNames && (requestedNames.length !== prepared.sandbox.names.length || requestedNames.some((name, index) => name !== prepared.sandbox.names[index]))) {
+					throw new ManagedSandboxSelectionError('selection_changed', []);
+				}
+				prepared.onAdmit?.();
+			} else if (!prepared.ownerKey || prepared.ownerKey !== $managedSandboxTools.ownerKey || !$authReady || $projectSwitching || destroyed || prepared.generation !== streamGeneration || prepared.selection !== selectionGeneration) {
+				throw new ManagedSandboxSelectionError('owner_changed', []);
+			}
+			preparingRun = false;
 			admissionAttempted = true;
 			const descriptor = await createChatRun(path, body, { token, projectId, idempotencyKey, experience });
 			if (destroyed || generation !== streamGeneration) { experienceDiscarded(experience, 'stale'); return false; }
@@ -2202,6 +2358,7 @@
 			return true;
 		} catch (caught) {
 			if (destroyed || generation !== streamGeneration) { experienceDiscarded(experience, destroyed ? 'unmounted' : 'stale'); return false; }
+			preparingRun = false;
 			error = chatFailureMessage(caught, t('panel.errors.runFailed'));
 			experienceState(experience, 'error', 3);
 			if (admissionAttempted && !((caught instanceof ChatHttpError || caught instanceof ApiError) && caught.status >= 400 && caught.status < 500)) experienceDiscarded(experience, 'unknown');
@@ -2287,6 +2444,9 @@
 	async function resolveToolApproval(approval: PendingToolApproval, decision: 'approve' | 'deny') {
 		if (!canChat || !canTools) return;
 		if (!token || !projectId || resolvingToolApprovalId) return;
+		const requestToken = token;
+		const requestProject = projectId;
+		const requestSelection = selectionGeneration;
 		resolvingToolApprovalId = approval.callId;
 		try {
 			await api.post(
@@ -2295,8 +2455,18 @@
 				token,
 				projectId
 			);
+			if (destroyed || token !== requestToken || projectId !== requestProject || selectionGeneration !== requestSelection) return;
+			if (!streaming && tempMode && tempThreadId) await restoreTemporaryThread(tempThreadId, requestSelection);
+			else if (!streaming && activeConvId) {
+				const conversationId = activeConvId;
+				await replaceHistoryWindow(requestSelection);
+				if (!destroyed && token === requestToken && projectId === requestProject &&
+					selectionGeneration === requestSelection && activeConvId === conversationId) await resumeActiveRun(conversationId);
+			}
 		} catch (cause) {
-			toast.error(cause instanceof Error ? cause.message : t('panel.errors.saveApproval'));
+			if (!destroyed && token === requestToken && projectId === requestProject && selectionGeneration === requestSelection) {
+				toast.error(cause instanceof Error ? cause.message : t('panel.errors.saveApproval'));
+			}
 		} finally {
 			resolvingToolApprovalId = null;
 		}
@@ -2318,7 +2488,7 @@
 			return;
 		}
 		const text = input.trim();
-		if (!text || streaming || !token || !projectId) return;
+		if (!text || streaming || preparingRun || !token || !projectId) return;
 		if (!selectedModel) {
 			error = t('panel.errors.noModels');
 			return;
@@ -2330,25 +2500,50 @@
 		}
 		const experience = beginExperienceAction('lumen', 'submit', 'shared.stream');
 		const submittedAtMs = performance.now();
+		const draftInput = input;
+		const draftAttachments = attachments;
+		const inputParts: UserInputPart[] = [{ type: 'text', text }, ...toInputParts(draftAttachments)];
+		const requestFeatures = selectedFeatureOptions();
+		const prepared = await prepareRunTools(activeModelName);
+		if (!prepared || !ownsRunTools(prepared)) return;
 		if (!tempMode && activeConvId && historyHasAfter) {
 			const loadedLatest = await replaceHistoryWindow(selectionGeneration, experience);
-			if (!loadedLatest) return;
+			if (!ownsRunTools(prepared)) { experienceDiscarded(experience, 'stale'); return; }
+			if (!loadedLatest) { preparingRun = false; return; }
 		}
-		input = '';
-		const inputParts: UserInputPart[] = [{ type: 'text', text }, ...toInputParts(attachments)];
-		attachments = [];
+		try {
+			assertRunTools(prepared, activeModelName);
+		} catch (caught) {
+			if (!ownsRunTools(prepared)) { experienceDiscarded(experience, destroyed ? 'unmounted' : 'stale'); return; }
+			preparingRun = false;
+			error = chatFailureMessage(caught, t('panel.errors.runFailed'));
+			return;
+		}
+		prepared.onAdmit = () => {
+			if (input === draftInput) input = '';
+			if (attachments === draftAttachments) attachments = [];
+		};
 		const clientTimezone = browserTimezone();
 
-		if (tempMode) return sendTemp(text, inputParts, submittedAtMs, experience);
+		if (tempMode) return sendTemp(text, inputParts, submittedAtMs, prepared, experience);
 
 		invalidateContextPreview();
 		streaming = true;
 		let convId: string | null;
 		try {
-			convId = await ensureConversation(experience);
+			convId = await ensureConversation(experience, prepared);
 		} catch (e) {
+			if (!ownsRunTools(prepared)) { experienceDiscarded(experience, destroyed ? 'unmounted' : 'stale'); return; }
 			error = chatFailureMessage(e, t('panel.errors.createConversation'));
 			endStream();
+			preparingRun = false;
+			try {
+				assertRunTools(prepared, activeModelName);
+			} catch (caught) {
+				error = chatFailureMessage(caught, t('panel.errors.runFailed'));
+				return;
+			}
+			prepared.onAdmit?.();
 			const failedUserMsg: DisplayMessage = {
 				id: tempId(),
 				sessionEntrance: freshMessageEntrance(),
@@ -2366,19 +2561,23 @@
 				body: {
 					parts: inputParts,
 					model_id: selectedModel,
-					features: selectedFeatureOptions(),
+					features: requestFeatures,
 					reasoning_effort: effort,
 					agent_id: activeAgent?.id,
 					skill_ids: selectedSkillIds,
 					client_timezone: clientTimezone,
 				},
 				idempotencyKey: crypto.randomUUID(),
-				modelName: selectedModel
+				modelName: selectedModel,
+				effectiveModelName: prepared.modelName,
+				sandboxOwnerKey: prepared.sandbox.ownerKey
 			};
 			return;
 		}
+		if (!ownsRunTools(prepared)) { experienceDiscarded(experience, 'stale'); return; }
 		if (!convId) {
 			endStream();
+			preparingRun = false;
 			return;
 		}
 
@@ -2399,7 +2598,7 @@
 		const body = {
 			parts: inputParts,
 			model_id: selectedModel,
-			features: selectedFeatureOptions(),
+			features: requestFeatures,
 			reasoning_effort: effort,
 			agent_id: activeAgent?.id,
 			skill_ids: selectedSkillIds,
@@ -2423,9 +2622,10 @@
 			submittedAtMs,
 			() => setConversationRun(convId!, true),
 			idempotencyKey,
-			experience
+			experience,
+			prepared
 		);
-		if (!started) {
+		if (!started && !destroyed && prepared.generation === streamGeneration && prepared.sandbox.ownerKey === $managedSandboxTools.ownerKey) {
 			failedSubmission = {
 				conversationId: convId,
 				message: {
@@ -2435,7 +2635,9 @@
 				path,
 				body,
 				idempotencyKey,
-				modelName: selectedModel
+				modelName: selectedModel,
+				effectiveModelName: prepared.modelName,
+				sandboxOwnerKey: prepared.sandbox.ownerKey
 			};
 		}
 	}
@@ -2444,6 +2646,7 @@
 		text: string,
 		inputParts: UserInputPart[],
 		submittedAtMs: number,
+		prepared: PreparedRunTools,
 		experience?: ExperienceContext
 	) {
 		const userMsg: DisplayMessage = {
@@ -2489,20 +2692,23 @@
 				if (submittedUser) submittedUser.execution = { run_id: descriptor.run_id, status: descriptor.status };
 			},
 			undefined,
-			experience
+			experience,
+			prepared
 		);
 	}
 
 	// --- 재생성 ---
 	async function regenerate(messageId: string, modelName: string) {
 		if (!canChat) return;
-		if (streaming || tempMode || !activeConvId || !token || !projectId) return;
+		if (streaming || preparingRun || tempMode || !activeConvId || !token || !projectId) return;
 		const conversationId = activeConvId;
 		error = null;
 		const idx = activePath.findIndex((m) => m.id === messageId);
 		if (idx === -1) return;
 		const experience = beginExperienceAction('lumen', 'retry', 'shared.stream');
 		const submittedAtMs = performance.now();
+		const prepared = await prepareRunTools(activeAgent?.model_name || modelName || selectedModel);
+		if (!prepared || !ownsRunTools(prepared)) return;
 		invalidateContextPreview();
 		streaming = true;
 		stream = { base: activePath.slice(0, idx), assistant: newAssistantDraft(modelName || selectedModel), conversationId, temp: false };
@@ -2532,32 +2738,39 @@
 			submittedAtMs,
 			() => setConversationRun(conversationId, true),
 			undefined,
-			experience
+			experience,
+			prepared
 		);
 	}
 
 	async function retryFailedTurn(messageId: string) {
 		if (!canChat) return;
-		if (streaming || tempMode || !token || !projectId) return;
+		if (streaming || preparingRun || tempMode || !token || !projectId) return;
 		const experience = beginExperienceAction('lumen', 'retry', 'shared.stream');
 		if (failedSubmission?.message.id === messageId) {
 			const submission = failedSubmission;
 			const submittedAtMs = performance.now();
 			error = null;
+			const prepared = await prepareRunTools(submission.effectiveModelName, submission);
+			if (!prepared || !ownsRunTools(prepared)) return;
 			invalidateContextPreview();
 			streaming = true;
 			let convId = submission.conversationId || activeConvId;
 			if (!convId) {
 				try {
-					convId = await ensureConversation(experience);
+					convId = await ensureConversation(experience, prepared);
 				} catch (e) {
+					if (!ownsRunTools(prepared)) { experienceDiscarded(experience, destroyed ? 'unmounted' : 'stale'); return; }
 					error = chatFailureMessage(e, t('panel.errors.createConversation'));
 					endStream();
+					preparingRun = false;
 					return;
 				}
 			}
+			if (!ownsRunTools(prepared)) { experienceDiscarded(experience, 'stale'); return; }
 			if (!convId) {
 				endStream();
+				preparingRun = false;
 				return;
 			}
 			submission.conversationId = convId;
@@ -2591,7 +2804,8 @@
 				submittedAtMs,
 				() => setConversationRun(convId!, true),
 				submission.idempotencyKey,
-				experience
+				experience,
+				prepared
 			);
 			if (started) failedSubmission = null;
 			return;
@@ -2604,6 +2818,12 @@
 		if (idx === -1 || message?.role !== 'user' || !targetRunId || message.execution?.retryable !== true) return;
 		const submittedAtMs = performance.now();
 		error = null;
+		// Native retry revalidates the original frozen features, never today's preferences.
+		const prepared: FrozenRetryScope = {
+			ownerKey: $managedSandboxTools.ownerKey,
+			generation: streamGeneration,
+			selection: selectionGeneration
+		};
 		invalidateContextPreview();
 		streaming = true;
 		stream = {
@@ -2630,7 +2850,8 @@
 			submittedAtMs,
 			() => setConversationRun(conversationId, true),
 			undefined,
-			experience
+			experience,
+			prepared
 		);
 	}
 
@@ -2922,6 +3143,12 @@
 			{modelLocked}
 			{toolActivity}
 			{agentActivity}
+			pendingApprovals={pendingToolApprovals}
+			approvalBusy={Boolean(resolvingToolApprovalId) || !canTools || !canChat}
+			onApprovalDecision={(runId, callId, decision) => {
+				const approval = pendingToolApprovals.find((item) => item.runId === runId && item.callId === callId);
+				if (approval) void resolveToolApproval(approval, decision);
+			}}
 			error={error && tempRunHistoryError ? `${error}\n${tempRunHistoryError}` : error ?? tempRunHistoryError}
 			empty={isEmpty}
 			starterPrompts={lumenStarterPrompts}
@@ -2942,13 +3169,6 @@
 			onSwitchVersion={switchVersion}
 		/>
 
-		{#each pendingToolApprovals as approval (approval.runId + approval.callId)}
-			<ChatToolApproval
-				{approval}
-				busy={resolvingToolApprovalId === approval.callId || !canTools || !canChat}
-				onDecision={(callId, decision) => void resolveToolApproval(approval, decision)}
-			/>
-		{/each}
 
 
 			<div class="composer-anchor" bind:this={composerAnchor}>
@@ -2984,7 +3204,7 @@
 					contextAfterTokens={contextAfterTokens}
 					contextError={contextError}
 					disabled={!canChat}
-					sendDisabled={!canChat || manualCompacting || contextPhase === 'compacting'}
+					sendDisabled={!canChat || preparingRun || manualCompacting || contextPhase === 'compacting'}
 					onSend={send}
 					onStop={stop}
 				>

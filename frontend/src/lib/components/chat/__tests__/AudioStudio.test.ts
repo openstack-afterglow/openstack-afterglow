@@ -647,12 +647,12 @@ describe('Audio Studio', () => {
 	it('refuses unpriced and unsupported routes, and drops stale asset and transcription responses on project change', async () => {
 		calls.models.mockImplementation(async (kind: 'tts' | 'stt') => [model(kind, false)]);
 		render(AudioStudio);
-		await screen.findAllByText('오디오 가격이 설정되지 않았습니다.');
+		await screen.findAllByText(t('mediaReadiness.price'));
 		await fireEvent.input(screen.getByRole('textbox', { name: /읽을 텍스트/ }), { target: { value: 'not charged' } });
 		expect(screen.getByRole('button', { name: '음성 생성' }).hasAttribute('disabled')).toBe(true);
 		expect(calls.speech).not.toHaveBeenCalled();
 		await fireEvent.click(screen.getByRole('tab', { name: '음성 → 텍스트' }));
-		await screen.findAllByText('오디오 가격이 설정되지 않았습니다.');
+		await screen.findAllByText(t('mediaReadiness.price'));
 		const { promise, resolve } = Promise.withResolvers<{ id: string; name: string }>();
 		calls.upload.mockImplementationOnce(() => promise);
 		await fireEvent.change(screen.getByLabelText('음성 파일 선택'), { target: { files: [new File(['abc'], 'first.wav', { type: 'audio/wav' })] } });

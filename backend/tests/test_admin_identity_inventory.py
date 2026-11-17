@@ -79,6 +79,19 @@ async def group_authority(mock_conn, monkeypatch):
     def group_assignments(*, group_id):
         return iter(row for row in assignments if row["group"]["id"] == group_id)
 
+    def native_roles(*, user=None, group=None, system=None, name=None):
+        selected = roles
+        if system is not None:
+            assert system == "all" and (user is None) != (group is None)
+            principal, subject = ("user", user) if user is not None else ("group", group)
+            ids = {
+                assignment["role"]["id"]
+                for assignment in assignments
+                if assignment.get(principal) == {"id": subject} and assignment["scope"] == {"system": {"all": True}}
+            }
+            selected = [role for role in roles if role["id"] in ids]
+        return [role for role in selected if name is None or role["name"] == name]
+
     mock_conn.endpoint_for.return_value = "https://keystone.invalid/v3"
     mock_conn.identity.roles.side_effect = lambda: iter(roles)
     mock_conn.identity.get.side_effect = graph
@@ -96,7 +109,7 @@ async def group_authority(mock_conn, monkeypatch):
             list=lambda: [SimpleNamespace(id="default", name="default", enabled=True)],
         ),
         projects=SimpleNamespace(list=lambda **kwargs: []),
-        roles=SimpleNamespace(list=lambda: list(roles)),
+        roles=SimpleNamespace(list=native_roles),
         inference_rules=SimpleNamespace(
             list_inference_roles=lambda: [
                 {"prior_role": {"id": prior}, "implies": [{"id": child}]} for prior, child in edges
@@ -114,7 +127,7 @@ async def group_authority(mock_conn, monkeypatch):
     monkeypatch.setattr(session_store, "_get_redis", get_redis)
     monkeypatch.setattr(keystone, "revoke_token", revoke_token)
     try:
-        yield SimpleNamespace(assignments=assignments, revoke_token=revoke_token)
+        yield SimpleNamespace(assignments=assignments, revoke_token=revoke_token, native=native)
     finally:
         await redis.close()
 
@@ -617,3 +630,14 @@ async def test_group_deletion_fails_closed_when_assignment_scope_is_unavailable(
     mock_conn.identity.groups.assert_called_once()
     assert await session_store.get_session("session-group-member") is not None
     group_authority.revoke_token.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_group_authority_role_fixture_uses_real_keystone_surface(group_authority):
+    from inspect import signature
+
+    from keystoneclient.v3.roles import RoleManager
+
+    for query in ({}, {"group": "group-id", "system": "all"}, {"user": "user-id", "system": "all"}):
+        signature(RoleManager.list).bind(None, **query)
+        signature(group_authority.native.roles.list).bind(**query)

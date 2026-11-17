@@ -267,7 +267,7 @@ describe('ChatWindow', () => {
 		});
 
 		expect(container.querySelectorAll('article.chat')).toHaveLength(2);
-		const summary = getByLabelText('작업 내역 열기');
+		const summary = container.querySelector('.execution-timeline > summary') as HTMLElement;
 		expect((summary.closest('details') as HTMLDetailsElement).open).toBe(false);
 		await fireEvent.click(summary);
 		expect(getByText('MCP · Notion')).toBeTruthy();

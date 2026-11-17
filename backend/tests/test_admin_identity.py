@@ -11,10 +11,11 @@ import json
 import threading
 import time
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import fakeredis.aioredis
 import pytest
+from fastapi import HTTPException
 from requests import Response
 
 from app.services import identity_roles, keystone, session_store
@@ -355,7 +356,7 @@ async def assignment_authority(mock_conn, monkeypatch):
         projects=SimpleNamespace(get=mock_conn.identity.get_project),
         domains=SimpleNamespace(get=lambda did: SimpleNamespace(id=did, name="Default", enabled=True)),
         groups=SimpleNamespace(list=lambda **kwargs: []),
-        roles=SimpleNamespace(list=lambda: list(roles)),
+        roles=SimpleNamespace(list=lambda **query: [] if query.get("system") else list(roles)),
         inference_rules=SimpleNamespace(list_inference_roles=lambda: list(inferences)),
         role_assignments=SimpleNamespace(list=native_assignments),
     )
@@ -460,9 +461,10 @@ async def test_security_policy_returns_only_native_system_admin_count(admin_clie
     """Project grants and compatibility settings never affect the strict policy shape."""
     mock_ks = MagicMock()
     mock_ks.role_assignments.list.return_value = [
-        SimpleNamespace(user={"id": "sys-1"}),
-        SimpleNamespace(user={"id": "sys-2"}),
+        SimpleNamespace(user={"id": uid}, role={"id": _ADMIN_ROLE_ID}, scope={"system": {"all": True}})
+        for uid in ("sys-1", "sys-2")
     ]
+    mock_ks.roles.list.return_value = [{"id": _ADMIN_ROLE_ID}]
     mock_ks.users.get.return_value = SimpleNamespace(name="Admin", email="", enabled=True)
     with (
         patch("app.api.identity.admin_identity.keystone._resolve_admin_role_id", return_value=_ADMIN_ROLE_ID),
@@ -472,7 +474,7 @@ async def test_security_policy_returns_only_native_system_admin_count(admin_clie
 
     assert resp.status_code == 200
     assert resp.json() == {"system_admin_count": 2}
-    mock_ks.role_assignments.list.assert_called_once_with(role=_ADMIN_ROLE_ID, system="all")
+    mock_ks.role_assignments.list.assert_called_once_with(system="all")
 
 
 @pytest.mark.asyncio
@@ -487,7 +489,7 @@ async def test_security_policy_native_list_failure_is_not_zero(admin_client):
 
     assert resp.status_code == 500
     assert "system_admin_count" not in resp.json()
-    mock_ks.role_assignments.list.assert_called_once_with(role=_ADMIN_ROLE_ID, system="all")
+    mock_ks.role_assignments.list.assert_called_once_with(system="all")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -518,7 +520,19 @@ class _SystemKeystone:
                 ("native-reader", "reader"),
             )
         ]
-        self.roles.list = lambda: list(native_roles)
+
+        def roles(*, user=None, group=None, system=None, name=None):
+            if system is not None:
+                assert system == "all"
+                granted = (
+                    user in self.direct
+                    if user is not None
+                    else group in {"operators", "sys-group"} and bool(self.via_group)
+                )
+                return [native_roles[0]] if granted else []
+            return [role for role in native_roles if name is None or role["name"] == name]
+
+        self.roles.list = roles
         self.inference_rules = SimpleNamespace(list_inference_roles=lambda: [])
         self.domains = SimpleNamespace(
             get=lambda did: SimpleNamespace(id=did, name=did, enabled=True),
@@ -705,8 +719,9 @@ async def test_committed_system_revoke_invalidates_sessions_after_interrupted_re
 @pytest.mark.asyncio
 async def test_list_system_roles_returns_enriched_fields(admin_client):
     """list_system_roles 응답에 name/email/enabled 필드가 포함된다."""
-    mock_assignment = MagicMock()
-    mock_assignment.user = {"id": "sys-user-1"}
+    mock_assignment = SimpleNamespace(
+        user={"id": "sys-user-1"}, role={"id": _ADMIN_ROLE_ID}, scope={"system": {"all": True}}
+    )
 
     mock_user = MagicMock()
     mock_user.name = "Alice"
@@ -715,6 +730,7 @@ async def test_list_system_roles_returns_enriched_fields(admin_client):
 
     mock_ks = MagicMock()
     mock_ks.role_assignments.list.return_value = [mock_assignment]
+    mock_ks.roles.list.return_value = [{"id": _ADMIN_ROLE_ID}]
     mock_ks.users.get.return_value = mock_user
 
     with (
@@ -1014,12 +1030,20 @@ async def test_revoke_counts_native_role_inference_admin(admin_client, system_ke
         return rows
 
     ks.role_assignments.list = assignments
+    direct_roles = ks.roles.list
+
+    def roles(**query):
+        if query.get("system") == "all" and query.get("user") == "alias-admin":
+            return [{"id": "system-admin-alias"}]
+        return direct_roles(**query)
+
+    ks.roles.list = roles
     monkeypatch.setattr(
         identity_roles,
         "_trusted_catalog",
         lambda: [
-            {"id": _ADMIN_ROLE_ID, "inherited_role_ids": []},
-            {"id": "system-admin-alias", "inherited_role_ids": [_ADMIN_ROLE_ID]},
+            {"id": _ADMIN_ROLE_ID, "inherited_role_ids": [], "domain_id": None},
+            {"id": "system-admin-alias", "inherited_role_ids": [_ADMIN_ROLE_ID], "domain_id": None},
         ],
     )
     response = await admin_client.post("/api/v1/admin/identity/system-roles/revoke", json={"user_id": "admin-1"})
@@ -1088,3 +1112,298 @@ async def test_administrator_cannot_create_a_project_named_default(admin_client,
     response = await admin_client.post("/api/v1/admin/projects", json={"name": name, "domain_id": "tenant-a"})
     assert response.status_code == 409
     mock_conn.identity.create_project.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_stale_system_snapshot_uses_shared_recent_grant_and_fresh_revocation(admin_client, system_keystone):
+    ks = system_keystone(_SystemKeystone({"admin-1"}))
+    snapshot = list(ks.role_assignments.list(system="all"))
+    ks.role_assignments.list = lambda **kwargs: list(snapshot)
+    with (
+        patch("app.api.identity.admin_identity.activity.record", new=AsyncMock()),
+        patch("app.api.identity.admin_identity.session_store.revoke_user_sessions", new=AsyncMock()),
+    ):
+        grant = await admin_client.post("/api/v1/admin/identity/system-roles/grant", json={"user_id": "new-admin"})
+        listing = await admin_client.get("/api/v1/admin/identity/system-roles")
+        policy = await admin_client.get("/api/v1/admin/identity/security-policy")
+        revoke_old = await admin_client.post("/api/v1/admin/identity/system-roles/revoke", json={"user_id": "admin-1"})
+        listing_after = await admin_client.get("/api/v1/admin/identity/system-roles")
+        denied_last = await admin_client.post(
+            "/api/v1/admin/identity/system-roles/revoke", json={"user_id": "new-admin"}
+        )
+    assert grant.status_code == revoke_old.status_code == 200
+    assert {row["user_id"] for row in listing.json()} == {"admin-1", "new-admin"}
+    assert policy.json() == {"system_admin_count": 2}
+    assert [row["user_id"] for row in listing_after.json()] == ["new-admin"]
+    assert denied_last.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_stale_system_snapshot_allows_revoke_of_new_grant(admin_client, system_keystone):
+    ks = system_keystone(_SystemKeystone({"admin-1"}))
+    snapshot = list(ks.role_assignments.list(system="all"))
+    ks.role_assignments.list = lambda **kwargs: list(snapshot)
+    with (
+        patch("app.api.identity.admin_identity.activity.record", new=AsyncMock()),
+        patch("app.api.identity.admin_identity.session_store.revoke_user_sessions", new=AsyncMock()),
+    ):
+        granted = await admin_client.post("/api/v1/admin/identity/system-roles/grant", json={"user_id": "new-admin"})
+        revoked = await admin_client.post("/api/v1/admin/identity/system-roles/revoke", json={"user_id": "new-admin"})
+    assert granted.status_code == revoked.status_code == 200
+    assert ks.direct == {"admin-1"}
+
+
+@pytest.mark.asyncio
+async def test_grant_lost_reply_keeps_discovery_hint(admin_client, system_keystone):
+    ks = system_keystone(_SystemKeystone({"admin-1"}))
+    snapshot = list(ks.role_assignments.list(system="all"))
+    ks.role_assignments.list = lambda **kwargs: list(snapshot)
+    grant = ks.roles.grant
+
+    def lost_reply(**kwargs):
+        grant(**kwargs)
+        raise ConnectionError("Native grant committed before reply was lost")
+
+    ks.roles.grant = lost_reply
+    with patch("app.api.identity.admin_identity.session_store.revoke_user_sessions", new=AsyncMock()):
+        response = await admin_client.post("/api/v1/admin/identity/system-roles/grant", json={"user_id": "new-admin"})
+        listing = await admin_client.get("/api/v1/admin/identity/system-roles")
+    assert response.status_code >= 500
+    assert {row["user_id"] for row in listing.json()} == {"admin-1", "new-admin"}
+
+
+@pytest.mark.asyncio
+async def test_system_grant_requires_shared_discovery_before_native_write(admin_client, system_keystone, monkeypatch):
+    ks = system_keystone(_SystemKeystone({"admin-1"}))
+
+    async def unavailable(*args, **kwargs):
+        raise HTTPException(503, "system_admin_authority_unavailable")
+
+    monkeypatch.setattr(keystone, "remember_system_admin", unavailable)
+    response = await admin_client.post("/api/v1/admin/identity/system-roles/grant", json={"user_id": "new-admin"})
+    assert response.status_code == 503
+    assert ks.calls == []
+
+
+@pytest.mark.asyncio
+async def test_slow_committed_grant_lost_reply_refreshes_discovery_deadline(admin_client, system_keystone, monkeypatch):
+    ks = system_keystone(_SystemKeystone({"admin-1"}))
+    snapshot = list(ks.role_assignments.list(system="all"))
+    ks.role_assignments.list = lambda **kwargs: list(snapshot)
+    redis = await session_store._get_redis()
+    native_time = redis.time
+    clock = {"advance": 0}
+
+    async def controlled_time():
+        seconds, microseconds = await native_time()
+        return seconds + clock["advance"], microseconds
+
+    monkeypatch.setattr(redis, "time", controlled_time)
+    grant = ks.roles.grant
+
+    def slow_lost_reply(**kwargs):
+        grant(**kwargs)
+        clock["advance"] = 120
+        raise ConnectionError("Native grant committed after a delayed response")
+
+    ks.roles.grant = slow_lost_reply
+    with patch("app.api.identity.admin_identity.session_store.revoke_user_sessions", new=AsyncMock()):
+        response = await admin_client.post("/api/v1/admin/identity/system-roles/grant", json={"user_id": "new-admin"})
+    assert response.status_code >= 500
+    seconds, microseconds = await controlled_time()
+    now = seconds + microseconds / 1_000_000
+    expires = await redis.zscore(keystone._recent_system_admin_key(), "new-admin")
+    assert 659 <= expires - now <= 660
+    assert "new-admin" in await keystone.recent_system_admin_ids()
+
+
+@pytest.mark.parametrize(
+    "user_id",
+    [
+        "",
+        " admin-1",
+        "admin-1 ",
+        "admin-1/",
+        "admin-1//",
+        "admin/../admin-1",
+        "admin-1?x",
+        "admin-1#x",
+        "admin-1%2f",
+        "admin-1\\x",
+        "admin 1",
+        "admin-1\n",
+        ".",
+        "..",
+    ],
+)
+@pytest.mark.parametrize("operation", ["grant", "revoke"])
+@pytest.mark.asyncio
+async def test_system_role_rejects_path_alias_before_native_or_hint_write(
+    admin_client, system_keystone, monkeypatch, user_id, operation
+):
+    ks = system_keystone(_SystemKeystone({"admin-1"}))
+    users_get = Mock(wraps=ks.users.get)
+    ks.users.get = users_get
+    remember = AsyncMock()
+    monkeypatch.setattr(keystone, "remember_system_admin", remember)
+    with patch("app.api.identity.admin_identity.session_store.revoke_user_sessions", new=AsyncMock()) as revoke:
+        response = await admin_client.post(
+            f"/api/v1/admin/identity/system-roles/{operation}", json={"user_id": user_id}
+        )
+    assert response.status_code == 422
+    assert ks.calls == []
+    users_get.assert_not_called()
+    remember.assert_not_awaited()
+    revoke.assert_not_awaited()
+    assert await keystone.recent_system_admin_ids() == set()
+
+
+@pytest.mark.parametrize("operation", ["grant", "revoke"])
+@pytest.mark.asyncio
+async def test_system_role_missing_user_cannot_poison_hints_or_enter_guard(
+    admin_client, system_keystone, monkeypatch, operation
+):
+    from keystoneclient.exceptions import NotFound
+
+    ks = system_keystone(_SystemKeystone({"admin-1"}))
+    ks.users.get = Mock(side_effect=NotFound("User not found"))
+    remember = AsyncMock()
+    guard = AsyncMock()
+    monkeypatch.setattr(keystone, "remember_system_admin", remember)
+    monkeypatch.setattr(identity_roles, "assert_system_admin_remains", guard)
+    with patch("app.api.identity.admin_identity.session_store.revoke_user_sessions", new=AsyncMock()) as revoke:
+        response = await admin_client.post(
+            f"/api/v1/admin/identity/system-roles/{operation}", json={"user_id": "unknown-user"}
+        )
+    assert response.status_code == 404
+    ks.users.get.assert_called_once_with("unknown-user")
+    assert ks.calls == []
+    remember.assert_not_awaited()
+    guard.assert_not_awaited()
+    revoke.assert_not_awaited()
+    assert await keystone.recent_system_admin_ids() == set()
+
+
+@pytest.mark.parametrize("operation", ["grant", "revoke"])
+@pytest.mark.asyncio
+async def test_system_role_different_native_user_is_not_a_canonical_alias(
+    admin_client, system_keystone, monkeypatch, operation
+):
+    ks = system_keystone(_SystemKeystone({"admin-1"}))
+    ks.users.get = Mock(return_value=SimpleNamespace(id="admin-1", enabled=True))
+    remember = AsyncMock()
+    guard = AsyncMock()
+    monkeypatch.setattr(keystone, "remember_system_admin", remember)
+    monkeypatch.setattr(identity_roles, "assert_system_admin_remains", guard)
+    with patch("app.api.identity.admin_identity.session_store.revoke_user_sessions", new=AsyncMock()) as revoke:
+        response = await admin_client.post(
+            f"/api/v1/admin/identity/system-roles/{operation}", json={"user_id": "another-id"}
+        )
+    assert response.status_code == 503
+    ks.users.get.assert_called_once_with("another-id")
+    assert ks.calls == []
+    remember.assert_not_awaited()
+    guard.assert_not_awaited()
+    revoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("visible_other", [False, True])
+async def test_revoke_omitted_direct_target_requires_verified_other_human(admin_client, system_keystone, visible_other):
+    direct = {"hidden-admin", "visible-admin"} if visible_other else {"hidden-admin"}
+    ks = system_keystone(_SystemKeystone(direct))
+    snapshot = [row for row in ks.role_assignments.list(system="all") if row.user["id"] == "visible-admin"]
+    ks.role_assignments.list = lambda **kwargs: list(snapshot)
+    assert await keystone.recent_system_admin_ids() == set()
+    with patch("app.api.identity.admin_identity.session_store.revoke_user_sessions", new=AsyncMock()) as revoke:
+        response = await admin_client.post(
+            "/api/v1/admin/identity/system-roles/revoke", json={"user_id": "hidden-admin"}
+        )
+    assert response.status_code == (200 if visible_other else 422)
+    if visible_other:
+        assert ks.direct == {"visible-admin"}
+        assert ks.calls == [("revoke", "hidden-admin")]
+        revoke.assert_awaited_once_with("hidden-admin")
+    else:
+        assert ks.direct == {"hidden-admin"}
+        assert ks.calls == []
+        revoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_disabling_omitted_last_admin_with_no_hint_is_refused(admin_client, mock_conn, system_keystone):
+    ks = system_keystone(_SystemKeystone({"hidden-admin"}))
+    ks.role_assignments.list = lambda **kwargs: []
+    assert await keystone.recent_system_admin_ids() == set()
+    response = await admin_client.patch("/api/v1/admin/users/hidden-admin", json={"enabled": False})
+    assert response.status_code == 422
+    mock_conn.identity.update_user.assert_not_called()
+
+
+@pytest.mark.parametrize("subject", [{"users": {"hidden-admin"}}, {"users": {"other-user"}}, {"domain_id": "default"}])
+@pytest.mark.asyncio
+async def test_empty_discovery_never_proves_a_guarded_mutation_safe(system_keystone, subject):
+    ks = system_keystone(_SystemKeystone({"hidden-admin"}))
+    ks.role_assignments.list = lambda **kwargs: []
+    assert await keystone.recent_system_admin_ids() == set()
+    with pytest.raises(HTTPException) as last:
+        await identity_roles.assert_system_admin_remains(**subject)
+    assert last.value.status_code == 422
+
+
+@pytest.mark.parametrize("operation", ["revoke", "disable"])
+@pytest.mark.parametrize("home_enabled", [False, True])
+@pytest.mark.asyncio
+async def test_remaining_admin_requires_enabled_home_domain(
+    admin_client, mock_conn, system_keystone, operation, home_enabled
+):
+    ks = system_keystone(_SystemKeystone({"active-admin", "other-admin"}))
+    native_user = ks.users.get
+    ks.users.get = lambda uid: SimpleNamespace(
+        **{**vars(native_user(uid)), "domain_id": "active-domain" if uid == "active-admin" else "other-domain"}
+    )
+    ks.domains.get = lambda did: SimpleNamespace(id=did, enabled=True if did == "active-domain" else home_enabled)
+    mock_conn.identity.update_user.return_value = SimpleNamespace(
+        id="active-admin", name="active-admin", email="", is_enabled=False
+    )
+    with patch("app.api.identity.admin_identity.session_store.revoke_user_sessions", new=AsyncMock()) as revoke:
+        if operation == "revoke":
+            response = await admin_client.post(
+                "/api/v1/admin/identity/system-roles/revoke", json={"user_id": "active-admin"}
+            )
+        else:
+            response = await admin_client.patch("/api/v1/admin/users/active-admin", json={"enabled": False})
+    assert response.status_code == (200 if home_enabled else 422)
+    if not home_enabled:
+        assert ks.calls == []
+        mock_conn.identity.update_user.assert_not_called()
+        revoke.assert_not_awaited()
+
+
+@pytest.mark.parametrize("home", [None, SimpleNamespace(id="different-domain", enabled=True)])
+@pytest.mark.asyncio
+async def test_unverified_admin_home_domain_cannot_prove_a_survivor(system_keystone, home):
+    ks = system_keystone(_SystemKeystone({"admin-1", "admin-2"}))
+    ks.domains.get = Mock(return_value=home)
+    with pytest.raises(HTTPException) as error:
+        await identity_roles.assert_system_admin_remains(users={"admin-1"})
+    assert error.value.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_unreadable_admin_home_domain_cannot_prove_a_survivor(system_keystone):
+    ks = system_keystone(_SystemKeystone({"admin-1", "admin-2"}))
+    ks.domains.get = Mock(side_effect=ConnectionError("domain directory unavailable"))
+    with pytest.raises(HTTPException) as error:
+        await identity_roles.assert_system_admin_remains(users={"admin-1"})
+    assert error.value.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_shared_admin_home_domain_is_read_once_per_fresh_guard(system_keystone):
+    ks = system_keystone(_SystemKeystone({"admin-1", "admin-2"}))
+    ks.domains.get = Mock(wraps=ks.domains.get)
+    assert set(await identity_roles.enabled_system_admins()) == {"admin-1", "admin-2"}
+    ks.domains.get.assert_called_once_with("default")
+    assert set(await identity_roles.enabled_system_admins()) == {"admin-1", "admin-2"}
+    assert ks.domains.get.call_count == 2

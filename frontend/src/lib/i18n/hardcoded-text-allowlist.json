@@ -1,4 +1,17 @@
 {
+	"src/lib/mockup/chatWorkLog.ts": {
+		"reason": "Synthetic tutorial conversation/provider/tool payload data, not application UI copy. Native user/provider content is never translated. Exact data lines only.",
+		"lines": [
+			"const answer = '튜토리얼 작업을 마쳤습니다. 도구 오류와 공개된 추론 요약은 위 작업 내역에서 다시 확인할 수 있습니다.';",
+			"send('tool.call.completed', { call_id: 'search', name: 'web_search', status: 'failed', content: [{ type: 'text', text: '튜토리얼 검색 실패 — 실제 검색은 실행하지 않았습니다.' }], error_code: 'tutorial_unavailable', source: 'builtin', category: 'Web' }, elapsed);",
+			"event('part.completed', { message_id: messageId, part_index: 1, part: { type: 'reasoning', visibility: 'user', text: '공개된 요약: 프로젝트를 읽고 필요한 도구를 확인합니다.' } }, 2);",
+			"event('tool.call.completed', { call_id: 'search', name: 'web_search', status: 'failed', content: [{ type: 'text', text: '튜토리얼 검색 실패 — 실제 검색은 실행하지 않았습니다.' }], error_code: 'tutorial_unavailable', source: 'builtin', category: 'Web' }, 4);",
+			"function conversation() { return { id: conversationId, title: '작업 내역 튜토리얼', model_name: 'tutorial-chat', active_leaf_id: messageId, workspace_id: null, agent_id: null, created_at: startedAt, updated_at: startedAt }; }",
+			"{ id: 'tutorial-user', role: 'user', conversation_id: conversationId, parent_id: null, content: '작업 내역을 보여 주세요.', created_at: runStartedAt },",
+			"send('part.completed', { message_id: messageId, part_index: 1, part: { type: 'reasoning', visibility: 'user', text: '공개된 요약: 프로젝트를 읽고 필요한 도구를 확인합니다.' } }, 3);",
+			"call_id: 'permission', name: 'afterglow_vm_create', source: 'mcp', effect: 'external_mutation', destination: 'https://tutorial.invalid', redacted_arguments: { name: 'tutorial-vm' }, preview: [{ type: 'text', text: '튜토리얼 가상 머신을 생성할까요? 실제 자원은 만들지 않습니다.' }], expected_state_revision: null, writer_fence: null, expires_at: new Date(Date.now() + 300000).toISOString()"
+		]
+	},
 	"src/lib/docs/iamGuide.ts": {
 		"reason": "Typed IAM guide canonical Korean source; all reader-facing strings are rendered through the nine-locale documentation catalog. Exact data lines only.",
 		"lines": [

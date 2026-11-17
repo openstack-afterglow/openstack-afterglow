@@ -56,6 +56,7 @@ vi.mock('$lib/mockup/transport', () => ({
 	getActiveMockupProfile: () => mockProfile.value,
 	maybeMockBlob: vi.fn(async () => noMockMatch),
 	maybeMockJson: vi.fn(async () => noMockMatch),
+	maybeMockChatResponse: vi.fn(() => null),
 	maybeMockK3sStream: vi.fn(() => null),
 	symbolNoMatch: noMockMatch,
 }));
@@ -426,6 +427,32 @@ describe('explicit scoped prefetch', () => {
 
 		await expect(api.get('/api/v1/items', 'token', 'project')).resolves.toEqual({ source: 'visible' });
 		expect(mockFetch).toHaveBeenCalledTimes(3);
+	});
+
+	it('refreshes system administrators after a grant despite token rotation and a new-scope warm snapshot', async () => {
+		authState.value = { token: 'old-token', refreshToken: null, accessExpiresAt: null, projectId: 'project' };
+		const mutation = deferred<MockJsonResponse<{ status: string }>>();
+		const oldRows = [{ user_id: 'admin' }];
+		const freshRows = [...oldRows, { user_id: 'new-admin' }];
+		mockFetch
+			.mockResolvedValueOnce(jsonResponse(oldRows))
+			.mockReturnValueOnce(mutation.promise)
+			.mockResolvedValueOnce(jsonResponse(oldRows))
+			.mockResolvedValueOnce(jsonResponse(freshRows));
+		const { api } = await loadClient();
+		// Module reset requires the auth mock from the freshly loaded client graph.
+		const { auth } = await import('$lib/stores/auth');
+		const path = '/api/v1/admin/identity/system-roles';
+		await api.prefetch(path, 'old-token', 'project');
+		const grant = api.post(`${path}/grant`, { user_id: 'new-admin' }, 'old-token', 'project');
+		await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+		auth.update(state => ({ ...state, token: 'new-token' }));
+		await api.prefetch(path, 'new-token', 'project');
+		mutation.resolve(jsonResponse({ status: 'granted' }));
+		await grant;
+		await expect(api.get(path, 'new-token', 'project', { refresh: true })).resolves.toEqual(freshRows);
+		expect(mockFetch).toHaveBeenCalledTimes(4);
+		expect(String(mockFetch.mock.calls[3][0])).toContain('/system-roles?refresh=true');
 	});
 
 	it('invalidates the observed auth scope when token or project changes', async () => {

@@ -25,10 +25,13 @@ async def _authenticated(request: Request):
 
 
 @pytest.mark.asyncio
-async def test_realtime_admission_returns_only_project_bound_browser_ticket(monkeypatch):
+@pytest.mark.parametrize("kind", [None, "conversation", "transcription"])
+async def test_realtime_admission_returns_only_project_bound_browser_ticket(monkeypatch, kind):
     app = FastAPI()
     app.include_router(router, prefix="/api/v1/chat")
     app.dependency_overrides[get_token_info] = _authenticated
+    authorize = AsyncMock(return_value=None)
+    monkeypatch.setattr("app.api.lumen.realtime.authorize_service_request", authorize)
     upstream = []
     session_id = str(uuid4())
 
@@ -55,10 +58,17 @@ async def test_realtime_admission_returns_only_project_bound_browser_ticket(monk
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as browser:
         response = await browser.post(
             "/api/v1/chat/realtime/sessions",
-            json={"model_id": "12", "voice": "alloy"},
+            json={
+                "model_id": "12",
+                **({"voice": "alloy"} if kind != "transcription" else {}),
+                **({"kind": kind} if kind is not None else {}),
+            },
             headers={"Idempotency-Key": key},
         )
     assert response.status_code == 201
+    authorize.assert_awaited_once()
+    assert authorize.await_args.args[0] == "lumen"
+    assert authorize.await_args.args[2] == "/v1/chat/realtime/sessions"
     assert response.json()["ticket"] == "opaque-browser-ticket"
     assert datetime.fromisoformat(response.json()["expires_at"]).timestamp() > datetime.now().timestamp()
     assert "connect_token" not in response.json()
@@ -67,6 +77,9 @@ async def test_realtime_admission_returns_only_project_bound_browser_ticket(monk
     assert upstream[0].headers["x-auth-token"] == "keystone-caller"
     assert upstream[0].headers["x-project-id"] == "owned-project"
     assert upstream[0].headers["Idempotency-Key"] == key
+    payload = json.loads(upstream[0].content)
+    assert payload["kind"] == (kind or "conversation")
+    assert payload["voice"] == (None if kind == "transcription" else "alloy")
     issue.assert_awaited_once_with(
         "chat-realtime",
         {
@@ -142,3 +155,27 @@ def test_realtime_ws_rejects_origin_and_relay_preserves_audio_frames(monkeypatch
     assert connections[0][0] == f"wss://lumen.internal/v1/chat/realtime/sessions/{session_id}/ws"
     assert connections[0][1]["additional_headers"] == {"x-realtime-token": "private-lumen-token-1234567890123456789"}
     consume.assert_awaited_once_with("opaque", expected_kind="chat-realtime")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["translation", "live", "", None])
+async def test_realtime_admission_rejects_invalid_kind_before_native_request(monkeypatch, kind):
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1/chat")
+    app.dependency_overrides[get_token_info] = _authenticated
+    authorize = AsyncMock(side_effect=AssertionError("invalid kind must not reach service authorization"))
+    monkeypatch.setattr("app.api.lumen.realtime.authorize_service_request", authorize)
+    endpoint = AsyncMock(side_effect=AssertionError("invalid kind must not reach Lumen"))
+    monkeypatch.setattr("app.services.service_proxy._get_internal_endpoint", endpoint)
+    issue = AsyncMock()
+    monkeypatch.setattr(ws_ticket, "issue_ticket", issue)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as browser:
+        response = await browser.post(
+            "/api/v1/chat/realtime/sessions",
+            json={"model_id": "12", "kind": kind},
+            headers={"Idempotency-Key": str(uuid4())},
+        )
+    assert response.status_code == 422
+    authorize.assert_not_awaited()
+    endpoint.assert_not_called()
+    issue.assert_not_awaited()

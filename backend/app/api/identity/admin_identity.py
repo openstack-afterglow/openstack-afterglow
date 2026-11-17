@@ -361,7 +361,7 @@ async def update_user(
                 try:
                     if req.enabled is False:
                         await project_ownership_journal.assert_user_resolved(user_id)
-                        await asyncio.to_thread(identity_roles.assert_system_admin_remains, users={user_id})
+                        await identity_roles.assert_system_admin_remains(users={user_id})
                         await asyncio.to_thread(project_service.assert_user_ownership_mutation_safe, user_id)
                     affected = await asyncio.to_thread(
                         domain_projects.assert_managers_remain,
@@ -434,7 +434,7 @@ async def delete_user(
             await account_spaces.assert_user_deletion_safe(
                 user_id, ks=ks, enrollment_id=identity_roles._field(native_target, "afterglow_enrollment_id")
             )
-            await asyncio.to_thread(identity_roles.assert_system_admin_remains, users={user_id})
+            await identity_roles.assert_system_admin_remains(users={user_id})
             # Native automation may carry only admin on a service project, not
             # a service role. Privileged identities require guarded grant removal
             # first; never infer account safety from names or federation alone.
@@ -1783,43 +1783,52 @@ async def delete_role_implication(
 class SystemRoleRequest(BaseModel):
     user_id: str
 
+    @field_validator("user_id")
+    @classmethod
+    def validate_user_id(cls, value: str) -> str:
+        return keystone.validate_system_principal_id(value)
+
 
 @router.get("/identity/system-roles", dependencies=[Depends(require_admin)])
 async def list_system_roles():
     """system:all scope에서 admin role을 보유한 사용자 목록 조회."""
 
-    def _list():
-        try:
-            admin_role_id = keystone._resolve_admin_role_id()
-            ks = keystone._get_admin_ks_client()
-            assignments = ks.role_assignments.list(role=admin_role_id, system="all")
-            user_ids = [a.user["id"] for a in assignments if hasattr(a, "user")]
-            result = []
-            for uid in user_ids:
-                try:
-                    u = ks.users.get(uid)
-                    result.append(
-                        {
-                            "user_id": uid,
-                            "name": getattr(u, "name", ""),
-                            "email": getattr(u, "email", ""),
-                            "enabled": getattr(u, "enabled", False),
-                            "system_account": backup_system_account.system_account_marker(u),
-                        }
-                    )
-                except Exception:
-                    result.append({"user_id": uid, "name": "", "email": "", "enabled": False})
-            return result
-        except HTTPException:
-            raise
-        except Exception as e:
-            _logger.warning("system role 목록 조회 실패: %s", e)
-            raise HTTPException(status_code=500, detail="system role 목록 조회 실패")
+    def _list(ks, user_ids):
+        result = []
+        for uid in user_ids:
+            try:
+                u = ks.users.get(uid)
+                result.append(
+                    {
+                        "user_id": uid,
+                        "name": getattr(u, "name", ""),
+                        "email": getattr(u, "email", ""),
+                        "enabled": getattr(u, "enabled", False),
+                        "system_account": backup_system_account.system_account_marker(u),
+                    }
+                )
+            except Exception:
+                result.append({"user_id": uid, "name": "", "email": "", "enabled": False})
+        return result
 
-    return await asyncio.to_thread(_list)
+    try:
+        recent = await keystone.recent_system_admin_ids()
+        admin_role_id = await asyncio.to_thread(keystone._resolve_admin_role_id)
+        ks = await asyncio.to_thread(keystone._get_admin_ks_client)
+        user_ids = sorted(await keystone.system_admin_user_ids(ks, admin_role_id, recent))
+        return await asyncio.to_thread(_list, ks, user_ids)
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.warning("system role 목록 조회 실패: %s", e)
+        raise HTTPException(status_code=500, detail="system role 목록 조회 실패")
 
 
 async def _system_admin_change(conn, user_id: str, *, revoke: bool) -> dict:
+    try:
+        keystone.validate_system_principal_id(user_id)
+    except ValueError as exc:
+        raise HTTPException(422, "identity_native_invalid") from exc
     # The shared native role-graph lease serializes this with every other grant,
     # role and implication mutation, so two concurrent revokes cannot both pass.
     async with identity_roles._graph_lock(conn) as lease:
@@ -1827,27 +1836,42 @@ async def _system_admin_change(conn, user_id: str, *, revoke: bool) -> dict:
         try:
             admin_role_id = await asyncio.to_thread(keystone._resolve_admin_role_id)
             ks = await asyncio.to_thread(keystone._get_admin_ks_client)
+            account = await asyncio.to_thread(ks.users.get, user_id)
+            if identity_roles._field(account, "id") != user_id:
+                raise public_service_error(503, "identity_unavailable")
             if revoke:
 
                 def check():
-                    direct = list(ks.role_assignments.list(role=admin_role_id, system="all", user=user_id))
-                    if not direct:
+                    direct = keystone.direct_system_assignments(ks, user=user_id)
+                    if not any(row["role"]["id"] == admin_role_id for row in direct):
                         raise HTTPException(404, "system_admin_grant_not_found")
-                    identity_roles.assert_system_admin_remains(users={user_id})
 
                 await asyncio.to_thread(check)
+                await identity_roles.assert_system_admin_remains(users={user_id})
         except Exception as exc:
             raise _identity_error(exc) from exc
         await identity_roles._session_ready({user_id})
+        if not revoke:
+            # Reserve discovery before the native call: an error reply may follow
+            # a committed grant. Hints cannot authorize without direct readback.
+            await keystone.remember_system_admin(user_id)
         method = ks.roles.revoke if revoke else ks.roles.grant
         try:
             await identity_roles._write(lease, method, role=admin_role_id, user=user_id, system="all")
+            if revoke:
+                await keystone.remember_system_admin(user_id, remove=True)
         finally:
             # A failed reply may follow a committed native authority change.
+            # Refresh after the write settles so a slow lost reply still covers
+            # the full computed-assignment cache lifetime.
             try:
-                await invalidate_authority()
+                if not revoke:
+                    await keystone.remember_system_admin(user_id)
             finally:
-                await session_store.revoke_user_sessions(user_id)
+                try:
+                    await invalidate_authority()
+                finally:
+                    await session_store.revoke_user_sessions(user_id)
     return {"status": "revoked" if revoke else "granted"}
 
 

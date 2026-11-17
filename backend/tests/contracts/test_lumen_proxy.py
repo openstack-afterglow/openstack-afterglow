@@ -189,6 +189,145 @@ async def test_audio_routes_preserve_bytes_types_and_caller_scope(
 
 
 @pytest.mark.asyncio
+async def test_embedding_playground_proxy_uses_native_route_and_no_store(api_client, current_access):
+    app.dependency_overrides[get_token_info] = _authenticated
+    current_access["roles"].append("lumen-chat_user")
+    request_body = b'{"model_id":1,"input":["hello"],"dimensions":3}'
+    response_body = b'{"model_id":1,"model":"embed","dimensions":3,"embeddings":[],"usage":{"prompt_tokens":1}}'
+    received = []
+
+    async def handler(request):
+        received.append((str(request.url), await request.aread()))
+        return HttpxResponse(200, headers={"content-type": "application/json"}, stream=httpx.ByteStream(response_body))
+
+    upstream = AsyncClient(transport=httpx.MockTransport(handler))
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1"),
+        patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
+    ):
+        response = await api_client.post(
+            "/api/v1/chat/embeddings", content=request_body, headers={"content-type": "application/json"}
+        )
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert received == [("http://isolated.test/v1/chat/embeddings", request_body)]
+
+
+@pytest.mark.asyncio
+async def test_decisions_proxy_preserves_wire_scope_and_private_response(api_client, current_access):
+    app.dependency_overrides[get_token_info] = _authenticated
+    current_access["roles"].append("lumen-chat_user")
+    body = b'{"model":"gpt-6-luna","input":"Synthetic","questions":[{"type":"predicate","instructions":"Is it text?"}]}'
+    result = b'{"model":"gpt-6-luna","answers":[{"type":"predicate","probability":0.9}],"cost_usd":"0.000001"}'
+    received = []
+
+    async def handler(request):
+        received.append((request.method, str(request.url), request.headers, await request.aread()))
+        return HttpxResponse(200, headers={"content-type": "application/json"}, stream=httpx.ByteStream(result))
+
+    upstream = AsyncClient(transport=httpx.MockTransport(handler))
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1"),
+        patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
+    ):
+        response = await api_client.post(
+            "/api/v1/chat/decisions",
+            content=body,
+            headers={"content-type": "application/json", "authorization": "Bearer synthetic-browser"},
+        )
+    assert response.status_code == 200
+    assert response.content == result
+    assert response.headers["cache-control"] == "no-store"
+    method, url, headers, forwarded = received.pop()
+    assert (method, url, forwarded) == ("POST", "http://isolated.test/v1/chat/decisions", body)
+    assert headers["x-auth-token"] == "caller-token"
+    assert headers["x-project-id"] == "project-1"
+    assert "authorization" not in headers
+
+
+@pytest.mark.asyncio
+async def test_native_catalog_requires_current_system_admin_and_preserves_filter(api_client, current_system_admin):
+    app.dependency_overrides[get_token_info] = _authenticated_system_admin
+    catalog = {"schema_version": 1, "catalog_version": "2026-11-17", "providers": []}
+    received = []
+
+    async def handler(request):
+        received.append((request.method, str(request.url), request.headers))
+        return HttpxResponse(
+            200, headers={"content-type": "application/json"}, stream=httpx.ByteStream(json.dumps(catalog).encode())
+        )
+
+    upstream = AsyncClient(transport=httpx.MockTransport(handler))
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1"),
+        patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
+    ):
+        response = await api_client.get("/api/v1/chat/admin/models/native-catalog?provider_type=openai")
+    assert response.status_code == 200
+    assert response.json() == catalog
+    assert response.headers["cache-control"] == "no-store"
+    method, url, headers = received.pop()
+    assert (method, url) == ("GET", "http://isolated.test/v1/admin/models/native-catalog?provider_type=openai")
+    assert headers["x-auth-token"] == "caller-token"
+    assert headers["x-project-id"] == "project-1"
+
+
+@pytest.mark.asyncio
+async def test_native_catalog_denies_non_admin_before_upstream(api_client):
+    app.dependency_overrides[get_token_info] = _authenticated
+    with patch("app.services.service_proxy._get_internal_endpoint", new=AsyncMock()) as endpoint:
+        response = await api_client.get("/api/v1/chat/admin/models/native-catalog")
+    assert response.status_code == 403
+    assert response.headers["cache-control"] == "no-store"
+    endpoint.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["decisions", "admin/models/native-catalog"])
+async def test_new_model_routes_require_session(api_client, path):
+    with patch("app.api.lumen.proxy.proxy", new=AsyncMock()) as forwarded:
+        response = await api_client.request("POST" if path == "decisions" else "GET", f"/api/v1/chat/{path}", json={})
+    assert response.status_code == 401
+    assert response.headers["cache-control"] == "no-store"
+    forwarded.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "path", "allow"),
+    [
+        ("GET", "decisions", "POST"),
+        ("PUT", "decisions", "POST"),
+        ("POST", "admin/models/native-catalog", "GET"),
+        ("PATCH", "admin/models/native-catalog", "GET"),
+    ],
+)
+async def test_new_model_routes_reject_wrong_methods(api_client, method, path, allow):
+    app.dependency_overrides[get_token_info] = _authenticated
+    with patch("app.api.lumen.proxy.proxy", new=AsyncMock()) as forwarded:
+        response = await api_client.request(method, f"/api/v1/chat/{path}")
+    assert response.status_code == 405
+    assert response.headers["allow"] == allow
+    assert response.headers["cache-control"] == "no-store"
+    forwarded.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [("GET", "providers"), ("GET", "providers/openai"), ("POST", "import")],
+)
+async def test_retired_models_dev_browser_routes_never_forward(api_client, method, path):
+    app.dependency_overrides[get_token_info] = _authenticated_system_admin
+    with patch("app.api.lumen.proxy.proxy", new=AsyncMock()) as forwarded:
+        response = await api_client.request(method, f"/api/v1/chat/admin/models/pricing/models-dev/{path}")
+    assert response.status_code == 404
+    assert response.headers["cache-control"] == "no-store"
+    forwarded.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_browser_proxy_requires_authentication(api_client):
     with patch("app.api.lumen.proxy.proxy", new=AsyncMock()) as proxy_call:
         response = await api_client.get("/api/v1/chat/conversations")

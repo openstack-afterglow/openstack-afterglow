@@ -1,4 +1,6 @@
 {
+	"configuration.embedding": "Tekstembeddinger",
+	"pricing.embeddingInputOnly": "Embedding-modeller prises bare etter inndatatokener; det beregnes ingen pris for utdata.",
 	"accounts.currentConnection": "Gjeldende tilkoblingsinnstillinger",
 	"accounts.connectionIdentity": "Leverandør #{provider} · Konto #{account} · Nøkkel #{credential}",
 	"accounts.currentEndpoint": "Gjeldende endepunkt",

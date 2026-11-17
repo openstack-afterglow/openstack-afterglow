@@ -1,4 +1,6 @@
 {
+	"configuration.embedding": "テキスト埋め込み",
+	"pricing.embeddingInputOnly": "埋め込みモデルは入力トークンのみで課金され、出力トークン料金はありません。",
 	"accounts.currentConnection": "現在の接続設定",
 	"accounts.connectionIdentity": "プロバイダー #{provider} · アカウント #{account} · キー #{credential}",
 	"accounts.currentEndpoint": "現在のエンドポイント",

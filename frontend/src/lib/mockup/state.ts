@@ -162,6 +162,7 @@ interface MockupState {
 			storage_pools: StoragePool[];
 		};
 		users: User[];
+		systemAdminIds: string[];
 		userActivity: { id: number; created_at: string; username: string; action: string; resource_name: string | null; status: string }[];
 	};
 }
@@ -584,6 +585,7 @@ function seedState(): MockupState {
 				{ id: 'mock-user-3', name: 'sample-disabled', email: 'sample-disabled@example.test', enabled: false, domain_id: 'mock-domain', default_project_id: 'mock-project-3', created_at: '2026-06-20T00:00:00Z', first_seen: '2026-06-21T00:00:00Z', last_seen: '2026-06-30T00:00:00Z' },
 				{ id: 'mock-admin-1', name: 'demo-admin', email: 'demo-admin@example.test', enabled: true, domain_id: 'mock-domain', default_project_id: 'mock-admin-project', created_at: '2026-06-01T00:00:00Z', first_seen: '2026-06-01T00:00:00Z', last_seen: NOW },
 			],
+			systemAdminIds: ['mock-admin-1'],
 			userActivity: [
 				{ id: 1, created_at: '2026-07-08T12:00:00Z', username: 'sample-researcher', action: '사용자 수정', resource_name: 'sample-researcher', status: 'success' },
 				{ id: 2, created_at: '2026-07-07T09:30:00Z', username: 'sample-admin', action: '사용자 생성', resource_name: 'sample-disabled', status: 'success' },

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	ChatContractError,
 	MAX_CANONICAL_CHAT_PARTS,
+	defaultChatFeatureOptions,
 	parseChatPartsForDisplay,
 	parseChatPartsStrict,
 	parseChatRunEvent,
@@ -94,6 +95,16 @@ describe('bounded canonical assistant history', () => {
 });
 
 describe('chatContracts', () => {
+	it('defaults to no sandbox tools with independent mutable selections per request', () => {
+		const first = defaultChatFeatureOptions();
+		const second = defaultChatFeatureOptions();
+		expect(first.tool_policy.enabled_sandbox_tools).toEqual([]);
+		first.tool_policy.enabled_sandbox_tools.push('Browser_Navigate');
+		expect(second.tool_policy.enabled_sandbox_tools).toEqual([]);
+		expect(first.tool_policy.enabled_mcp_ids).toBeNull();
+		expect(first.tool_policy.enabled_tool_ids).toBeNull();
+	});
+
 
 	it('rejects unknown input parts but safely degrades display parts', () => {
 		expect(() => parseChatPartsStrict([{ type: 'future_provider_block', secret: 'never render' }])).toThrow(ChatContractError);

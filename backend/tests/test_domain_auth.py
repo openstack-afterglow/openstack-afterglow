@@ -292,9 +292,14 @@ class FakeKeystone:
                 )
             ]
 
+        def roles(*, user=None, group=None, system=None, name=None):
+            if system is not None:
+                return [row["role"] for row in assignments(user=user, group=group, system=system)]
+            return [role for role in outer.catalog if name is None or role["name"] == name]
+
         self.projects = Projects()
         self.role_assignments = SimpleNamespace(list=assignments)
-        self.roles = SimpleNamespace(list=lambda: outer.catalog, grant=grant, revoke=revoke)
+        self.roles = SimpleNamespace(list=roles, grant=grant, revoke=revoke)
         self.inference_rules = SimpleNamespace(
             list_inference_roles=lambda: [
                 {"prior_role": {"id": row["id"]}, "implies": [{"id": child} for child in row["implied_role_ids"]]}

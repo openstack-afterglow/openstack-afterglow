@@ -4,10 +4,22 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
+**Lumen 대시보드 통합 — source/local:** 관리자 모델 등록·수정은 임베딩에 입력 토큰 가격만 전송하고 미디어 가격 상태를 배제한다. `frontend/src/lib/api/mediaReadiness.ts`가 레지스트리·Image/Audio Studio의 같은 native feature gate를 해석한다. 미설정된 ClamAV/S3, 미지원 모델·과금 기준, 단가 누락은 서로 다른 차단 상태이며 UI 문구만으로 실행 권한이나 준비 상태를 만들지 않는다.
+
+**Lumen 채팅 작업 내역 — source/local:** `ChatPanel` → `ChatWindow` → `ChatMessage` → `ExecutionTimeline`이 Lumen 공개 run journal로 하나의 실시간/종료 작업 패널을 구성한다. 경과 시간은 실제 UTC run 경계(`execution.started_at`, terminal 시각)를 따르고 종료 시 한 번 접히며, 이후 사용자의 재열기는 독립적으로 유지한다. 승인 카드는 streaming 여부가 아니라 정확한 run/call의 미결 pending 기록에 묶이고, 결정은 기존 owner/project/run 승인 fence가 소유한다. 비공개 모델 추론은 계속 제외한다.
+
+**실시간 전사 — source/local:** Native realtime 전사는 기존 종류 일치 signed-ticket admission과 native event projection을 입력 전용 PCM·구간 commit 및 상관된 부분/확정/실패 항목으로 확장한다. 기존 음성 대화, 현재 권한·단가 확인, 지속 정산과 일회용 ticket 소유를 유지한다. Audio Studio는 기존 mode-aware 실시간 화면으로 연결하며 마이크·worklet·socket·context와 임시 텍스트는 소유자에 묶여 종료 시 정리된다.
+
+**네이티브 공급자·Decisions — source/local:** Afterglow는 Lumen에 내장된 네이티브 모델 카탈로그를 읽기 전용으로 보여 주며 출처 URL·확인일·카탈로그 버전과 실제 가격 출처(`price_origin`)를 함께 표시한다. 공급자 설정은 네 개 네이티브 family와 기존 구독 인증, 그리고 명시적인 OpenAI/Anthropic 호환 custom base로 제한한다. 호환 모델은 관리자 단가가 필수이며 카탈로그 메타데이터를 상속하지 않는다. "공시 가격 따르기"는 기존 모델 PATCH로 저장 단가만 비운다. endpoint family, 실제 단가·기능, 권한·활성화는 Lumen이 결정한다. Decision Studio는 대화 기록과 분리된 세션·프로젝트 범위 작업 공간이다. BFF는 `POST /api/v1/chat/decisions`를 Lumen `/v1/chat/decisions`로, 시스템 관리자 전용 `GET /api/v1/chat/admin/models/native-catalog`을 Lumen 카탈로그로 전달하며 private no-store 응답을 유지한다. 폐기된 models.dev BFF 경로는 upstream 호출 없이 404를 반환한다.
+
+**MCP 카탈로그·관리형 도구 선택 — source/local:** `ChatExtensionsManager`가 기존 설정/도구 경로에 `ChatMcpGallery`를 넣는다. 브라우저 `/api/v1/chat/*`는 기존 caller-token BFF로 Lumen `/v1/*`에 전달하며, 조직 연결 관리 권한·구성원 여부는 매 요청 Lumen이 다시 판정한다. 인증 없는 실제 OAuth callback은 generic proxy보다 먼저 mount되고 no-store를 적용한다. 채팅의 관리형 도구 선택은 사용자·범위별 선호로 저장되고, 실행 요청에는 정확한 sandbox 도구 이름만 실어 원격 MCP ID와 섞지 않는다. 오래된 admission 응답은 generation fence로 버린다.
+
+**System administrator readback:** `keystone`의 직접 system user/group role endpoint가 권한의 근거다. Computed-assignment 목록은 후보 발견용이며, Afterglow grant의 Redis 후보 힌트(660초, 현재 native cache TTL 600초를 전제, Keystone URL·region·interface별 key)를 합쳐 직접 재검증한다. 힌트 자체는 권한이 아니고 실패 시 닫힌다. 직접 대상 ID는 안전한 opaque 문자만 허용하고 exact `users.get` ID 일치 뒤에만 guard·쓰기·힌트에 사용한다. 동일 reader를 권위·마지막 활성 human 관리자 보호·회수 확인에 사용한다. 마지막 관리자 보호는 발견 결과가 비어도 변경 대상이 아닌 검증된 enabled human 관리자가 남아야 통과하며, 그 관리자의 exact home domain도 live enabled여야 한다. 외부 native grant의 즉시 발견은 별도 문제로 남는다. 관리자 화면의 표와 배너는 같은 snapshot을 사용하고 token-only renewal은 성공 응답을 버리지 않지만 owner/project/session 교체는 차단한다.
+
 **세 번째 시각 정리 (2026-11-16, source/local):** 기존 layout.css semantic text token과 shared embedded/flat/table/card/form 경계를 재사용해 consumer/admin 상세·계정·Lumen 설정의 중첩 외곽선, 제목 단계, 작업 대비와 좁은 상세 header를 수정한다. AuthStudioShell은 기존 resolvedTheme를 SVG color-scheme에 전달하고 보조 글자 크기만 기존 type role로 올린다. 포트 생성창은 기존 localized heading을 dialog 이름으로 연결한다. 자원·credential·권위·API·scope·polling·tutorial 가용성·DB/schema·배포 경계는 바꾸지 않는 presentation-only 변경이다. 실제 렌더·native 조작과 synthetic/redirect 한계는 docs/testing.md에 구분하며 운영 수용으로 승격하지 않는다.
 
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.32.11`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 root/backend/frontend 버전 `1.32.25`는 통합 검증 중인 미발행 후보이며 운영 배포를 뜻하지 않는다. Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock 버전은 `8.2.2`다. Source·합성 검증과 실제 OpenStack 배포 증거를 구분한다.
 
 **1.32.11 준비 (2026-11-08, source/local):** `1.32.10` 이후 dev의 도메인 IAM 그룹 관리(`/api/v1/iam/groups*`), 도메인 manager 프로젝트 수정(`PATCH /api/v1/iam/projects/{id}`, 이름·설명만), 프로젝트 표·슬라이드인 화면, manager 전용 프로젝트 생성(`project_creator` 위임 폐기)과 manager 투영의 native `manager` 부여(v1 `reader` 투영 migration, 투영 파생 row의 manager 계산 제외)를 포함한다. 사용자 페이지의 `/api/v1/{chat,k3s,waygate,palimpsest}/*`에서 시스템 관리자 승격을 제거하고 `/admin/*` 하위에만 남긴다. 스키마·SQL 변경과 새 설정 키는 없다. 시스템 관리자 승격을 제거한 `deps._resolve_jwt_session` 경계는 `test_auth_domain_boundaries`로 검증했다. 브라우저 실화면과 실제 Keystone의 reader→manager 투영 migration은 확인하지 않았다. 이 항목은 source/local 준비이며 발행·운영 배포는 별도 기록한다.
 
@@ -1520,7 +1532,9 @@ Lumen keeps caller, ordinary API-key, provider and operator credential domains s
 
 Local architecture qualification used separate `dev` clones with `HEAD` plus explicit current integration paths, then the canonical `scripts/check_architecture.py --stamp --staged` and `--staged` check. Afterglow and all four native services passed that metadata check; original indexes and shared architecture documents were byte-identical across the checks. Exact base revisions, paths and digests are in `afterglow-system-admin-f6gnvztx/architecture-*.json`. This does not stamp the entire concurrently dirty checkout or claim green full gates/image/deployment qualification. The current31 exercised root runtime/test paths match the frozen root proof; the remaining mirrored K3s credential type change is declaration-only (`app_credential_id` nullable plus cleanup-intent metadata).
 
-Lumen 브라우저 BFF는 기존 `/v1/{path}` 기본 전달을 유지하되 `/api/v1/chat/audio/speech`와 `/api/v1/chat/audio/transcriptions`를 각각 `/v1/chat/audio/speech`와 `/v1/chat/audio/transcriptions`로 명시적으로 매핑한다. `service_proxy.py`의 caller/project-scoped 헤더와 요청 본문·Content-Type, 원본 응답 바이트·Content-Type 스트리밍은 그대로 적용되며 오디오 생성·전사는 Lumen이 소유한다.
+Lumen 브라우저 BFF는 기존 `/v1/{path}` 기본 전달을 유지하되 `/api/v1/chat/audio/speech`, `/audio/transcriptions`, `/embeddings`를 각각 `/v1/chat/audio/speech`, `/v1/chat/audio/transcriptions`, `/v1/chat/embeddings`로 명시 매핑한다. 모델 목록과 이미지 generation/edit도 native `/v1/chat/...` 경로로 매핑한다. `service_proxy.py`의 caller/project-scoped 헤더, 본문·Content-Type, 원본 응답 바이트·Content-Type 스트리밍은 그대로 적용된다. Embedding 요청/응답은 private no-store이고, 벡터/원문 입력은 Afterglow 저장소에 기록하지 않는다.
+
+Afterglow Embedding Studio is a session-authenticated text-to-vector surface, separate from chat history. It selects only Lumen `model_kind=embedding` routes, checks current `lumen-chat_user` and model `embeddings`/pricing capability gates, limits input to 1–16 texts, and fences late results by request/user/project ownership. It displays dimensions, bounded vector preview, norm, token/cost and pairwise cosine similarity; it does not persist prompt or vector data. Public OpenAI/Gemini API-key embedding compatibility remains owned by Lumen, not the browser BFF.
 
 대시보드 텍스트 채팅은 API-key 기반 OpenAI 호환 `/v1/responses`(Codex 경로)가 아니라 Keystone 사용자/프로젝트가 소유한 `/v1/conversations/{id}/completions`·`/v1/temp-completions`에서 `202` durable run을 만들고 `/v1/runs/{id}/events`를 구독한다. 따라서 호환 API의 성공만으로 native provider worker의 인증·모델 라우팅을 검증하지 않는다. 접수 전 오류는 BFF가 보존한 HTTP 상태와 안전한 detail을 표시하고, 접수 뒤 `run.failed`는 Lumen의 `error_code`·`safe_message`를 별도로 표시한다. Provider 응답 원문·비밀값은 브라우저로 전달하지 않는다.
 
@@ -2226,9 +2240,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "31dd90c1ab3d45e7a6c2e69505022d1ff0bbf06e2428500c9893ee3e277a00de",
-  "reviewed_at": "2026-11-17T04:18:35Z",
-  "summary": "Frontend runtime image and release tag step move to Node 22; apply Promise.withResolvers and Map.groupBy; toSorted/findLast and AbortSignal.timeout modernization"
+  "source_sha256": "41cffe8f9a1ee48f860fd73cc6212546e5ab443076f038331503bce1673a5abb",
+  "reviewed_at": "2026-11-17T18:24:25Z",
+  "summary": "Lumen dashboard integration: system admin readback/last-admin guard, embedding/media readiness, chat work log, realtime transcription, MCP catalog with personal/organization scopes and managed sandbox tool picker, native provider catalog UI and Decision Studio reviewed against ARCHITECTURE.md"
 }
 ```
 <!-- architecture-review:end -->

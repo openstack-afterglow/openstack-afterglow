@@ -1,5 +1,5 @@
 import { t } from '$lib/i18n/ns/admin-chat';
-export type ModelKind = 'text' | 'image' | 'tts' | 'stt' | 'realtime';
+export type ModelKind = 'text' | 'image' | 'tts' | 'stt' | 'realtime' | 'embedding';
 export type BillingBasis = 'unit' | 'duration' | 'characters' | 'tokens' | 'session';
 export type TimeUnit = 'second' | 'minute' | 'hour';
 export type MediaPricing = Record<string, unknown> & {
@@ -13,8 +13,17 @@ export const MODEL_LABELS: Record<ModelKind, string> = {
 	get image() { return t('configuration.image'); },
 	get tts() { return t('configuration.speechGenerationTts'); },
 	get stt() { return t('configuration.speechRecognitionStt'); },
-	get realtime() { return t('configuration.realtimeAudio'); }
+	get realtime() { return t('configuration.realtimeAudio'); },
+	get embedding() { return t('configuration.embedding'); }
 };
+/** Lumen may add kinds this build cannot price; unknown values must never reach labels or request payloads. */
+export function knownModelKind(value: unknown): ModelKind | null {
+	return typeof value === 'string' && Object.hasOwn(MODEL_LABELS, value) ? value as ModelKind : null;
+}
+export function modelKindLabel(value: unknown): string {
+	const kind = knownModelKind(value);
+	return kind ? MODEL_LABELS[kind] : t('pricing.unknownKind');
+}
 export const TOKEN_FIELDS = [
 	{ key: 'input_per_million', get label() { return t('configuration.input'); } },
 	{ key: 'cache_read_per_million', get label() { return t('pricing.cacheInput'); } },
@@ -52,9 +61,10 @@ export function pricingDraft(pricing?: MediaPricing | null): PricingDraft {
 const DECIMAL = /^(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 const ZERO = /^(?:0+(?:\.0*)?|\.0+)(?:[eE][+-]?\d+)?$/;
 export function effectiveBasis(kind: ModelKind, draft: PricingDraft): string {
-	return kind === 'text' ? 'tokens' : draft.basis || (kind === 'image' ? 'unit' : 'duration');
+	return kind === 'text' || kind === 'embedding' ? 'tokens' : draft.basis || (kind === 'image' ? 'unit' : 'duration');
 }
 export function pricingError(kind: ModelKind, draft: PricingDraft): string | undefined {
+	if (kind === 'embedding') return;
 	for (const value of [...Object.values(draft.rates), ...Object.values(draft.tokens.image), ...Object.values(draft.tokens.audio)]) {
 		if (value.trim() && !DECIMAL.test(value.trim())) return t('pricing.decimalError');
 	}
@@ -68,7 +78,9 @@ export function pricingError(kind: ModelKind, draft: PricingDraft): string | und
 	}
 }
 /** Merge only edited leaves: hidden units, other billing bases and unknown server keys survive. */
-export function pricingPayload(draft: PricingDraft, baseline?: MediaPricing | null): MediaPricing | null {
+export function pricingPayload(kind: ModelKind, draft: PricingDraft, baseline?: MediaPricing | null): MediaPricing | null {
+	// Embeddings accept only the top-level input-token price, never hidden media drafts.
+	if (kind === 'embedding') return null;
 	const before = pricingDraft(baseline);
 	const result: MediaPricing = JSON.parse(JSON.stringify(baseline ?? {}));
 	if (draft.basis !== before.basis) {

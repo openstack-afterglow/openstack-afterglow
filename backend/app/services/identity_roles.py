@@ -233,97 +233,66 @@ def user_permissions(conn, user_id: str) -> dict:
 LAST_SYSTEM_ADMIN = "마지막 system admin은 제거하거나 비활성화할 수 없습니다"
 
 
-def enabled_system_admins() -> dict:
-    """Enabled effective system:all admins (groups and implied roles expanded).
+async def enabled_system_admins() -> dict:
+    """Enabled effective system:all admins, verified through direct native grants.
 
-    Unreadable authority fails closed with 503; it is never treated as zero.
+    User and exact home domain must both be enabled. Unreadable authority or
+    shared discovery fails closed with 503.
     """
-    try:
-        admin_role_id = keystone._resolve_admin_role_id()
-        ks = keystone._get_admin_ks_client()
-        users = set()
-        catalog = None
-        # Keystone's effective path omits system grants; expand native group
-        # membership and role inference from raw system assignments ourselves.
-        group_members = {}
-        for row in ks.role_assignments.list(system="all"):
-            user, group = _field(row, "user"), _field(row, "group")
-            role, scope = _field(row, "role"), _field(row, "scope")
-            if not isinstance(role, Mapping) or (user is None) == (group is None):
-                raise ValueError("system assignment metadata is invalid")
-            subject = user if user is not None else group
-            if not isinstance(subject, Mapping) or not isinstance(subject.get("id"), str) or not subject["id"]:
-                raise ValueError("system assignment subject is invalid")
-            system = scope.get("system") if isinstance(scope, Mapping) else None
-            if (
-                not isinstance(scope, Mapping)
-                or set(scope) != {"system"}
-                or not isinstance(system, Mapping)
-                or set(system) != {"all"}
-                or system["all"] is not True
-            ):
-                raise ValueError("system assignment scope is invalid")
-            rid = role.get("id")
-            if not isinstance(rid, str) or not rid:
-                raise ValueError("system assignment role is invalid")
-            grants_admin = rid == admin_role_id
-            if not grants_admin:
-                # Resolve aliases from the actual catalog, never role names.
-                if catalog is None:
-                    catalog = {item["id"]: item for item in _trusted_catalog()}
-                if rid not in catalog:
-                    raise ValueError("system assignment role is unresolved")
-                if any(
-                    catalog[item].get("domain_id") is not None for item in [rid, *catalog[rid]["inherited_role_ids"]]
-                ):
-                    raise ValueError("system assignment role graph crosses its authority domain")
-                grants_admin = admin_role_id in catalog[rid]["inherited_role_ids"]
-            if grants_admin:
-                if user is not None:
-                    users.add(user["id"])
-                else:
-                    gid = group["id"]
-                    if gid not in group_members:
-                        members = set()
-                        for member in ks.users.list(group=gid):
-                            uid = _field(member, "id")
-                            if not isinstance(uid, str) or not uid:
-                                raise ValueError("system assignment group membership is unresolved")
-                            members.add(uid)
-                        group_members[gid] = members
-                    users.update(group_members[gid])
+
+    def load(ks, users):
+        from app.services import backup_system_account
+
         admins = {}
+        domain_enabled = {}
         for uid in users:
             account = ks.users.get(uid)
             if _field(account, "id") != uid:
                 raise ValueError("Keystone returned a different user")
-            if _field(account, "enabled") is True:
+            if _field(account, "enabled") is not True or backup_system_account.system_account_marker(account):
+                continue
+            home_id = keystone.validate_system_principal_id(_field(account, "domain_id"))
+            if home_id not in domain_enabled:
+                home = ks.domains.get(home_id)
+                if _field(home, "id") != home_id:
+                    raise ValueError("Keystone returned a different home domain")
+                domain_enabled[home_id] = _field(home, "enabled") is True
+            if domain_enabled[home_id]:
                 admins[uid] = account
         return admins
+
+    try:
+        recent = await keystone.recent_system_admin_ids()
+        admin_role_id = await asyncio.to_thread(keystone._resolve_admin_role_id)
+        ks = await asyncio.to_thread(keystone._get_admin_ks_client)
+        users = await keystone.system_admin_user_ids(ks, admin_role_id, recent, effective=True)
+        return await asyncio.to_thread(load, ks, users)
     except Exception as exc:
         raise public_service_error(503, "system_admin_authority_unavailable") from exc
 
 
-def assert_system_admin_remains(*, users=(), domain_id: str | None = None) -> dict:
+async def assert_system_admin_remains(*, users=(), domain_id: str | None = None) -> dict:
     """Refuse a mutation that would leave no enabled effective system admin.
 
     Affected admins are the listed users and, for a domain disable, every admin
     whose account lives in that domain. Callers hold the role-graph lease.
+    At least one unaffected enabled human must be positively verified; an
+    empty or stale discovery snapshot never proves a mutation safe.
     """
-    admins = enabled_system_admins()
+    admins = await enabled_system_admins()
     affected_users = set(users)
     affected = {
         uid
         for uid, account in admins.items()
         if uid in affected_users or (domain_id is not None and _field(account, "domain_id") == domain_id)
     }
-    if affected and not set(admins) - affected:
+    if not set(admins) - affected:
         raise HTTPException(status_code=422, detail=LAST_SYSTEM_ADMIN)
     return admins
 
 
-def _carries_system_scope(assignments) -> bool:
-    return any(isinstance(_field(row, "scope"), Mapping) and "system" in _field(row, "scope") for row in assignments)
+def _carries_system_scope(ks, group_id: str) -> bool:
+    return bool(keystone.direct_system_assignments(ks, group=group_id))
 
 
 def _trusted_catalog():
@@ -1411,9 +1380,9 @@ async def change_group_membership(
             delete_group=delete,
         )
         await _session_ready(users)
-        if (remove or delete) and _carries_system_scope(assignments):
+        if (remove or delete) and await asyncio.to_thread(_carries_system_scope, ks, group_id):
             # Losing this group's system-scope grant can remove system authority.
-            await asyncio.to_thread(assert_system_admin_remains, users=users)
+            await assert_system_admin_remains(users=users)
             await lease.assert_owned()
         succeeded = False
         try:

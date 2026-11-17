@@ -1,0 +1,43 @@
+{
+  "status": "source-local-verified",
+  "frontend": {
+    "command": "cd frontend && npx vitest run src/lib/components/chat/__tests__/ChatMcpGallery.test.ts src/lib/components/chat/__tests__/ChatExtensionsManager.test.ts src/lib/components/chat/__tests__/ChatMcpCatalogue.test.ts src/lib/components/chat/__tests__/ChatMcpCatalogue.lifecycle.test.ts src/lib/mockup/transport.test.ts src/lib/mockup/contracts.test.ts",
+    "passed": 132,
+    "files": 6,
+    "report": "/Users/pieroot/.local/share/afterglow-proofs/mcp-catalog-ui-20261118/frontend-correction-tests.json",
+    "types": {"errors": 0, "existing_warnings": 15},
+    "i18n": {"errors": 0, "warnings": 0, "namespaces": 57, "hard_coded_korean_lines": 0},
+    "design_detector_findings": 0
+  },
+  "bff": {
+    "command": "cd backend && AFTERGLOW_ALLOW_INSECURE=1 UV_PROJECT_ENVIRONMENT=/Users/pieroot/code/afterglow/backend/.venv uv run --no-sync python -m pytest tests/test_mcp_catalog_proxy.py tests/test_mcp_catalog_callback.py tests/test_lumen_source_proxy.py tests/test_service_authorization.py -q",
+    "passed": 125,
+    "actual_callback_registration_privacy_covered": true,
+    "real_http_scenarios_passed": 21,
+    "initial_real_http_scenarios_preserved": 18,
+    "native_lumen_fix": "f424945",
+    "real_http_proof": "/Users/pieroot/.local/share/afterglow-proofs/mcp-catalog-bff-20261118/bff-smoke-extended-result.json",
+    "integrated_direct_system_role_helper_qualified": false,
+    "native_auth_policy_overrides": false,
+    "synthetic_boundaries": ["browser JWT validation identity", "Keystone directory HTTP fixture"],
+    "cleanup": {"remaining_servers": 0, "remaining_activations": 0, "owned_runtime_resources_remaining": 0}
+  },
+  "browser": {
+    "actual_routes": ["/dashboard/chat/settings?section=mcp&tutorial=on", "/dashboard/chat/tools?tutorial=admin", "/admin/chat/tools?tutorial=admin"],
+    "desktop": [1440, 1000],
+    "mobile": [390, 844],
+    "horizontal_overflow": 0,
+    "proof": "/Users/pieroot/.local/share/afterglow-proofs/mcp-catalog-ui-20261118/browser-proof.json",
+    "screenshots": ["desktop-settings.webp", "desktop-connections.webp", "mobile-settings.webp", "mobile-manager-gallery.webp", "mobile-manager-editor.webp"],
+    "scope": "compiled source components with explicit tutorial identity/provider fixtures, not native browser authentication or provider OAuth acceptance"
+  },
+  "review_corrections": [
+    "Personal native activation_is_active=true with null activation_config_version is not stale consent",
+    "Optional managed-status failures preserve administrator registry installation and display unknown readiness",
+    "Named header hints become fixed write-only input labels; exact template IDs resolve metadata on edit",
+    "Organization availability loss preserves personal/global browsing and never implies deletion"
+  ],
+  "coordinator_owned": ["shared ARCHITECTURE/DESIGN/CHANGELOG/testing document integration", "canonical full gate/build/architecture stamp", "shared-dev integration"],
+  "not_performed": ["push", "tag", "image publication", "production deployment", "sandbox enablement", "provider inference", "tool execution"],
+  "documentation_proposals": "local://mcp-catalog-ui-notes.md"
+}

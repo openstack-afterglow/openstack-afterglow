@@ -1,4 +1,6 @@
 {
+	"configuration.embedding": "টেক্সট এমবেডিং",
+	"pricing.embeddingInputOnly": "এমবেডিং মডেলে শুধু ইনপুট টোকেনের জন্য মূল্য ধরা হয়; আউটপুট টোকেনের মূল্য প্রযোজ্য নয়।",
 	"accounts.currentConnection": "বর্তমান সংযোগ সেটিংস",
 	"accounts.connectionIdentity": "প্রদানকারী #{provider} · অ্যাকাউন্ট #{account} · কী #{credential}",
 	"accounts.currentEndpoint": "বর্তমান এন্ডপয়েন্ট",

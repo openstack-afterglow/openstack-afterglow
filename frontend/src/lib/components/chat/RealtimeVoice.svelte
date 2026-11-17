@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
-	import { realtimeVoiceApi, realtimeReadiness, pcm16Base64, decodePcm16, type RealtimeModel, type RealtimeCapabilities, type RealtimeScope } from '$lib/api/realtimeVoice';
+	import { realtimeVoiceApi, realtimeReadiness, realtimeMode, applyTranscriptionFrame, pcm16Base64, decodePcm16, type RealtimeModel, type RealtimeCapabilities, type RealtimeScope, type RealtimeMode, type RealtimeTranscript } from '$lib/api/realtimeVoice';
 	import { ApiError } from '$lib/api/client';
 	import { Alert, Button, Card, Field, PageShell, SelectInput } from '$lib/components/ui';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
@@ -28,6 +28,16 @@
 	let inputTranscript = $state('');
 	let outputTranscript = $state('');
 	let error = $state('');
+	let activeMode = $state<RealtimeMode>('conversation');
+	let segments = $state<RealtimeTranscript[]>([]);
+	let ending = $state(false);
+	let ended = $state(false);
+	let commitBusy = $state(false);
+	let pendingAudio = $state(false);
+	let capabilityTicket = 0;
+	let flushTicket = 0;
+	let pendingFlush: { id: number; resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> } | null = null;
+	let closeTimer: ReturnType<typeof setTimeout> | null = null;
 	let socket: WebSocket | null = null;
 	let activeProvider = $state('');
 	let media: MediaStream | null = null;
@@ -41,7 +51,9 @@
 	let connectionExperience: ExperienceContext | undefined;
 	const model = $derived(models.find((item) => String(item.id) === selected));
 	const readiness = $derived(realtimeReadiness(model, capabilities));
-	const fingerprint = $derived(JSON.stringify([ownerKey, selected, voice]));
+	const mode = $derived(realtimeMode(capabilities));
+	const transcription = $derived(mode === 'transcription');
+	const fingerprint = $derived(JSON.stringify([ownerKey, selected, voice, mode]));
 	$effect(() => {
 		const current = fingerprint;
 		untrack(() => { if (pendingIntent?.fingerprint !== current) pendingIntent = null; });
@@ -65,16 +77,8 @@
 		playback = [];
 		nextPlayback = context?.currentTime ?? 0;
 	}
-	function stop(clearError = true, preserveIntent = false) {
-		const wasConnected = connected;
-		generation++;
-		const experience = connectionExperience;
-		connectionExperience = undefined;
-		pendingRequest?.abort();
-		pendingRequest = null;
-		if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'session.close' }));
-		socket?.close();
-		socket = null;
+	function releaseAudio() {
+		if (pendingFlush) { clearTimeout(pendingFlush.timer); pendingFlush.reject(new Error('capture stopped')); pendingFlush = null; }
 		capture?.disconnect();
 		capture = null;
 		microphone?.disconnect();
@@ -84,11 +88,29 @@
 		flushPlayback();
 		if (context) void context.close().catch(() => {});
 		context = null;
+	}
+	function stop(clearError = true, preserveIntent = false, preserveTranscription = false) {
+		const wasConnected = connected;
+		generation++;
+		if (closeTimer) clearTimeout(closeTimer);
+		closeTimer = null;
+		const experience = connectionExperience;
+		connectionExperience = undefined;
+		pendingRequest?.abort();
+		pendingRequest = null;
+		if (socket?.readyState === WebSocket.OPEN && !ending) socket.send(JSON.stringify({ type: 'session.close' }));
+		socket?.close();
+		socket = null;
+		releaseAudio();
 		connecting = false;
 		connected = false;
 		muted = false;
+		ending = false;
+		commitBusy = false;
+		pendingAudio = false;
 		inputTranscript = '';
 		outputTranscript = '';
+		if (!preserveTranscription) { segments = []; ended = false; }
 		activeProvider = '';
 		if (!preserveIntent) pendingIntent = null;
 		if (clearError) error = '';
@@ -96,6 +118,40 @@
 			experienceState(experience, 'disabled', 4);
 			void experienceApplied(experience, {}, () => !connected && !connecting);
 		}
+	}
+	function flushAudio(): Promise<void> {
+		if (!capture) return Promise.reject(new Error('capture unavailable'));
+		return new Promise((resolve, reject) => {
+			const id = ++flushTicket;
+			const timer = setTimeout(() => { if (pendingFlush?.id === id) { pendingFlush = null; reject(new Error('capture flush timed out')); } }, 2000);
+			pendingFlush = { id, resolve, reject, timer };
+			capture!.port.postMessage({ type: 'flush', id });
+		});
+	}
+	async function commitSegment(closeAfter = false) {
+		if (!canPublish(generation) || !connected || ending || commitBusy || socket?.readyState !== WebSocket.OPEN) return;
+		commitBusy = true;
+		const epoch = generation;
+		if (closeAfter) media?.getTracks().forEach((track) => { track.enabled = false; });
+		try {
+			await flushAudio();
+			if (!canPublish(epoch) || socket?.readyState !== WebSocket.OPEN) return;
+			if (pendingAudio) { socket.send(JSON.stringify({ type: 'audio.input.commit' })); pendingAudio = false; }
+			if (closeAfter) {
+				ending = true;
+				releaseAudio();
+				socket.send(JSON.stringify({ type: 'session.close' }));
+				closeTimer = setTimeout(() => {
+					if (epoch === generation && ending) { error = t('realtimeVoice.connectionClosed'); stop(false, false, true); }
+				}, 30000);
+			}
+		} catch {
+			if (epoch === generation) { error = t('realtimeVoice.microphoneStreamFailed'); stop(false, false, true); }
+		} finally { if (epoch === generation) commitBusy = false; }
+	}
+	function endSession() {
+		if (activeMode === 'transcription' && connected && audioAllowed) void commitSegment(true);
+		else stop();
 	}
 	async function loadModels(requestScope: RealtimeScope, epoch: number) {
 		if (!audioAllowed || activeOwner !== ownerKey) return;
@@ -119,20 +175,21 @@
 	async function loadCapabilities(current: RealtimeModel, requestScope: RealtimeScope, epoch: number) {
 		if (!audioAllowed || activeOwner !== ownerKey) return;
 		requestScope = { ...requestScope, experience: beginExperienceLoad('lumen', 'resource.detail') };
+		const ticket = ++capabilityTicket;
 		experienceState(requestScope.experience, 'loading', 1);
 		capabilityLoading = true;
 		try {
 			const response = await realtimeVoiceApi.capabilities(current.id, requestScope);
-			if (!canPublish(epoch) || selected !== String(current.id)) { experienceDiscarded(requestScope.experience, 'stale'); return; }
+			if (!canPublish(epoch) || selected !== String(current.id) || ticket !== capabilityTicket) { experienceDiscarded(requestScope.experience, 'stale'); return; }
 			capabilities = response;
 			voice = response.available_voices?.includes(voice) ? voice : (response.default_voice ?? '');
 			experienceState(requestScope.experience, 'ready', 1);
 			const appliedCapabilities = capabilities;
 			void experienceApplied(requestScope.experience, {}, () => canPublish(epoch) && selected === String(current.id) && capabilities === appliedCapabilities);
 		} catch {
-			if (canPublish(epoch) && selected === String(current.id)) { error = t('realtimeVoice.routeUnverified'); experienceState(requestScope.experience, 'error', 1); }
+			if (canPublish(epoch) && selected === String(current.id) && ticket === capabilityTicket) { error = t('realtimeVoice.routeUnverified'); experienceState(requestScope.experience, 'error', 1); }
 		} finally {
-			if (epoch === generation && selected === String(current.id)) capabilityLoading = false;
+			if (epoch === generation && selected === String(current.id) && ticket === capabilityTicket) capabilityLoading = false;
 		}
 	}
 	$effect(() => {
@@ -216,9 +273,16 @@
 		pauseMicrophone();
 		microphone = active.createMediaStreamSource(stream);
 		capture = new AudioWorkletNode(active, 'pcm16-capture', { processorOptions: { targetRate: rate } });
-		capture.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
-			if (!canPublish(epoch) || muted || socket?.readyState !== WebSocket.OPEN || !event.data) return;
+		capture.port.onmessage = (event: MessageEvent<ArrayBuffer | { type: string; id: number }>) => {
+			if (event.data && !(event.data instanceof ArrayBuffer)) {
+				if (event.data.type === 'flushed' && pendingFlush?.id === event.data.id) {
+					clearTimeout(pendingFlush.timer); pendingFlush.resolve(); pendingFlush = null;
+				}
+				return;
+			}
+			if (!canPublish(epoch) || muted || ending || socket?.readyState !== WebSocket.OPEN || !event.data || event.data.byteLength === 0) return;
 			socket.send(JSON.stringify({ type: 'audio.input.append', audio: pcm16Base64(new Int16Array(event.data)) }));
+			pendingAudio = true;
 		};
 		microphone.connect(capture);
 		capture.connect(active.destination);
@@ -237,30 +301,49 @@
 			const packet = JSON.parse(event.data);
 			switch (packet.type) {
 				case 'session.ready':
-					if (media && [16000, 24000].includes(packet.input_sample_rate_hz) && packet.output_sample_rate_hz === 24000) {
-						void captureAudio(media, packet.input_sample_rate_hz, epoch, experience).catch(() => { if (epoch === generation && activeOwner === ownerKey && scope) { error = t('realtimeVoice.microphoneStreamFailed'); experienceState(experience, 'error', 5); stop(false); } });
+					if (connected || context) break;
+					if (media && (packet.realtime_kind ?? 'conversation') === activeMode &&
+						[16000, 24000].includes(packet.input_sample_rate_hz) &&
+						(activeMode !== 'transcription' || packet.input_sample_rate_hz === capabilities?.input_sample_rate_hz) &&
+						packet.output_sample_rate_hz === (activeMode === 'transcription' ? 0 : 24000)) {
+						void captureAudio(media, packet.input_sample_rate_hz, epoch, experience).catch(() => { if (epoch === generation && activeOwner === ownerKey && scope) { error = t('realtimeVoice.microphoneStreamFailed'); experienceState(experience, 'error', 5); stop(false, false, activeMode === 'transcription'); } });
 					} else { error = t('realtimeVoice.sessionFormatMismatch'); stop(false); }
 					break;
-				case 'audio.output.delta': play(packet.delta, packet.sample_rate_hz); break;
-				case 'transcript.input.delta': if (audioAllowed && typeof packet.delta === 'string') inputTranscript = (inputTranscript + packet.delta).slice(-4096); break;
-				case 'transcript.output.delta': if (audioAllowed && typeof packet.delta === 'string') outputTranscript = (outputTranscript + packet.delta).slice(-4096); break;
+				case 'audio.output.delta': if (activeMode !== 'transcription') play(packet.delta, packet.sample_rate_hz); break;
+				case 'transcript.input.delta':
+					if (audioAllowed) {
+						if (activeMode === 'transcription') segments = applyTranscriptionFrame(segments, packet);
+						else if (typeof packet.delta === 'string') inputTranscript = (inputTranscript + packet.delta).slice(-4096);
+					}
+					break;
+				case 'transcript.input.completed':
+				case 'transcript.input.failed':
+					if (audioAllowed && activeMode === 'transcription') segments = applyTranscriptionFrame(segments, packet);
+					break;
+				case 'transcript.output.delta': if (audioAllowed && activeMode !== 'transcription' && typeof packet.delta === 'string') outputTranscript = (outputTranscript + packet.delta).slice(-4096); break;
 				case 'session.interrupted': flushPlayback(); break;
-				case 'session.closed': stop(); break;
-				case 'error': error = t('realtimeVoice.providerFailed'); experienceState(experience, 'error', 5); stop(false); break;
+				case 'session.closed':
+					if (activeMode === 'transcription') { stop(true, false, true); ended = true; }
+					else stop();
+					break;
+				case 'error': error = t('realtimeVoice.providerFailed'); experienceState(experience, 'error', 5); stop(false, false, activeMode === 'transcription'); break;
 			}
 		} catch {
 			error = t('realtimeVoice.invalidResponse');
-			stop(false);
+			stop(false, false, activeMode === 'transcription');
 		}
 	}
 	async function start() {
-		if (!canPublish(generation) || !scope || !model || !capabilities || readiness || connecting || connected || !capabilities.available_voices.includes(voice)) return;
+		if (!canPublish(generation) || !scope || !model || !capabilities || !mode || readiness || connecting || connected || (mode === 'conversation' && !capabilities.available_voices.includes(voice))) return;
 		if (!navigator.mediaDevices?.getUserMedia || typeof AudioWorkletNode === 'undefined') {
 			error = t('realtimeVoice.streamingUnsupported');
 			return;
 		}
 		connecting = true;
 		error = '';
+		activeMode = mode;
+		segments = [];
+		ended = false;
 		const epoch = generation;
 		const currentFingerprint = fingerprint;
 		const experience = beginExperienceAction('lumen', 'start', 'shared.stream');
@@ -275,13 +358,15 @@
 			pendingIntent = { fingerprint: currentFingerprint, key };
 			pendingRequest = new AbortController();
 			if (!audioAllowed || !scope) { stop(true, true); return; }
-			const session = await realtimeVoiceApi.createSession(model.id, voice, { ...scope, experience }, key, pendingRequest.signal);
+			const session = activeMode === 'transcription'
+				? await realtimeVoiceApi.createSession(model.id, null, { ...scope, experience }, key, pendingRequest.signal, 'transcription')
+				: await realtimeVoiceApi.createSession(model.id, voice, { ...scope, experience }, key, pendingRequest.signal);
 			if (!canPublish(epoch)) { experienceDiscarded(experience, 'stale'); if (epoch === generation) stop(true, true); return; }
 			activeProvider = session.provider_type;
 			socket = realtimeVoiceApi.connect(session);
 			socket.onmessage = (event) => onFrame(event, epoch, experience);
-			socket.onclose = () => { if (epoch === generation) { error = connected ? t('realtimeVoice.connectionClosed') : t('realtimeVoice.connectionFailed'); experienceState(experience, connected ? 'disabled' : 'error', connected ? 4 : 5); stop(false, !connected); } };
-			socket.onerror = () => { if (epoch === generation) { error = t('realtimeVoice.connectionUnavailable'); experienceState(experience, 'error', 5); stop(false, !connected); } };
+			socket.onclose = () => { if (epoch === generation) { error = connected ? t('realtimeVoice.connectionClosed') : t('realtimeVoice.connectionFailed'); experienceState(experience, connected ? 'disabled' : 'error', connected ? 4 : 5); stop(false, !connected, activeMode === 'transcription'); } };
+			socket.onerror = () => { if (epoch === generation) { error = t('realtimeVoice.connectionUnavailable'); experienceState(experience, 'error', 5); stop(false, !connected, activeMode === 'transcription'); } };
 		} catch (cause) {
 			if (epoch !== generation) return;
 			if (cause instanceof DOMException && cause.name === 'NotAllowedError') error = t('realtimeVoice.microphoneDenied');
@@ -308,15 +393,40 @@
 <PageShell>
 	<LumenPermissionNotice leaves={['lumen-audio_user']} />
 	<div class="studio">
-		<header class="header"><div><p class="muted">{t('realtimeVoice.breadcrumb')}</p><h1>{t('realtimeVoice.title')}</h1><p class="muted">{t('realtimeVoice.description')}</p></div><Button href="/dashboard/chat" variant="secondary">{t('realtimeVoice.textChat')}</Button></header>
+		<header class="header"><div><p class="muted">{t('realtimeVoice.breadcrumb')}</p><h1>{t('realtimeTranscription.title')}</h1><p class="muted">{t('realtimeTranscription.description')}</p></div><Button href="/dashboard/chat" variant="secondary">{t('realtimeVoice.textChat')}</Button></header>
 		<Card><div class="controls">
 			<Field label={t('realtimeVoice.model')} for="realtime-model"><SelectInput id="realtime-model" bind:value={selected} disabled={!audioAllowed || connecting || connected || loading}><option value="">{t('realtimeVoice.selectModel')}</option>{#each models as item (item.id)}<option value={String(item.id)}>{item.display_name}</option>{/each}</SelectInput></Field>
-			<Field label={t('realtimeVoice.voice')} for="realtime-voice"><SelectInput id="realtime-voice" bind:value={voice} disabled={!audioAllowed || connecting || connected || capabilityLoading}>{#each capabilities?.available_voices ?? [] as option (option)}<option value={option}>{option}</option>{/each}</SelectInput></Field>
-			{#if error}<Alert tone="danger">{error}</Alert>{:else if loading || capabilityLoading}<LoadingState variant="inline" label={t('realtimeVoice.checking')} />{:else if readiness}<Alert tone="warning">{readiness}</Alert>{:else if audioAllowed}<Alert tone="success">{t('realtimeVoice.ready')}</Alert>{/if}
-			<div class="actions"><Button disabled={!audioAllowed || Boolean(readiness) || loading || capabilityLoading || connecting || connected} onclick={() => void start()}>{#if connecting}<LoadingState variant="control" label={t('realtimeVoice.connecting')} />{:else}{t('realtimeVoice.startSession')}{/if}</Button><Button variant="secondary" disabled={!connected || (!audioAllowed && muted)} onclick={toggleMute}>{muted ? t('realtimeVoice.microphoneOn') : t('realtimeVoice.microphoneOff')}</Button><Button variant="secondary" disabled={!connected} onclick={interrupt}>{activeProvider === 'gemini' ? t('realtimeVoice.interruptAndEnd') : t('realtimeVoice.interrupt')}</Button><Button variant="danger-outline" disabled={!connected && !connecting} onclick={() => stop()}>{t('realtimeVoice.endSession')}</Button></div>
-			{#if connected}<p role="status" class="muted">{muted || !audioAllowed ? t('realtimeVoice.connectedMuted') : t('realtimeVoice.connectedMicrophoneOn')}</p>{/if}
+			{#if capabilities}<p class="muted">{t('realtimeTranscription.mode')}: {transcription ? t('realtimeTranscription.transcription') : mode ? t('realtimeTranscription.conversation') : t('realtimeTranscription.unsupported')}</p>{/if}
+			{#if !transcription}
+				<Field label={t('realtimeVoice.voice')} for="realtime-voice"><SelectInput id="realtime-voice" bind:value={voice} disabled={!audioAllowed || connecting || connected || capabilityLoading}>{#each capabilities?.available_voices ?? [] as option (option)}<option value={option}>{option}</option>{/each}</SelectInput></Field>
+			{/if}
+			{#if error}<Alert tone="danger">{error}</Alert>{:else if loading || capabilityLoading}<LoadingState variant="inline" label={t('realtimeVoice.checking')} />{:else if readiness}<Alert tone="warning">{readiness}</Alert>{:else if audioAllowed}<Alert tone="success">{transcription ? t('realtimeTranscription.ready') : t('realtimeVoice.ready')}</Alert>{/if}
+			<div class="actions">
+				<Button disabled={!audioAllowed || Boolean(readiness) || loading || capabilityLoading || connecting || connected} onclick={() => void start()}>{#if connecting}<LoadingState variant="control" label={t('realtimeVoice.connecting')} />{:else}{transcription ? t('realtimeTranscription.start') : t('realtimeVoice.startSession')}{/if}</Button>
+				<Button variant="secondary" disabled={!connected || ending || (!audioAllowed && muted)} onclick={toggleMute}>{muted ? t('realtimeVoice.microphoneOn') : t('realtimeVoice.microphoneOff')}</Button>
+				{#if transcription}
+					<Button variant="secondary" disabled={!connected || !audioAllowed || ending || commitBusy} onclick={() => void commitSegment()}>{t('realtimeTranscription.commit')}</Button>
+				{:else}
+					<Button variant="secondary" disabled={!connected} onclick={interrupt}>{activeProvider === 'gemini' ? t('realtimeVoice.interruptAndEnd') : t('realtimeVoice.interrupt')}</Button>
+				{/if}
+				<Button variant="danger-outline" disabled={(!connected && !connecting) || ending || commitBusy} onclick={endSession}>{t('realtimeVoice.endSession')}</Button>
+			</div>
+			{#if ending}<p role="status" class="muted">{t('realtimeTranscription.ending')}</p>
+			{:else if ended && audioAllowed}<p role="status" class="muted">{t('realtimeTranscription.ended')}</p>
+			{:else if connected}<p role="status" class="muted">{muted || !audioAllowed ? t('realtimeVoice.connectedMuted') : t('realtimeVoice.connectedMicrophoneOn')}</p>{/if}
 		</div></Card>
-		{#if connected && audioAllowed}<div class="transcripts"><Card><h2>{t('realtimeVoice.mySpeech')}</h2><p class="transcript">{inputTranscript || t('realtimeVoice.waitingInputTranscript')}</p></Card><Card><h2>{t('realtimeVoice.response')}</h2><p class="transcript">{outputTranscript || t('realtimeVoice.waitingOutputTranscript')}</p></Card></div>{/if}
+		{#if audioAllowed && transcription && (connected || segments.length || ended)}
+			<Card><h2>{t('realtimeTranscription.transcription')}</h2>
+				{#if !segments.length}<p class="transcript">{connected ? t('realtimeTranscription.waiting') : t('realtimeTranscription.empty')}</p>{/if}
+				{#each segments as segment (segment.id)}
+					<p class="muted">{segment.state === 'final' ? t('realtimeTranscription.final') : segment.state === 'failed' ? t('realtimeTranscription.failed') : t('realtimeTranscription.partial')}</p>
+					<p class="transcript">{segment.text}</p>
+				{/each}
+				{#if segments.some((segment) => segment.state !== 'final')}<p class="muted">{t('realtimeTranscription.unfinished')}</p>{/if}
+			</Card>
+		{:else if connected && audioAllowed}
+			<div class="transcripts"><Card><h2>{t('realtimeVoice.mySpeech')}</h2><p class="transcript">{inputTranscript || t('realtimeVoice.waitingInputTranscript')}</p></Card><Card><h2>{t('realtimeVoice.response')}</h2><p class="transcript">{outputTranscript || t('realtimeVoice.waitingOutputTranscript')}</p></Card></div>
+		{/if}
 	</div>
 </PageShell>
 

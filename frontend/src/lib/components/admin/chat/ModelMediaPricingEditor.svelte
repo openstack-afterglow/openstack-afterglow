@@ -9,12 +9,12 @@
 	let { kind, draft = $bindable(), prefix, disabled = false, textPricing, hasStoredTextPrices = false }: { kind: ModelKind; draft: PricingDraft; prefix: string; disabled?: boolean; textPricing?: Snippet; hasStoredTextPrices?: boolean } = $props();
 	type Modality = 'text' | 'image' | 'audio';
 	const modalities: Modality[] = ['text', 'image', 'audio'];
-	const primary = $derived<Modality>(kind === 'image' ? 'image' : kind === 'text' ? 'text' : 'audio');
+	const primary = $derived<Modality>(kind === 'image' ? 'image' : kind === 'text' || kind === 'embedding' ? 'text' : 'audio');
 	const basis = $derived(effectiveBasis(kind, draft));
-	const orderedModalities = $derived([primary, ...modalities.filter((modality) => modality !== primary)]);
+	const orderedModalities = $derived<Modality[]>([primary, ...modalities.filter((modality) => modality !== primary)]);
 	// Visibility is not a pricing mutation. Keep drafts and stored/unknown leaves intact.
 	let selection = $state<{ kind: ModelKind; basis: string; values: Modality[] } | null>(null);
-	const selected = $derived(selection?.kind === kind && selection.basis === basis ? selection.values : modalities.filter((modality) =>
+	const selected = $derived<Modality[]>(selection?.kind === kind && selection.basis === basis ? selection.values : modalities.filter((modality) =>
 		(modality === primary && basis === 'tokens') || (modality === 'text' ? hasStoredTextPrices : Object.values(draft.tokens[modality]).some((value) => value !== ''))
 	));
 	function modalityLabel(modality: Modality): string {
@@ -27,20 +27,22 @@
 </script>
 
 <div class="mt-4 space-y-4" data-testid="{prefix}-media-pricing">
-	<fieldset>
-		<legend class="text-xs leading-relaxed text-ink-2">{t('pricing.tokenRatesHelp')}</legend>
-		<div class="mt-2 flex flex-wrap gap-x-4 gap-y-2">
-			{#each orderedModalities as modality (modality)}
-				<label class="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-ink-1 md:min-h-9">
-					<input type="checkbox" checked={selected.includes(modality)} {disabled} aria-controls="{prefix}-{modality}-pricing" onchange={(event) => {
-						selection = { kind, basis, values: event.currentTarget.checked ? [...selected, modality] : selected.filter((value) => value !== modality) };
-					}} />
-					{modalityLabel(modality)}
-				</label>
-			{/each}
-		</div>
-	</fieldset>
-	{#if kind !== 'text'}
+	{#if kind !== 'embedding'}
+		<fieldset>
+			<legend class="text-xs leading-relaxed text-ink-2">{t('pricing.tokenRatesHelp')}</legend>
+			<div class="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+				{#each orderedModalities as modality (modality)}
+					<label class="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-ink-1 md:min-h-9">
+						<input type="checkbox" checked={selected.includes(modality)} {disabled} aria-controls="{prefix}-{modality}-pricing" onchange={(event) => {
+							selection = { kind, basis, values: event.currentTarget.checked ? [...selected, modality] : selected.filter((value) => value !== modality) };
+						}} />
+						{modalityLabel(modality)}
+					</label>
+				{/each}
+			</div>
+		</fieldset>
+	{/if}
+	{#if kind !== 'text' && kind !== 'embedding'}
 		<Field label={t('pricing.billingBasis', { kind: MODEL_LABELS[kind] })} for="{prefix}-billing-basis">
 			<SelectInput id="{prefix}-billing-basis" bind:value={draft.basis} {disabled}>
 				<option value="">{t('pricing.defaultBasis', { basis: kind === 'image' ? t('pricing.imageUnit') : t('pricing.time') })}</option>
@@ -117,7 +119,7 @@
 		{/if}
 	{/if}
 	{#each orderedModalities as modality (modality)}
-		{#if selected.includes(modality)}
+		{#if kind === 'embedding' ? modality === 'text' : selected.includes(modality)}
 			<div id="{prefix}-{modality}-pricing" class="border-t border-line pt-3" role="group" aria-labelledby="{prefix}-{modality}-tokens">
 				<p id="{prefix}-{modality}-tokens" class="mb-3 text-sm font-semibold text-ink-1">{modalityLabel(modality)}</p>
 				{#if modality === 'text'}
@@ -126,7 +128,7 @@
 				<div class="mt-3 grid gap-3 sm:grid-cols-3">
 					{#each TOKEN_FIELDS as field (field.key)}
 						<Field label={t('pricing.modalityDirection', { modality: modality === 'image' ? t('configuration.image') : t('pricing.audio'), direction: field.label })} for="{prefix}-{modality}-{field.key}" help={t('configuration.usd1mTokens')}>
-							<TextInput id="{prefix}-{modality}-{field.key}" inputmode="decimal" bind:value={draft.tokens[modality][field.key]} {disabled} />
+						<TextInput id="{prefix}-{modality}-{field.key}" inputmode="decimal" bind:value={draft.tokens[modality as 'image' | 'audio'][field.key]} {disabled} />
 						</Field>
 					{/each}
 				</div>

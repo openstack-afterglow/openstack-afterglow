@@ -4,6 +4,7 @@ import { requireLumenCapability } from './lumenAccess';
 import { downloadChatAsset, uploadChatAttachment } from './chatAttachments';
 import type { AvailableModel } from './chatTree';
 import type { ExperienceContext } from '$lib/utils/experience';
+import { mediaGateReadiness } from './mediaReadiness';
 
 export interface ImageModel extends AvailableModel {
 	provider_api_key_configured?: boolean;
@@ -50,9 +51,7 @@ export function imageModelReadiness(model: ImageModel | undefined): string | nul
 	if (!model) return t('imageStudioApi.selectModel');
 	if (!model.provider_api_key_configured) return t('imageStudioApi.providerKeyMissing');
 	const gate = model.capabilities?.feature_gates?.image_output;
-	if (!gate || !gate.available || gate.mode === 'none' || gate.reason_code === 'route_unavailable') return gate?.reason_code ? t('imageStudioApi.routeUnavailableReason', { reason: gate.reason_code }) : t('imageStudioApi.routeUnavailable');
-	if (!gate.pricing_available) return t('imageStudioApi.pricingMissing');
-	return null;
+	return mediaGateReadiness(gate);
 }
 
 export const imageStudioApi = {

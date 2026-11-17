@@ -1,4 +1,4 @@
-import { grantLumen, pendingLumen, setVerifiedLumenActor } from './lumenPermissionFixture';
+import { grantLumen, pendingLumen, refreshLumenAuth, setVerifiedLumenActor } from './lumenPermissionFixture';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
@@ -13,6 +13,9 @@ import { projectSwitching } from '$lib/stores/auth';
 import type { CloudToolsCatalogue } from '$lib/api/chatContracts';
 import { experienceHealth, installExperienceCollector, type ExperienceCollectorController } from '$lib/utils/experience';
 
+import { managedSandboxTools, setManagedSandboxTools } from '$lib/stores/managedSandboxTools';
+import type { McpSettingsPage } from '$lib/api/mcpCatalog';
+import { t as mcpT } from '$lib/i18n/ns/mcp-gallery';
 const mocks = vi.hoisted(() => ({
 	get: vi.fn(),
 	post: vi.fn(),
@@ -98,10 +101,12 @@ function event(seq: number, type: string, payload: object) {
 beforeEach(() => {
 	vi.clearAllMocks();
 	sessionStorage.clear();
+	localStorage.clear();
 	mocks.setPageState({});
 	siteConfig.update((config) => ({ ...config, services: { ...config.services, mcp: false } }));
 	setVerifiedLumenActor({
 		token: 'token',
+		sessionId: 'chat-test-session',
 		refreshToken: null,
 		accessExpiresAt: null,
 		userId: 'user-1',
@@ -171,6 +176,138 @@ beforeEach(() => {
 });
 
 describe('ChatPanel', () => {
+	it.each(['baseline', 'rich'] as const)('keeps %s unpositioned approval usable after SSE failure and restores its actual start after reload', async (shape) => {
+		let decided = false;
+		const descriptor = { run_id: 'run-1', conversation_id: null, temp_thread_id: 'temp-1', status: 'awaiting_input', run_kind: 'completion', events_url: '/events', cancel_url: '/cancel' };
+		const request: RunActivityItem = {
+			id: 'approval:owned-call', kind: 'approval', seq: 3, createdAt: at, callId: 'owned-call',
+			name: 'inspect', effect: 'read', arguments: { target: '<redacted>' },
+			preview: [{ type: 'text', text: 'Owned pending preview' }], expiresAt: '2099-01-01T00:00:00Z',
+			destination: null, decision: null, decidedAt: null
+		};
+		const execution = () => ({
+			run_id: 'run-1', run_kind: 'completion', status: decided ? 'completed' : 'awaiting_input', model_name: 'model-1',
+			started_at: at, last_seq: decided ? 5 : 3, activity_status: 'available', activity_error_code: null,
+			activity: [
+				{ id: 'stage:2', kind: 'stage', seq: 2, createdAt: at, stage: 'model_request', toolName: null },
+				{ ...request, decision: decided ? 'deny' : null, decidedAt: decided ? '2026-07-26T00:00:10Z' : null },
+				...(decided ? [{ id: 'terminal:5', kind: 'terminal', seq: 5, createdAt: '2026-07-26T00:00:12Z', status: 'completed', errorCode: null, message: null }] : [])
+			]
+		});
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {
+			if (path !== '/api/v1/chat/temp-threads/temp-1') return fallback(path, ...args);
+			const base = { temp_thread_id: 'temp-1', active_run: decided ? null : descriptor };
+			return shape === 'baseline' ? {
+				...base, latest_run: descriptor, latest_run_execution: execution(),
+				public_history: [
+					{ role: 'user', parts: [{ type: 'text', text: 'Saved question' }] },
+					{ role: 'assistant', parts: [{ type: 'text', text: 'Saved answer' }] }
+				]
+			} : {
+				...base, active_run_positioned: false,
+				messages: [
+					{ id: 'saved-user', role: 'user', content: 'Saved question', conversation_id: '', parent_id: null, created_at: at },
+					{ id: 'saved-answer', role: 'assistant', content: 'Saved answer', conversation_id: '', parent_id: 'saved-user', created_at: at }
+				],
+				unpositioned_runs: [{ ...execution(), input_parts: [], parts: [], order_unknown: true }]
+			};
+		});
+		mocks.followRun.mockImplementation(async function* () {
+			yield event(1, 'run.started', { conversation_id: null, temp_thread_id: 'temp-1', model_name: 'model-1', effective_features: {}, run_kind: 'completion' });
+			yield event(2, 'run.stage.changed', { stage: 'model_request', tool_name: null });
+			yield event(3, 'tool.approval_required', {
+				call_id: 'owned-call', name: 'inspect', source: 'mcp', effect: 'read', destination: null,
+				redacted_arguments: { target: '<redacted>' }, preview: request.preview,
+				expected_state_revision: null, writer_fence: null, expires_at: request.expiresAt
+			});
+			throw new Error('Follower disconnected');
+		});
+		mocks.post.mockImplementation(async (path: string) => {
+			if (path === '/api/v1/chat/runs/run-1/approvals/owned-call') decided = true;
+			return { run_id: 'run-1', call_id: 'owned-call', decision: 'deny', status: 'denied', run_status: 'completed' };
+		});
+		sessionStorage.setItem('chat:tempThreadId:domain-1:user-1:project-1', 'temp-1');
+		let view = render(ChatPanel);
+		await screen.findByText('Follower disconnected');
+		const detached = view.container.querySelector<HTMLDetailsElement>('[data-temporary-unpositioned]')!;
+		expect(detached.open).toBe(true);
+		expect(detached.querySelector('.execution-timeline[open]')).toBeTruthy();
+		expect(screen.getByText('Owned pending preview')).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: '거부' }));
+		expect(mocks.post).toHaveBeenCalledWith('/api/v1/chat/runs/run-1/approvals/owned-call', { decision: 'deny' }, 'token', 'project-1');
+		await waitFor(() => expect(screen.queryByRole('button', { name: '이번만 허용하기' })).toBeNull());
+		view.unmount();
+		view = render(ChatPanel);
+		await screen.findByText('Saved answer');
+		await fireEvent.click(view.container.querySelector('[data-temporary-unpositioned] > summary')!);
+		const summary = screen.getByText('12초 동안 작업함');
+		expect((summary.closest('details') as HTMLDetailsElement).open).toBe(false);
+		await fireEvent.click(summary);
+		expect(screen.getByText('거부 · inspect')).toBeTruthy();
+		expect(screen.queryByRole('button', { name: '이번만 허용하기' })).toBeNull();
+		expect([...view.container.querySelectorAll('[data-history-message-id] .user-text')].map((node) => node.textContent)).toEqual(['Saved question']);
+		view.unmount();
+	});
+
+	it('retains a positioned temporary pending card after follower error and sends its current run decision', async () => {
+		mocks.followRun.mockImplementation(async function* () {
+			yield event(1, 'tool.approval_required', {
+				call_id: 'positioned-call', name: 'inspect', source: 'mcp', effect: 'read', destination: null,
+				redacted_arguments: {}, preview: [{ type: 'text', text: 'Positioned pending preview' }],
+				expected_state_revision: null, writer_fence: null, expires_at: '2099-01-01T00:00:00Z'
+			});
+			throw new Error('Positioned follower disconnected');
+		});
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => path === '/api/v1/chat/temp-threads/temp-1'
+			? { temp_thread_id: 'temp-1', public_history: [], active_run: null, latest_run: null, latest_run_execution: null }
+			: fallback(path, ...args));
+		const view = render(ChatPanel);
+		await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/models', 'token', 'project-1'));
+		await fireEvent.click(screen.getByTitle('저장되지 않는 임시 채팅'));
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Inspect' } });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		await screen.findByText('Positioned follower disconnected');
+		expect(screen.getByText('Positioned pending preview').closest('[data-history-message-id]')).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: '거부' }));
+		expect(mocks.post).toHaveBeenCalledWith('/api/v1/chat/runs/run-1/approvals/positioned-call', { decision: 'deny' }, 'token', 'project-1');
+		view.unmount();
+	});
+
+	it('does not reactivate a snapshot-decided approval when its older required event replays before another disconnect', async () => {
+		const descriptor = { run_id: 'run-1', conversation_id: null, temp_thread_id: 'temp-1', status: 'running', run_kind: 'completion', events_url: '/events', cancel_url: '/cancel' };
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => path === '/api/v1/chat/temp-threads/temp-1' ? {
+			temp_thread_id: 'temp-1', public_history: [], active_run: descriptor, latest_run: descriptor,
+			latest_run_execution: {
+				run_id: 'run-1', run_kind: 'completion', status: 'running', model_name: 'model-1', started_at: at, last_seq: 4,
+				activity_status: 'available', activity_error_code: null, activity: [{
+					id: 'approval:old-call', kind: 'approval', seq: 3, createdAt: at, callId: 'old-call', name: 'inspect',
+					effect: 'read', arguments: {}, preview: [], expiresAt: '2099-01-01T00:00:00Z',
+					destination: null, decision: 'deny', decidedAt: at
+				}]
+			}
+		} : fallback(path, ...args));
+		mocks.followRun.mockImplementation(async function* () {
+			yield event(1, 'run.started', { conversation_id: null, temp_thread_id: 'temp-1', model_name: 'model-1', effective_features: {}, run_kind: 'completion' });
+			yield event(2, 'run.stage.changed', { stage: 'model_request', tool_name: null });
+			yield event(3, 'tool.approval_required', {
+				call_id: 'old-call', name: 'inspect', source: 'mcp', effect: 'read', destination: null,
+				redacted_arguments: {}, preview: [], expected_state_revision: null, writer_fence: null,
+				expires_at: '2099-01-01T00:00:00Z'
+			});
+			throw new Error('Replay follower disconnected');
+		});
+		sessionStorage.setItem('chat:tempThreadId:domain-1:user-1:project-1', 'temp-1');
+		const view = render(ChatPanel);
+		await screen.findByText('Replay follower disconnected');
+		expect(screen.queryByRole('button', { name: '이번만 허용하기' })).toBeNull();
+		expect(screen.queryByRole('button', { name: '거부' })).toBeNull();
+		expect(screen.getByText('거부 · inspect')).toBeTruthy();
+		view.unmount();
+	});
+
 	it.each(['completed', 'failed', 'canceled'] as const)('restores and pages causal temporary turns while inspecting unpositioned legacy runs separately after %s', async (outcome) => {
 		const finish = Promise.withResolvers<void>();
 		const observed = Promise.withResolvers<void>();
@@ -286,7 +423,6 @@ describe('ChatPanel', () => {
 		expect(detached.textContent).toContain('대화 내 순서를 확인할 수 없어');
 		expect(detached.textContent).toContain('legacy failed answer');
 		await fireEvent.click(detached.querySelector('.execution-timeline > summary')!);
-		await fireEvent.click(detached.querySelector('.tool-category > summary')!);
 		await fireEvent.click(detached.querySelector<HTMLButtonElement>('.tool-head')!);
 		expect(detached.textContent).toContain('legacy recorded input');
 		expect(detached.textContent).toContain('legacy recorded result');
@@ -571,7 +707,7 @@ describe('ChatPanel', () => {
 			await fireEvent.click(screen.getByRole('button', { name: '전송' }));
 		}
 		await streamed.promise;
-		flushAnimationFrames();
+		flushAnimationFrames(performance.now() + 50);
 		await tick();
 		await waitFor(() => expect(view.container.textContent).toContain(canaries.stream));
 		expect(view.container.textContent).not.toContain(canaries.output);
@@ -580,24 +716,23 @@ describe('ChatPanel', () => {
 		continueStream.resolve();
 		await observed.promise;
 		// The manual RAF fixture must advance past ChatPanel's 50ms projection pacing.
-		flushAnimationFrames(performance.now() + 50);
+		flushAnimationFrames(performance.now() + 100);
 		await tick();
 		await waitFor(() => expect(view.container.textContent).toContain(canaries.output));
 		const timeline = view.container.querySelector<HTMLDetailsElement>('.execution-timeline')!;
 		expect(timeline).toBeTruthy();
 		expect(view.container.querySelectorAll('.execution-timeline')).toHaveLength(1);
-		const category = timeline.querySelector<HTMLDetailsElement>('.tool-category')!;
 		const tool = timeline.querySelector<HTMLButtonElement>('.tool-card .tool-head')!;
 		timeline.open = true;
-		category.open = true;
 		await fireEvent(timeline, new Event('toggle'));
-		await fireEvent(category, new Event('toggle'));
 		await fireEvent.click(tool);
 		const stepLabels = [...timeline.querySelectorAll('ol > li')].map((item) => item.textContent);
 		finish.resolve();
 		await waitFor(() => expect(screen.queryByRole('button', { name: '생성 중단' })).toBeNull());
 		expect(view.container.querySelector('.execution-timeline')).toBe(timeline);
-		expect(timeline.open && category.open).toBe(true);
+		expect(timeline.open).toBe(false);
+		await fireEvent.click(timeline.querySelector('summary')!);
+		expect(timeline.open).toBe(true);
 		expect(tool.getAttribute('aria-expanded')).toBe('true');
 		expect(timeline.querySelectorAll('.tool-card')).toHaveLength(1);
 		expect(timeline.querySelector(`[data-run-outcome="${state.status}"]`)).toBeTruthy();
@@ -1455,7 +1590,7 @@ describe('ChatPanel', () => {
 		});
 		expect(screen.queryByText('이전 본문')).toBeNull();
 
-		await fireEvent.click(screen.getByLabelText('작업 내역 열기'));
+		await fireEvent.click(document.querySelector('.execution-timeline > summary')!);
 		await fireEvent.click(screen.getByRole('button', { name: '추론 과정' }));
 		expect(screen.getByText('이전 추론')).toBeTruthy();
 	});
@@ -1500,7 +1635,7 @@ describe('ChatPanel', () => {
 
 		await waitFor(() => {
 			flushAnimationFrames();
-			expect(screen.getByLabelText('작업 내역 열기')).toBeTruthy();
+			expect(document.querySelector('.execution-timeline > summary')).toBeTruthy();
 			expect(screen.getAllByText('컨텍스트 자동 압축 중')).toHaveLength(2);
 			expect(document.querySelector('.context-activity')).toBeNull();
 		});
@@ -1520,7 +1655,7 @@ describe('ChatPanel', () => {
 				preview: [{ type: 'text', text: 'Delete: server-1 (current state: ACTIVE)' }],
 				expected_state_revision: null,
 				writer_fence: null,
-				expires_at: '2026-07-27T12:00:00Z'
+				expires_at: '2099-07-27T12:00:00Z'
 			});
 		});
 
@@ -1531,7 +1666,7 @@ describe('ChatPanel', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
 
 		await screen.findByText('Delete: server-1 (current state: ACTIVE)');
-		await fireEvent.click(screen.getByRole('button', { name: '승인' }));
+		await fireEvent.click(screen.getByRole('button', { name: '이번만 허용하기' }));
 
 		expect(mocks.post).toHaveBeenCalledWith(
 			'/api/v1/chat/runs/run-1/approvals/call-1',
@@ -1919,6 +2054,560 @@ describe('ChatPanel failed-read presentation evidence', () => {
 			view.unmount();
 			collector.destroy();
 			window.fetch = originalFetch;
+		}
+	});
+});
+
+describe('ChatPanel explicit sandbox selection', () => {
+	const page = (available = true): McpSettingsPage => ({
+		entries: [{
+			id: 'managed-browser', name: 'Browser', registry_name: 'browser', description: '',
+			url: null, transport: null, variables: [], header_hints: [], access: 'managed', featured: true,
+			managed: { profile: 'playwright', available, reason: available ? null : 'runtime_unavailable', tools: ['Browser_Navigate', 'Browser_Read'] }
+		}],
+		total: 1, offset: 0, limit: 100, next_offset: null, domain_id: 'domain-1',
+		organization_available: false, can_manage_domain: false, custom_connections: []
+	});
+	function catalogue(read: () => Promise<McpSettingsPage> = async () => page()) {
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation((path: string, ...args: unknown[]) => {
+			if (path.startsWith('/api/v1/chat/mcp-settings?access=managed')) return read();
+			if (path === '/api/v1/chat/models') return Promise.resolve([{ id: 1, model_name: 'model-1', display_name: 'Model 1', capabilities: { tool_call: true } }]);
+			return fallback(path, ...args);
+		});
+	}
+	async function mountTemporary() {
+		const view = render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		await waitFor(() => expect(get(managedSandboxTools).catalogLoaded).toBe(true));
+		await fireEvent.click(screen.getByTitle('저장되지 않는 임시 채팅'));
+		return view;
+	}
+	async function submit(text = 'Use selected tools') {
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: text } });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+	}
+	const managedReads = () => mocks.get.mock.calls.filter(([path]) => String(path).startsWith('/api/v1/chat/mcp-settings?access=managed'));
+
+	it('sends an explicit empty list without implicit allocation or a fresh availability read', async () => {
+		catalogue();
+		await mountTemporary();
+		const reads = managedReads().length;
+		await submit('Ordinary text');
+		await waitFor(() => expect(mocks.createRun).toHaveBeenCalledTimes(1));
+		expect(mocks.createRun.mock.calls[0][1].features.tool_policy).toMatchObject({ enabled_sandbox_tools: [], enabled_mcp_ids: null, enabled_tool_ids: null });
+		expect(managedReads()).toHaveLength(reads);
+	});
+
+	it('offers exact per-tool and profile choices through the composer menu without changing remote IDs', async () => {
+		catalogue();
+		const view = await mountTemporary();
+		const add = screen.getByRole('button', { name: '추가' });
+		await fireEvent.keyDown(add, { key: 'ArrowDown' });
+		const tool = await screen.findByRole('menuitemcheckbox', { name: 'Browser_Navigate' });
+		expect(document.activeElement?.getAttribute('role')).toBe('menuitemcheckbox');
+		await fireEvent.click(tool);
+		expect(get(managedSandboxTools).selected).toEqual(['Browser_Navigate']);
+		await fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Browser 도구 모두 선택' }));
+		expect(get(managedSandboxTools).selected).toEqual(['Browser_Navigate', 'Browser_Read']);
+		await fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Browser_Read' }));
+		await fireEvent.keyDown(tool, { key: 'Escape' });
+		expect(view.queryByRole('menu')).toBeNull();
+		expect(document.activeElement).toBe(add);
+		await submit();
+		await waitFor(() => expect(mocks.createRun).toHaveBeenCalledTimes(1));
+		expect(mocks.createRun.mock.calls[0][1].features.tool_policy).toMatchObject({ enabled_sandbox_tools: ['Browser_Navigate'], enabled_mcp_ids: null });
+	});
+
+	it('refreshes nonempty selection once and prevents duplicate submits while preserving the pending draft', async () => {
+		const pending = Promise.withResolvers<McpSettingsPage>();
+		let reads = 0;
+		catalogue(() => ++reads === 1 ? Promise.resolve(page()) : pending.promise);
+		await mountTemporary();
+		expect(setManagedSandboxTools(['Browser_Navigate'])).toBe(true);
+		await submit('Pending draft');
+		await waitFor(() => expect(reads).toBe(2));
+		await fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		expect(reads).toBe(2);
+		expect(mocks.createRun).not.toHaveBeenCalled();
+		expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Pending draft');
+		pending.resolve(page());
+		await waitFor(() => expect(mocks.createRun).toHaveBeenCalledTimes(1));
+		expect(mocks.createRun.mock.calls[0][1].features.tool_policy.enabled_sandbox_tools).toEqual(['Browser_Navigate']);
+	});
+
+	it('cannot turn a pending first temporary send into a persisted conversation', async () => {
+		const pending = Promise.withResolvers<McpSettingsPage>();
+		let reads = 0;
+		catalogue(() => ++reads === 1 ? Promise.resolve(page()) : pending.promise);
+		await mountTemporary();
+		setManagedSandboxTools(['Browser_Navigate']);
+		await submit('Temporary draft only');
+		await waitFor(() => expect(reads).toBe(2));
+		const toggle = document.querySelector<HTMLButtonElement>('.temp-btn')!;
+		expect(toggle).not.toBeNull();
+		expect(toggle.disabled).toBe(true);
+		await fireEvent.click(toggle);
+		expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Temporary draft only');
+		pending.resolve(page());
+		await waitFor(() => expect(mocks.createRun).toHaveBeenCalledTimes(1));
+		expect(mocks.createRun.mock.calls[0][0]).toBe('/api/v1/chat/temp-completions');
+		expect(mocks.post.mock.calls.some(([path]) => path === '/api/v1/chat/conversations')).toBe(false);
+	});
+
+	it.each(['selection', 'user', 'project', 'logout', 'permission', 'readiness'] as const)('fences %s changes during fresh preflight', async (change) => {
+		const pending = Promise.withResolvers<McpSettingsPage>();
+		let reads = 0;
+		catalogue(() => ++reads === 1 ? Promise.resolve(page()) : pending.promise);
+		await mountTemporary();
+		setManagedSandboxTools(['Browser_Navigate']);
+		await submit('Do not lose this draft');
+		await waitFor(() => expect(reads).toBe(2));
+		if (change === 'selection') setManagedSandboxTools([]);
+		if (change === 'user') setVerifiedLumenActor({ ...get(auth), userId: 'other-user' });
+		if (change === 'project') setVerifiedLumenActor({ ...get(auth), projectId: 'other-project' });
+		if (change === 'logout') auth.update(actor => ({ ...actor, token: null, userId: null, sessionId: undefined }));
+		if (change === 'permission') grantLumen('lumen-chat_user');
+		if (change === 'readiness') projectSwitching.set(true);
+		pending.resolve(page());
+		await tick();
+		await tick();
+		expect(mocks.createRun).not.toHaveBeenCalled();
+		if (change === 'selection' || change === 'permission') expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Do not lose this draft');
+	});
+
+	it('blocks newly unavailable tools without clearing the draft or silently sending text only', async () => {
+		let reads = 0;
+		catalogue(async () => page(++reads === 1));
+		await mountTemporary();
+		setManagedSandboxTools(['Browser_Navigate']);
+		await submit('Keep unavailable intent');
+		await waitFor(() => expect(get(managedSandboxTools).issue).toBe('unavailable'));
+		expect(mocks.createRun).not.toHaveBeenCalled();
+		expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Keep unavailable intent');
+		expect(screen.getAllByRole('alert').some(node => node.textContent?.includes('Browser_Navigate'))).toBe(true);
+		await fireEvent.click(screen.getByRole('button', { name: '추가' }));
+		await fireEvent.click(screen.getByRole('menuitem', { name: '로컬 도구 선택 해제' }));
+		expect(get(managedSandboxTools).selected).toEqual([]);
+		expect((screen.getByRole('button', { name: '전송' }) as HTMLButtonElement).disabled).toBe(false);
+	});
+
+	it('keeps revoked choices removable and their helper visible outside the menu', async () => {
+		catalogue();
+		await mountTemporary();
+		setManagedSandboxTools(['Browser_Navigate']);
+		grantLumen('lumen-chat_user');
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Revoked draft' } });
+		await waitFor(() => expect((screen.getByRole('button', { name: '전송' }) as HTMLButtonElement).disabled).toBe(true));
+		expect(screen.getAllByRole('alert').some(node => node.textContent?.includes('선택을 해제'))).toBe(true);
+		await fireEvent.click(screen.getByRole('button', { name: '추가' }));
+		await fireEvent.click(screen.getByRole('menuitem', { name: '로컬 도구 선택 해제' }));
+		expect(get(managedSandboxTools).selected).toEqual([]);
+		expect(mocks.createRun).not.toHaveBeenCalled();
+		expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Revoked draft');
+	});
+
+	it('preserves selected preferences during normal token renewal and sends with fresh credentials', async () => {
+		const pending = Promise.withResolvers<McpSettingsPage>();
+		let reads = 0;
+		catalogue(() => ++reads === 1 ? Promise.resolve(page()) : pending.promise);
+		await mountTemporary();
+		setManagedSandboxTools(['Browser_Navigate']);
+		await submit();
+		await waitFor(() => expect(reads).toBe(2));
+		refreshLumenAuth('renewed-token');
+		pending.resolve(page());
+		await waitFor(() => expect(mocks.createRun).toHaveBeenCalledTimes(1));
+		expect(get(managedSandboxTools).selected).toEqual(['Browser_Navigate']);
+		expect(mocks.createRun.mock.calls[0][2]).toMatchObject({ token: 'renewed-token', projectId: 'project-1' });
+	});
+
+	it('fences the conversation creation wait before publishing its response or creating a failed snapshot', async () => {
+		catalogue();
+		const pending = Promise.withResolvers<object>();
+		mocks.post.mockImplementation((path: string) => path === '/api/v1/chat/conversations' ? pending.promise : Promise.resolve({}));
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		await waitFor(() => expect(get(managedSandboxTools).catalogLoaded).toBe(true));
+		setManagedSandboxTools(['Browser_Navigate']);
+		await submit('Old owner draft');
+		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/chat/conversations', expect.any(Object), 'token', 'project-1'));
+		setVerifiedLumenActor({ ...get(auth), projectId: 'other-project' });
+		pending.resolve({ id: 'old-created', title: 'OLD-CONVERSATION-CANARY', model_name: 'model-1', workspace_id: null, updated_at: at });
+		await tick();
+		await tick();
+		expect(mocks.createRun).not.toHaveBeenCalled();
+		expect(screen.queryByText('OLD-CONVERSATION-CANARY')).toBeNull();
+		expect(screen.queryByRole('button', { name: '다시 전송' })).toBeNull();
+		expect(sessionStorage.getItem('chat:activeConversationId:other-project')).not.toBe('old-created');
+	});
+
+	it('keeps failed-submit snapshot names and idempotency key instead of injecting changed preferences', async () => {
+		catalogue();
+		mocks.post.mockResolvedValue({ id: 'sandbox-conv', title: null, model_name: 'model-1', workspace_id: null, updated_at: at });
+		mocks.createRun.mockRejectedValueOnce(new Error('temporary transport failure'));
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		await waitFor(() => expect(get(managedSandboxTools).catalogLoaded).toBe(true));
+		setManagedSandboxTools(['Browser_Navigate']);
+		await submit();
+		const retry = await screen.findByRole('button', { name: '다시 전송' });
+		const original = mocks.createRun.mock.calls[0];
+		setManagedSandboxTools(['Browser_Read']);
+		await fireEvent.click(retry);
+		await tick();
+		await tick();
+		expect(mocks.createRun).toHaveBeenCalledTimes(1);
+		expect(original[1].features.tool_policy.enabled_sandbox_tools).toEqual(['Browser_Navigate']);
+		setManagedSandboxTools(['Browser_Navigate']);
+		await fireEvent.click(retry);
+		await waitFor(() => expect(mocks.createRun).toHaveBeenCalledTimes(2));
+		expect(mocks.createRun.mock.calls[1][1]).toEqual(original[1]);
+		expect(mocks.createRun.mock.calls[1][2].idempotencyKey).toBe(original[2].idempotencyKey);
+	});
+
+	function historicalChat(retryable = false) {
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation((path: string, ...args: unknown[]) => {
+			if (path === '/api/v1/chat/conversations') return Promise.resolve([{ id: 'sandbox-history', title: 'Sandbox history', model_name: 'model-1', workspace_id: null }]);
+			if (path.includes('/sandbox-history/messages?')) return Promise.resolve({
+				messages: [
+					{ id: 'saved-user', conversation_id: 'sandbox-history', role: 'user', parent_id: null, content: 'saved question', created_at: at,
+						...(retryable ? { execution: { run_id: 'saved-run', status: 'failed', retryable: true } } : {}) },
+					...(!retryable ? [{ id: 'saved-answer', conversation_id: 'sandbox-history', role: 'assistant', parent_id: 'saved-user', model_name: 'model-1', content: 'saved answer', created_at: at }] : [])
+				],
+				active_leaf_id: retryable ? 'saved-user' : 'saved-answer', history_revision: 1,
+				has_before: false, has_after: false, before_cursor: null, after_cursor: null
+			});
+			return fallback(path, ...args);
+		});
+	}
+	async function openHistoricalChat() {
+		render(ChatPanel);
+		await fireEvent.click(await screen.findByRole('button', { name: '대화 기록과 설정 열기' }));
+		await fireEvent.click(await screen.findByRole('button', { name: 'Sandbox history' }));
+		await screen.findByText('saved question');
+		await waitFor(() => expect(get(managedSandboxTools).catalogLoaded).toBe(true));
+	}
+
+	it('includes current explicit names in context preview without fresh preflight or provisioning', async () => {
+		catalogue();
+		historicalChat();
+		await openHistoricalChat();
+		const reads = managedReads().length;
+		setManagedSandboxTools(['Browser_Navigate']);
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Preview selection' } });
+		await waitFor(() => expect(mocks.previewContext.mock.calls.at(-1)?.[1]?.features.tool_policy.enabled_sandbox_tools).toEqual(['Browser_Navigate']));
+		expect(managedReads()).toHaveLength(reads);
+		expect(mocks.createRun).not.toHaveBeenCalled();
+		expect(mocks.post).not.toHaveBeenCalled();
+	});
+
+	it('fresh-preflights regeneration and blocks newly unavailable selection before creating a run', async () => {
+		let reads = 0;
+		catalogue(async () => page(++reads === 1));
+		historicalChat();
+		await openHistoricalChat();
+		setManagedSandboxTools(['Browser_Navigate']);
+		await fireEvent.click(screen.getByTitle('다른 모델로 재생성'));
+		await fireEvent.click(screen.getByRole('option', { name: 'Model 1' }));
+		await waitFor(() => expect(reads).toBe(2));
+		await waitFor(() => expect(get(managedSandboxTools).issue).toBe('unavailable'));
+		expect(mocks.createRun).not.toHaveBeenCalled();
+		expect(screen.getByText('saved answer')).toBeTruthy();
+	});
+
+	it('sends exact current names on regeneration after fresh availability succeeds', async () => {
+		catalogue();
+		historicalChat();
+		await openHistoricalChat();
+		setManagedSandboxTools(['Browser_Read']);
+		await fireEvent.click(screen.getByTitle('다른 모델로 재생성'));
+		await fireEvent.click(screen.getByRole('option', { name: 'Model 1' }));
+		await waitFor(() => expect(mocks.createRun).toHaveBeenCalledTimes(1));
+		expect(mocks.createRun.mock.calls[0][0]).toBe('/api/v1/chat/conversations/sandbox-history/messages/saved-answer/regenerate');
+		expect(mocks.createRun.mock.calls[0][1].features.tool_policy).toMatchObject({ enabled_sandbox_tools: ['Browser_Read'], enabled_mcp_ids: null });
+		expect(managedReads()).toHaveLength(2);
+	});
+
+	it('keeps historical native retry empty and delegates original snapshot revalidation to native admission', async () => {
+		catalogue();
+		historicalChat(true);
+		await openHistoricalChat();
+		setManagedSandboxTools(['Browser_Read']);
+		const reads = managedReads().length;
+		await fireEvent.click(screen.getByRole('button', { name: '다시 전송' }));
+		await waitFor(() => expect(mocks.createRun).toHaveBeenCalledTimes(1));
+		expect(mocks.createRun.mock.calls[0][0]).toBe('/api/v1/chat/conversations/sandbox-history/runs/saved-run/retry');
+		expect(mocks.createRun.mock.calls[0][1]).toEqual({});
+		expect(managedReads()).toHaveLength(reads);
+	});
+
+	it.each([undefined, false])('keeps missing/unsupported-model selections removable without a runtime-unavailable claim (%s)', async (toolCall) => {
+		catalogue();
+		await mountTemporary();
+		setManagedSandboxTools(['Browser_Navigate']);
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation((path: string, ...args: unknown[]) => path === '/api/v1/chat/models'
+			? Promise.resolve([{ id: 1, model_name: 'model-1', display_name: 'Model 1', capabilities: { tool_call: toolCall } }])
+			: fallback(path, ...args));
+		invalidateChatModels();
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Unsupported model draft' } });
+		await waitFor(() => expect((screen.getByRole('button', { name: '전송' }) as HTMLButtonElement).disabled).toBe(true));
+		expect(screen.getByText(mcpT('selectionModelUnsupported'))).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: '추가' }));
+		await fireEvent.click(screen.getByRole('menuitem', { name: '로컬 도구 선택 해제' }));
+		expect(get(managedSandboxTools).selected).toEqual([]);
+		expect(mocks.createRun).not.toHaveBeenCalled();
+		expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Unsupported model draft');
+	});
+
+	it('keeps explicit remote MCP IDs independent from managed local choices', async () => {
+		catalogue();
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation((path: string, ...args: unknown[]) => path === '/api/v1/chat/mcp-servers?active_only=true'
+			? Promise.resolve([{ id: 7, name: 'Remote A' }, { id: 9, name: 'Remote B' }])
+			: fallback(path, ...args));
+		await mountTemporary();
+		await fireEvent.click(screen.getByRole('button', { name: '추가' }));
+		await fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Remote A' }));
+		await fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Browser_Navigate' }));
+		await fireEvent.click(screen.getByRole('button', { name: '추가' }));
+		await submit();
+		await waitFor(() => expect(mocks.createRun).toHaveBeenCalledTimes(1));
+		expect(mocks.createRun.mock.calls[0][1].features.tool_policy).toMatchObject({
+			enabled_mcp_ids: [9], enabled_sandbox_tools: ['Browser_Navigate']
+		});
+	});
+
+	it('blocks corrupt saved intent until explicit reset and preserves the draft', async () => {
+		catalogue();
+		const view = await mountTemporary();
+		setManagedSandboxTools(['Browser_Navigate']);
+		const key = Object.keys(localStorage).find(key => key.startsWith('afterglow:managed-sandbox-tools:v1:'))!;
+		view.unmount();
+		localStorage.setItem(key, '{"version":1,"selected":["INVALID/TOOL"]}');
+		render(ChatPanel);
+		await waitFor(() => expect(get(managedSandboxTools).issue).toBe('invalid_saved'));
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Keep corrupt preference draft' } });
+		expect((screen.getByRole('button', { name: '전송' }) as HTMLButtonElement).disabled).toBe(true);
+		expect(screen.getAllByRole('alert').some(node => node.textContent?.includes('초기화'))).toBe(true);
+		await fireEvent.click(screen.getByRole('button', { name: '추가' }));
+		await fireEvent.click(screen.getByRole('menuitem', { name: '로컬 도구 선택 해제' }));
+		expect(get(managedSandboxTools).issue).toBeNull();
+		expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Keep corrupt preference draft');
+		expect(mocks.createRun).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		['sandbox_tool_unavailable', 503, '실행 환경을 현재 사용할 수 없습니다'],
+		['sandbox_selection_multiple_pools', 422, '도구 구성이 더 이상 유효하지 않습니다'],
+		['sandbox_pool_full', 422, '현재 한도가 소진되었습니다'],
+		['sandbox_configuration_changed', 422, '샌드박스 구성이 변경되었습니다']
+	] as const)('shows actionable native %s errors without automatic retry or clearing the selection', async (code, status, message) => {
+		catalogue();
+		await mountTemporary();
+		setManagedSandboxTools(['Browser_Navigate']);
+		mocks.createRun.mockRejectedValueOnce(new mocks.ChatHttpError(code, status));
+		await submit();
+		await screen.findByText(new RegExp(message));
+		expect(mocks.createRun).toHaveBeenCalledTimes(1);
+		expect(get(managedSandboxTools).selected).toEqual(['Browser_Navigate']);
+	});
+
+	it('reports a model downgrade during preflight distinctly and keeps the draft', async () => {
+		const pending = Promise.withResolvers<McpSettingsPage>();
+		let reads = 0;
+		catalogue(() => ++reads === 1 ? Promise.resolve(page()) : pending.promise);
+		await mountTemporary();
+		setManagedSandboxTools(['Browser_Navigate']);
+		await submit('Model downgrade draft');
+		await waitFor(() => expect(reads).toBe(2));
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation((path: string, ...args: unknown[]) => path === '/api/v1/chat/models'
+			? Promise.resolve([{ id: 1, model_name: 'model-1', display_name: 'Model 1', capabilities: { tool_call: false } }])
+			: fallback(path, ...args));
+		invalidateChatModels();
+		await screen.findByText(mcpT('selectionModelUnsupported'));
+		pending.resolve(page());
+		await waitFor(() => expect(get(managedSandboxTools).preparing).toBe(false));
+		await tick();
+		expect(screen.getAllByText(mcpT('selectionModelUnsupported')).length).toBeGreaterThan(0);
+		expect(screen.queryByText(mcpT('selectionIssue.catalog_failed'))).toBeNull();
+		expect(mocks.createRun).not.toHaveBeenCalled();
+		expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Model downgrade draft');
+	});
+
+	it('maps native code/sandbox combination refusal without silently retrying or changing names', async () => {
+		catalogue();
+		await mountTemporary();
+		setManagedSandboxTools(['Browser_Navigate']);
+		mocks.createRun.mockRejectedValueOnce(new mocks.ChatHttpError('sandbox_code_combination_unsupported', 422));
+		await submit();
+		await screen.findByText(mcpT('selectionNativeCodeUnsupported'));
+		expect(mocks.createRun).toHaveBeenCalledTimes(1);
+		expect(get(managedSandboxTools).selected).toEqual(['Browser_Navigate']);
+	});
+
+	it.each(['bound', 'unbound'] as const)('retries the originating effective agent model with a different composer model (%s)', async (agentState) => {
+		catalogue();
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation((path: string, ...args: unknown[]) => path === '/api/v1/chat/agents'
+			? Promise.resolve([{ id: 17, name: 'Snapshot agent', model_name: 'agent-model', mcp_ids: [], tool_ids: [], visibility: 'private' }])
+			: fallback(path, ...args));
+		mocks.post.mockResolvedValue({ id: 'agent-snapshot-conv', title: null, model_name: 'model-1', workspace_id: null, updated_at: at });
+		mocks.createRun.mockRejectedValueOnce(new Error('temporary transport failure'));
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		await fireEvent.click(screen.getByTitle('에이전트 선택'));
+		await fireEvent.click(await screen.findByRole('menuitem', { name: /Snapshot agent/ }));
+		await submit('Agent frozen draft');
+		const retry = await screen.findByRole('button', { name: '다시 전송' });
+		const original = mocks.createRun.mock.calls[0];
+		expect(original[1]).toMatchObject({
+			model_id: 'model-1', agent_id: 17, features: { tool_policy: { enabled_sandbox_tools: [] } }
+		});
+		if (agentState === 'unbound') await fireEvent.click(screen.getByRole('button', { name: '에이전트 해제' }));
+		await fireEvent.click(retry);
+		await waitFor(() => expect(mocks.createRun).toHaveBeenCalledTimes(2));
+		expect(mocks.createRun.mock.calls[1][1]).toEqual(original[1]);
+		expect(mocks.createRun.mock.calls[1][2].idempotencyKey).toBe(original[2].idempotencyKey);
+		expect(screen.queryByText(mcpT('selectionIssue.selection_changed'))).toBeNull();
+	});
+
+	it('keeps reset reachable for 101 saved names after tools permission is revoked', async () => {
+		catalogue();
+		const view = await mountTemporary();
+		setManagedSandboxTools(['Browser_Navigate']);
+		const key = Object.keys(localStorage).find(key => key.startsWith('afterglow:managed-sandbox-tools:v1:'))!;
+		view.unmount();
+		localStorage.setItem(key, JSON.stringify({
+			version: 1,
+			selected: Array.from({ length: 101 }, (_, index) => `Tool_${index}`)
+		}));
+		grantLumen('lumen-chat_user');
+		render(ChatPanel);
+		await waitFor(() => expect(get(managedSandboxTools).issue).toBe('too_many'));
+		expect(get(managedSandboxTools).selected).toEqual([]);
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Keep oversized preference draft' } });
+		expect((screen.getByRole('button', { name: '전송' }) as HTMLButtonElement).disabled).toBe(true);
+		expect(screen.getByText(mcpT('selectionIssue.too_many'))).toBeTruthy();
+		const add = screen.getByRole('button', { name: '추가' }) as HTMLButtonElement;
+		expect(add.disabled).toBe(false);
+		await fireEvent.click(add);
+		await fireEvent.click(screen.getByRole('menuitem', { name: '로컬 도구 선택 해제' }));
+		expect(get(managedSandboxTools).issue).toBeNull();
+		expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Keep oversized preference draft');
+		expect((screen.getByRole('button', { name: '전송' }) as HTMLButtonElement).disabled).toBe(false);
+		expect(mocks.createRun).not.toHaveBeenCalled();
+	});
+
+	it('does not let a stale admission rejection unlock another conversation preflight', async () => {
+		const oldAdmission = Promise.withResolvers<unknown>();
+		const preparation = Promise.withResolvers<McpSettingsPage>();
+		let reads = 0;
+		catalogue(() => ++reads === 1 ? Promise.resolve(page()) : preparation.promise);
+		historicalChat();
+		mocks.post.mockResolvedValue({ id: 'admission-A', title: null, model_name: 'model-1', workspace_id: null, updated_at: at });
+		mocks.createRun.mockImplementationOnce(() => oldAdmission.promise);
+		const view = render(ChatPanel);
+		try {
+			await screen.findByRole('button', { name: 'Model 1' });
+			await waitFor(() => expect(get(managedSandboxTools).catalogLoaded).toBe(true));
+			await submit('Conversation A pending admission');
+			await waitFor(() => expect(mocks.createRun).toHaveBeenCalledTimes(1));
+			await fireEvent.click(screen.getByRole('button', { name: '대화 기록과 설정 열기' }));
+			await fireEvent.click(await screen.findByRole('button', { name: 'Sandbox history' }));
+			await screen.findByText('saved answer');
+			setManagedSandboxTools(['Browser_Navigate']);
+			await fireEvent.click(screen.getByTitle('다른 모델로 재생성'));
+			await fireEvent.click(screen.getByRole('option', { name: 'Model 1' }));
+			await waitFor(() => expect(reads).toBe(2));
+
+			oldAdmission.reject(new Error('Old admission rejected'));
+			await tick();
+			await tick();
+			await fireEvent.click(screen.getByTitle('다른 모델로 재생성'));
+			await fireEvent.click(screen.getByRole('option', { name: 'Model 1' }));
+			expect(mocks.createRun).toHaveBeenCalledTimes(1);
+			preparation.resolve(page());
+			await waitFor(() => expect(mocks.createRun).toHaveBeenCalledTimes(2));
+			await tick();
+			await tick();
+			expect(mocks.createRun).toHaveBeenCalledTimes(2);
+			expect(mocks.createRun.mock.calls[1][0]).toBe('/api/v1/chat/conversations/sandbox-history/messages/saved-answer/regenerate');
+			expect(screen.queryByText('Old admission rejected')).toBeNull();
+		} finally {
+			oldAdmission.resolve({});
+			preparation.resolve(page());
+			view.unmount();
+		}
+	});
+
+	it.each([
+		['send', 'resolve'], ['send', 'reject'],
+		['retry', 'resolve'], ['retry', 'reject']
+	] as const)('does not let delayed %s conversation creation %s clear another running conversation', async (operation, outcome) => {
+		const oldCreation = Promise.withResolvers<object>();
+		const running = Promise.withResolvers<void>();
+		const finish = Promise.withResolvers<void>();
+		let creations = 0;
+		catalogue();
+		historicalChat();
+		mocks.post.mockImplementation((path: string) => {
+			if (path !== '/api/v1/chat/conversations') return Promise.resolve({});
+			++creations;
+			if (operation === 'retry' && creations === 1) return Promise.reject(new Error('Initial creation failed'));
+			return oldCreation.promise;
+		});
+		mocks.createRun.mockResolvedValue({
+			run_id: 'run-1', conversation_id: 'sandbox-history', temp_thread_id: null,
+			status: 'running', run_kind: 'regenerate', events_url: '/events', cancel_url: '/cancel'
+		});
+		mocks.followRun.mockImplementation(async function* () {
+			yield event(1, 'run.stage.changed', { stage: 'queued', tool_name: null });
+			running.resolve();
+			await finish.promise;
+			yield event(2, 'run.completed', { status: 'completed', message_id: 'saved-answer' });
+		});
+		const view = render(ChatPanel);
+		try {
+			await screen.findByRole('button', { name: 'Model 1' });
+			await waitFor(() => expect(get(managedSandboxTools).catalogLoaded).toBe(true));
+			await submit('Conversation A pending creation');
+			if (operation === 'retry') await fireEvent.click(await screen.findByRole('button', { name: '다시 전송' }));
+			await waitFor(() => expect(creations).toBe(operation === 'retry' ? 2 : 1));
+			expect(mocks.createRun).not.toHaveBeenCalled();
+
+			await fireEvent.click(screen.getByRole('button', { name: '대화 기록과 설정 열기' }));
+			await fireEvent.click(await screen.findByRole('button', { name: 'Sandbox history' }));
+			await screen.findByText('saved answer');
+			await fireEvent.click(screen.getByTitle('다른 모델로 재생성'));
+			await fireEvent.click(screen.getByRole('option', { name: 'Model 1' }));
+			await waitFor(() => expect(mocks.createRun).toHaveBeenCalledTimes(1));
+			await waitFor(() => expect(mocks.followRun).toHaveBeenCalledTimes(1));
+			await running.promise;
+			await screen.findByRole('button', { name: '생성 중단' });
+
+			if (outcome === 'resolve') oldCreation.resolve({
+				id: 'late-A', title: 'LATE-A-CREATION-CANARY', model_name: 'model-1', workspace_id: null, updated_at: at
+			});
+			else oldCreation.reject(new Error('Late A creation rejected'));
+			await oldCreation.promise.catch(() => {});
+			await tick();
+			await tick();
+
+			expect(mocks.createRun).toHaveBeenCalledTimes(1);
+			expect(mocks.createRun.mock.calls[0][0]).toBe('/api/v1/chat/conversations/sandbox-history/messages/saved-answer/regenerate');
+			expect(screen.queryByText('LATE-A-CREATION-CANARY')).toBeNull();
+			expect(screen.queryByText('Late A creation rejected')).toBeNull();
+			await fireEvent.click(screen.getByRole('button', { name: '생성 중단' }));
+			await waitFor(() => expect(mocks.cancelRun).toHaveBeenCalledTimes(1));
+		} finally {
+			finish.resolve();
+			oldCreation.resolve({ id: 'late-A' });
+			view.unmount();
 		}
 	});
 });

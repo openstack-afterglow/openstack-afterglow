@@ -11,6 +11,7 @@ import { t } from '$lib/i18n/ns/shared';
 import {
 	getActiveMockupProfile,
 	maybeMockBlob,
+	maybeMockChatResponse,
 	maybeMockJson,
 	maybeMockK3sStream,
 	symbolNoMatch,
@@ -503,6 +504,8 @@ async function withAuthRecovery<T extends { status: number }>(
 
 /** Tutorial-mode dispatch for direct fetch callers: synthetic JSON or a fail-closed 409, never the real API. */
 async function tutorialFetchResponse(path: string, options: RequestInit, projectId?: string): Promise<Response> {
+	const chat = maybeMockChatResponse(path, options);
+	if (chat) return chat;
 	let body: unknown = options.body;
 	if (typeof options.body === 'string') {
 		try { body = JSON.parse(options.body); } catch { /* keep the raw body */ }

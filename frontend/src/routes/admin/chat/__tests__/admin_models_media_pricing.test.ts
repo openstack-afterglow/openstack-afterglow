@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writable } from 'svelte/store';
 import { t } from '$lib/i18n/ns/admin-chat';
+import { t as nativeT } from '$lib/i18n/ns/native-providers';
 import { t as commonT } from '$lib/i18n/ns/common';
 
 const mocks = vi.hoisted(() => {
@@ -96,8 +97,8 @@ describe('admin multimodal pricing consumer', () => {
 		const restored = within(dialog).getByRole('group', { name: '텍스트 토큰 단가' });
 		expect((within(restored).getByLabelText('입력') as HTMLInputElement).value).toBe('2');
 		expect((within(restored).getByLabelText('캐시 읽기') as HTMLInputElement).value).toBe('0');
-		expect(within(restored).getByLabelText('캐시 쓰기 5분')).toBeTruthy();
-		expect(within(restored).getByLabelText('캐시 쓰기 1시간')).toBeTruthy();
+		expect(within(restored).getByLabelText(nativeT('price.cacheWrite'))).toBeTruthy();
+		expect(within(restored).getByLabelText(nativeT('price.cacheWriteLong'))).toBeTruthy();
 	});
 	it('updates default price groups when a discovered model kind changes and saves explicit extra text rates', async () => {
 		candidates = [{ id: 'primary-only', purpose: 'chat', model_kind: 'text' }];

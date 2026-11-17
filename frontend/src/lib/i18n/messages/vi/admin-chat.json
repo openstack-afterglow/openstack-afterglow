@@ -1,4 +1,6 @@
 {
+	"configuration.embedding": "Vector hóa văn bản",
+	"pricing.embeddingInputOnly": "Mô hình embedding chỉ tính phí token đầu vào; không tính phí token đầu ra.",
 	"accounts.currentConnection": "Cài đặt kết nối hiện tại",
 	"accounts.connectionIdentity": "Nhà cung cấp #{provider} · Tài khoản #{account} · Khóa #{credential}",
 	"accounts.currentEndpoint": "Điểm cuối hiện tại",

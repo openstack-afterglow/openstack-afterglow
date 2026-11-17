@@ -10,6 +10,15 @@ class Pcm16Capture extends AudioWorkletProcessor {
 		this.count = 0;
 		this.buffer = new Int16Array(2048);
 		this.offset = 0;
+		this.port.onmessage = (event) => {
+			if (event.data?.type !== 'flush') return;
+			if (this.offset) {
+				const remaining = this.buffer.slice(0, this.offset);
+				this.port.postMessage(remaining.buffer, [remaining.buffer]);
+				this.offset = 0;
+			}
+			this.port.postMessage({ type: 'flushed', id: event.data.id });
+		};
 	}
 	process(inputs) {
 		const mono = inputs[0]?.[0];

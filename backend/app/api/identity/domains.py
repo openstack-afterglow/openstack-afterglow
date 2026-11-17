@@ -203,7 +203,7 @@ async def update_domain(
         affected = set()
         if attrs.get("is_enabled") is False:
             await project_ownership_journal.assert_domain_resolved(domain_id)
-            await _native(lambda: identity_roles.assert_system_admin_remains(domain_id=domain_id))
+            await identity_roles.assert_system_admin_remains(domain_id=domain_id)
             users = await _native(lambda: list(ks.users.list(domain=domain_id)))
             for user in users:
                 uid = identity_roles._field(user, "id")

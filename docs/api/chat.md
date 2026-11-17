@@ -13,6 +13,18 @@ Afterglow 백엔드는 독자적인 AI 모델·에이전트 실행 엔진 및 �
 
 직접적인 OpenAI / Anthropic 호환 API 호스팅은 Lumen 서비스가 전담합니다.
 
+## MCP 개인·조직 연결
+
+브라우저의 `/api/v1/chat/mcp-settings`는 Lumen `/v1/mcp-settings`로 전달된다. 브라우저 access JWT는 Afterglow가 검증하고 실제 Lumen 요청에는 검증된 native identity와 프로젝트를 전달한다. 클라이언트가 보낸 domain/manager 표시는 권위가 아니다.
+
+- `GET /mcp-settings`: registry 검색·페이지네이션과 개인/조직/전역 연결 상태, 실제 managed sandbox 가용성을 반환한다.
+- `POST /mcp-connections`, `PATCH|DELETE /mcp-connections/{id}`: 본인 템플릿 연결을 관리한다.
+- `/domains/{domain_id}/mcp-connections`: 해당 domain 구성원은 비밀 없이 조회하고 본인의 활성화만 변경한다. 조직 연결 생성·수정·삭제와 공유 OAuth 관리는 exact-domain manager 또는 unrestricted human system admin만 가능하다. 프로젝트 admin 역할만으로 허용하지 않는다.
+- 기존 `/mcp-servers/{id}/activation` 및 OAuth 흐름은 유지된다. Catalog 설치와 조직 연결은 `implicit_selection=false`이며 활성화한 정확한 `config_version`과 현재 membership을 실행 전 재검증한다.
+- Playwright·Markitdown은 HTTPS 연결을 허위 생성하지 않는다. 검증된 실행별 sandbox profile이 있어야 사용 가능하고 미설정 상태에서는 그 이유를 표시한다.
+
+클라우드 VM 생성은 별도의 Afterglow MCP `manage` 동의와 프로토콜 v2가 필요하다. 모델은 실제 이미지·flavor·네트워크·부팅 볼륨 크기·사용자 SSH 키·보안그룹을 명시하고 사용자가 기존 승인 카드에서 확인한 뒤에만 변경 도구를 실행한다. API 요청 수락은 guest readiness가 아니다.
+
 ## 출처와 진행 이력 (local source, 2026-11-03)
 
 - `source.registered`는 `message_id`와 canonical citation을, `tool.call.progress`는 `call_id/name/text`를 전달한다. Progress는 최대4,000 Unicode code point이며 canonical tool part에 최근32개 실제 업데이트를 보존한다. `child.created`는 요청 시점 정보일 뿐 현재 실행 단계 추정이 아니며, `child.completed`는 실제 완료/실패/취소·summary·artifact metadata다. 내부 사고과정·성공 예측·가상 백분율을 생성하지 않는다.
@@ -30,7 +42,7 @@ Afterglow 백엔드는 독자적인 AI 모델·에이전트 실행 엔진 및 �
 > **활성화 조건:** `afterglow.conf [services] chat = true` 및 `[services] lumen_internal_url` (또는 Keystone 서비스 카탈로그).
 > 비활성화 상태에서는 `/api/v1/chat` 라우터가 마운트되지 않습니다.
 
-대시보드 사이드바의 **AI 채팅**에는 `Lumen`(`/dashboard/chat`), `이미지 Studio`(`/dashboard/chat/images`), `오디오 Studio`(`/dashboard/chat/audio`)가 있다. 세 항목 모두 공개 site config의 `services.chat`이 true일 때 노출되며, Studio 경로에서 부모 Lumen 항목을 함께 활성 표시하지 않는다. 이미지 생성·편집과 유한 TTS/STT는 각각 `model_kind=image|tts|stt` 카탈로그를 조회한다. 메뉴 노출이나 컨테이너 health는 provider 키·모델·정확한 가격·asset storage/scanner의 준비 또는 실제 생성 성공을 의미하지 않는다.
+대시보드 사이드바의 **AI 채팅**에는 `Lumen`(`/dashboard/chat`), `이미지 Studio`(`/dashboard/chat/images`), `오디오 Studio`(`/dashboard/chat/audio`), `임베딩 Studio`(`/dashboard/chat/embeddings`), `의사결정 Studio`(`/dashboard/chat/decisions`)가 있다. 모든 항목은 공개 site config의 `services.chat`이 true일 때 노출되며, Studio 경로에서 부모 Lumen 항목을 함께 활성 표시하지 않는다. 이미지 생성·편집, 유한 TTS/STT, 임베딩은 각각 `model_kind=image|tts|stt|embedding` 카탈로그를 조회한다. 의사결정은 접근 가능한 text 모델의 유효 `decisions` capability를 사용한다. 메뉴 노출이나 컨테이너 health는 provider 키·모델·정확한 가격·asset storage/scanner의 준비 또는 실제 생성 성공을 의미하지 않는다.
 
 Lumen 텍스트 채팅 상단에는 모델·에이전트 선택과 기록·출처·임시 채팅 컨트롤만 둔다. 이미지 Studio·오디오 Studio·실시간 음성 바로가기는 상단에서 제거하며, 기존 Studio 사이드바·전체 메뉴·command palette 목적지와 `/dashboard/chat/realtime` 직접 route, 서비스 인가·API는 변경하지 않는다.
 
@@ -84,7 +96,7 @@ Lumen 워크로드가 Afterglow의 MCP 제어면을 호출하는 `/api/v1/mcp/lu
 
 ## 주요 프록시 엔드포인트
 
-Afterglow 백엔드는 대부분의 `/api/v1/chat/{path}` 요청을 내부 Lumen 서비스 URL의 `/v1/{path}` 경로로 위임합니다. `models`, `images/generations`, `images/edits`, `audio/speech`, `audio/transcriptions`는 아래 `/v1/chat/...` 경로로 명시적으로 매핑합니다. 요청 본문과 콘텐츠 유형을 보존하고, SSE 및 바이너리 응답을 재인코딩하지 않고 스트리밍합니다. Realtime admission/WS만 별도 scoped ticket route가 소유합니다.
+Afterglow 백엔드는 대부분의 `/api/v1/chat/{path}` 요청을 내부 Lumen 서비스 URL의 `/v1/{path}` 경로로 위임한다. `models`, `images/generations`, `images/edits`, `audio/speech`, `audio/transcriptions`, `embeddings`, `decisions`는 각각 `/v1/chat/...` 경로로 명시적으로 매핑한다. 요청 본문과 콘텐츠 유형을 보존하고, SSE 및 바이너리 응답을 재인코딩하지 않고 스트리밍한다. Provider/admin metadata와 embedding/decision input/output은 no-store다. Realtime admission/WS만 별도 scoped ticket route가 소유한다.
 
 | 메서드 · 경로 | 상위 위임 경로 | 설명 |
 |--------------|----------------|------|
@@ -92,6 +104,10 @@ Afterglow 백엔드는 대부분의 `/api/v1/chat/{path}` 요청을 내부 Lumen
 | `POST /api/v1/chat/images/generations`, `/images/edits` | `/v1/chat/images/generations`, `/edits` | durable image run 접수. 두 경로 모두 JSON `prompt`와 UUID `Idempotency-Key` 필수. `generations`는 입력 이미지를 받지 않고, `edits`는 소유한 scanned `input_asset_id`를 요구한다 |
 | `POST /api/v1/chat/audio/speech` | `/v1/chat/audio/speech` | 음성 생성 요청을 전달하고 오디오 응답 바이트와 Content-Type을 보존 |
 | `POST /api/v1/chat/audio/transcriptions` | `/v1/chat/audio/transcriptions` | 저장된 오디오 asset ID와 선택 `language`·`prompt`, capability가 광고할 때만 `timestamp_granularities: ["segment"]`를 담은 JSON 전사 요청을 전달하고 응답 바이트와 Content-Type을 보존. 응답은 `{text}` 또는 timing 요청 시 `{text, segments:[{start,end,text}]}` |
+| `GET /api/v1/chat/models?model_kind=embedding` | `/v1/chat/models?model_kind=embedding` | 사용자에게 허용된 embedding model과 `embeddings` readiness gate 조회 |
+| `GET /api/v1/chat/capabilities?model_id={id}&model_kind=embedding` | `/v1/chat/capabilities?...` | 선택 모델의 최대/기본 vector 차원·입력 제한·차원 축소 지원 조회 |
+| `POST /api/v1/chat/embeddings` | `/v1/chat/embeddings` | Keystone 세션으로 1–16개 텍스트를 임베딩; provider key는 브라우저에 전달하지 않으며 응답은 no-store |
+| `POST /api/v1/chat/decisions` | `/v1/chat/decisions` | 접근 가능한 등록 text 모델의 `decisions` capability로 구조화된 질문을 실행한다. 세션/현재 프로젝트를 전달하고 입력·응답을 저장하지 않으며 no-store를 적용한다. 다른 HTTP method는405 |
 | `POST /api/v1/chat/realtime/sessions` | `/v1/chat/realtime/sessions` | 인증된 current user/project로 Lumen session을 접수하고 60초 one-use browser ticket만 반환 |
 | `WS /api/v1/chat/realtime/ws?ticket=<opaque>` | `WS /v1/chat/realtime/sessions/{session_id}/ws` | 동일 origin 정책과 한 번 쓰는 browser ticket 검사 후 Lumen connect token을 internal 헤더로 전달. Provider key는 브라우저에 미노출 |
 | `GET /api/v1/chat/conversations` | `/v1/conversations` | 대화 목록 조회 |
@@ -118,14 +134,29 @@ Afterglow 백엔드는 대부분의 `/api/v1/chat/{path}` 요청을 내부 Lumen
 | `GET /api/v1/chat/admin/stats/users` | `/v1/admin/stats/users` | 관리자: 동일 교집합의 사용자 집계, limit/offset 적용 |
 | `GET /api/v1/chat/admin/stats/timeseries` | `/v1/admin/stats/timeseries` | 관리자: 동일 교집합의 버킷 시계열 |
 | `GET /api/v1/chat/admin/stats/users/{user_id}` | `/v1/admin/stats/users/{user_id}` | 관리자: 기간·모델·web/API source·timestamp/token/cost별 사용자 usage ledger |
-| `GET /api/v1/chat/admin/models` | `/v1/admin/models` | 관리자: 등록 모델과 입력·출력 가격, 모델별 프롬프트 캐시 단가 `cache_read_price_per_million`·`cache_write_price_per_million`(5분 쓰기)·`cache_write_1h_price_per_million`(decimal 문자열 또는 `null`) 조회 |
-| `POST /api/v1/chat/admin/models` | `/v1/admin/models` | 관리자: 모델 등록. 텍스트 입력·출력 단가와 캐시 단가는 모델 종류와 무관하게 항목별로 선택 저장한다. 캐시 단가의 빈 항목은 생략하고, 텍스트 단가의 빈 항목은 미설정(`null` 또는 생략)으로 전달한다 |
-| `PATCH /api/v1/chat/admin/models/{model_id}` | `/v1/admin/models/{model_id}` | 관리자: 가격·활성 상태·모델 표시 `sort_order` 변경. 가격 수정은 바뀐 key만 보내며, `null`은 해당 수동 단가 해제, key 생략은 기존 값 유지다. text 모델의 입력·출력 key 수정은 models.dev metadata를 해제하므로 캐시·미디어 단가만 바꿀 때에는 보내지 않는다 |
+| `GET /api/v1/chat/admin/models` | `/v1/admin/models` | 관리자: 등록 모델과 수동/유효 입력·출력/캐시 가격, `provider_family`, `price_origin`, `catalog_version`, `catalog_entry` 조회. 기존 `cache_read_price_per_million`, `cache_write_price_per_million`, `cache_write_1h_price_per_million` slot 이름은 유지하며 native cache TTL은 catalog 출처를 따른다 |
+| `GET /api/v1/chat/admin/models/native-catalog?provider_type=openai` | `/v1/admin/models/native-catalog?...` | 현재 system-admin 전용 읽기 전용 bundled catalog. `schema_version`, `catalog_version`, provider별 모델·단가·공식 출처·검증일을 반환한다. 다른 HTTP method는405 |
+| `POST /api/v1/chat/admin/models` | `/v1/admin/models` | 관리자: 모델 등록. Native는 저장 수동 단가가 없으면 공시 catalog 가격을 따르고, custom base의 호환 API는 관리자가 모델·필수 수동 단가를 제공해야 한다 |
+| `PATCH /api/v1/chat/admin/models/{model_id}` | `/v1/admin/models/{model_id}` | 관리자: 가격·활성 상태·모델 표시 `sort_order` 변경. 가격 수정은 바뀐 key만 보내며, `null`은 해당 수동 단가 해제, key 생략은 기존 값 유지다. Native 모델의 공시 가격 따르기는 저장된 단가 override를 명시적으로 해제한다 |
 | `POST /api/v1/chat/admin/models/reorder` | `/v1/admin/models/reorder` | 관리자: 프로바이더 내 모델 카탈로그 순서 일괄 원자적 변경. `{provider_id, expected_model_ids, model_ids}`를 전달하며, 현재 순서 대조 후 한 트랜잭션 안에서 `0..n-1`로 rank만 정규화한다 |
 | `PATCH /api/v1/chat/admin/providers/{provider_id}` | `/v1/admin/providers/{provider_id}` | 관리자: 표시 `name`, API 선택자 `api_provider`, 표시 `sort_order` 및 별도 credential 설정 변경. 표시 설정 화면은 이름·선택자·순서만 보낸다 |
 | `GET /api/v1/chat/admin/providers/billing` | `/v1/admin/providers/billing` | 관리자: 모든 configured provider의 Lumen 귀속 일·주·월·누적 request/token/raw USD cost, OpenAI/Anthropic 공식 조직 report, OpenRouter/DeepSeek live 잔액/한도, 공식 console URL을 한 번에 조회 |
 | `POST /api/v1/chat/claude-gateway/authorize` | `/v1/claude-gateway/authorize` | authenticated current user/project가 8자리 Claude Code device user code를 approve/deny |
 | `GET /api/v1/chat/mcp-oauth/callback` | `/v1/mcp-oauth/callback` | MCP OAuth 브라우저 콜백 전달 |
+
+### Native catalog와 의사결정 입력
+
+지원 native 종류는 OpenAI·Anthropic·Gemini·Perplexity다. 기존 OpenAI/Anthropic 구독 인증을 유지하고, 타사 제품은 OpenAI/Anthropic protocol과 custom base를 명시한 호환 API로 등록한다. 호환 API는 native catalog의 모델·가격·기능을 상속하지 않는다. `provider_family`, `price_origin`, `catalog_version`, `catalog_entry`는 Lumen의 유효 응답을 표시하며 브라우저가 모델명으로 추정하지 않는다. 과거 `price_source`는 provenance일 뿐 현재 가격의 권위가 아니다.
+
+기존 `/admin/models/pricing/models-dev/providers`, `/providers/{id}`, `/import`는 BFF에서도404로 거부하며 upstream으로 전달하지 않는다. Native catalog는 읽기 전용이고 변경은 Lumen source의 공식 자료 검토·catalog 갱신 절차를 따른다.
+
+카탈로그 provider 그룹은 처음에 접혀 있으며 ID/표시 이름·모델 종류로 필터링합니다. 펼친 그룹의 현재 페이지만 실제 모델 내용을 렌더링하고, preview/deprecated 상태를 별도 badge로 표시합니다. 기본/장기 문맥 token 단가는 USD/1M token 표에서 입력·출력·캐시 읽기·TTL별 쓰기를 비교하며, 미디어 단가와 embedding 차원도 이름 있는 항목으로 표시합니다. 관리자 화면은 원시 JSON을 노출하지 않습니다.
+
+Embedding Studio는 native capability의 `default_dimensions`, `supports_dimensions`, `min_dimensions`, `max_dimensions`, `allowed_dimensions`를 그대로 사용합니다. 공시 범위는 숫자 입력의 경계가 되고, 명시적인 유한 allowed 목록이 있을 때만 선택 목록으로 제한합니다. 권장 차원 몇 개를 임의의 전체 allowed 목록으로 추정하지 않으며, 입력을 비우면 공급자 기본값을 사용합니다. 차원 metadata가 없으면 사용자 지정 차원을 허용하지 않습니다.
+
+의사결정 요청은 등록 `model` 이름, shared `input`, 1–400개 `questions`를 전송한다. 질문 종류는 predicate, choice(고유 value·설명2–255개), score(label·설명 level2–10개)이며 선택한 name은 요청 안에서 고유해야 한다. Shared 입력은 text, JSON, http(s) 이미지 URL 또는 로컬 이미지 data URL이다. Studio는 로컬 이미지4MiB·직렬화 요청8MiB로 제한하며 JSON은 compact256KiB·깊이32·값10,000개까지 검사한다. Lumen의 raw body 상한은16MiB이며 URL 이미지를 Afterglow/Lumen이 직접 가져오지 않는다. 클라이언트 상한과 서버 검증은 별개이고 서버가 최종 인가·가격·quota를 확인한다.
+
+응답은 predicate 확률, choice와 각 후보 확률·confidence, score와 level 확률 또는 refusal을 표시한다. 실제 `usage`, `cost_usd`와 usage-log identity를 표시하고 output 토큰을 임의 유료 계산하지 않는다. 브라우저는 입력·답을 저장하거나 mutation을 자동 재전송하지 않는다. 튜토리얼 응답·catalog는 합성이며 운영 provider 검증이 아니다.
 
 ### 통계의 독립 도메인·프로젝트 조건
 
@@ -147,7 +178,7 @@ Lumen migration `021-provider-identity-catalog-order`를 먼저 적용한 API/wo
 
 ### 모델 종류 수정과 종류별 필터
 
-수동 등록은 `model_kind=text|image|tts|stt|realtime`를 항상 명시합니다. 후보·등록 목록의 종류 필터는 저장된 종류를 사용하며 이름·이미지 입력 단가로 재분류하지 않습니다. 등록 카드의 **모델 종류 수정**은 기존 `PATCH /api/v1/chat/admin/models/{model_id}`에 종류와 `is_active=false`를 함께 보냅니다. 모델 ID, 텍스트·공유 token 단가는 보존하고 이전 종류 전용 media 단가와 미디어에서 지원하지 않는 cache-write는 명시적으로 제거합니다. 새 종류의 가격과 실행 경로 검토 뒤 재활성화는 별도입니다. 제목 요약·메모리 지정 모델은 먼저 지정을 해제해야 미디어로 변경할 수 있으며 active-run mutation fence도 유지됩니다. 운영 데이터의 자동 일괄 재분류는 하지 않습니다.
+수동 등록은 `model_kind=text|image|tts|stt|realtime|embedding`를 항상 명시합니다. 후보·등록 목록의 종류 필터는 저장된 종류를 사용하며 이름·이미지 입력 단가로 재분류하지 않습니다. Embedding은 직접 OpenAI/Gemini API-key route만 등록할 수 있고 input-token 가격만 사용합니다(출력 토큰 단가와 media reservation 불필요). 등록 카드의 **모델 종류 수정**은 기존 `PATCH /api/v1/chat/admin/models/{model_id}`에 종류와 `is_active=false`를 함께 보냅니다. 모델 ID, 텍스트·공유 token 단가는 보존하고 이전 종류 전용 media 단가와 미디어에서 지원하지 않는 cache-write는 명시적으로 제거합니다. 새 종류의 가격과 실행 경로 검토 뒤 재활성화는 별도입니다. 제목 요약·메모리 지정 모델은 먼저 지정을 해제해야 미디어로 변경할 수 있으며 active-run mutation fence도 유지됩니다. 운영 데이터의 자동 일괄 재분류는 하지 않습니다.
 
 ### 여러 provider 키와 명시적 연결 검사
 
@@ -217,7 +248,7 @@ DeepSeek의 공식 `/user/balance`는 통화별 총 account balance, 구매 충�
 
 모든 화면 폭에서 채팅 영역 상단 **기록**과 **출처 N**을 사용할 수 있습니다. 모바일은 모델/에이전트와 기록/출처를 두 행으로 배치합니다. 1024px 미만의 기록은 bounded drawer, desktop은 inline sidebar이며 설정 메뉴의 기존 **채팅으로 돌아가기**와 project별 선택 복원을 유지합니다. 출처 패널은 mobile에서 full-screen modal, tablet/desktop에서 공통 비모달 panel 계약을 따릅니다. Escape/바깥 영역으로 닫으면 trigger로 focus가 복원됩니다.
 
-가격 admission과 실행은 Lumen 소유입니다. Perplexity Agent Sonar·GLM-5.3의 공식 token 가격을 조회하며 Sonar의 Agent API와 legacy API 가격을 구분합니다. 알 수 없는 모델의 입력·출력 가격을 0으로 처리하지 않습니다. 예외는 모델별 프롬프트 캐시 단가(캐시 읽기, 캐시 쓰기 5분, 캐시 쓰기 1시간)입니다. 관리자가 설정하지 않은 캐시 항목의 token은 0 USD로 청구됩니다. 그 항목의 token이 0보다 크고 입력·출력 가격이 설정되어 있으면 원장 `pricing_status`는 `partial`이 되며, token이 0인 캐시 항목은 상태에 영향을 주지 않습니다. 이 변경 이전에 고정된 pricing snapshot에는 캐시 key가 없으므로 단가 미설정과 같이 취급합니다. 이 단가는 LiteLLM·models.dev catalog 값으로 대체하지 않습니다. 대체하면 배포 시점부터 예고 없이 과금이 시작되기 때문입니다. Native Search는 기존 token 기반 크레딧 계약을 유지하므로 provider의 별도 검색 요청/툴 부가요금은 로컬 크레딧 비용에 포함되지 않습니다.
+가격 admission과 실행은 Lumen 소유입니다. Native direct route의 유효 token/media 단가는 저장된 관리자 수동 단가 → source-tracked native catalog → 미설정 순서이며, catalog는 공식 출처와 검증일을 함께 제공합니다. 호환 custom-base route는 catalog의 모델·가격·기능을 상속하지 않고 필수 단가를 관리자가 입력합니다. 미확인 모델의 입력·출력 가격을0으로 추정하지 않습니다. Decisions는 input·cache-read·30분 cache-write만 청구하며 output/reasoning token은0이고, 보고된 cache usage의 유효 단가가 없으면 엄격히 거부합니다. 기존 정산 snapshot은 재작성하지 않습니다. Native Search의 별도 검색 요청/툴 부가요금은 기존 로컬 billing이 명시적으로 지원하는 항목만 포함하며 token 요금에서 추정하지 않습니다.
 
 ---
 

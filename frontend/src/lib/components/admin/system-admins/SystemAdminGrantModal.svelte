@@ -15,6 +15,7 @@
 	import Field from '$lib/components/ui/Field.svelte';
 	import SearchSelect from '$lib/components/ui/SearchSelect.svelte';
 	import { auth } from '$lib/stores/auth';
+	import { authDisplayContext } from '$lib/stores/authDisplayContext';
 	import { api } from '$lib/api/client';
 	import { domainsApi, domainPath, type AdminDomain } from '$lib/api/domains';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
@@ -57,7 +58,7 @@
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
-	const authority = $derived(JSON.stringify([token, projectId]));
+	const authority = $derived($authDisplayContext.key);
 	const logicalOwner = $derived(JSON.stringify([$auth.sessionId, $auth.userId, $auth.identityDomainId, $auth.domainId, projectId, $auth.isSystemAdmin, !!token]));
 	let previousOwner = '';
 	const domainsReady = $derived(loadedAuthority === authority && !loadingDomains && !domainsError);
@@ -135,6 +136,7 @@
 	}
 
 	function selectDomain(value: string) {
+		if (granting) return;
 		domainId = value;
 		resetUsers();
 		void loadUsers();
@@ -170,19 +172,19 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-	use:dialogFocus={{ enabled: true, onEscape: () => onClose() }}
+	use:dialogFocus={{ enabled: true, onEscape: () => { if (!granting) onClose(); } }}
 	class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
-	onclick={(event) => { if (event.target === event.currentTarget) (onClose)(); }}
-	role="dialog" aria-modal="true"
+	onclick={(event) => { if (!granting && event.target === event.currentTarget) onClose(); }}
+	role="dialog" aria-modal="true" aria-labelledby={`${id}-title`}
 	tabindex="-1"
 >
 	<div
 		class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-lg mx-4 max-h-[88dvh] overflow-y-auto shadow-[var(--shadow-restraint)]"
 	>
-		<h2 class="text-lg font-semibold text-ink-0 mb-4">{t('systemGrant.title')}</h2>
+		<h2 id={`${id}-title`} class="text-lg font-semibold text-ink-0 mb-4">{t('systemGrant.title')}</h2>
 
 		<Field for={`${id}-domain`} label={domainT('scope.domain')}>
-			<SearchSelect id={`${id}-domain`} value={domainsReady ? domainId : ''} options={domainsReady ? domains.map(domain => ({ value: domain.id, label: domain.name, description: domain.id })) : []} loading={loadingDomains} disabled={!domainsReady} placeholder={domainT('scope.choose')} ariaLabel={domainT('scope.domain')} onchange={selectDomain} />
+			<SearchSelect id={`${id}-domain`} value={domainsReady ? domainId : ''} options={domainsReady ? domains.map(domain => ({ value: domain.id, label: domain.name, description: domain.id })) : []} loading={loadingDomains} disabled={!domainsReady || granting} placeholder={domainT('scope.choose')} ariaLabel={domainT('scope.domain')} onchange={selectDomain} />
 		</Field>
 		{#if domainsError}
 			<Alert tone="danger" class="my-3">{domainsError}</Alert>

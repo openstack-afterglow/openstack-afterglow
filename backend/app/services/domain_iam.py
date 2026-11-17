@@ -132,7 +132,7 @@ async def protected_user(user, domain_id, *, credentials=True, system_services=F
     if system_services:
         # Deletion additionally protects service-only raw system grants, which
         # Keystone's effective path omits. Other IAM consumers keep their reads.
-        user_system = await _provider_call(lambda: list(ks.role_assignments.list(user=uid, system="all")))
+        user_system = await _provider_call(keystone.direct_system_assignments, ks, user=uid)
         system_sources = [(row, "user_id", uid) for row in user_system]
         for group in await _provider_call(lambda: list(ks.groups.list(user=uid))):
             gid = _field(group, "id")
@@ -140,7 +140,7 @@ async def protected_user(user, domain_id, *, credentials=True, system_services=F
                 raise HTTPException(503, "Native identity group membership is unavailable")
             system_sources.extend(
                 (row, "group_id", gid)
-                for row in await _provider_call(lambda gid=gid: list(ks.role_assignments.list(group=gid, system="all")))
+                for row in await _provider_call(keystone.direct_system_assignments, ks, group=gid)
             )
         for row, principal, subject in system_sources:
             source = domain_projects._assignment(row, catalog)

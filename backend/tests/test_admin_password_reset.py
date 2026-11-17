@@ -126,12 +126,17 @@ async def directory(monkeypatch, tmp_path):
             ]
         return state.group_system if "group" in kwargs else state.raw_system
 
+    def roles(*, user=None, group=None, system=None):
+        assert system == "all"
+        return [row["role"] for row in (state.group_system if group is not None else state.raw_system)]
+
     state.ks = SimpleNamespace(
         session=SimpleNamespace(get_token=lambda: "dummy-native-service-token"),
         users=SimpleNamespace(get=get_user),
         domains=SimpleNamespace(get=lambda did: {"id": did, "enabled": True}),
         role_assignments=SimpleNamespace(list=assignments),
         groups=SimpleNamespace(list=lambda **kw: state.groups),
+        roles=SimpleNamespace(list=roles),
     )
 
     async def assert_owned():

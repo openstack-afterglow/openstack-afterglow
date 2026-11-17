@@ -14,6 +14,7 @@ const MOCK_EXPIRES_AT = Math.floor(new Date('2026-12-31T23:59:59Z').getTime() / 
 export function buildMockAuth(profile: MockupProfileId, pathname: string): AuthState {
 	if (profile === 'admin') {
 		return {
+			sessionId: 'mock-session-admin',
 			token: 'mock-token-admin',
 			refreshToken: 'mock-refresh-admin',
 			accessExpiresAt: MOCK_EXPIRES_AT,
@@ -31,6 +32,7 @@ export function buildMockAuth(profile: MockupProfileId, pathname: string): AuthS
 
 	if (pathname === '/select-project') {
 		return {
+			sessionId: 'mock-session-on',
 			token: 'mock-token-tutorial-projectless',
 			refreshToken: 'mock-refresh-tutorial-projectless',
 			accessExpiresAt: MOCK_EXPIRES_AT,
@@ -47,6 +49,7 @@ export function buildMockAuth(profile: MockupProfileId, pathname: string): AuthS
 	}
 
 	return {
+		sessionId: 'mock-session-on',
 		token: 'mock-token-tutorial-scoped',
 		refreshToken: 'mock-refresh-tutorial-scoped',
 		accessExpiresAt: MOCK_EXPIRES_AT,

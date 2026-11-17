@@ -5,7 +5,7 @@ import { siteConfig } from '$lib/config/site';
 import { buildMockAuth } from '$lib/mockup/auth';
 import { MOCK_MCP_CONSENT_TICKET, MOCKUP_QUERY_KEY, MOCKUP_SESSION_KEY, MOCKUP_SERVICE_OVERRIDES, isMockupProfileId } from '$lib/mockup/contracts';
 import type { MockupProfileId } from '$lib/mockup/contracts';
-import { cloneMockup, getMockupState } from '$lib/mockup/state';
+import { cloneMockup, getMockupState, onMockupRevisionChange } from '$lib/mockup/state';
 import type { K3sSseProgressMessage } from '$lib/api/k3sSseStream';
 import type { FlavorOption } from '$lib/types/flavor';
 import { RESOURCE_CATEGORIES, type ProjectResourceInventory, type ResourceCategory, type ResourceInventory, type ResourceItem, type ResourceTotal, type UserDashboardSummary } from '$lib/types/userDashboard';
@@ -25,6 +25,7 @@ import { mockAdminResources } from '$lib/mockup/adminResources';
 import { mockAdminFloatingIps } from '$lib/mockup/adminFloatingIps';
 import { mockAdminPorts } from '$lib/mockup/adminPorts';
 import { mockAdminUsers } from '$lib/mockup/adminUsers';
+import { mockAdminSystemAdmins } from '$lib/mockup/adminSystemAdmins';
 import { mockAdminGroups } from '$lib/mockup/adminGroups';
 import { mockAdminRolesDomains } from '$lib/mockup/adminRolesDomains';
 import { mockAdminObjectStorage } from '$lib/mockup/adminObjectStorage';
@@ -33,6 +34,8 @@ import { mockNetworkLbRouter } from '$lib/mockup/networkLbRouter';
 import { mockDatabaseContainers } from '$lib/mockup/databaseContainers';
 import { mockDatabaseBackups } from '$lib/mockup/databaseBackups';
 import type { ContainerInfo, OrderInfo, QuotaInfo } from '$lib/api/secrets';
+import { mockChatWorkLog, mockChatWorkLogResponse } from './chatWorkLog';
+import { mockNativeProviders } from './nativeProviders';
 
 export const symbolNoMatch = Symbol('mockup-no-match');
 const MOCK_EXPIRES_AT_ISO = '2026-12-31T23:59:59Z';
@@ -379,10 +382,416 @@ function mockComposedFlavor(composition: { vcpus: number; ram_mb: number; gpu_pr
 	};
 }
 
+type MockMcpAccess = 'open' | 'oauth' | 'credentials' | 'configure' | 'unreachable' | 'unavailable' | 'managed';
+interface MockMcpTemplate {
+	id: string;
+	registry_name: string;
+	name: string;
+	description: string;
+	url: string | null;
+	transport: string;
+	variables: string[];
+	header_hints: { name?: string; description: string; secret: boolean; required?: boolean }[];
+	docs_url: string;
+	access: MockMcpAccess;
+	featured: boolean;
+	unavailable_reason: string | null;
+	managed_profile: string | null;
+}
+interface MockMcpActivation {
+	is_active: boolean;
+	config_version: number;
+	generation: number;
+}
+interface MockMcpConnection {
+	id: number;
+	scope: 'global' | 'domain' | 'user';
+	owner_domain_id: string | null;
+	owner_user_id: string | null;
+	owner_project_id: string | null;
+	implicit_selection: boolean;
+	name: string;
+	transport: string;
+	url: string;
+	auth_mode: 'none' | 'oauth' | 'admin';
+	has_headers: boolean;
+	has_oauth_client: boolean;
+	has_oauth_client_secret: boolean;
+	oauth_scopes: string[];
+	server_is_active: boolean;
+	template_key: string | null;
+	connection_label: string | null;
+	config_version: number;
+	load_policy: 'preloaded' | 'on_demand';
+	activations: Record<string, MockMcpActivation>;
+	oauth_owners: string[];
+}
+interface MockMcpCatalogState {
+	connections: MockMcpConnection[];
+	nextId: number;
+	pending: { state: string; server_id: number; user_id: string; config_version: number } | null;
+}
+
+// Representative registry fixtures, not a truncated featured-only catalog or a live registry fetch.
+const MOCK_MCP_TEMPLATES: MockMcpTemplate[] = [
+	['github', 'io.github.github/github-mcp-server', 'GitHub', 'Repositories, issues, and pull requests.', 'https://api.githubcopilot.com/mcp/', 'oauth', true],
+	['notion', 'ai.notion/mcp', 'Notion', 'Search and update workspace pages.', 'https://mcp.notion.com/mcp', 'oauth', true],
+	['playwright', 'com.microsoft/playwright', 'Playwright', 'Browser tools in the managed sandbox.', null, 'managed', true],
+	['markitdown', 'com.microsoft/markitdown', 'Markitdown', 'Convert documents in the managed sandbox.', null, 'managed', true],
+	['fetch', 'io.github.modelcontextprotocol/fetch', 'Fetch', 'Read public web pages.', 'https://fetch.mcp.example.test/mcp', 'open', true],
+	['brave', 'com.brave/search', 'Brave Search', 'Search with an organization credential.', 'https://search.mcp.example.test/mcp', 'credentials', true],
+	['context7', 'com.upstash/context7', 'Context7', 'Find current library documentation.', 'https://context7.mcp.example.test/mcp', 'open', false],
+	['linear', 'app.linear/mcp', 'Linear', 'Find and manage team issues.', 'https://linear.mcp.example.test/mcp', 'oauth', false],
+	['sentry', 'io.sentry/mcp', 'Sentry', 'Inspect application errors.', 'https://sentry.mcp.example.test/mcp', 'oauth', false],
+	['slack', 'com.slack/mcp', 'Slack', 'Search team conversations.', 'https://slack.mcp.example.test/mcp', 'oauth', false],
+	['stripe', 'com.stripe/mcp', 'Stripe', 'Inspect payment resources.', 'https://stripe.mcp.example.test/mcp', 'credentials', false],
+	['cloudflare', 'com.cloudflare/mcp', 'Cloudflare', 'Configure an account-specific remote.', 'https://{account}.mcp.example.test/mcp', 'configure', false],
+	['gitlab', 'com.gitlab/mcp', 'GitLab', 'Read project issues and merge requests.', 'https://gitlab.mcp.example.test/mcp', 'oauth', false],
+	['atlassian', 'com.atlassian/rovo', 'Atlassian', 'Find project and knowledge resources.', 'https://atlassian.mcp.example.test/mcp', 'oauth', false],
+	['figma', 'com.figma/mcp', 'Figma', 'Read design context.', 'https://figma.mcp.example.test/mcp', 'oauth', false],
+	['filesystem', 'io.github.modelcontextprotocol/filesystem', 'Filesystem', 'Local filesystem server requires stdio.', null, 'unavailable', false],
+	['postgres', 'io.github.modelcontextprotocol/postgres', 'PostgreSQL', 'Local database server requires stdio.', null, 'unavailable', false],
+	['memory', 'io.github.modelcontextprotocol/memory', 'Memory', 'Local knowledge graph requires stdio.', null, 'unavailable', false],
+	['offline', 'test.example/offline', 'Offline Remote', 'No usable remote endpoint was found.', 'https://offline.mcp.example.test/mcp', 'unreachable', false],
+].map(([key, registry, name, description, url, access, featured]) => ({
+	id: `mock-reg-${key}`, registry_name: registry as string, name: name as string, description: description as string,
+	url: url as string | null, transport: access === 'managed' || access === 'unavailable' ? 'stdio' : 'http',
+	variables: access === 'configure' ? ['account'] : [],
+	header_hints: access === 'credentials' ? [{ name: 'Authorization', description: 'Bearer credential', secret: true, required: true }] : [],
+	docs_url: `https://docs.example.test/mcp/${key}`, access: access as MockMcpAccess, featured: featured as boolean,
+	unavailable_reason: access === 'unavailable' ? 'stdio_only' : access === 'unreachable' ? 'unverified_response' : null,
+	managed_profile: access === 'managed' ? key as string : null,
+})).sort((a, b) => a.registry_name.localeCompare(b.registry_name) || a.id.localeCompare(b.id));
+const mockMcpCatalogs = new WeakMap<object, MockMcpCatalogState>();
+const MOCK_MCP_OAUTH_SESSION_KEY = 'afterglow.mockup.mcp-oauth';
+onMockupRevisionChange(() => {
+	if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(MOCK_MCP_OAUTH_SESSION_KEY);
+});
+
+function newMockMcpConnection(
+	id: number, template: MockMcpTemplate | null, scope: MockMcpConnection['scope'],
+	userId: string, projectId: string, domainId: string,
+): MockMcpConnection {
+	return {
+		id, scope, owner_domain_id: scope === 'domain' ? domainId : null,
+		owner_user_id: scope === 'global' ? null : userId, owner_project_id: scope === 'global' ? null : projectId,
+		implicit_selection: false, name: template?.name ?? '', transport: template?.transport ?? 'http', url: template?.url ?? '',
+		auth_mode: template?.access === 'oauth' ? 'oauth' : template?.access === 'credentials' ? 'admin' : 'none',
+		has_headers: false, has_oauth_client: false, has_oauth_client_secret: false, oauth_scopes: [],
+		server_is_active: true, template_key: template?.id ?? null, connection_label: template?.name ?? null, config_version: 1,
+		load_policy: 'on_demand', activations: {}, oauth_owners: [],
+	};
+}
+
+function mockMcpCatalog(profile: MockupProfileId): MockMcpCatalogState {
+	const owner = getMockupState();
+	let catalog = mockMcpCatalogs.get(owner);
+	if (!catalog) {
+		const template = (key: string) => MOCK_MCP_TEMPLATES.find(entry => entry.id === `mock-reg-${key}`)!;
+		const notion = newMockMcpConnection(101, template('notion'), 'domain', 'mock-admin-1', 'mock-project-1', 'mock-domain');
+		notion.connection_label = 'Team workspace';
+		notion.oauth_owners = ['mock-domain'];
+		const search = newMockMcpConnection(102, template('brave'), 'domain', 'mock-admin-1', 'mock-project-1', 'mock-domain');
+		search.connection_label = 'Team search';
+		search.has_headers = true;
+		const remote = newMockMcpConnection(103, template('fetch'), 'global', 'mock-admin-1', 'mock-project-1', 'mock-domain');
+		catalog = { connections: [notion, search, remote], nextId: 104, pending: null };
+		mockMcpCatalogs.set(owner, catalog);
+	}
+	// OAuth is a local tutorial round trip. Only a matching pending approval changes fixture credentials.
+	const callback = typeof window === 'undefined' ? null : new URL(window.location.href).searchParams.get('mock_mcp_oauth');
+	if (callback) {
+		const saved = sessionStorage.getItem(MOCK_MCP_OAUTH_SESSION_KEY);
+		if (saved) {
+			let snapshot: MockMcpCatalogState | null = null;
+			try { snapshot = catalog.pending?.state === callback ? catalog : JSON.parse(saved) as MockMcpCatalogState; } catch { /* Corrupt tutorial state cannot grant a connection. */ }
+			const actor = buildMockAuth(profile, '/dashboard');
+			const pending = snapshot?.pending;
+			if (snapshot && Array.isArray(snapshot.connections) && pending?.state === callback && pending.user_id === actor.userId) {
+				const server = snapshot.connections.find(row => row.id === pending.server_id);
+				if (server && server.auth_mode === 'oauth' && server.config_version === pending.config_version &&
+					(server.scope !== 'domain' || actor.isSystemAdmin || actor.isDomainManager)) {
+					const credentialOwner = server.scope === 'domain' ? server.owner_domain_id! : actor.userId!;
+					server.oauth_owners = [...new Set([...server.oauth_owners, credentialOwner])];
+					snapshot.pending = null;
+					catalog = snapshot;
+					mockMcpCatalogs.set(owner, catalog);
+				}
+			}
+			sessionStorage.removeItem(MOCK_MCP_OAUTH_SESSION_KEY);
+		}
+		const url = new URL(window.location.href);
+		url.searchParams.delete('mock_mcp_oauth');
+		window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+	}
+	return catalog;
+}
+
+function mockMcpFixture(method: string, pathname: string, params: URLSearchParams, body: unknown, profile: MockupProfileId, projectId?: string): unknown | typeof symbolNoMatch {
+	if (!/^\/api\/v1\/chat\/(?:mcp-settings|mcp-connections|mcp-servers|domains\/[^/]+\/mcp-connections|admin\/mcp-(?:registry|servers))(?:\/|$)/.test(pathname)) return symbolNoMatch;
+	const actor = buildMockAuth(profile, '/dashboard');
+	const userId = actor.userId!;
+	const domainId = actor.domainId!;
+	const canManage = actor.isSystemAdmin || actor.isDomainManager;
+	const catalog = mockMcpCatalog(profile);
+	const payload = (body ?? {}) as Record<string, unknown>;
+	const isAdmin = pathname.startsWith('/api/v1/chat/admin/');
+	if (isAdmin && !actor.isSystemAdmin) throw new ApiError(403, 'Forbidden');
+	const domainRoute = pathname.match(/^\/api\/v1\/chat\/domains\/([^/]+)\/mcp-connections(?:\/(\d+)(?:\/(activation))?)?$/);
+	if (domainRoute && domainRoute[1] !== domainId) throw new ApiError(403, 'Forbidden');
+	const visible = (row: MockMcpConnection) => row.scope === 'global' || (row.scope === 'domain' ? row.owner_domain_id === domainId : row.owner_user_id === userId && row.owner_project_id === (projectId ?? actor.projectId));
+	const credentialOwner = (row: MockMcpConnection) => row.scope === 'domain' ? row.owner_domain_id! : userId;
+	const publicRow = (row: MockMcpConnection) => {
+		const activation = row.activations[userId];
+		const connected = row.auth_mode === 'none' || (row.auth_mode === 'admin' ? row.has_headers : row.oauth_owners.includes(credentialOwner(row)));
+		const active = row.server_is_active && connected &&
+			(row.scope === 'user' || (activation?.is_active === true && activation.config_version === row.config_version));
+		const { activations: _activations, oauth_owners: _oauthOwners, ...safe } = row;
+		return {
+			...safe, is_active: isAdmin && pathname.includes('/mcp-servers') ? row.server_is_active : active,
+			activation_is_active: row.scope === 'user' ? row.server_is_active : activation?.is_active ?? false,
+			activation_config_version: row.scope === 'user' ? null : activation?.config_version ?? null,
+			activation_generation: activation?.generation ?? 0,
+			auth_connected: connected, tools: [], tool_count: 0, catalog_refreshed_at: null, catalog_error: null,
+			state: !connected ? 'needs_auth' : row.scope === 'user' ? 'personal_connected' : row.scope === 'domain' ? 'org_connected' : active ? 'global_connected' : 'not_connected',
+		};
+	};
+	const page = <T>(rows: T[]) => {
+		const offset = Number(params.get('offset') ?? 0);
+		const limit = Number(params.get('limit') ?? 50);
+		if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 1 || limit > 100) throw new ApiError(422, 'Invalid pagination');
+		return { rows: rows.slice(offset, offset + limit), total: rows.length, offset, limit, next_offset: offset + limit < rows.length ? offset + limit : null };
+	};
+	const settingsEntries = () => MOCK_MCP_TEMPLATES.map(template => {
+		const connections = catalog.connections.filter(row => row.template_key === template.id && visible(row)).map(publicRow);
+		const priority = ['personal_connected', 'org_connected', 'global_connected', 'needs_auth', 'not_connected'];
+		const managed = template.access === 'managed' ? {
+			profile: template.managed_profile, available: template.managed_profile === 'playwright',
+			reason: template.managed_profile === 'playwright' ? null : 'profile_not_in_enabled_sandbox_manifest',
+			tools: template.managed_profile === 'playwright' ? ['browser_navigate', 'browser_snapshot', 'browser_click'] : [],
+		} : null;
+		return { ...template, connections, managed, state: managed ? managed.available ? 'managed_available' : 'managed_unavailable' : priority.find(state => connections.some(row => row.state === state)) ?? 'not_connected' };
+	});
+	if (method === 'GET' && pathname === '/api/v1/chat/mcp-settings') {
+		const q = (params.get('q') ?? '').trim().toLowerCase();
+		if (q.length > 100) throw new ApiError(422, 'Search is too long');
+		const featured = params.get('featured');
+		if (featured !== null && featured !== 'true' && featured !== 'false') throw new ApiError(422, 'Invalid featured filter');
+		const rows = settingsEntries().filter(entry =>
+			(!q || `${entry.name} ${entry.registry_name} ${entry.description}`.toLowerCase().includes(q)) &&
+			(featured === null || entry.featured === (featured === 'true')) &&
+			(!params.has('access') || entry.access === params.get('access')) &&
+			(!params.has('state') || entry.state === params.get('state')));
+		const { rows: entries, ...pagination } = page(rows);
+		return { entries, ...pagination, domain_id: domainId, can_manage_domain: canManage, organization_available: true, custom_connections: catalog.connections.filter(row => row.template_key === null && visible(row)).map(publicRow) };
+	}
+	if (method === 'GET' && domainRoute && !domainRoute[2]) {
+		const { rows: connections, ...pagination } = page(catalog.connections.filter(row => row.scope === 'domain' && row.owner_domain_id === domainId).map(publicRow));
+		return { connections, ...pagination };
+	}
+	if (method === 'GET' && /^\/api\/v1\/chat\/(?:admin\/)?mcp-servers$/.test(pathname)) {
+		return catalog.connections.filter(row => isAdmin ? row.scope === 'global' : visible(row)).map(publicRow).filter(row => params.get('active_only') !== 'true' || row.is_active);
+	}
+	if (method === 'GET' && pathname === '/api/v1/chat/admin/mcp-registry') {
+		const entries = settingsEntries().map(entry => ({ ...entry, installed: catalog.connections.some(row => row.scope === 'global' && row.template_key === entry.id) }));
+		return { entries };
+	}
+	const headersPresent = (value: unknown, template?: MockMcpTemplate | null): boolean => {
+		if (!value || typeof value !== 'object' || Array.isArray(value) || Object.values(value).some(item => typeof item !== 'string')) throw new ApiError(400, 'Invalid headers');
+		const allowedNames = template?.header_hints.flatMap(hint => hint.name ? [hint.name.toLowerCase()] : []) ?? [];
+		if (Object.keys(value).some(name => !/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) ||
+			(allowedNames.length > 0 && !allowedNames.includes(name.toLowerCase())))) throw new ApiError(400, 'Unsupported credential header');
+		return Object.values(value).some(item => (item as string).trim().length > 0);
+	};
+	const publicUrl = (value: unknown): string => {
+		if (typeof value !== 'string') throw new ApiError(400, 'A public HTTPS URL is required');
+		let url: URL;
+		try { url = new URL(value); } catch { throw new ApiError(400, 'A public HTTPS URL is required'); }
+		if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || url.hostname === 'localhost' || /^[\d.]+$/.test(url.hostname) || url.hostname.includes(':')) throw new ApiError(400, 'A public HTTPS URL is required');
+		return value;
+	};
+	const create = (scope: MockMcpConnection['scope'], templateId: unknown, label: unknown = null) => {
+		if (label !== null && typeof label !== 'string') throw new ApiError(400, 'Invalid connection label');
+		const template = MOCK_MCP_TEMPLATES.find(entry => entry.id === templateId);
+		if (!template) throw new ApiError(404, 'Template not found');
+		if (['managed', 'unavailable', 'unreachable'].includes(template.access)) throw new ApiError(400, 'Template is not installable');
+		const connectionLabel = (typeof label === 'string' ? label : template.name).trim();
+		if (!connectionLabel || [...connectionLabel].length > 100 || /[\u0000-\u001f\u007f]/.test(connectionLabel)) throw new ApiError(400, 'Invalid connection label');
+		if (template.access === 'configure' && !['none', 'oauth', 'admin'].includes(payload.auth_mode as string)) throw new ApiError(400, 'An authentication mode is required');
+		const hasHeaders = payload.headers !== undefined && headersPresent(payload.headers, scope === 'global' ? null : template);
+		const existing = catalog.connections.find(row => row.scope === scope && row.template_key === template.id && row.connection_label === connectionLabel &&
+			(scope === 'global' || (scope === 'domain' ? row.owner_domain_id === domainId : row.owner_user_id === userId && row.owner_project_id === (projectId ?? actor.projectId))));
+		if (existing) return { created: false, server: publicRow(existing) };
+		const row = newMockMcpConnection(catalog.nextId, template, scope, userId, projectId ?? actor.projectId!, domainId);
+		row.connection_label = connectionLabel;
+		if (template.access === 'configure') {
+			const variables = payload.variables as Record<string, unknown> | undefined;
+			for (const variable of template.variables) {
+				const value = variables?.[variable];
+				if (typeof value !== 'string' || !/^[a-zA-Z0-9-]+$/.test(value)) throw new ApiError(400, 'Required URL variable is missing or invalid');
+				row.url = row.url.replaceAll(`{${variable}}`, value);
+			}
+		}
+		if (payload.auth_mode !== undefined) {
+			if (!['none', 'oauth', 'admin'].includes(payload.auth_mode as string) || (template.access !== 'configure' && payload.auth_mode !== row.auth_mode)) throw new ApiError(400, 'Invalid authentication mode');
+			row.auth_mode = payload.auth_mode as MockMcpConnection['auth_mode'];
+		}
+		row.has_headers = hasHeaders;
+		if (row.has_headers && row.auth_mode !== 'admin') throw new ApiError(400, 'Headers require credential authentication');
+		if (scope !== 'global' && row.auth_mode === 'admin' && !row.has_headers) throw new ApiError(400, 'Credentials are required');
+		row.url = publicUrl(row.url);
+		catalog.nextId += 1;
+		catalog.connections.push(row);
+		return { created: true, server: publicRow(row) };
+	};
+	if (method === 'POST' && (pathname === '/api/v1/chat/mcp-connections' || (domainRoute && !domainRoute[2]))) {
+		if (domainRoute && !canManage) throw new ApiError(403, 'Forbidden');
+		if (Object.keys(payload).some(key => !['template_id', 'label', 'variables', 'auth_mode', 'headers'].includes(key))) throw new ApiError(400, 'Unsupported connection field');
+		return create(domainRoute ? 'domain' : 'user', payload.template_id, payload.label);
+	}
+	const install = pathname.match(/^\/api\/v1\/chat\/admin\/mcp-registry\/(?:(install-all|install-featured)|([^/]+)\/install)$/);
+	if (method === 'POST' && install) {
+		if (install[2]) return create('global', install[2]);
+		const result: { created: unknown[]; existing: unknown[]; skipped: { id: string; name: string; reason: string }[]; failed: unknown[] } = { created: [], existing: [], skipped: [], failed: [] };
+		for (const template of MOCK_MCP_TEMPLATES.filter(entry => install[1] !== 'install-featured' || entry.featured)) {
+			if (['managed', 'unavailable', 'unreachable', 'configure'].includes(template.access)) {
+				result.skipped.push({ id: template.id, name: template.name, reason: template.unavailable_reason ?? (template.access === 'managed' ? 'managed_sandbox' : 'configuration_required') });
+				continue;
+			}
+			const installed = create('global', template.id);
+			result[installed.created ? 'created' : 'existing'].push(installed.server);
+		}
+		return { ...result, counts: { created: result.created.length, existing: result.existing.length, skipped: result.skipped.length, failed: result.failed.length } };
+	}
+	if (method === 'POST' && /^\/api\/v1\/chat\/(?:admin\/)?mcp-servers$/.test(pathname)) {
+		if (typeof payload.name !== 'string' || !payload.name.trim()) throw new ApiError(400, 'Name is required');
+		if (!isAdmin && Object.keys(payload).some(key => !['name', 'url', 'transport'].includes(key))) throw new ApiError(400, 'Custom personal servers cannot include credentials');
+		const row = newMockMcpConnection(catalog.nextId, null, isAdmin ? 'global' : 'user', userId, projectId ?? actor.projectId!, domainId);
+		row.name = payload.name.trim();
+		row.url = publicUrl(payload.url);
+		if (payload.transport !== undefined && !['http', 'sse'].includes(payload.transport as string)) throw new ApiError(400, 'Invalid transport');
+		row.transport = typeof payload.transport === 'string' ? payload.transport : 'http';
+		if (isAdmin) {
+			if (payload.auth_mode !== undefined && !['none', 'oauth', 'admin'].includes(payload.auth_mode as string)) throw new ApiError(400, 'Invalid authentication mode');
+			row.auth_mode = typeof payload.auth_mode === 'string' ? payload.auth_mode as MockMcpConnection['auth_mode'] : 'none';
+			if (payload.headers !== undefined) row.has_headers = headersPresent(payload.headers);
+			row.has_oauth_client = typeof payload.oauth_client_id === 'string' && !!payload.oauth_client_id.trim();
+			row.has_oauth_client_secret = typeof payload.oauth_client_secret === 'string' && !!payload.oauth_client_secret;
+			if (payload.oauth_scopes !== undefined) {
+				if (!Array.isArray(payload.oauth_scopes) || payload.oauth_scopes.some(scope => typeof scope !== 'string')) throw new ApiError(400, 'Invalid OAuth scopes');
+				row.oauth_scopes = [...payload.oauth_scopes];
+			}
+			if (payload.load_policy !== undefined) {
+				if (!['preloaded', 'on_demand'].includes(payload.load_policy as string)) throw new ApiError(400, 'Invalid load policy');
+				row.load_policy = payload.load_policy as MockMcpConnection['load_policy'];
+			}
+		}
+		catalog.nextId += 1;
+		catalog.connections.push(row);
+		return publicRow(row);
+	}
+	const personalRoute = pathname.match(/^\/api\/v1\/chat\/mcp-connections\/(\d+)$/);
+	const serverRoute = pathname.match(/^\/api\/v1\/chat\/(?:admin\/)?mcp-servers\/(\d+)(?:\/(activation|oauth)(?:\/(start))?)?$/);
+	const id = Number(domainRoute?.[2] ?? personalRoute?.[1] ?? serverRoute?.[1]);
+	if (!id) return symbolNoMatch;
+	const personal = personalRoute ? catalog.connections.find(item => item.id === id) : undefined;
+	if (personal && (personal.scope !== 'user' || personal.owner_user_id !== userId || personal.owner_project_id !== (projectId ?? actor.projectId))) throw new ApiError(403, 'Personal connection ownership required');
+	const row = catalog.connections.find(item => item.id === id && visible(item) &&
+		(domainRoute ? item.scope === 'domain' && item.owner_domain_id === domainId : personalRoute ? item.scope === 'user' && item.owner_user_id === userId : !isAdmin || item.scope === 'global'));
+	if (!row) throw new ApiError(404, 'Connection not found');
+	const operation = domainRoute?.[3] ?? serverRoute?.[2];
+	const canEdit = row.scope === 'domain' ? canManage : row.scope === 'global' ? isAdmin : row.owner_user_id === userId;
+	if (operation === 'activation' && method === 'PATCH') {
+		if (typeof payload.is_active !== 'boolean' || !Number.isInteger(payload.config_version)) throw new ApiError(400, 'Activation requires a configuration version');
+		if (payload.config_version !== row.config_version) throw new ApiError(409, 'Configuration changed');
+		const previous = row.activations[userId];
+		row.activations[userId] = { is_active: payload.is_active, config_version: row.config_version, generation: (previous?.generation ?? 0) + 1 };
+		return publicRow(row);
+	}
+	if (operation === 'oauth') {
+		if (method === 'GET' && !serverRoute?.[3]) return { required: row.auth_mode === 'oauth', connected: row.auth_mode === 'oauth' && row.oauth_owners.includes(credentialOwner(row)), expires_at: null };
+		if (row.scope === 'domain' && !canManage) throw new ApiError(403, 'Forbidden');
+		if (row.auth_mode !== 'oauth') throw new ApiError(400, 'OAuth is not configured');
+		if (method === 'POST' && serverRoute?.[3] === 'start') {
+			const state = crypto.randomUUID();
+			catalog.pending = { state, server_id: row.id, user_id: userId, config_version: row.config_version };
+			// Persist only public configuration, consent metadata, and credential-presence booleans; never request secrets.
+			sessionStorage.setItem(MOCK_MCP_OAUTH_SESSION_KEY, JSON.stringify(catalog));
+			const url = new URL(window.location.href);
+			url.searchParams.set(MOCKUP_QUERY_KEY, profile);
+			url.searchParams.set('mock_mcp_oauth', state);
+			return { authorization_url: `${url.pathname}${url.search}${url.hash}` };
+		}
+		if (method === 'DELETE' && !serverRoute?.[3]) {
+			row.oauth_owners = row.oauth_owners.filter(owner => owner !== credentialOwner(row));
+			if (row.scope === 'domain') row.activations = {};
+			else delete row.activations[userId];
+			catalog.pending = null;
+			sessionStorage.removeItem(MOCK_MCP_OAUTH_SESSION_KEY);
+			return ok204();
+		}
+	}
+	if (!operation && ['PATCH', 'DELETE'].includes(method)) {
+		if (!canEdit) throw new ApiError(403, 'Forbidden');
+		if (method === 'DELETE') {
+			catalog.connections = catalog.connections.filter(item => item !== row);
+			catalog.pending = null;
+			sessionStorage.removeItem(MOCK_MCP_OAUTH_SESSION_KEY);
+			return ok204();
+		}
+		const allowed = domainRoute ? ['name', 'url', 'transport', 'is_active', 'headers', 'auth_mode', 'oauth_scopes', 'oauth_client_id', 'oauth_client_secret'] : isAdmin ? ['name', 'url', 'transport', 'is_active', 'headers', 'auth_mode', 'oauth_scopes', 'oauth_client_id', 'oauth_client_secret', 'load_policy'] : ['headers', 'is_active'];
+		if (!Object.keys(payload).length || Object.keys(payload).some(key => !allowed.includes(key))) throw new ApiError(400, 'Unsupported connection field');
+		if (personalRoute && payload.headers !== undefined) {
+			const template = MOCK_MCP_TEMPLATES.find(entry => entry.id === row.template_key);
+			if (!template || !['credentials', 'configure'].includes(template.access)) throw new ApiError(400, 'This template does not accept static credentials');
+		}
+		const update = { ...row };
+		if (payload.is_active !== undefined) {
+			if (typeof payload.is_active !== 'boolean') throw new ApiError(400, 'Invalid active state');
+			update.server_is_active = payload.is_active;
+		}
+		if (payload.name !== undefined) {
+			if (typeof payload.name !== 'string' || !payload.name.trim()) throw new ApiError(400, 'Name is required');
+			update.name = payload.name.trim();
+		}
+		if (payload.url !== undefined) update.url = publicUrl(payload.url);
+		if (payload.transport !== undefined) {
+			if (!['http', 'sse'].includes(payload.transport as string)) throw new ApiError(400, 'Invalid transport');
+			update.transport = payload.transport as string;
+		}
+		if (payload.auth_mode !== undefined) {
+			if (!['none', 'oauth', 'admin'].includes(payload.auth_mode as string)) throw new ApiError(400, 'Invalid authentication mode');
+			update.auth_mode = payload.auth_mode as MockMcpConnection['auth_mode'];
+		}
+		if (payload.headers !== undefined) update.has_headers = headersPresent(payload.headers, row.scope === 'global' ? null : MOCK_MCP_TEMPLATES.find(template => template.id === row.template_key));
+		if (payload.oauth_scopes !== undefined) {
+			if (!Array.isArray(payload.oauth_scopes) || payload.oauth_scopes.some(scope => typeof scope !== 'string')) throw new ApiError(400, 'Invalid OAuth scopes');
+			update.oauth_scopes = [...payload.oauth_scopes];
+		}
+		if (payload.oauth_client_id !== undefined) update.has_oauth_client = typeof payload.oauth_client_id === 'string' && !!payload.oauth_client_id.trim();
+		if (payload.oauth_client_secret !== undefined) update.has_oauth_client_secret = typeof payload.oauth_client_secret === 'string' && !!payload.oauth_client_secret;
+		if (payload.load_policy !== undefined) {
+			if (!['preloaded', 'on_demand'].includes(payload.load_policy as string)) throw new ApiError(400, 'Invalid load policy');
+			update.load_policy = payload.load_policy as MockMcpConnection['load_policy'];
+		}
+		update.config_version += 1;
+		update.oauth_owners = [];
+		Object.assign(row, update);
+		catalog.pending = null;
+		sessionStorage.removeItem(MOCK_MCP_OAUTH_SESSION_KEY);
+		return publicRow(row);
+	}
+	return symbolNoMatch;
+}
+
 function jsonFixture(method: string, normalized: string, body: unknown, profile: MockupProfileId, requestProjectId?: string): unknown | typeof symbolNoMatch {
 	const state = getMockupState();
 	const [pathname, query = ''] = normalized.split('?');
 	const params = new URLSearchParams(query);
+	const nativeProviders = mockNativeProviders(method, pathname, params, body, profile);
+	if (nativeProviders !== undefined) return nativeProviders;
+	const mcpCatalog = mockMcpFixture(method, pathname, params, body, profile, requestProjectId);
+	if (mcpCatalog !== symbolNoMatch) return mcpCatalog;
 	const computePolicy = mockComputePolicy(method, pathname, params, body, profile);
 	if (computePolicy !== undefined) return computePolicy;
 	const identityAdmin = mockIdentityAdmin(method, pathname, params, body, profile, requestProjectId);
@@ -395,6 +804,8 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	if (adminPorts !== undefined) return adminPorts;
 	const adminUsers = mockAdminUsers(method, pathname, params, body, profile);
 	if (adminUsers !== undefined) return adminUsers;
+	const adminSystemAdmins = mockAdminSystemAdmins(method, pathname, body, profile);
+	if (adminSystemAdmins !== undefined) return adminSystemAdmins;
 	const adminGroups = mockAdminGroups(method, pathname, params, body, profile);
 	if (adminGroups !== undefined) return adminGroups;
 	const adminRolesDomains = mockAdminRolesDomains(method, pathname, body, profile);
@@ -439,7 +850,12 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		return { id, name, can_write: permissions.can_write, service_permissions: { drover, palimpsest, waygate }, service_errors: {} };
 	});
 	if (method === 'GET' && pathname === '/api/v1/auth/mcp-tokens') return state.mcpAccess.personalTokens.filter((record) => record.status !== 'revoked' && !record.revoked_at).map((record) => ({ ...record, is_lumen_default: record.status === 'active' && (state.mcpAccess.lumenDefaults[requestProjectId ?? state.selectedProjectId] ?? []).includes(record.id) }));
-	if (method === 'GET' && ['/api/v1/chat/custom-tools', '/api/v1/chat/mcp-servers', '/api/v1/chat/skills'].includes(pathname)) return [];
+	const chatWorkLog = mockChatWorkLog(method, pathname, params, body);
+	if (chatWorkLog !== undefined) return chatWorkLog;
+	if (method === 'GET' && ['/api/v1/chat/custom-tools', '/api/v1/chat/skills', '/api/v1/chat/admin/custom-tools', '/api/v1/chat/admin/skills'].includes(pathname)) {
+		if (pathname.startsWith('/api/v1/chat/admin/') && profile !== 'admin') throw new ApiError(403, 'Forbidden');
+		return [];
+	}
 	if (pathname === '/api/v1/chat/cloud-tools' && ['GET', 'POST', 'DELETE'].includes(method)) {
 		const project = state.projects.find((item) => item.id === (requestProjectId ?? state.selectedProjectId));
 		if (!project) mockUnsupported();
@@ -1281,6 +1697,10 @@ export async function maybeMockJson<T>(method: string, path: string, body?: unkn
 	if (normalized.startsWith('/api/v1/') && upperMethod !== 'GET') mockUnsupported();
 	if (normalized.startsWith('/api/v1/')) mockUnsupported();
 	return symbolNoMatch;
+}
+
+export function maybeMockChatResponse(path: string, options: RequestInit): Response | null {
+	return getActiveMockupProfile() ? mockChatWorkLogResponse(path, options) : null;
 }
 
 export async function maybeMockBlob(method: string, path: string, _token?: string, _projectId?: string): Promise<Blob | typeof symbolNoMatch> {

@@ -2,6 +2,8 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/sve
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { writable } from "svelte/store";
 import { t } from "$lib/i18n/ns/admin-chat";
+import { t as nativeT } from '$lib/i18n/ns/native-providers';
+import { t as studioT } from "$lib/i18n/ns/chat-studio";
 import { initLocale } from "$lib/i18n/runtime.svelte";
 
 const mocks = vi.hoisted(() => {
@@ -155,10 +157,10 @@ describe("admin chat model prompt-cache pricing", () => {
     await screen.findByText("Claude 4");
     const lines = Array.from(document.querySelectorAll('[data-testid="model-cache-prices"]'), (node) => node.textContent?.replace(/\s+/g, " ").trim());
     expect(lines).toEqual([
-      t("configuration.cachePriceSummary", { v0: "0.3", v1: "3.75", v2: "6", v3: "" }),
-      t("configuration.cachePriceSummary", { v0: "0.3", v1: t("configuration.unset"), v2: t("configuration.unset"), v3: t("configuration.unsetRatesAreBilledAt0Usd") }),
+      nativeT("price.cacheSummary", { read: "0.3", write: "3.75", long: "6" }),
+      nativeT("price.cacheSummary", { read: "0.3", write: t("configuration.unset"), long: t("configuration.unset") }),
       t("configuration.cacheRatesUnsupportedThisLumenVersionDoesNotAccept"),
-      t("configuration.cacheRatesUnsetCacheTokensAreBilledAt0"),
+      nativeT("price.cacheHelp"),
     ]);
   });
 
@@ -186,8 +188,8 @@ describe("admin chat model prompt-cache pricing", () => {
     await fireEvent.click(within(cleanDraft).getAllByRole('button', { name: '닫기' }).at(-1)!);
     const editor = await openEditor();
     expect((within(editor).getByLabelText("캐시 읽기") as HTMLInputElement).value).toBe("0.3");
-    expect((within(editor).getByLabelText("캐시 쓰기 5분") as HTMLInputElement).value).toBe("");
-    expect((within(editor).getByLabelText("캐시 쓰기 1시간") as HTMLInputElement).value).toBe("");
+    expect((within(editor).getByLabelText(nativeT("price.cacheWrite")) as HTMLInputElement).value).toBe("");
+    expect((within(editor).getByLabelText(nativeT("price.cacheWriteLong")) as HTMLInputElement).value).toBe("");
     expect((within(editor).getByLabelText("입력") as HTMLInputElement).value).toBe("");
     expect((within(editor).getByLabelText("출력") as HTMLInputElement).value).toBe("");
     expect(toastError).not.toHaveBeenCalled();
@@ -218,8 +220,8 @@ describe("admin chat model prompt-cache pricing", () => {
       target: { value: "anthropic/claude-bad" },
     });
     const group = createCacheGroup();
-    const write5m = within(group).getByLabelText("캐시 쓰기 5분") as HTMLInputElement;
-    const write1h = within(group).getByLabelText("캐시 쓰기 1시간") as HTMLInputElement;
+    const write5m = within(group).getByLabelText(nativeT("price.cacheWrite")) as HTMLInputElement;
+    const write1h = within(group).getByLabelText(nativeT("price.cacheWriteLong")) as HTMLInputElement;
     await fireEvent.input(write5m, { target: { value: "-1" } });
     await fireEvent.input(write1h, { target: { value: "1e3" } });
     await fireEvent.click(within(screen.getByRole('dialog', { name: '+ 모델 추가' })).getByRole('button', { name: '+ 모델 추가' }));
@@ -248,8 +250,8 @@ describe("admin chat model prompt-cache pricing", () => {
     await screen.findByText("Claude 2");
     const lines = Array.from(document.querySelectorAll('[data-testid="model-cache-prices"]'), (node) => node.textContent?.replace(/\s+/g, " ").trim());
     expect(lines).toEqual([
-      t("configuration.cachePriceSummary", { v0: "0", v1: "3.75", v2: "6", v3: "" }),
-      t("configuration.cachePriceSummary", { v0: "0", v1: t("configuration.unset"), v2: t("configuration.unset"), v3: t("configuration.unsetRatesAreBilledAt0Usd") }),
+      nativeT("price.cacheSummary", { read: "0", write: "3.75", long: "6" }),
+      nativeT("price.cacheSummary", { read: "0", write: t("configuration.unset"), long: t("configuration.unset") }),
     ]);
     expect(document.body.textContent).not.toContain("0E-10");
   });
@@ -330,11 +332,11 @@ describe("admin chat model prompt-cache pricing", () => {
     const modal = await openEditor();
     const read = within(modal).getByLabelText("캐시 읽기") as HTMLInputElement;
     expect(read.value).toBe("0.3");
-    expect((within(modal).getByLabelText("캐시 쓰기 5분") as HTMLInputElement).value).toBe("3.75");
-    expect((within(modal).getByLabelText("캐시 쓰기 1시간") as HTMLInputElement).value).toBe("");
+    expect((within(modal).getByLabelText(nativeT("price.cacheWrite")) as HTMLInputElement).value).toBe("3.75");
+    expect((within(modal).getByLabelText(nativeT("price.cacheWriteLong")) as HTMLInputElement).value).toBe("");
 
     await fireEvent.input(read, { target: { value: "" } });
-    await fireEvent.input(within(modal).getByLabelText("캐시 쓰기 1시간"), { target: { value: "6" } });
+    await fireEvent.input(within(modal).getByLabelText(nativeT("price.cacheWriteLong")), { target: { value: "6" } });
     await fireEvent.click(within(modal).getByText("저장"));
 
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
@@ -358,7 +360,7 @@ describe("admin chat model prompt-cache pricing", () => {
     expect(createCacheGroup()).toBeNull();
     await fireEvent.click(within(creation).getAllByRole('button', { name: '닫기' }).at(-1)!);
     const modal = await openEditor();
-    for (const label of ["캐시 읽기", "캐시 쓰기 5분", "캐시 쓰기 1시간"]) {
+    for (const label of ["캐시 읽기", nativeT("price.cacheWrite"), nativeT("price.cacheWriteLong")]) {
       expect(within(modal).queryByLabelText(label)).toBeNull();
     }
     await fireEvent.input(within(modal).getByLabelText("출력"), { target: { value: "16" } });
@@ -459,12 +461,108 @@ describe("admin media model registration", () => {
     })], [openai]);
     render(ModelPage);
     await screen.findByText("Image Maker");
-    expect(screen.getByText("실행 경로 없음 · 실행 불가")).toBeTruthy();
+    expect(screen.getByText(studioT("mediaReadiness.route"))).toBeTruthy();
+    expect(screen.queryByText("실행 경로 없음 · 실행 불가")).toBeNull();
     expect(screen.getByText(/1024x1024:high: 0.08 USD \/ 장/)).toBeTruthy();
     const modal = await openEditor();
     await fireEvent.input(within(modal).getByLabelText("이미지 variant 단가"), { target: { value: "0.12" } });
     await fireEvent.click(within(modal).getByText("저장"));
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
     expect(JSON.parse(JSON.stringify(patch.mock.calls[0][1]))).toStrictEqual({ media_pricing: { image_variants: { "1024x1024:high": "0.12" } } });
+  });
+
+  it("shows the asset-pipeline operator reason and a ready success state for media rows", async () => {
+    const gate = (reason_code: string | null, available: boolean) => ({ feature_gates: { image_output: { available, mode: available ? "native" : "none", reason_code, pricing_available: true } } });
+    serve([
+      model(1, { provider_id: 2, display_name: "Blocked Image", model_kind: "image", media_pricing: { image_variants: { "1024x1024:low": "0.02" } }, effective_capabilities: gate("asset_pipeline_unavailable", false) }),
+      model(2, { provider_id: 2, display_name: "Ready Image", model_kind: "image", media_pricing: { image_variants: { "1024x1024:low": "0.02" } }, effective_capabilities: gate(null, true) }),
+    ], [openai]);
+    render(ModelPage);
+    await screen.findByText("Blocked Image");
+    expect(screen.getByText(studioT("mediaReadiness.assets"))).toBeTruthy();
+    expect(screen.getByText(studioT("mediaReadiness.ready"))).toBeTruthy();
+    expect(document.body.textContent).not.toContain("asset_pipeline_unavailable");
+  });
+
+  async function reviewDiscovered(candidates: Record<string, unknown>[]) {
+    get.mockImplementation((path: string) => {
+      if (path === "/api/v1/chat/admin/providers") return Promise.resolve([openai]);
+      if (path === "/api/v1/chat/admin/models") return Promise.resolve([]);
+      if (path === "/api/v1/chat/admin/providers/2/available-models") return Promise.resolve({ provider_id: 2, source: "api", live_status: "success", complete: true, fetched_at: "2026-11-17T00:00:00Z", models: candidates.map((c) => c.id), candidates });
+      return Promise.resolve([]);
+    });
+    render(ModelPage);
+    const add = await screen.findByRole("button", { name: "+ 모델 추가" });
+    await waitFor(() => expect((add as HTMLButtonElement).disabled).toBe(false));
+    await fireEvent.click(add);
+    await fireEvent.click(await screen.findByRole("button", { name: "모델 불러오기" }));
+    for (const candidate of candidates) await fireEvent.click(await screen.findByLabelText(String(candidate.id)));
+    await fireEvent.click(screen.getByRole("button", { name: "선택 모델 검토" }));
+  }
+
+  it("preselects embedding from discovery and registers it with input-token price only", async () => {
+    await reviewDiscovered([{ id: "text-embedding-3-small", model_kind: "embedding", purpose: "non_chat", input_token_limit: 8191 }]);
+    const kind = document.querySelector("#review-kind-0") as HTMLSelectElement;
+    expect(kind.value).toBe("embedding");
+    expect([...kind.options].map((option) => option.value)).toContain("embedding");
+    expect(document.querySelector("#review-output-0")).toBeNull();
+    await fireEvent.input(document.querySelector("#review-input-0")!, { target: { value: "0.02" } });
+    await fireEvent.click(screen.getByRole("button", { name: "비활성으로 저장" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(JSON.stringify(post.mock.calls[0][1]))).toStrictEqual({ provider_id: 2, model_name: "text-embedding-3-small", model_kind: "embedding", input_price_per_million: "0.02", is_active: false });
+  });
+
+  it("requires an explicit kind for a Lumen kind this build does not know and never prints a raw placeholder", async () => {
+    await reviewDiscovered([{ id: "future-model", model_kind: "video", purpose: "non_chat" }]);
+    const kind = document.querySelector("#review-kind-0") as HTMLSelectElement;
+    expect(kind.value).toBe("");
+    expect(await screen.findByText(t("pricing.kindRequired"))).toBeTruthy();
+    expect((screen.getByRole("button", { name: "비활성으로 저장" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(document.body.textContent).not.toMatch(/\{\w+\}/);
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it.each(["gpt-image-2", "gpt-image-2.5-flare"])("requires an explicit token billing choice and entered reservation for %s", async (name) => {
+    const media = { token_rates: { image: { input_per_million: "8", cache_read_per_million: "2", output_per_million: "30" } } };
+    serve([model(1, { provider_id: 2, model_name: name, display_name: name, model_kind: "image",
+      input_price_per_million: "5", effective_input_price_per_million: "5",
+      output_price_per_million: null, effective_output_price_per_million: null, media_pricing: media })], [openai]);
+    render(ModelPage);
+    const modal = await openEditor();
+    const basis = within(modal).getByLabelText(t("pricing.billingBasis", { kind: t("configuration.image") })) as HTMLSelectElement;
+    expect(basis.value).toBe("");
+    expect(document.querySelector("#model-edit-reservation-usd")).toBeNull();
+    await fireEvent.change(basis, { target: { value: "tokens" } });
+    const reservation = within(modal).getByLabelText(t("pricing.reservationCap")) as HTMLInputElement;
+    expect(reservation.value).toBe("");
+    await fireEvent.click(within(modal).getByText("저장"));
+    expect(toastError).toHaveBeenCalledWith(t("pricing.reservationError"));
+    expect(patch).not.toHaveBeenCalled();
+    // This is an explicit test-user input, not a catalog-derived or guessed tariff.
+    await fireEvent.input(reservation, { target: { value: "0.50" } });
+    await fireEvent.click(within(modal).getByText("저장"));
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(JSON.stringify(patch.mock.calls[0][1]))).toStrictEqual({
+      media_pricing: { ...media, billing_basis: "tokens", reservation_usd: "0.50" },
+    });
+  });
+
+  it.each(["gpt-realtime-whisper", "gpt-live-transcribe"])("saves explicit input-only realtime duration pricing for %s", async (name) => {
+    serve([model(1, { provider_id: 2, model_name: name, display_name: name, model_kind: "realtime",
+      input_price_per_million: null, effective_input_price_per_million: null,
+      output_price_per_million: null, effective_output_price_per_million: null, media_pricing: null })], [openai]);
+    render(ModelPage);
+    const modal = await openEditor();
+    await fireEvent.change(within(modal).getByLabelText(t("pricing.billingBasis", { kind: t("configuration.realtimeAudio") })), { target: { value: "duration" } });
+    const input = document.querySelector("#model-edit-realtime_input_per_minute") as HTMLInputElement;
+    const output = document.querySelector("#model-edit-realtime_output_per_minute") as HTMLInputElement;
+    expect(input.value).toBe("");
+    expect(output.value).toBe("");
+    await fireEvent.input(input, { target: { value: "0.017" } });
+    await fireEvent.click(within(modal).getByText("저장"));
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(JSON.stringify(patch.mock.calls[0][1]))).toStrictEqual({
+      media_pricing: { billing_basis: "duration", realtime_input_per_minute: "0.017" },
+    });
   });
 });

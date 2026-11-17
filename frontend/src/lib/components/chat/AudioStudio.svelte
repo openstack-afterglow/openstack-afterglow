@@ -560,6 +560,7 @@
 				<p class="muted">{mode === 'tts' ? t('audioStudio.ttsDescription') : t('audioStudio.sttDescription')}</p>
 			</div>
 			<Button href="/dashboard/chat" variant="secondary">{t('audioStudio.textChat')}</Button>
+			<Button href="/dashboard/chat/realtime" variant="secondary">{t('realtimeTranscription.open')}</Button>
 		</header>
 		<Tabs id="audio-mode" ariaLabel={t('audioStudio.mode')} value={mode} items={modeTabs} onchange={selectMode} />
 		{#if micActive}<p class="muted">{t('audioStudio.recordingModeLocked')}</p>{/if}

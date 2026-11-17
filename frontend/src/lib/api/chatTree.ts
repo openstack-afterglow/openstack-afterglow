@@ -66,13 +66,19 @@ export interface ChatMessage {
 	status?: 'streaming' | 'complete' | 'failed' | 'canceled' | null;
 	execution?: {
 		run_id?: string;
+		/** Actual UTC run.started journal time, independent of message/reload time. */
+		started_at?: string | null;
+		/** Actual observed journal cursor; never a temporary message position. */
+		last_seq?: number;
 		agent_id?: string | null;
 		skill_ids?: number[];
 		skills?: { id: number; name: string }[];
 		status?: string;
 		retryable?: boolean;
 		tool_durations_ms?: Record<string, number>;
-		activity?: RunActivityItem[];
+		activity?: RunActivityItem[] | null;
+		activity_status?: 'available' | 'unavailable';
+		activity_error_code?: 'history_activity_invalid' | 'history_activity_limit' | 'history_activity_missing' | null;
 	} | null;
 	reasoning?: string | null;
 	token_prompt?: number | null;
