@@ -387,8 +387,9 @@ describe('administrator navigation visibility gates', () => {
 		destination(menu, '/admin/containers');
 		destination(menu, '/admin/secrets');
 		destination(menu, '/admin/projects');
-		for (const href of ['/admin/drover', '/admin/drover/templates', '/admin/chat', '/admin/chat/models', '/admin/waygate', '/admin/monitoring/proxysql', '/dashboard']) expect(queryDestination(menu, href)).toBeNull();
-		expect(menu.queryByRole('button', { name: t('sections.lumen') })).toBeNull();
+		destination(menu, '/admin/chat');
+		for (const href of ['/admin/drover', '/admin/drover/templates', '/admin/waygate', '/admin/monitoring/proxysql', '/dashboard']) expect(queryDestination(menu, href)).toBeNull();
+		expect(menu.getByRole('button', { name: t('sections.lumen') })).toBeTruthy();
 	});
 });
 

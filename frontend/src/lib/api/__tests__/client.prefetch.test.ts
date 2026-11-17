@@ -56,6 +56,7 @@ vi.mock('$lib/mockup/transport', () => ({
 	getActiveMockupProfile: () => mockProfile.value,
 	maybeMockBlob: vi.fn(async () => noMockMatch),
 	maybeMockJson: vi.fn(async () => noMockMatch),
+	maybeMockChatResponse: vi.fn(() => null),
 	maybeMockK3sStream: vi.fn(() => null),
 	symbolNoMatch: noMockMatch,
 }));
