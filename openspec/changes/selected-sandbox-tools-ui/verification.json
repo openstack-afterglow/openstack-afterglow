@@ -1,0 +1,53 @@
+{
+  "status": "source-local-verified",
+  "native_contract": "local://selected-sandbox-contract.md",
+  "field": "features.tool_policy.enabled_sandbox_tools",
+  "default": [],
+  "name_grammar": "^[A-Za-z][A-Za-z0-9_]*$",
+  "maximum_unique_names": 100,
+  "maximum_name_length": 128,
+  "focused_suite": {
+    "passed": 379,
+    "failed": 0,
+    "test_files": ["managedSandboxTools.test.ts", "auth.mockup.test.ts", "ManagedSandboxToolsPicker.test.ts", "ChatPanel.test.ts", "ChatInput.test.ts", "ChatMcpGallery.test.ts", "ChatExtensionsManager.test.ts", "chatContracts.test.ts", "lumenPermissions.test.ts", "transport.test.ts", "contracts.test.ts"],
+    "report": "/Users/pieroot/.local/share/afterglow-proofs/mcp-catalog-ui-20261118/selected-sandbox-final-tests.json"
+  },
+  "final_changed_chat_picker_subset": {
+    "passed": 136,
+    "failed": 0,
+    "scope": "ChatPanel, ChatInput, ManagedSandboxToolsPicker after final popup-placement, oversized-saved-selection reset and stale-admission-rejection race fixes",
+    "report": "/Users/pieroot/.local/share/afterglow-proofs/mcp-catalog-ui-20261118/selected-sandbox-final-admission-tests.json"
+  },
+  "covered": [
+    "explicit empty default, exact canonical names and independent remote MCP selection",
+    "names-only persistence, exact actor/home/domain/project isolation, same-owner token renewal and ref-counted cancellation",
+    "persistent, temporary, agent and regenerate request payloads with fresh preflight and no duplicate dispatch",
+    "historical retry retains original native snapshot and empty override body",
+    "revoked/unavailable/corrupt/oversized selection blocks send, stays removable and preserves draft",
+    "owner/selection/readiness ABA, model changes and late prior-admission rejection cannot release a new preparation",
+    "native unavailable/invalid/quota/configuration/code-mode typed refusal messages",
+    "menu keyboard focus, Escape restoration, viewport geometry/flip and teardown"
+  ],
+  "static_checks": {"type_errors":0,"existing_unrelated_warnings":15,"i18n_errors":0,"i18n_warnings":0,"hard_coded_korean_lines":0,"mechanical_design_findings":0,"mcp_gallery_locale_keys":102},
+  "browser": {
+    "proof": "/Users/pieroot/.local/share/afterglow-proofs/selected-sandbox-ui-20261118/browser-proof.json",
+    "desktop": [1440,1000],
+    "mobile": [390,844],
+    "horizontal_overflow":0,
+    "reduced_motion_matches":true,
+    "reduced_motion_running_animations":0,
+    "menu_top":48.84375,
+    "header_bottom":48,
+    "send_refused_for_missing_tool_capable_model":true,
+    "draft_preserved":true,
+    "scope":"actual source routes with explicit tutorial identity/provider/manifest fixtures"
+  },
+  "limits": [
+    "jsdom prints its existing unimplemented canvas diagnostic while source tests pass; real managed browser reported no errors",
+    "tutorial model discovery has an existing unsupported path, so no browser SEND was admitted; payload branches are covered by focused source tests",
+    "no provider inference, Kubernetes allocation, production request, runtime enablement or credential copying was performed",
+    "native lifecycle, public pinned manifest mounts, exact consolidated direct-system-role qualification and deployment remain coordinator-owned",
+    "experience catalog generation, shared architecture/design/changelog/testing integration, full gate and build are outside this worker's assigned write scope"
+  ],
+  "documentation_proposals": "local://mcp-catalog-ui-notes.md"
+}

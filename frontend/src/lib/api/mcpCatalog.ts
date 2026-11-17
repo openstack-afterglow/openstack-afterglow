@@ -36,6 +36,7 @@ export interface McpTemplate {
 	unavailable_reason?: string | null;
 	state?: string;
 	connections?: McpConnection[];
+	managed_profile?: string | null;
 	managed?: { profile: string; available: boolean; reason: string | null; tools: string[] } | null;
 }
 export interface McpSettingsPage {
@@ -55,9 +56,10 @@ export interface McpDomainPage {
 	next_offset: number | null;
 }
 
-/** Never turn another owner's returned row into an action target. Server remains authoritative. */
+/** Native-returned organization rows already prove membership. A missing manager-domain
+ * hint must not hide those rows; a known domain still constrains every row exactly. */
 export function visibleMcpConnection(row: McpConnection, userId: string, projectId: string, domainId: string | null): boolean {
-	if (row.scope === 'domain') return !!domainId && row.owner_domain_id === domainId;
+	if (row.scope === 'domain') return !!row.owner_domain_id && (!domainId || row.owner_domain_id === domainId);
 	if (row.scope === 'user') return row.owner_user_id === userId && row.owner_project_id === projectId;
 	return row.scope === 'global';
 }

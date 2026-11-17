@@ -8,6 +8,12 @@
 	import { serviceCapabilities } from '$lib/stores/servicePermissions';
 	import { chatRequestPermission, permissionReason, textOnlyToolPolicy } from '$lib/api/lumenPermissions';
 	import { onChatModelsInvalidated } from '$lib/stores/chatModels';
+	import {
+		managedSandboxTools, prepareManagedSandboxTools, assertPreparedSandboxTools,
+		ManagedSandboxSelectionError, managedSandboxIssueMessage,
+		type PreparedSandboxTools
+	} from '$lib/stores/managedSandboxTools';
+	import { t as mcpT } from '$lib/i18n/ns/mcp-gallery';
 	import { api, ApiError } from '$lib/api/client';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
@@ -255,6 +261,9 @@
 			selectedToolIds === null ? null : selectedToolIds.map(String);
 		features.tool_policy.enabled_mcp_ids = selectedMcpIds;
 		if (!canTools) textOnlyToolPolicy(features);
+		// Preview reflects explicit intent even when permission loss blocks sending.
+		features.tool_policy.enabled_sandbox_tools = [...$managedSandboxTools.selected];
+		if (features.tool_policy.enabled_sandbox_tools.length) features.tool_policy.mode = 'agent_default';
 		return features;
 	}
 	let selectionGeneration = 0;
@@ -296,6 +305,7 @@
 		requestAnimationFrame(() => composerAnchor?.querySelector<HTMLTextAreaElement>('textarea')?.focus());
 	}
 	let streaming = $state(false);
+	let preparingRun = $state(false);
 	let runningConversationIds = $state<Set<string>>(new Set());
 	let historyPages = $state<MessagesResponse[]>([]);
 	let tempThreadId = $state<string | null>(null);
@@ -412,6 +422,8 @@
 		body: unknown;
 		idempotencyKey: string;
 		modelName: string;
+		effectiveModelName: string;
+		sandboxOwnerKey: string;
 	};
 	let failedSubmission = $state<FailedPersistentSubmission | null>(null);
 	let stream = $state<{
@@ -549,7 +561,7 @@
 			return [...stream.base, stream.assistant];
 		}
 		if (tempMode) return tempMessages;
-		if (failedSubmission?.conversationId === activeConvId) return [...activePath, failedSubmission.message];
+		if (failedSubmission?.conversationId === activeConvId && failedSubmission.sandboxOwnerKey === $managedSandboxTools.ownerKey) return [...activePath, failedSubmission.message];
 		return activePath;
 	});
 	const isEmpty = $derived(displayPath.length === 0 && (!tempMode || tempUnpositionedRuns.length === 0));
@@ -575,7 +587,7 @@
 			}
 		});
 	});
-	const tempToggleLocked = $derived(streaming || activeConvId !== null || tempMessages.length > 0);
+	const tempToggleLocked = $derived(streaming || preparingRun || activeConvId !== null || tempMessages.length > 0);
 
 	const compactCommandReason = $derived.by(() => {
 		if (manualCompacting) return null;
@@ -1717,16 +1729,19 @@
 
 	async function startManualCompaction() {
 		if (!canChat || (activeAgent && !canTools)) return;
-		if (!token || !projectId || streaming || manualCompacting || destroyed) return;
+		if (!token || !projectId || streaming || preparingRun || manualCompacting || destroyed) return;
 		const hasScope = Boolean(activeConvId || (tempMode && tempThreadId));
 		if (!hasScope) return;
+		const prepared = await prepareRunTools(activeModelName);
+		if (!prepared) return;
 
 		const experience = beginExperienceAction('lumen', 'start', 'shared.stream');
 		experienceState(experience, 'loading', 3);
 		const previewState = await executeContextPreview({ emptyDraft: true, experience });
-		if (!previewState) return;
+		if (!previewState) { preparingRun = false; return; }
 		if (!previewState.can_compact) {
 			contextError = t('panel.compact.noHistory');
+			preparingRun = false;
 			return;
 		}
 
@@ -1753,6 +1768,8 @@
 		const generation = streamGeneration;
 
 		try {
+			assertRunTools(prepared, activeModelName);
+			preparingRun = false;
 			const descriptor = await createChatRun(path, body, {
 				token,
 				projectId,
@@ -1769,6 +1786,7 @@
 			void experienceApplied(experience, {}, () => !destroyed && generation === streamGeneration && currentRun === appliedRun);
 			await followCompactionRun(descriptor, generation, experience);
 		} catch (caught) {
+			preparingRun = false;
 			manualCompacting = false;
 			contextPhase = 'failed';
 			contextCause = null;
@@ -1845,7 +1863,7 @@
 		}
 	}
 
-	async function ensureConversation(experience?: ExperienceContext): Promise<string | null> {
+	async function ensureConversation(experience?: ExperienceContext, prepared?: PreparedRunTools): Promise<string | null> {
 		if (!canChat) return null;
 		if (activeConvId) return activeConvId;
 		if (!token || !projectId) return null;
@@ -1860,6 +1878,8 @@
 			token,
 			projectId
 		);
+		// The native POST may outlive its originating owner or conversation view.
+		if (prepared) assertRunTools(prepared, prepared.frozenSnapshot ? prepared.modelName : activeModelName);
 		pendingWorkspaceId = null;
 		activeConvId = conv.id;
 		localMutationEpoch += 1;
@@ -1874,6 +1894,7 @@
 
 	// --- Durable run journal ---
 	function endStream() {
+		preparingRun = false;
 		streaming = false;
 		toolActivity = null;
 		agentActivity = null;
@@ -2158,19 +2179,85 @@
 		}
 	}
 
+	function sandboxNativeErrorMessage(code: string): string | null {
+		if (['sandbox_tool_unavailable', 'sandbox_unavailable', 'runtime_kubernetes_manifest'].includes(code)) return mcpT('selectionNativeUnavailable');
+		if (['sandbox_selection_invalid', 'sandbox_selection_ambiguous', 'sandbox_selection_multiple_pools', 'sandbox_tool_unselected'].includes(code)) return mcpT('selectionNativeInvalid');
+		if (['child_budget_exhausted', 'sandbox_pool_full'].includes(code)) return mcpT('selectionNativeQuota');
+		if (code === 'sandbox_configuration_changed') return mcpT('selectionNativeChanged');
+		if (code === 'sandbox_code_combination_unsupported') return mcpT('selectionNativeCodeUnsupported');
+		return null;
+	}
+
 	function chatFailureMessage(caught: unknown, fallback: string): string {
-		if (caught instanceof ChatHttpError) return t('panel.errors.httpFailure', { status: caught.status, detail: caught.message });
+		if (caught instanceof ManagedSandboxSelectionError) return managedSandboxIssueMessage(caught.code, caught.names);
+		if (caught instanceof ChatHttpError) return sandboxNativeErrorMessage(caught.message.trim()) ?? t('panel.errors.httpFailure', { status: caught.status, detail: caught.message });
 		if (caught instanceof ApiError) return t('panel.errors.httpFailure', { status: caught.status, detail: fallback });
 		return caught instanceof Error ? caught.message : fallback;
 	}
 
 	function runFailureMessage(payload: { error_code: string; safe_message: string }, runId: string): string {
+		const sandboxMessage = sandboxNativeErrorMessage(payload.error_code);
+		if (sandboxMessage) return sandboxMessage;
 		const code = /^[\w.-]{1,80}$/.test(payload.error_code) ? payload.error_code : 'run_failed';
 		const detail = payload.safe_message.trim();
 		const safeDetail = detail.length <= 300 && !/[\x00-\x1f\x7f]/.test(detail) ? detail : t('panel.errors.runFailed');
 		return /^[\w-]{1,64}$/.test(runId)
 			? t('panel.errors.runFailureReference', { code, detail: safeDetail, runId })
 			: t('panel.errors.runFailure', { code, detail: safeDetail });
+	}
+	type PreparedRunTools = {
+		sandbox: PreparedSandboxTools;
+		generation: number;
+		selection: number;
+		modelName: string;
+		frozenSnapshot: boolean;
+		onAdmit?: () => void;
+	};
+	type FrozenRetryScope = {
+		ownerKey: string | null;
+		generation: number;
+		selection: number;
+	};
+	class SandboxModelUnsupportedError extends Error {}
+
+
+	function assertRunTools(prepared: PreparedRunTools, modelName: string): void {
+		assertPreparedSandboxTools(prepared.sandbox);
+		if (destroyed || prepared.generation !== streamGeneration || prepared.selection !== selectionGeneration) {
+			throw new ManagedSandboxSelectionError('owner_changed', []);
+		}
+		if (prepared.modelName !== modelName) throw new ManagedSandboxSelectionError('selection_changed', []);
+		if (prepared.sandbox.names.length && !models.find((model) => model.model_name === modelName)?.capabilities?.tool_call) {
+			throw new SandboxModelUnsupportedError(mcpT('selectionModelUnsupported'));
+		}
+	}
+
+	async function prepareRunTools(modelName: string, snapshot?: FailedPersistentSubmission): Promise<PreparedRunTools | null> {
+		if (preparingRun) return null;
+		preparingRun = true;
+		const generation = streamGeneration;
+		const selection = selectionGeneration;
+		try {
+			// Store captures owner and selection synchronously, then refreshes availability.
+			const sandbox = await prepareManagedSandboxTools();
+			const prepared = { sandbox, generation, selection, modelName, frozenSnapshot: snapshot !== undefined };
+			assertRunTools(prepared, modelName);
+			if (snapshot) {
+				if (snapshot.sandboxOwnerKey !== sandbox.ownerKey) throw new ManagedSandboxSelectionError('owner_changed', []);
+				const savedNames = (snapshot.body as { features?: ReturnType<typeof selectedFeatureOptions> }).features?.tool_policy.enabled_sandbox_tools ?? [];
+				if (savedNames.length !== sandbox.names.length || savedNames.some((name, index) => name !== sandbox.names[index])) {
+					throw new ManagedSandboxSelectionError('selection_changed', []);
+				}
+			}
+			return prepared;
+		} catch (caught) {
+			preparingRun = false;
+			if (!destroyed) error = caught instanceof ManagedSandboxSelectionError
+				? managedSandboxIssueMessage(caught.code, caught.names)
+				: caught instanceof SandboxModelUnsupportedError ? caught.message
+				: managedSandboxIssueMessage('catalog_failed');
+			return null;
+		}
 	}
 
 	async function runStream(
@@ -2181,7 +2268,8 @@
 		submittedAtMs: number,
 		onStarted?: (descriptor: ChatRunDescriptor) => void,
 		idempotencyKey?: string,
-		experience = beginExperienceAction('lumen', 'submit', 'shared.stream')
+		experience = beginExperienceAction('lumen', 'submit', 'shared.stream'),
+		prepared?: PreparedRunTools | FrozenRetryScope
 	): Promise<boolean> {
 		const generation = streamGeneration;
 		let admissionAttempted = false;
@@ -2191,6 +2279,18 @@
 			if (denied) throw new Error(permissionReason(denied));
 			const modelId = (body as { model_id?: string } | null)?.model_id;
 			if (!canTools && models.find((model) => model.model_name === modelId)?.capabilities?.web_search_required) throw new Error(permissionReason('lumen-tools_user'));
+			if (!prepared) throw new ManagedSandboxSelectionError('selection_changed', []);
+			if ('sandbox' in prepared) {
+				assertRunTools(prepared, prepared.frozenSnapshot ? prepared.modelName : activeAgent?.model_name || modelId || activeModelName);
+				const requestedNames = (body as { features?: ReturnType<typeof selectedFeatureOptions> } | null)?.features?.tool_policy.enabled_sandbox_tools;
+				if (requestedNames && (requestedNames.length !== prepared.sandbox.names.length || requestedNames.some((name, index) => name !== prepared.sandbox.names[index]))) {
+					throw new ManagedSandboxSelectionError('selection_changed', []);
+				}
+				prepared.onAdmit?.();
+			} else if (!prepared.ownerKey || prepared.ownerKey !== $managedSandboxTools.ownerKey || !$authReady || $projectSwitching || destroyed || prepared.generation !== streamGeneration || prepared.selection !== selectionGeneration) {
+				throw new ManagedSandboxSelectionError('owner_changed', []);
+			}
+			preparingRun = false;
 			admissionAttempted = true;
 			const descriptor = await createChatRun(path, body, { token, projectId, idempotencyKey, experience });
 			if (destroyed || generation !== streamGeneration) { experienceDiscarded(experience, 'stale'); return false; }
@@ -2202,6 +2302,7 @@
 			return true;
 		} catch (caught) {
 			if (destroyed || generation !== streamGeneration) { experienceDiscarded(experience, destroyed ? 'unmounted' : 'stale'); return false; }
+			preparingRun = false;
 			error = chatFailureMessage(caught, t('panel.errors.runFailed'));
 			experienceState(experience, 'error', 3);
 			if (admissionAttempted && !((caught instanceof ChatHttpError || caught instanceof ApiError) && caught.status >= 400 && caught.status < 500)) experienceDiscarded(experience, 'unknown');
@@ -2318,7 +2419,7 @@
 			return;
 		}
 		const text = input.trim();
-		if (!text || streaming || !token || !projectId) return;
+		if (!text || streaming || preparingRun || !token || !projectId) return;
 		if (!selectedModel) {
 			error = t('panel.errors.noModels');
 			return;
@@ -2330,25 +2431,47 @@
 		}
 		const experience = beginExperienceAction('lumen', 'submit', 'shared.stream');
 		const submittedAtMs = performance.now();
+		const draftInput = input;
+		const draftAttachments = attachments;
+		const inputParts: UserInputPart[] = [{ type: 'text', text }, ...toInputParts(draftAttachments)];
+		const requestFeatures = selectedFeatureOptions();
+		const prepared = await prepareRunTools(activeModelName);
+		if (!prepared) return;
 		if (!tempMode && activeConvId && historyHasAfter) {
 			const loadedLatest = await replaceHistoryWindow(selectionGeneration, experience);
-			if (!loadedLatest) return;
+			if (!loadedLatest) { preparingRun = false; return; }
 		}
-		input = '';
-		const inputParts: UserInputPart[] = [{ type: 'text', text }, ...toInputParts(attachments)];
-		attachments = [];
+		try {
+			assertRunTools(prepared, activeModelName);
+		} catch (caught) {
+			preparingRun = false;
+			error = chatFailureMessage(caught, t('panel.errors.runFailed'));
+			return;
+		}
+		prepared.onAdmit = () => {
+			if (input === draftInput) input = '';
+			if (attachments === draftAttachments) attachments = [];
+		};
 		const clientTimezone = browserTimezone();
 
-		if (tempMode) return sendTemp(text, inputParts, submittedAtMs, experience);
+		if (tempMode) return sendTemp(text, inputParts, submittedAtMs, prepared, experience);
 
 		invalidateContextPreview();
 		streaming = true;
 		let convId: string | null;
 		try {
-			convId = await ensureConversation(experience);
+			convId = await ensureConversation(experience, prepared);
 		} catch (e) {
 			error = chatFailureMessage(e, t('panel.errors.createConversation'));
 			endStream();
+			preparingRun = false;
+			try {
+				assertRunTools(prepared, activeModelName);
+			} catch (caught) {
+				error = chatFailureMessage(caught, t('panel.errors.runFailed'));
+				return;
+			}
+			prepared.onAdmit?.();
 			const failedUserMsg: DisplayMessage = {
 				id: tempId(),
 				sessionEntrance: freshMessageEntrance(),
@@ -2366,19 +2489,22 @@
 				body: {
 					parts: inputParts,
 					model_id: selectedModel,
-					features: selectedFeatureOptions(),
+					features: requestFeatures,
 					reasoning_effort: effort,
 					agent_id: activeAgent?.id,
 					skill_ids: selectedSkillIds,
 					client_timezone: clientTimezone,
 				},
 				idempotencyKey: crypto.randomUUID(),
-				modelName: selectedModel
+				modelName: selectedModel,
+				effectiveModelName: prepared.modelName,
+				sandboxOwnerKey: prepared.sandbox.ownerKey
 			};
 			return;
 		}
 		if (!convId) {
 			endStream();
+			preparingRun = false;
 			return;
 		}
 
@@ -2399,7 +2525,7 @@
 		const body = {
 			parts: inputParts,
 			model_id: selectedModel,
-			features: selectedFeatureOptions(),
+			features: requestFeatures,
 			reasoning_effort: effort,
 			agent_id: activeAgent?.id,
 			skill_ids: selectedSkillIds,
@@ -2423,9 +2549,10 @@
 			submittedAtMs,
 			() => setConversationRun(convId!, true),
 			idempotencyKey,
-			experience
+			experience,
+			prepared
 		);
-		if (!started) {
+		if (!started && !destroyed && prepared.generation === streamGeneration && prepared.sandbox.ownerKey === $managedSandboxTools.ownerKey) {
 			failedSubmission = {
 				conversationId: convId,
 				message: {
@@ -2435,7 +2562,9 @@
 				path,
 				body,
 				idempotencyKey,
-				modelName: selectedModel
+				modelName: selectedModel,
+				effectiveModelName: prepared.modelName,
+				sandboxOwnerKey: prepared.sandbox.ownerKey
 			};
 		}
 	}
@@ -2444,6 +2573,7 @@
 		text: string,
 		inputParts: UserInputPart[],
 		submittedAtMs: number,
+		prepared: PreparedRunTools,
 		experience?: ExperienceContext
 	) {
 		const userMsg: DisplayMessage = {
@@ -2489,20 +2619,23 @@
 				if (submittedUser) submittedUser.execution = { run_id: descriptor.run_id, status: descriptor.status };
 			},
 			undefined,
-			experience
+			experience,
+			prepared
 		);
 	}
 
 	// --- 재생성 ---
 	async function regenerate(messageId: string, modelName: string) {
 		if (!canChat) return;
-		if (streaming || tempMode || !activeConvId || !token || !projectId) return;
+		if (streaming || preparingRun || tempMode || !activeConvId || !token || !projectId) return;
 		const conversationId = activeConvId;
 		error = null;
 		const idx = activePath.findIndex((m) => m.id === messageId);
 		if (idx === -1) return;
 		const experience = beginExperienceAction('lumen', 'retry', 'shared.stream');
 		const submittedAtMs = performance.now();
+		const prepared = await prepareRunTools(activeAgent?.model_name || modelName || selectedModel);
+		if (!prepared) return;
 		invalidateContextPreview();
 		streaming = true;
 		stream = { base: activePath.slice(0, idx), assistant: newAssistantDraft(modelName || selectedModel), conversationId, temp: false };
@@ -2532,32 +2665,37 @@
 			submittedAtMs,
 			() => setConversationRun(conversationId, true),
 			undefined,
-			experience
+			experience,
+			prepared
 		);
 	}
 
 	async function retryFailedTurn(messageId: string) {
 		if (!canChat) return;
-		if (streaming || tempMode || !token || !projectId) return;
+		if (streaming || preparingRun || tempMode || !token || !projectId) return;
 		const experience = beginExperienceAction('lumen', 'retry', 'shared.stream');
 		if (failedSubmission?.message.id === messageId) {
 			const submission = failedSubmission;
 			const submittedAtMs = performance.now();
 			error = null;
+			const prepared = await prepareRunTools(submission.effectiveModelName, submission);
+			if (!prepared) return;
 			invalidateContextPreview();
 			streaming = true;
 			let convId = submission.conversationId || activeConvId;
 			if (!convId) {
 				try {
-					convId = await ensureConversation(experience);
+					convId = await ensureConversation(experience, prepared);
 				} catch (e) {
 					error = chatFailureMessage(e, t('panel.errors.createConversation'));
 					endStream();
+					preparingRun = false;
 					return;
 				}
 			}
 			if (!convId) {
 				endStream();
+				preparingRun = false;
 				return;
 			}
 			submission.conversationId = convId;
@@ -2591,7 +2729,8 @@
 				submittedAtMs,
 				() => setConversationRun(convId!, true),
 				submission.idempotencyKey,
-				experience
+				experience,
+				prepared
 			);
 			if (started) failedSubmission = null;
 			return;
@@ -2604,6 +2743,12 @@
 		if (idx === -1 || message?.role !== 'user' || !targetRunId || message.execution?.retryable !== true) return;
 		const submittedAtMs = performance.now();
 		error = null;
+		// Native retry revalidates the original frozen features, never today's preferences.
+		const prepared: FrozenRetryScope = {
+			ownerKey: $managedSandboxTools.ownerKey,
+			generation: streamGeneration,
+			selection: selectionGeneration
+		};
 		invalidateContextPreview();
 		streaming = true;
 		stream = {
@@ -2630,7 +2775,8 @@
 			submittedAtMs,
 			() => setConversationRun(conversationId, true),
 			undefined,
-			experience
+			experience,
+			prepared
 		);
 	}
 
@@ -2984,7 +3130,7 @@
 					contextAfterTokens={contextAfterTokens}
 					contextError={contextError}
 					disabled={!canChat}
-					sendDisabled={!canChat || manualCompacting || contextPhase === 'compacting'}
+					sendDisabled={!canChat || preparingRun || manualCompacting || contextPhase === 'compacting'}
 					onSend={send}
 					onStop={stop}
 				>

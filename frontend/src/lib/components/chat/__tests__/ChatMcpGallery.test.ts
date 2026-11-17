@@ -57,7 +57,10 @@ let organization: McpConnection[];
 
 function response(path: string): Promise<unknown> {
 	if (path.includes('/mcp-settings?featured=true')) return Promise.resolve(settings({ entries: featured, total: featured.length, limit: 100 }));
-	if (path.includes('/mcp-settings?access=managed')) return Promise.resolve(settings({ entries: managed, total: managed.length, limit: 100 }));
+	if (path.includes('/mcp-settings?access=managed')) {
+		const entries = managed.length ? managed : page.entries.filter((entry) => entry.access === 'managed');
+		return Promise.resolve(settings({ entries, total: entries.length, limit: 100 }));
+	}
 	if (path.includes('/mcp-settings?')) return Promise.resolve(page);
 	if (path === '/api/v1/chat/mcp-servers') return Promise.resolve(servers);
 	if (path.includes('/mcp-connections?')) return Promise.resolve({ connections: organization, total: organization.length, next_offset: null } satisfies McpDomainPage);
@@ -492,14 +495,16 @@ describe('ChatMcpGallery catalog browsing and row feedback', () => {
 		['profile_not_in_enabled_sandbox_manifest', 'profileMissing'],
 		['execution_protocol_v2_unavailable', 'protocolMissing']
 	] as const)('shows managed availability reason %s without connect actions', async (reason, key) => {
+		grantLumen('lumen-mcp_editor', 'lumen-resources_admin', 'lumen-tools_user');
 		page = settings({ entries: [template({ name: 'Managed Playwright', access: 'managed', managed: { profile: 'playwright', available: false, reason, tools: ['browser_navigate'] } })] });
 		render(ChatMcpGallery);
 		await loaded();
 		const managed = within(card('Managed Playwright'));
 		expect(managed.getByText(t('builtIn'))).toBeTruthy();
 		expect(managed.getByText(t(key))).toBeTruthy();
-		expect(managed.getByText('browser_navigate')).toBeTruthy();
-		expect(managed.queryByRole('button')).toBeNull();
+		expect(managed.queryByRole('button', { name: t('connectPersonal') })).toBeNull();
+		expect(managed.queryByRole('button', { name: t('connectOrganization') })).toBeNull();
+		expect(managed.getByRole('checkbox', { name: t('selectionProfile', { name: 'Managed Playwright' }) }).hasAttribute('disabled')).toBe(true);
 		expect(mocks.post).not.toHaveBeenCalled();
 	});
 
@@ -611,17 +616,17 @@ describe('ChatMcpGallery catalog browsing and row feedback', () => {
 		expect(screen.queryByText(t('loadFailed'))).toBeNull();
 	});
 
-	it.each(['organization GET 503', 'settings organization_available false'] as const)('keeps personal, global and catalog controls usable with %s', async (failure) => {
+	it.each([403, 503, null])('keeps personal, global and catalog controls usable without organization rows after %s', async (status) => {
 		auth.update((actor) => ({ ...actor, isDomainManager: true }));
-		page = failure === 'organization GET 503'
-			? settings({ can_manage_domain: true })
-			: settings({ organization_available: false, domain_id: null, can_manage_domain: false });
+		page = status === null
+			? settings({ organization_available: false, domain_id: null, can_manage_domain: false })
+			: settings({ can_manage_domain: true });
 		servers = [
 			connection({ name: 'Personal survivor' }),
 			connection({ id: 12, scope: 'global', name: 'Global survivor' })
 		];
 		mocks.get.mockImplementation((path: string) => path.includes('/domains/domain-1/mcp-connections?')
-			? Promise.reject(Object.assign(new Error('Organization storage unavailable'), { status: 503 }))
+			? Promise.reject(Object.assign(new Error('Organization lookup unavailable'), { status }))
 			: response(path));
 		render(ChatMcpGallery, { onChanged: mocks.changed });
 		await screen.findByText(t('organizationUnavailable'));
@@ -639,6 +644,45 @@ describe('ChatMcpGallery catalog browsing and row feedback', () => {
 		await waitFor(() => expect(mocks.changed).toHaveBeenCalledTimes(1));
 		expect(screen.getByText(t('organizationUnavailable'))).toBeTruthy();
 		expect(screen.queryByText(t('loadFailed'))).toBeNull();
-		expect(mocks.get.mock.calls.some(([path]) => path.includes('/domains/'))).toBe(failure === 'organization GET 503');
+		expect(mocks.get.mock.calls.some(([path]) => path.includes('/domains/'))).toBe(status !== null);
+	});
+
+	it.each([403, 503, null])('preserves independently returned organization use without management authority after %s', async (status) => {
+		auth.update((actor) => ({ ...actor, isDomainManager: true }));
+		page = status === null
+			? settings({ organization_available: false, domain_id: null, can_manage_domain: false })
+			: settings({ can_manage_domain: true });
+		const nativeDomain = status === null ? 'native-org/one' : 'domain-1';
+		const shared = connection({
+			id: 21, scope: 'domain', owner_domain_id: nativeDomain, name: 'Independently visible organization tool',
+			auth_mode: 'oauth', auth_connected: true, config_version: 29,
+			activation_is_active: true, activation_config_version: 28
+		});
+		servers = [
+			shared,
+			connection({ id: 22, scope: 'domain', owner_domain_id: null, name: 'Missing organization owner' })
+		];
+		mocks.get.mockImplementation((path: string) => path.includes('/domains/domain-1/mcp-connections?')
+			? Promise.reject(Object.assign(new Error('Organization management lookup unavailable'), { status }))
+			: response(path));
+		render(ChatMcpGallery, { onChanged: mocks.changed });
+		await screen.findByText(t('organizationManagementUnavailable'));
+		const controls = within(row(shared.name));
+		expect(controls.getByText(t('stale'))).toBeTruthy();
+		expect(controls.getByRole('button', { name: t('activate') }).hasAttribute('disabled')).toBe(false);
+		for (const name of [t('edit'), t('delete'), t('reconnect'), t('revokeOAuth')]) expect(controls.queryByRole('button', { name })).toBeNull();
+		expect(screen.queryByRole('button', { name: t('connectOrganization') })).toBeNull();
+		expect(screen.queryByText(t('managerHelp'))).toBeNull();
+		expect(screen.queryByText('Missing organization owner')).toBeNull();
+		expect(within(screen.getByRole('region', { name: t('organization') })).queryByText(t('emptyConnections'))).toBeNull();
+		expect(screen.queryByText(t('loadFailed'))).toBeNull();
+		await fireEvent.click(controls.getByRole('button', { name: t('activate') }));
+		expect(mocks.patch).toHaveBeenCalledWith(
+			`/api/v1/chat/domains/${encodeURIComponent(nativeDomain)}/mcp-connections/21/activation`,
+			{ is_active: true, config_version: 29 }, 'token-1', 'project-1', { signal: expect.any(AbortSignal) }
+		);
+		await waitFor(() => expect(mocks.changed).toHaveBeenCalledTimes(1));
+		expect(screen.getByText(shared.name)).toBeTruthy();
+		expect(screen.getByText(t('organizationManagementUnavailable'))).toBeTruthy();
 	});
 });

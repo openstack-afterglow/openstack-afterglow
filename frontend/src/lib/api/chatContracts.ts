@@ -90,6 +90,7 @@ export interface ChatFeatureOptions {
 		approval_mode: 'required_for_mutations' | 'always';
 		enabled_tool_ids: string[] | null;
 		enabled_mcp_ids?: number[] | null;
+		enabled_sandbox_tools: string[];
 		workspace_write_mode?: 'ask' | 'auto_edit';
 	};
 	output_modalities: Array<'text' | 'image' | 'audio' | 'video'>;
@@ -109,6 +110,7 @@ export const defaultChatFeatureOptions = (): ChatFeatureOptions => ({
 		approval_mode: 'required_for_mutations',
 		enabled_tool_ids: null,
 		enabled_mcp_ids: null,
+		enabled_sandbox_tools: [],
 		workspace_write_mode: 'ask'
 	},
 	output_modalities: ['text']

@@ -16,6 +16,8 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Pagination from '$lib/components/ui/Pagination.svelte';
 	import { t } from '$lib/i18n/ns/mcp-gallery';
+	import ManagedSandboxToolsPicker from './ManagedSandboxToolsPicker.svelte';
+	import { refreshManagedSandboxTools } from '$lib/stores/managedSandboxTools';
 
 	import { t as settingsT } from '$lib/i18n/ns/chat-settings';
 	let { admin = false, onChanged = async () => {} }: { admin?: boolean; onChanged?: () => Promise<void> } = $props();
@@ -144,7 +146,7 @@
 				if (!canManage && editor?.scope === 'domain') clearDraft();
 				for (const entry of [...page.entries, ...defaults.entries]) templates.set(entry.id, entry);
 				connections = [...new Map([...rows, ...organization, ...page.custom_connections]
-					.filter((row) => (!organizationUnavailable || row.scope !== 'domain') && visibleMcpConnection(row, scope.userId, scope.projectId, page.domain_id) && (row.scope !== 'global' || !!row.template_key))
+					.filter((row) => visibleMcpConnection(row, scope.userId, scope.projectId, page.domain_id) && (row.scope !== 'global' || !!row.template_key))
 					.map((row) => [row.id, row])).values()];
 			}
 			offset = start; appliedQuery = search;
@@ -181,7 +183,7 @@
 	function activate(row: McpConnection) {
 		void action(String(row.id), async (scope, signal) => {
 			const personal = row.scope === 'user';
-			const path = personal ? rowPath(row) : row.scope === 'domain' ? `${rowPath(row)}/activation` : `/api/v1/chat/mcp-servers/${row.id}/activation`;
+			const path = personal ? rowPath(row) : row.scope === 'domain' ? `/api/v1/chat/domains/${encodeURIComponent(row.owner_domain_id!)}/mcp-connections/${row.id}/activation` : `/api/v1/chat/mcp-servers/${row.id}/activation`;
 			const body = personal ? { is_active: !row.server_is_active } : { is_active: !row.is_active, config_version: row.config_version };
 			await api.patch(path, body, scope.token, scope.projectId, { signal });
 		});
@@ -286,7 +288,7 @@
 <section class="gallery" aria-labelledby="mcp-gallery-title">
 	<header class="toolbar">
 		<div><h3 id="mcp-gallery-title">{t('title')}</h3><p>{t('description')}</p></div>
-		<div class="actions"><Button variant="secondary" size="sm" disabled={loading || !owner} onclick={() => owner && load(owner)}>{t('refresh')}</Button>{#if admin}<Button size="sm" disabled={!canWrite || busy.featured} onclick={installFeatured}>{t('installFeatured')}</Button>{/if}</div>
+		<div class="actions"><Button variant="secondary" size="sm" disabled={loading || !owner} onclick={() => { if (owner) void load(owner); if (!admin) void refreshManagedSandboxTools(); }}>{t('refresh')}</Button>{#if admin}<Button size="sm" disabled={!canWrite || busy.featured} onclick={installFeatured}>{t('installFeatured')}</Button>{/if}</div>
 	</header>
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if rowErrors.featured}<Alert tone="danger">{rowErrors.featured}</Alert>{/if}
@@ -296,12 +298,13 @@
 		<h4>{t('featured')}</h4>
 		<div class="featured-grid">{#each featured as entry (entry.id)}{@render templateCard(entry)}{/each}</div>
 	{/if}
+	{#if !admin}<ManagedSandboxToolsPicker summaryOnly />{/if}
 	{#if !admin && !error && owner}
 		{#if domainId && !organizationError}<div class="scope-note"><span>{t('domain')}: <code>{domainId}</code></span><span>{canManage ? t('managerHelp') : t('memberHelp')}</span></div>{/if}
 		{#each lists as list}
 			<section class="connections" aria-label={list.title}>
 				<h4>{list.title}</h4>
-				{#if list.scope === 'domain' && organizationError}<Alert tone="warning" flat>{t('organizationUnavailable')}</Alert>{/if}
+				{#if list.scope === 'domain' && organizationError}<Alert tone="warning" flat>{connections.some((row) => row.scope === 'domain') ? t('organizationManagementUnavailable') : t('organizationUnavailable')}</Alert>{/if}
 				{#each connections.filter((row) => row.scope === list.scope) as row (row.id)}
 					{@const state = mcpConnectionState(row)}
 					<div class="connection-row">
@@ -353,9 +356,10 @@
 {#snippet templateCard(entry: McpTemplate)}
 	<article class="template" aria-label={entry.name}>
 		<div class="row-copy"><div class="template-heading"><strong>{entry.name}</strong>{#if entry.access === 'managed'}<Pill tone="neutral" size="xs">{t('builtIn')}</Pill>{/if}</div><p>{entry.description}</p><p class="registry-name">{entry.registry_name}</p>
-			{#if entry.access === 'managed'}<p>{entry.managed ? entry.managed.available ? t('managedAvailable') : reason(entry.managed.reason) : t('managedUnknown')}</p>{#if entry.managed?.tools.length}<p>{entry.managed.tools.join(', ')}</p>{/if}
+			{#if entry.access === 'managed'}<p>{entry.managed ? entry.managed.available ? t('managedAvailable') : reason(entry.managed.reason) : t('managedUnknown')}</p>{#if admin && entry.managed?.tools.length}<p>{entry.managed.tools.join(', ')}</p>{/if}
 			{:else if entry.access === 'unavailable' || entry.access === 'unreachable'}<p>{reason(entry.unavailable_reason)}</p>{:else}<p>{entry.access === 'oauth' ? t('oauthHelp') : entry.access === 'credentials' ? t('credentialsHelp') : entry.access === 'configure' ? t('configureHelp') : t('publicHelp')}</p>{/if}
 		</div>
+		{#if !admin && entry.access === 'managed' && (entry.managed?.profile || entry.managed_profile)}<ManagedSandboxToolsPicker profileId={entry.managed?.profile || entry.managed_profile || undefined} showReadiness={false} />{/if}
 		{#if !['managed', 'unavailable', 'unreachable'].includes(entry.access)}<div class="actions"><Button variant="outline" size="sm" disabled={!canWrite || loading || !!busy[`template-${entry.id}`]} onclick={() => openEditor(entry, undefined, admin ? 'global' : 'user')}>{admin ? t('install') : t('connectPersonal')}</Button>{#if !admin && canManage}<Button variant="secondary" size="sm" disabled={!canWrite || loading || !!busy[`template-${entry.id}`]} onclick={() => openEditor(entry, undefined, 'domain')}>{t('connectOrganization')}</Button>{/if}</div>{/if}
 		{#if rowErrors[`template-${entry.id}`]}<Alert tone="danger" flat>{rowErrors[`template-${entry.id}`]}</Alert>{/if}
 	</article>
