@@ -82,6 +82,18 @@ describe('response validation', () => {
 		expect(parseEmbeddingCapabilities(capabilities(), 7).max_inputs).toBe(16);
 	});
 
+	it('preserves flattened catalog dimension ranges and explicit allowed choices', () => {
+		const published = capabilities({ default_dimensions: 768, min_dimensions: 256, max_dimensions: 768, allowed_dimensions: [256, 768] });
+		expect(parseEmbeddingCapabilities(published, 7)).toEqual(published);
+		expect(parseEmbeddingCapabilities(capabilities({ allowed_dimensions: null }), 7).allowed_dimensions).toBeNull();
+	});
+
+	it.each([
+		[], [0, 1536], [1.5, 1536], [256, 256, 1536], [256, 1537], [256, 768]
+	])('rejects malformed, out-of-range or default-missing dimension choices %j', (...allowed) => {
+		expect(() => parseEmbeddingCapabilities(capabilities({ allowed_dimensions: allowed }), 7)).toThrow(t('embeddingStudio.invalidResponse'));
+	});
+
 	it('rejects model lists with duplicate ids or non-embedding kinds', () => {
 		expect(() => parseEmbeddingModels([model(), model()])).toThrow(t('embeddingStudio.invalidResponse'));
 		expect(() => parseEmbeddingModels([{ ...model(), model_kind: 'chat' }])).toThrow(t('embeddingStudio.invalidResponse'));

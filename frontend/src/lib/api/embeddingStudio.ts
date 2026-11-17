@@ -17,6 +17,7 @@ export interface EmbeddingCapabilities {
 	supports_dimensions: boolean;
 	min_dimensions: number | null;
 	max_dimensions: number | null;
+	allowed_dimensions?: number[] | null;
 	max_input_tokens: number | null;
 	max_inputs: number;
 }
@@ -58,6 +59,14 @@ export function parseEmbeddingCapabilities(value: unknown, modelId: number): Emb
 		|| !positiveInteger(value.max_inputs) || value.max_inputs > 16) invalid();
 	const result = value as unknown as EmbeddingCapabilities;
 	if (result.min_dimensions !== null && result.max_dimensions !== null && result.min_dimensions > result.max_dimensions) invalid();
+	if (result.allowed_dimensions !== undefined && result.allowed_dimensions !== null) {
+		if (!Array.isArray(result.allowed_dimensions) || !result.allowed_dimensions.length
+			|| !result.allowed_dimensions.every(positiveInteger)
+			|| new Set(result.allowed_dimensions).size !== result.allowed_dimensions.length
+			|| result.allowed_dimensions.some((dimension) => (result.min_dimensions !== null && dimension < result.min_dimensions)
+				|| (result.max_dimensions !== null && dimension > result.max_dimensions))
+			|| (result.default_dimensions !== null && !result.allowed_dimensions.includes(result.default_dimensions))) invalid();
+	}
 	if (result.default_dimensions !== null && ((result.min_dimensions !== null && result.default_dimensions < result.min_dimensions)
 		|| (result.max_dimensions !== null && result.default_dimensions > result.max_dimensions))) invalid();
 	return result;

@@ -64,7 +64,7 @@ describe('native catalog registry', () => {
 	it('loads bundled catalog with GET and exposes version, verification, official sources and Decisions', async () => {
 		render(NativeCatalogPanel);
 		await screen.findByText(t('catalog.version', { version: catalog.catalog_version }));
-		await fireEvent.click(screen.getByText('OpenAI · 1'));
+		await fireEvent.click(screen.getByRole('button', { name: `OpenAI · ${t('catalog.count', { filtered: 1, total: 1 })}` }));
 		expect(screen.getByText(t('catalog.verified', { date: entry.verified_at }))).toBeTruthy();
 		expect(screen.getByText(t('decisions.label'))).toBeTruthy();
 		expect(screen.getAllByRole('link').every(link => link.getAttribute('href') === entry.source_urls[0] && link.getAttribute('rel') === 'noreferrer')).toBe(true);

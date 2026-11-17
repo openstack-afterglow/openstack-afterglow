@@ -35,6 +35,8 @@
 	"embeddingStudio.ready": "埋め込み経路と料金の準備が整いました。",
 	"embeddingStudio.dimensions": "次元数（任意）",
 	"embeddingStudio.dimensionHelp": "整数の範囲：{min}～{max}。空欄の場合の既定値：{default}。",
+	"embeddingStudio.dimensionAllowedHelp": "対応する次元数：{values}。空欄の場合の既定値：{default}。",
+	"embeddingStudio.dimensionChoiceInvalid": "このモデルが対応する次元数を一覧から選択してください。",
 	"embeddingStudio.noMaximum": "上限なし",
 	"embeddingStudio.providerDefault": "プロバイダーの既定値",
 	"embeddingStudio.tokenLimit": "最大入力トークン数：{count}。",

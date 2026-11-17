@@ -35,6 +35,8 @@
 	"embeddingStudio.ready": "The embedding route and pricing are ready.",
 	"embeddingStudio.dimensions": "Dimensions (optional)",
 	"embeddingStudio.dimensionHelp": "Whole number: {min}–{max}. Leave blank for the default: {default}.",
+	"embeddingStudio.dimensionAllowedHelp": "Supported dimensions: {values}. Leave blank for the default: {default}.",
+	"embeddingStudio.dimensionChoiceInvalid": "Select a dimension supported by this model.",
 	"embeddingStudio.noMaximum": "no upper limit",
 	"embeddingStudio.providerDefault": "provider default",
 	"embeddingStudio.tokenLimit": "Maximum input tokens: {count}.",

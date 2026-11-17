@@ -1,5 +1,5 @@
 import type { ModelCapabilities } from './chatContracts';
-import type { MediaPricing, ModelKind } from '$lib/components/admin/chat/modelPricing';
+import type { BillingBasis, ModelKind, TimeUnit } from '$lib/components/admin/chat/modelPricing';
 
 export type ProviderFamily = 'native' | 'compatible';
 export type PriceOrigin = 'manual' | 'native_catalog' | null;
@@ -26,6 +26,31 @@ export interface NativeTokenPricing {
 		cache_write_long?: string | null;
 	} | null;
 }
+export interface NativeEmbeddingMetadata {
+	default_dimensions: number | null;
+	supports_dimensions: boolean;
+	min_dimensions: number | null;
+	max_dimensions: number | null;
+	allowed_dimensions: number[] | null;
+}
+export type NativeMediaRateKey =
+	| 'image_per_unit'
+	| 'audio_per_character'
+	| 'audio_per_second'
+	| 'audio_per_minute'
+	| `${'audio' | 'realtime'}_${'input' | 'output'}_per_${TimeUnit}`
+	| `realtime_session_per_${TimeUnit}`;
+export type NativeMediaTokenRates = {
+	input_per_million?: string;
+	output_per_million?: string;
+	cache_read_per_million?: string;
+};
+export type NativeMediaPricing = Partial<Record<NativeMediaRateKey, string>> & {
+	billing_basis?: BillingBasis;
+	reservation_usd?: string;
+	image_variants?: Record<string, string>;
+	token_rates?: Partial<Record<'image' | 'audio', NativeMediaTokenRates>>;
+};
 export interface NativeCatalogEntry extends NativeCatalogSummary {
 	aliases: string[];
 	kind: ModelKind;
@@ -36,7 +61,8 @@ export interface NativeCatalogEntry extends NativeCatalogSummary {
 	output_modalities: string[];
 	capabilities: ModelCapabilities;
 	token_pricing: NativeTokenPricing | null;
-	media_pricing: MediaPricing | null;
+	media_pricing: NativeMediaPricing | null;
+	embedding?: NativeEmbeddingMetadata | null;
 	notes: string | null;
 }
 export interface NativeCatalog {

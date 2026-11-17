@@ -1671,51 +1671,6 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	if (method === 'GET' && profile === 'admin' && pathname === '/api/v1/admin/events' && params.get('limit') === '5' && [...params.keys()].every(key => key === 'limit')) return state.admin.recentEvents.slice(0, 5);
 	if (method === 'GET' && profile === 'admin' && pathname === '/api/v1/admin/identity/summary') return state.admin.identitySummary;
 
-	if (method === 'GET' && pathname === '/api/v1/chat/models' && params.get('model_kind') === 'embedding') {
-		return [{
-			id: 42,
-			model_name: 'text-embedding-3-small',
-			api_model_name: 'text-embedding-3-small',
-			api_provider: 'openai',
-			provider_id: 7,
-			provider_type: 'openai',
-			model_kind: 'embedding',
-			display_name: 'Text Embedding 3 Small',
-			provider: 'OpenAI',
-			provider_api_key_configured: true,
-			capabilities: { feature_gates: { embeddings: { available: true, mode: 'native', reason_code: null, pricing_available: true } } },
-			context_limit: null,
-			reasoning_none_supported: false,
-		}];
-	}
-	if (method === 'GET' && pathname === '/api/v1/chat/capabilities' && params.get('model_kind') === 'embedding') {
-		return {
-			model_id: Number(params.get('model_id')),
-			model_kind: 'embedding',
-			model_capabilities: { feature_gates: { embeddings: { available: true, mode: 'native', reason_code: null, pricing_available: true } } },
-			default_dimensions: 3,
-			supports_dimensions: true,
-			min_dimensions: 1,
-			max_dimensions: 1536,
-			max_input_tokens: 8191,
-			max_inputs: 16,
-		};
-	}
-	if (method === 'POST' && pathname === '/api/v1/chat/embeddings') {
-		const payload = body as { model_id?: number; input?: string[]; dimensions?: number } | null;
-		const vectors = payload?.input?.map((_, index) => ({
-			index,
-			embedding: Array.from({ length: payload.dimensions ?? 3 }, (_, axis) => axis === index ? 1 : 0),
-		})) ?? [];
-		return {
-			model_id: payload?.model_id ?? 42,
-			model: 'text-embedding-3-small',
-			dimensions: vectors[0]?.embedding.length ?? (payload?.dimensions ?? 3),
-			embeddings: vectors,
-			usage: { prompt_tokens: payload?.input?.reduce((sum, text) => sum + text.length, 0) ?? 0, total_tokens: payload?.input?.reduce((sum, text) => sum + text.length, 0) ?? 0, estimated: true },
-			credited_cost: 0,
-		};
-	}
 	return symbolNoMatch;
 }
 

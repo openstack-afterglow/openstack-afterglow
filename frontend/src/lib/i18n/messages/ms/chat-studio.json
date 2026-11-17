@@ -35,6 +35,8 @@
 	"embeddingStudio.ready": "Laluan pembenaman dan harga sudah sedia.",
 	"embeddingStudio.dimensions": "Dimensi (pilihan)",
 	"embeddingStudio.dimensionHelp": "Nombor bulat: {min}–{max}. Biarkan kosong untuk nilai lalai: {default}.",
+	"embeddingStudio.dimensionAllowedHelp": "Dimensi yang disokong: {values}. Biarkan kosong untuk nilai lalai: {default}.",
+	"embeddingStudio.dimensionChoiceInvalid": "Pilih dimensi yang disokong oleh model ini.",
 	"embeddingStudio.noMaximum": "tiada had atas",
 	"embeddingStudio.providerDefault": "lalai penyedia",
 	"embeddingStudio.tokenLimit": "Token input maksimum: {count}.",

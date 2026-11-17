@@ -35,6 +35,8 @@
 	"embeddingStudio.ready": "嵌入路径和价格已就绪。",
 	"embeddingStudio.dimensions": "维度（可选）",
 	"embeddingStudio.dimensionHelp": "整数范围：{min} 至 {max}。留空使用默认值：{default}。",
+	"embeddingStudio.dimensionAllowedHelp": "支持的维度：{values}。留空使用默认值：{default}。",
+	"embeddingStudio.dimensionChoiceInvalid": "请从列表中选择此模型支持的维度。",
 	"embeddingStudio.noMaximum": "无上限",
 	"embeddingStudio.providerDefault": "提供商默认值",
 	"embeddingStudio.tokenLimit": "最大输入令牌数：{count}。",

@@ -74,10 +74,15 @@
 		if (pending && pending.readyState === FileReader.LOADING) pending.abort();
 		fileReading = false;
 	}
-	function reset() {
+	// Unverified service authority fences in-flight work, but does not revoke settled same-owner state.
+	function suspendRequests() {
 		generation++;
 		modelRequest?.abort(); capabilityRequest?.abort(); cancel(false); stopFileRead();
 		modelRequest = null; capabilityRequest = null;
+		loading = false; checking = false;
+	}
+	function reset() {
+		suspendRequests();
 		models = []; selected = ''; verified = null; questions = [newQuestion()];
 		content = ''; inputType = 'text'; imageDetail = 'auto'; fileData = ''; fileName = '';
 		loading = false; checking = false; loadError = ''; failure = ''; status = ''; result = null; resultQuestions = [];
@@ -90,7 +95,7 @@
 		})),
 		authReady.subscribe((ready) => { if (!ready) untrack(reset); }),
 		projectSwitching.subscribe((switching) => { if (switching) untrack(reset); }),
-		serviceCapabilities.subscribe((grants) => { if (!grants('lumen-chat_user')) untrack(reset); }),
+		serviceCapabilities.subscribe((grants) => { if (!grants('lumen-chat_user')) untrack(suspendRequests); }),
 		serviceDenials.subscribe((denied) => { if (denied('lumen-chat_user')) untrack(reset); })
 	];
 	async function loadModels() {
@@ -131,8 +136,8 @@
 		untrack(() => { if (epoch === generation && owner && enabled && !models.length && !loading && !loadError) void loadModels(); });
 	});
 	$effect(() => {
-		const id = selected, enabled = allowed;
-		untrack(() => { if (enabled && id && verified?.model_id !== Number(id) && !checking && !loadError) void loadCapabilities(Number(id)); });
+		const id = selected, enabled = allowed, epoch = generation;
+		untrack(() => { if (epoch === generation && enabled && id && verified?.model_id !== Number(id) && !checking && !loadError) void loadCapabilities(Number(id)); });
 	});
 	function selectModel(event: Event) {
 		if (!allowed || busy) return;

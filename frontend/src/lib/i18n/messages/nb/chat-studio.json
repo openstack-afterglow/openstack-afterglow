@@ -35,6 +35,8 @@
 	"embeddingStudio.ready": "Innebyggingsruten og prisene er klare.",
 	"embeddingStudio.dimensions": "Dimensjoner (valgfritt)",
 	"embeddingStudio.dimensionHelp": "Heltall: {min}–{max}. La stå tomt for standardverdien: {default}.",
+	"embeddingStudio.dimensionAllowedHelp": "Støttede dimensjoner: {values}. La stå tomt for standardverdien: {default}.",
+	"embeddingStudio.dimensionChoiceInvalid": "Velg en dimensjon som støttes av denne modellen.",
 	"embeddingStudio.noMaximum": "ingen øvre grense",
 	"embeddingStudio.providerDefault": "leverandørens standard",
 	"embeddingStudio.tokenLimit": "Maksimalt antall inndatatokener: {count}.",

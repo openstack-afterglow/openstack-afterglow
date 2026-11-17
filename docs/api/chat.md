@@ -150,6 +150,10 @@ Afterglow 백엔드는 대부분의 `/api/v1/chat/{path}` 요청을 내부 Lumen
 
 기존 `/admin/models/pricing/models-dev/providers`, `/providers/{id}`, `/import`는 BFF에서도404로 거부하며 upstream으로 전달하지 않는다. Native catalog는 읽기 전용이고 변경은 Lumen source의 공식 자료 검토·catalog 갱신 절차를 따른다.
 
+카탈로그 provider 그룹은 처음에 접혀 있으며 ID/표시 이름·모델 종류로 필터링합니다. 펼친 그룹의 현재 페이지만 실제 모델 내용을 렌더링하고, preview/deprecated 상태를 별도 badge로 표시합니다. 기본/장기 문맥 token 단가는 USD/1M token 표에서 입력·출력·캐시 읽기·TTL별 쓰기를 비교하며, 미디어 단가와 embedding 차원도 이름 있는 항목으로 표시합니다. 관리자 화면은 원시 JSON을 노출하지 않습니다.
+
+Embedding Studio는 native capability의 `default_dimensions`, `supports_dimensions`, `min_dimensions`, `max_dimensions`, `allowed_dimensions`를 그대로 사용합니다. 공시 범위는 숫자 입력의 경계가 되고, 명시적인 유한 allowed 목록이 있을 때만 선택 목록으로 제한합니다. 권장 차원 몇 개를 임의의 전체 allowed 목록으로 추정하지 않으며, 입력을 비우면 공급자 기본값을 사용합니다. 차원 metadata가 없으면 사용자 지정 차원을 허용하지 않습니다.
+
 의사결정 요청은 등록 `model` 이름, shared `input`, 1–400개 `questions`를 전송한다. 질문 종류는 predicate, choice(고유 value·설명2–255개), score(label·설명 level2–10개)이며 선택한 name은 요청 안에서 고유해야 한다. Shared 입력은 text, JSON, http(s) 이미지 URL 또는 로컬 이미지 data URL이다. Studio는 로컬 이미지4MiB·직렬화 요청8MiB로 제한하며 JSON은 compact256KiB·깊이32·값10,000개까지 검사한다. Lumen의 raw body 상한은16MiB이며 URL 이미지를 Afterglow/Lumen이 직접 가져오지 않는다. 클라이언트 상한과 서버 검증은 별개이고 서버가 최종 인가·가격·quota를 확인한다.
 
 응답은 predicate 확률, choice와 각 후보 확률·confidence, score와 level 확률 또는 refusal을 표시한다. 실제 `usage`, `cost_usd`와 usage-log identity를 표시하고 output 토큰을 임의 유료 계산하지 않는다. 브라우저는 입력·답을 저장하거나 mutation을 자동 재전송하지 않는다. 튜토리얼 응답·catalog는 합성이며 운영 provider 검증이 아니다.

@@ -35,6 +35,8 @@
 	"embeddingStudio.ready": "এম্বেডিং পথ ও মূল্য প্রস্তুত।",
 	"embeddingStudio.dimensions": "মাত্রা (ঐচ্ছিক)",
 	"embeddingStudio.dimensionHelp": "পূর্ণসংখ্যা: {min}–{max}। ডিফল্ট ব্যবহার করতে খালি রাখুন: {default}।",
+	"embeddingStudio.dimensionAllowedHelp": "সমর্থিত মাত্রা: {values}। ডিফল্ট ব্যবহার করতে খালি রাখুন: {default}।",
+	"embeddingStudio.dimensionChoiceInvalid": "এই মডেলের সমর্থিত মাত্রা তালিকা থেকে বেছে নিন।",
 	"embeddingStudio.noMaximum": "ঊর্ধ্বসীমা নেই",
 	"embeddingStudio.providerDefault": "প্রদানকারীর ডিফল্ট",
 	"embeddingStudio.tokenLimit": "সর্বাধিক ইনপুট টোকেন: {count}।",
