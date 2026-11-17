@@ -76,8 +76,8 @@ export function selectFlowObservations(flows: TopologyFlow[]) {
 /** Layout reads identities only, never rate/status. Controllers are anchors, not transit nodes. */
 export function buildRadialGraph(snapshot: InfrastructureTopologySnapshot, verified: boolean): RadialGraph {
 	const nodes = new Map<string, RadialNode>(), edges: RadialEdge[] = [];
-	const hosts = [...snapshot.hosts].sort((a, b) => naturalId(a.id, b.id));
-	const devices = [...snapshot.fabric.devices].sort((a, b) => naturalId(a.id, b.id));
+	const hosts = snapshot.hosts.toSorted((a, b) => naturalId(a.id, b.id));
+	const devices = snapshot.fabric.devices.toSorted((a, b) => naturalId(a.id, b.id));
 	const ports = new Map(snapshot.fabric.ports.map(port => [port.id, port]));
 	const state = (value: string) => verified ? value : 'stale';
 	const polar = (radius: number, angle: number) => ({ x: radius * Math.cos(angle), y: radius * Math.sin(angle) });
@@ -101,7 +101,7 @@ export function buildRadialGraph(snapshot: InfrastructureTopologySnapshot, verif
 		const port = id ? ports.get(id) : undefined;
 		return value.kind === 'switch' && port?.physical === true && port.device_id === value.id ? port : undefined;
 	};
-	for (const link of [...snapshot.fabric.links].sort((a, b) => naturalId(a.id, b.id))) {
+	for (const link of snapshot.fabric.links.toSorted((a, b) => naturalId(a.id, b.id))) {
 		const sourcePort = physicalPort(link.source, link.source_port_id), targetPort = physicalPort(link.target, link.target_port_id);
 		const source = endpoint(link.source, sourcePort?.id ?? null), target = endpoint(link.target, targetPort?.id ?? null);
 		if (!source || !target || source === target) continue;

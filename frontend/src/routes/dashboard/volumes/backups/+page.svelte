@@ -86,7 +86,7 @@
   { key: 'incremental', label: t('backupListTable.incremental'), value: row => row.is_incremental },
   { key: 'created', label: t('backupListTable.createdAt'), value: row => row.created_at },
  ]);
- const view = createTableView({ locale: intlLocale, rows: () => [...backups.filter(backup => backup.volume_id === selectedVolumeId)].sort((a, b) => (Date.parse(b.created_at ?? '') || 0) - (Date.parse(a.created_at ?? '') || 0)), columns: () => columns });
+ const view = createTableView({ locale: intlLocale, rows: () => backups.filter(backup => backup.volume_id === selectedVolumeId).toSorted((a, b) => (Date.parse(b.created_at ?? '') || 0) - (Date.parse(a.created_at ?? '') || 0)), columns: () => columns });
  const selectableIds = $derived(new Set(view.rows.map((backup) => backup.id)));
 
 	async function fetchBackups(force = false) {

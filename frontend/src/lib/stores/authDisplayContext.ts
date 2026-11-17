@@ -8,7 +8,7 @@ let generation = 0;
 /** Display ownership is a logical login/scope, not a rotating access credential. */
 export const authDisplayContext = derived([auth, authReady, projectSwitching], ([state, ready, switching]) => {
 	const key = JSON.stringify([sessionScopeKey(state), !!state.token, ready, switching,
-		state.isSystemAdmin, state.isDomainManager, state.canWrite, [...(state.roles ?? [])].sort()]);
+		state.isSystemAdmin, state.isDomainManager, state.canWrite, (state.roles ?? []).toSorted()]);
 	if (key !== previousKey) {
 		previousKey = key;
 		generation += 1;

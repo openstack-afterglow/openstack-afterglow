@@ -1017,7 +1017,7 @@
 		const params = new URLSearchParams();
 		if (append && tempRunHistoryAfter) params.set('run_after', tempRunHistoryAfter);
 		if (append && tempRunHistoryRevision) params.set('run_revision', tempRunHistoryRevision);
-		const selectedRun = append ? [...tempMessages].reverse().find((message) => message.execution?.run_id)?.execution?.run_id : null;
+		const selectedRun = append ? tempMessages.findLast((message) => message.execution?.run_id)?.execution?.run_id : null;
 		if (selectedRun) params.set('run_include', selectedRun);
 		tempRunHistoryLoading = true;
 		try {

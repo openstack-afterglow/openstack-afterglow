@@ -35,7 +35,7 @@ function clearSnapshots() {
 export function invalidateWorkspaceDisplaySnapshots(): void { clearSnapshots(); }
 function displayOwner(state: AuthState, baseUrl = getBaseUrl()): string {
 	return state.token && state.userId && state.identityDomainId
-		? JSON.stringify([baseUrl, sessionScopeKey(state), state.isSystemAdmin, state.isDomainManager, state.canCreateDomain, state.canWrite, state.federated, [...(state.roles ?? [])].sort(), (state.availableDomains ?? []).map(row => [row.id, row.name, row.kind]).sort()]) : '';
+		? JSON.stringify([baseUrl, sessionScopeKey(state), state.isSystemAdmin, state.isDomainManager, state.canCreateDomain, state.canWrite, state.federated, (state.roles ?? []).toSorted(), (state.availableDomains ?? []).map(row => [row.id, row.name, row.kind]).sort()]) : '';
 }
 function validDomain(row: AvailableDomain): boolean {
 	return !!row && typeof row.id === 'string' && !!row.id && typeof row.name === 'string' && (row.kind === undefined || ['personal', 'organization', 'legacy'].includes(row.kind));

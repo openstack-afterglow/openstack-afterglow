@@ -13,7 +13,7 @@ const CREATED_AT = '2026-11-08T00:00:00Z';
 export function mockAdminAnnouncements(method: string, path: string, body: unknown): unknown | undefined {
 	const state = getMockupState();
 	if (path === '/api/v1/admin/announcements/meta/options' && method === 'GET') return { severities: SEVERITIES, target_types: TARGET_TYPES };
-	if (path === '/api/v1/admin/announcements' && method === 'GET') return [...state.adminAnnouncements].sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id - a.id);
+	if (path === '/api/v1/admin/announcements' && method === 'GET') return state.adminAnnouncements.toSorted((a, b) => b.created_at.localeCompare(a.created_at) || b.id - a.id);
 	if (path === '/api/v1/admin/announcements' && method === 'POST') {
 		const payload = (body ?? {}) as Partial<AnnouncementCreatePayload>;
 		const title = String(payload.title ?? '').trim();

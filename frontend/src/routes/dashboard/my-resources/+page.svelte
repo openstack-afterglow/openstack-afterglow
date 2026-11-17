@@ -78,7 +78,7 @@
 		const state = get(auth);
 		const switching = get(projectSwitching);
 		const next = ownerKey(state, switching);
-		const nextTableOwner = JSON.stringify([state.sessionId, state.userId, state.identityDomainId, state.domainId, state.projectId, !!state.token, switching, state.isSystemAdmin, state.isDomainManager, state.canWrite, [...(state.roles ?? [])].sort()]);
+		const nextTableOwner = JSON.stringify([state.sessionId, state.userId, state.identityDomainId, state.domainId, state.projectId, !!state.token, switching, state.isSystemAdmin, state.isDomainManager, state.canWrite, (state.roles ?? []).toSorted()]);
 		if (nextTableOwner !== tableOwner) {
 			tableOwner = nextTableOwner;
 			projectTableSearch = '';

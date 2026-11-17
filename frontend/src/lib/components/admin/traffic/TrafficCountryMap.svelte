@@ -15,8 +15,8 @@
 	let hovered = $state<string | null>(null);
 	let mapWidth = $state(720);
 	const byCountry = $derived(Object.fromEntries(countries.map(row => [row.country, row])));
-	const ranking = $derived([...countries].sort((a, b) => b.requests - a.requests || a.country.localeCompare(b.country)));
-	const networkRanking = $derived([...networks].sort((a, b) => b.requests - a.requests || a.network.localeCompare(b.network) || a.basis.localeCompare(b.basis) || a.kind.localeCompare(b.kind)));
+	const ranking = $derived(countries.toSorted((a, b) => b.requests - a.requests || a.country.localeCompare(b.country)));
+	const networkRanking = $derived(networks.toSorted((a, b) => b.requests - a.requests || a.network.localeCompare(b.network) || a.basis.localeCompare(b.basis) || a.kind.localeCompare(b.kind)));
 	const options = $derived([...new Set([...trafficGeography.features.map(feature => feature.properties.country).filter((code): code is string => typeof code === 'string'), ...countries.map(row => row.country)])].sort((a, b) => trafficCountryName(a).localeCompare(trafficCountryName(b))));
 	const detailMetrics = ['success', 'errors', 'unique_visitors', 'visitor_identity_known', 'request_bytes', 'response_bytes', 'latency_ms_max'] as const;
 	const max = $derived(Math.max(0, ...countries.filter(row => row.country !== 'XX').map(row => row.requests)));

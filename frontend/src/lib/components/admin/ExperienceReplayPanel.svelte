@@ -62,7 +62,7 @@
 	function syncOwner() {
 		const state = get(auth);
 		const key = JSON.stringify([getBaseUrl(), state.sessionId, state.userId, state.identityDomainId, state.domainId, state.projectId,
-			!!state.token, state.isSystemAdmin, state.isDomainManager, state.canWrite, [...(state.roles ?? [])].sort(),
+			!!state.token, state.isSystemAdmin, state.isDomainManager, state.canWrite, (state.roles ?? []).toSorted(),
 			get(authReady), get(logoutInProgress), get(projectSwitching), get(adminInventoryScope)]);
 		if (owner !== undefined && owner !== key) invalidate(true);
 		owner = key;

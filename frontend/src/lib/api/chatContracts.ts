@@ -392,7 +392,7 @@ export function parseChatPartsForDisplay(value: unknown): DisplayChatPart[] {
 
 function exact(source: Record<string, unknown>, keys: readonly string[], label: string): void {
 	const actual = Object.keys(source).sort();
-	const expected = [...keys].sort();
+	const expected = keys.toSorted();
 	if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
 		throw new ChatContractError(`${label} contains unknown or missing fields`);
 	}

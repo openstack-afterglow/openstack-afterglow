@@ -262,7 +262,7 @@
 	const dailyAvg = $derived(data ? Math.round(data.stats.instance_hours / days) : 0);
 
 	const sortedFlavors = $derived(
-		data ? [...data.flavor_hours].sort((a, b) => b.usage_hours - a.usage_hours) : [],
+		data ? data.flavor_hours.toSorted((a, b) => b.usage_hours - a.usage_hours) : [],
 	);
 
 	const attention = $derived.by((): string[] => {

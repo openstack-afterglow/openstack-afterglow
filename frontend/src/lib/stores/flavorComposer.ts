@@ -125,7 +125,7 @@ export function createFlavorComposer(
 			writes.delete(key); writeTuples.delete(key); writeOperations.delete(key);
 		}
 		const writeAllowed = surface.admin ? actor.isSystemAdmin : (actor.canWrite ?? get(canWrite));
-		const nextIdentity = JSON.stringify([actor.sessionId, actor.userId, actor.identityDomainId, actor.domainId, actor.projectId, actor.isSystemAdmin, writeAllowed, [...actor.roles].sort(), Boolean(actor.token), surface.admin, target]);
+		const nextIdentity = JSON.stringify([actor.sessionId, actor.userId, actor.identityDomainId, actor.domainId, actor.projectId, actor.isSystemAdmin, writeAllowed, actor.roles.toSorted(), Boolean(actor.token), surface.admin, target]);
 		const previousSelectionScopeChanged = resize ? false : claimResourceSelectionScope(nextIdentity);
 		const ready = Boolean(actor.token && key && get(authReady) && !get(logoutInProgress) && !get(projectSwitching) && (!surface.admin || actor.isSystemAdmin));
 		const changed = nextIdentity !== identity;

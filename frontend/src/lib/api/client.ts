@@ -556,7 +556,7 @@ let logicalReadEpoch = 0;
 let logicalReadOwner = '';
 auth.subscribe((state) => {
 	const owner = JSON.stringify([!!state.token, sessionScopeKey(state), state.isSystemAdmin,
-		state.isDomainManager, state.canWrite, [...(state.roles ?? [])].sort()]);
+		state.isDomainManager, state.canWrite, (state.roles ?? []).toSorted()]);
 	if (owner !== logicalReadOwner) {
 		logicalReadOwner = owner;
 		logicalReadEpoch += 1;

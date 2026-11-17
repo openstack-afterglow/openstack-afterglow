@@ -25,7 +25,7 @@
 	const labeled = $derived.by(() => {
 		const boxes = visibleNodes.map(node => { const p = positions.get(node.id)!; return { x: p.x - 24, y: p.y - 24, w: 48, h: 48 }; });
 		const names = new Set<string>();
-		const ordered = [...visibleNodes].sort((a, b) => Number(selection?.kind === 'node' && selection.id === b.id) - Number(selection?.kind === 'node' && selection.id === a.id));
+		const ordered = visibleNodes.toSorted((a, b) => Number(selection?.kind === 'node' && selection.id === b.id) - Number(selection?.kind === 'node' && selection.id === a.id));
 		for (const node of ordered) {
 			const p = positions.get(node.id)!, w = node.kind === 'port' ? 96 : 130;
 			const box = { x: p.x - w / 2, y: p.y + 27, w, h: 32 };

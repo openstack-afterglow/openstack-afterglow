@@ -2,7 +2,7 @@ import type { RunActivityItem } from '$lib/api/chatRunReducer';
 
 /** Retain factual model lifecycle steps as well as tool/reasoning activity. */
 export function visibleActivityItems(items: RunActivityItem[], _active: boolean): RunActivityItem[] {
-	return [...items].sort((a, b) => a.seq - b.seq).filter((item) =>
+	return items.toSorted((a, b) => a.seq - b.seq).filter((item) =>
 		item.kind !== 'stage' || item.stage !== 'tool_execution' || item.toolName === null ||
 		!items.some((candidate) => candidate.kind === 'tool' && candidate.name === item.toolName && candidate.seq > item.seq)
 	);

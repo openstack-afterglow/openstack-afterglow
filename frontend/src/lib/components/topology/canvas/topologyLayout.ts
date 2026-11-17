@@ -192,7 +192,7 @@ export function autoLayout(graph: CanvasGraph): LayoutResult {
 	// (루트를 임의로 고르면 망 이름 하나로 전체가 재적층된다) 맨 아래 한 행으로 두고 내부 계층을 만들지 않는다.
 	// 행 목록은 graph.nets / sortedRouters 를 **필터**해서 만든다 — depth Map 의 삽입 순서는 입력 배열 순서에
 	// 의존하므로 Map 순회로 행을 만들면 결정론이 깨진다.
-	const sortedRouters = [...routers].sort(byName);
+	const sortedRouters = routers.toSorted(byName);
 	const rowSpecs: Array<{ key: number | null; nets: CanvasNet[]; routers: RouterNode[] }> = [];
 	for (let d = 1; d <= maxBand; d++) {
 		const nets = chainOrder(tenantNets.filter((n) => depth.get(n.id) === d));
@@ -474,7 +474,7 @@ export function autoLayout(graph: CanvasGraph): LayoutResult {
 		for (const p of pos.values()) placedRight = Math.max(placedRight, p.x + p.w);
 		const parkX = placedRight + L.ZONE_GAP * 2;
 		let py = L.PROV_Y;
-		for (const id of [...parked].sort((a, b) => nameOf(a).localeCompare(nameOf(b)) || a.localeCompare(b))) {
+		for (const id of parked.toSorted((a, b) => nameOf(a).localeCompare(nameOf(b)) || a.localeCompare(b))) {
 			setPos(id, parkX, py); domOrder.push(id);
 			py += (pos.get(id)?.h ?? 0) + L.ROW_GAP;
 		}
@@ -651,7 +651,7 @@ export function resolveManualOverlap(pos: Map<string, Rect>, movableIds: readonl
 	if (!Number.isFinite(box.minX)) { box.minX = box.minY = box.maxX = box.maxY = 0; }
 
 	const moves: ManualPositions = {};
-	for (const id of [...movableIds].sort()) {
+	for (const id of movableIds.toSorted()) {
 		const p = pos.get(id);
 		if (!p) continue;
 		const free = (x: number, y: number): boolean => {
@@ -782,7 +782,7 @@ export function stableOrder<T>(prevKeys: readonly string[] | undefined, items: r
 		}
 		arr.push(...[...byKey.values()].sort(sortFresh));
 	} else {
-		arr = [...items].sort(sortFresh);
+		arr = items.toSorted(sortFresh);
 	}
 	let swapped = true;
 	while (swapped) {

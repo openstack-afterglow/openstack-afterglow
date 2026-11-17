@@ -103,7 +103,7 @@ export type CollapsedHop = { kind: 'hop'; hop: TraceResult['hops'][number] } | {
 /** Gaps remain trace-local; they are not inferred routers or fault locations. */
 export function collapseHops(hops: TraceResult['hops']): CollapsedHop[] {
 	const items: CollapsedHop[] = [];
-	for (const hop of [...hops].sort((a, b) => a.hop - b.hop)) {
+	for (const hop of hops.toSorted((a, b) => a.hop - b.hop)) {
 		const previous = items.at(-1);
 		if (hop.ip !== null) items.push({ kind: 'hop', hop });
 		else if (previous?.kind === 'gap' && previous.to + 1 === hop.hop) { previous.to = hop.hop; previous.count += 1; }
@@ -150,7 +150,7 @@ export interface NetworkMapGraph {
 export function buildNetworkMap(hosts: TopologyHost[], verified: boolean): NetworkMapGraph {
 	const compare = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
 	const roles = ['compute', 'controller', 'storage'];
-	const orderedHosts = [...hosts].sort((a, b) => roles.indexOf(a.role) - roles.indexOf(b.role) || compare(a.name, b.name) || compare(a.id, b.id));
+	const orderedHosts = hosts.toSorted((a, b) => roles.indexOf(a.role) - roles.indexOf(b.role) || compare(a.name, b.name) || compare(a.id, b.id));
 	const paths: NetworkPath[] = [];
 	for (const host of orderedHosts) {
 		const targets = new Map<string, TopologyTrace[]>();
@@ -169,7 +169,7 @@ export function buildNetworkMap(hosts: TopologyHost[], verified: boolean): Netwo
 					status: trace.result?.status ?? trace.status, error: trace.result?.error ?? null,
 					stale: !verified || host.observation_state !== 'fresh' || trace.status === 'expired',
 					reached: trace.result?.reached ?? false,
-					hops: [...(trace.result?.hops ?? [])].sort((a, b) => a.hop - b.hop), nodeIds: [] });
+					hops: (trace.result?.hops ?? []).toSorted((a, b) => a.hop - b.hop), nodeIds: [] });
 			}
 		}
 	}

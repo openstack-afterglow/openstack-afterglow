@@ -116,7 +116,7 @@ export function createImageCatalog<T extends ImageInfo>(source: () => T[], canon
   ]);
   const newest = $derived.by(() => {
     const times = new Map(source().map(image => [image.id, imageUploadInstant(image)]));
-    return [...source()].sort((a, b) => compareUploadOrder(a, b, times));
+    return source().toSorted((a, b) => compareUploadOrder(a, b, times));
   });
   const view = createTableView<T>({ rows: () => newest, columns: () => columns, search: () => state.searchQuery, searchable: imageReferenceSearchFields, locale: intlLocale, state: state.view });
   const currentImages = $derived(currentImagesByReference(canonicalSource()));
@@ -129,7 +129,7 @@ export function createImageCatalog<T extends ImageInfo>(source: () => T[], canon
     let uploads = images;
     if (sorting) {
       const times = new Map(images.map(image => [image.id, imageUploadInstant(image)]));
-      uploads = [...images].sort((a, b) => compareUploadOrder(a, b, times));
+      uploads = images.toSorted((a, b) => compareUploadOrder(a, b, times));
     }
     for (const image of uploads) {
       const repository = imageReferenceParts(image).repository;

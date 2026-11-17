@@ -26,7 +26,7 @@
   import { intlLocale } from '$lib/i18n/runtime.svelte';
   import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
   import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
-  const inventoryOwner = $derived(JSON.stringify([$auth.sessionId, $auth.userId, $auth.identityDomainId, $auth.domainId, $auth.projectId, !!$auth.token, $auth.isSystemAdmin, $auth.isDomainManager, $auth.canWrite, [...($auth.roles ?? [])].sort()]));
+  const inventoryOwner = $derived(JSON.stringify([$auth.sessionId, $auth.userId, $auth.identityDomainId, $auth.domainId, $auth.projectId, !!$auth.token, $auth.isSystemAdmin, $auth.isDomainManager, $auth.canWrite, ($auth.roles ?? []).toSorted()]));
   let loadGeneration = 0;
   let containers = $state<ZunContainer[]>([]);
   let search = $state('');

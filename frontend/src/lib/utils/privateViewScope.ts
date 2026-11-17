@@ -19,14 +19,14 @@ export function createPrivateViewScope() {
 				authority = undefined;
 			}
 			if (!get(authReady)) return;
-			const nextAuthority = JSON.stringify([state.isSystemAdmin, state.isDomainManager, state.canWrite, [...(state.roles ?? [])].sort()]);
+			const nextAuthority = JSON.stringify([state.isSystemAdmin, state.isDomainManager, state.canWrite, (state.roles ?? []).toSorted()]);
 			if (authority !== undefined && nextAuthority !== authority) set(++revision);
 			authority = nextAuthority;
 		});
 		const stopReady = authReady.subscribe((ready) => {
 			if (!ready) return;
 			const state = get(auth);
-			const next = JSON.stringify([state.isSystemAdmin, state.isDomainManager, state.canWrite, [...(state.roles ?? [])].sort()]);
+			const next = JSON.stringify([state.isSystemAdmin, state.isDomainManager, state.canWrite, (state.roles ?? []).toSorted()]);
 			if (authority !== undefined && next !== authority) set(++revision);
 			authority = next;
 		});

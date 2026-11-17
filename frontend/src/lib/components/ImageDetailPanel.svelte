@@ -38,7 +38,7 @@
 	$effect(() => {
 		// Reads/mutations still retire on bearer rotation; only nonsecret table choices survive the same logical owner.
 		const current = { imageId, token: $auth.token, projectId: $auth.projectId, isAdmin };
-		const owner = JSON.stringify([imageId, isAdmin, $auth.sessionId, $auth.userId, $auth.identityDomainId, $auth.domainId, $auth.projectId, !!$auth.token, $auth.isSystemAdmin, $auth.isDomainManager, $auth.canWrite, [...($auth.roles ?? [])].sort()]);
+		const owner = JSON.stringify([imageId, isAdmin, $auth.sessionId, $auth.userId, $auth.identityDomainId, $auth.domainId, $auth.projectId, !!$auth.token, $auth.isSystemAdmin, $auth.isDomainManager, $auth.canWrite, ($auth.roles ?? []).toSorted()]);
 		untrack(() => {
 			s.reset(owner === tableOwner);
 			tableOwner = owner;

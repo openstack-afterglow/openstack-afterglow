@@ -797,7 +797,7 @@
 				api.get<Model[]>('/api/v1/chat/admin/models', requestToken, requestProjectId)
 			]);
 			if (generation !== loadGeneration || requestToken !== token || requestProjectId !== projectId || destroyed) return;
-			providers = [...ps].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id - b.id);
+			providers = ps.toSorted((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id - b.id);
 			if (mProviderId === '' && ps.length === 1) mProviderId = ps[0].id;
 			models = sortModels(ms);
 			rememberModelOrders(models);
@@ -973,7 +973,7 @@
 
 	function sortModels(rows: Model[]): Model[] {
 		const providerRanks = new Map(providers.map((provider) => [provider.id, provider.sort_order ?? 0]));
-		return [...rows].sort((a, b) =>
+		return rows.toSorted((a, b) =>
 			(providerRanks.get(a.provider_id) ?? 0) - (providerRanks.get(b.provider_id) ?? 0)
 			|| a.provider_id - b.provider_id || (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id - b.id);
 	}

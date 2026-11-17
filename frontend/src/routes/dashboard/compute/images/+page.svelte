@@ -22,7 +22,7 @@
   import { partitionBulkIds } from '$lib/utils/bulkActions';
   import { Alert, BulkSelectionOverlay, Button, EmptyState, PageHeader, PageShell, ResourceToolbar, SelectionToolbar } from '$lib/components/ui';
 
-  const viewOwner = $derived(JSON.stringify([$auth.sessionId, $auth.userId, $auth.identityDomainId, $auth.domainId, $auth.projectId, !!$auth.token, $auth.isSystemAdmin, $auth.isDomainManager, $auth.canWrite, [...($auth.roles ?? [])].sort()]));
+  const viewOwner = $derived(JSON.stringify([$auth.sessionId, $auth.userId, $auth.identityDomainId, $auth.domainId, $auth.projectId, !!$auth.token, $auth.isSystemAdmin, $auth.isDomainManager, $auth.canWrite, ($auth.roles ?? []).toSorted()]));
   const ctrl = createImagesController({
     token: () => $auth.token ?? undefined,
     projectId: () => $auth.projectId ?? undefined,

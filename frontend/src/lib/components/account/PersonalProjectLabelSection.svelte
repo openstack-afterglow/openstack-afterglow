@@ -101,7 +101,7 @@
 		mounted = true; let previous = '';
 		const unsubscribe = derived([auth, authReady, logoutInProgress, projectSwitching], ([state, ready, loggingOut, switching]) =>
 			JSON.stringify([sessionScopeKey(state), state.token, ready, loggingOut, switching, state.isSystemAdmin, state.isDomainManager,
-				state.canWrite, state.canCreateDomain, [...state.roles].sort(), (state.availableDomains ?? []).map(row => [row.id, row.kind]).sort()])
+				state.canWrite, state.canCreateDomain, state.roles.toSorted(), (state.availableDomains ?? []).map(row => [row.id, row.kind]).sort()])
 		).subscribe(next => {
 			if (next === previous) return;
 			previous = next; epoch++; request?.abort(); metadata = null; draft = ''; busy = false; error = ''; saved = false;

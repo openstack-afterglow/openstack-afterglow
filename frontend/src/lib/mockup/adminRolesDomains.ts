@@ -59,7 +59,7 @@ function roleCatalog(): ManagedRole[] {
 			assignable: !retired && name !== 'admin',
 			implied_role_ids: [...row.implied_role_ids].sort(),
 			inherited_role_ids: [...descendants].sort(),
-			parent_role_ids: [...(parents.get(row.id) ?? [])].sort(),
+			parent_role_ids: (parents.get(row.id) ?? []).toSorted(),
 		};
 	});
 }
@@ -119,7 +119,7 @@ function publicDomain(row: MockAdminDomain): AdminDomain {
 
 // domains.list_domains sorts by display name, then id.
 function listDomains(): { items: AdminDomain[] } {
-	const rows = [...getMockupState().adminDomains].sort((a, b) => (a.name === b.name ? (a.id < b.id ? -1 : 1) : a.name < b.name ? -1 : 1));
+	const rows = getMockupState().adminDomains.toSorted((a, b) => (a.name === b.name ? (a.id < b.id ? -1 : 1) : a.name < b.name ? -1 : 1));
 	return { items: rows.map(publicDomain) };
 }
 

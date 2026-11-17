@@ -14,7 +14,7 @@ interface Event { operation_id: string; sequence: number; phase: string; message
 function ownerKey() {
 	const state = get(auth);
 	return JSON.stringify([getBaseUrl(), state.sessionId, state.userId, state.identityDomainId, state.domainId, state.projectId,
-		state.isSystemAdmin, state.isDomainManager, state.canWrite, [...state.roles].sort()]);
+		state.isSystemAdmin, state.isDomainManager, state.canWrite, state.roles.toSorted()]);
 }
 function available() {
 	const authority = get(observedProjectPermissions);

@@ -24,7 +24,7 @@ export function createEmailOwner(reset: () => void, admin = true) {
 		const changed = () => {
 			const state = get(auth);
 			const next = JSON.stringify([sessionScopeKey(state), !!state.token, state.isSystemAdmin,
-				[...state.roles].sort(), get(authReady), get(logoutInProgress), get(projectSwitching)]);
+				state.roles.toSorted(), get(authReady), get(logoutInProgress), get(projectSwitching)]);
 			if (next === previous) return;
 			previous = next; epoch++; reset();
 		};

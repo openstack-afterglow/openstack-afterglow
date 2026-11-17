@@ -2226,9 +2226,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "7ad167fd81d955b70cab825628af712bba6562baa56b6619e17a8ae019b54e2d",
-  "reviewed_at": "2026-11-17T03:45:24Z",
-  "summary": "Correct the Palimpsest stuck-delete receipt and record gate result"
+  "source_sha256": "8a67bd6622880ddeaf73ce6fd0414651c2f58043f814d3f9a2ba1d37801678cf",
+  "reviewed_at": "2026-11-17T03:58:02Z",
+  "summary": "Modernize array copies (toSorted/findLast), request deadline (AbortSignal.timeout) and error cause; no behavior change"
 }
 ```
 <!-- architecture-review:end -->

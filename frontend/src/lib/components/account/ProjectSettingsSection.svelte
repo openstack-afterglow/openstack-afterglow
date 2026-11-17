@@ -51,7 +51,7 @@
 	let membersError = $state('');
 	let managingUserId = $state<string | null>(null);
 	let search = $state('');
-	const defaultMembers = $derived(members.slice().sort((a, b) => (a.source === 'group' ? 1 : 0) - (b.source === 'group' ? 1 : 0)));
+	const defaultMembers = $derived(members.toSorted((a, b) => (a.source === 'group' ? 1 : 0) - (b.source === 'group' ? 1 : 0)));
 	const view = createTableView<ProjectAccessMember>({
 		locale: () => intlLocale(),
 		rows: () => defaultMembers,

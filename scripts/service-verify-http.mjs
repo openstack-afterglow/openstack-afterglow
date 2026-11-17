@@ -61,7 +61,7 @@ export async function withCleanup(work, cleanup) {
 	let result;
 	try { result = await work(); } catch (error) { failure = error; }
 	try { await cleanup(); } catch (error) {
-		throw new Error(`${failure ? `${failure.message}; ` : ''}cleanup failed: ${error.message}`);
+		throw new Error(`${failure ? `${failure.message}; ` : ''}cleanup failed: ${error.message}`, { cause: error });
 	}
 	if (failure) throw failure;
 	return result;

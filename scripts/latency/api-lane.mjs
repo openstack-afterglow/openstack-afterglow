@@ -19,11 +19,9 @@ export function classifyFetchError(error) {
  */
 export async function timedRequest(url, { method = 'GET', headers = {}, body, timeoutMs = 30000, parseJson = false } = {}) {
 	assertMethodAllowed(method, new URL(url).pathname);
-	const controller = new AbortController();
-	const timer = setTimeout(() => controller.abort(), timeoutMs);
 	const started = performance.now();
 	try {
-		const response = await fetch(url, { method, headers, body, redirect: 'manual', signal: controller.signal });
+		const response = await fetch(url, { method, headers, body, redirect: 'manual', signal: AbortSignal.timeout(timeoutMs) });
 		const ttfbMs = performance.now() - started;
 		const contentType = response.headers.get('content-type') ?? '';
 		const serverTiming = response.headers.get('server-timing') ?? '';
@@ -46,8 +44,6 @@ export async function timedRequest(url, { method = 'GET', headers = {}, body, ti
 		return result;
 	} catch (error) {
 		return { status: null, kind: 'failed', ttfbMs: null, totalMs: performance.now() - started, bytes: 0, error: classifyFetchError(error) };
-	} finally {
-		clearTimeout(timer);
 	}
 }
 

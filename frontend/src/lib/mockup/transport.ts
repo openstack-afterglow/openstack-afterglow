@@ -220,8 +220,7 @@ function dashboardOverviewSummary(recentLimit: string | null): Record<string, un
 	const state = getMockupState();
 	const parsedLimit = Number.parseInt(recentLimit ?? '', 10);
 	const limit = Number.isInteger(parsedLimit) ? Math.min(Math.max(parsedLimit, 5), 12) : 5;
-	const instances = [...state.instances]
-		.sort((a, b) => {
+	const instances = state.instances.toSorted((a, b) => {
 			const aTime = a.created_at ? Date.parse(a.created_at) : Number.NaN;
 			const bTime = b.created_at ? Date.parse(b.created_at) : Number.NaN;
 			const aValid = Number.isFinite(aTime);
