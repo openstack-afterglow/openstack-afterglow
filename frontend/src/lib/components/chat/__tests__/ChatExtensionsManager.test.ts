@@ -56,7 +56,7 @@ describe('ChatExtensionsManager MCP OAuth', () => {
 		mocks.get.mockImplementation((path: string) => {
 			if (path.includes('/mcp-settings?')) return Promise.resolve({
 				entries: [], total: 0, offset: 0, limit: 12, next_offset: null,
-				domain_id: 'domain-1', can_manage_domain: false, custom_connections: []
+				domain_id: 'domain-1', organization_available: true, can_manage_domain: false, custom_connections: []
 			});
 			if (path.includes('/domains/domain-1/mcp-connections?')) return Promise.resolve({
 				connections: [], total: 0, next_offset: null

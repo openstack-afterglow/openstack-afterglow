@@ -35,6 +35,23 @@ describe('independent Lumen admission', () => {
 		expect(chatRequestPermission({ features, agent_id: 7 }, only('lumen-chat_user'))).toBe('lumen-tools_user');
 		expect(chatRequestPermission({ features, skill_ids: [7] }, only('lumen-chat_user'))).toBe('lumen-tools_user');
 	});
+	it('clears explicit sandbox tools only during explicit text-only normalization', () => {
+		const features = defaultChatFeatureOptions();
+		features.tool_policy.enabled_sandbox_tools = ['Browser_Navigate'];
+		features.tool_policy.enabled_mcp_ids = [7];
+		expect(chatRequestPermission({ features }, only('lumen-chat_user', 'lumen-tools_user'))).toBeNull();
+		expect(features.tool_policy.enabled_sandbox_tools).toEqual(['Browser_Navigate']);
+		expect(features.tool_policy.enabled_mcp_ids).toEqual([7]);
+		textOnlyToolPolicy(features);
+		expect(features.tool_policy.enabled_sandbox_tools).toEqual([]);
+		expect(features.tool_policy.enabled_mcp_ids).toEqual([]);
+	});
+	it('rejects revoked sandbox tools even when a stale snapshot claims text-only mode', () => {
+		const features = defaultChatFeatureOptions();
+		textOnlyToolPolicy(features);
+		features.tool_policy.enabled_sandbox_tools = ['Browser_Navigate'];
+		expect(chatRequestPermission({ features }, only('lumen-chat_user'))).toBe('lumen-tools_user');
+	});
 	it('checks saved image generation payloads after a downgrade, before dispatch', async () => {
 		grantLumen('lumen-chat_user');
 		const features = defaultChatFeatureOptions();

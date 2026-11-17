@@ -44,6 +44,7 @@ interface TutorialMcpConnection {
 	implicit_selection: boolean;
 	state: string;
 	template_key: string | null;
+	connection_label: string | null;
 	url: string;
 }
 interface TutorialMcpEntry {
@@ -65,6 +66,7 @@ interface TutorialMcpSettings {
 	next_offset: number | null;
 	domain_id: string;
 	can_manage_domain: boolean;
+	organization_available: boolean;
 	custom_connections: TutorialMcpConnection[];
 }
 interface TutorialMcpCreated { created: boolean; server: TutorialMcpConnection }
@@ -77,10 +79,10 @@ function setMcpTutorialProfile(profile: 'on' | 'admin') {
 	window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
 }
 
-async function mcpRequest<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
+async function mcpRequest<T = unknown>(method: string, path: string, body?: unknown, projectId = 'mock-project-1'): Promise<T> {
 	// Resolve after resetModules: tutorial state belongs to the current transport module.
 	const { maybeMockJson } = await import('./transport');
-	const response = await maybeMockJson<T>(method, `/api/v1/chat${path}`, body, 'mock-token-tutorial-scoped', 'mock-project-1');
+	const response = await maybeMockJson<T>(method, `/api/v1/chat${path}`, body, 'mock-token-tutorial-scoped', projectId);
 	if (typeof response === 'symbol') throw new Error('Expected a tutorial MCP fixture');
 	return response;
 }
@@ -92,7 +94,7 @@ describe('MCP catalog tutorial fixtures', () => {
 		const first = await mcpRequest<TutorialMcpSettings>('GET', '/mcp-settings?offset=0&limit=12');
 		const second = await mcpRequest<TutorialMcpSettings>('GET', `/mcp-settings?offset=${first.next_offset}&limit=12`);
 		const entries = [...first.entries, ...second.entries];
-		expect(first).toMatchObject({ total: 19, offset: 0, limit: 12, next_offset: 12, domain_id: 'mock-domain', can_manage_domain: false });
+		expect(first).toMatchObject({ total: 19, offset: 0, limit: 12, next_offset: 12, domain_id: 'mock-domain', can_manage_domain: false, organization_available: true });
 		expect(second.next_offset).toBeNull();
 		expect(new Set(entries.map(entry => entry.id)).size).toBe(first.total);
 		expect(entries.map(entry => entry.registry_name)).toEqual(entries.map(entry => entry.registry_name).toSorted((a, b) => a.localeCompare(b)));
@@ -137,7 +139,7 @@ describe('MCP catalog tutorial fixtures', () => {
 		const duplicate = await mcpRequest<TutorialMcpCreated>('POST', '/mcp-connections', { template_id: 'mock-reg-github', label: 'Work' });
 		expect(duplicate).toMatchObject({ created: false, server: { id: created.server.id } });
 		const id = created.server.id;
-		expect(created.server).toMatchObject({ is_active: false, activation_is_active: false, activation_config_version: null });
+		expect(created.server).toMatchObject({ is_active: false, activation_is_active: true, activation_config_version: null });
 		const started = await mcpRequest<{ authorization_url: string }>('POST', `/mcp-servers/${id}/oauth/start`, {});
 		expect(await mcpRequest('GET', `/mcp-servers/${id}/oauth`)).toMatchObject({ required: true, connected: false });
 		const callback = new URL(started.authorization_url, window.location.origin);
@@ -148,11 +150,11 @@ describe('MCP catalog tutorial fixtures', () => {
 		vi.resetModules(); // A real local authorization redirect reloads the fixture transport.
 		expect(await mcpRequest('GET', `/mcp-servers/${id}/oauth`)).toMatchObject({ required: true, connected: true });
 		const connected = await mcpRequest<TutorialMcpSettings>('GET', '/mcp-settings?q=github');
-		expect(connected.entries[0]).toMatchObject({ state: 'personal_connected', connections: [{ id, is_active: true, activation_is_active: false, activation_config_version: null }] });
+		expect(connected.entries[0]).toMatchObject({ state: 'personal_connected', connections: [{ id, is_active: true, activation_is_active: true, activation_config_version: null }] });
 		expect(window.location.search).not.toContain('mock_mcp_oauth');
 		expect(sessionStorage.getItem('afterglow.mockup.mcp-oauth')).toBeNull();
 		const changed = await mcpRequest<TutorialMcpConnection>('PATCH', `/mcp-connections/${id}`, { is_active: true });
-		expect(changed).toMatchObject({ config_version: 2, activation_config_version: null, is_active: false, auth_connected: false, state: 'needs_auth' });
+		expect(changed).toMatchObject({ config_version: 2, activation_config_version: null, activation_is_active: true, is_active: false, auth_connected: false, state: 'needs_auth' });
 		await mcpRequest('DELETE', `/mcp-connections/${id}`);
 		expect((await mcpRequest<TutorialMcpSettings>('GET', '/mcp-settings?q=github')).entries[0].connections).toEqual([]);
 		await expect(mcpRequest('GET', `/mcp-servers/${id}/oauth`)).rejects.toMatchObject({ status: 404 });
@@ -163,12 +165,12 @@ describe('MCP catalog tutorial fixtures', () => {
 		const secret = 'tutorial-do-not-store-header-value';
 		await expect(mcpRequest('POST', '/mcp-connections', { template_id: 'mock-reg-brave' })).rejects.toMatchObject({ status: 400 });
 		const personal = await mcpRequest<TutorialMcpCreated>('POST', '/mcp-connections', { template_id: 'mock-reg-brave', headers: { Authorization: secret } });
-		expect(personal.server).toMatchObject({ scope: 'user', has_headers: true, auth_connected: true, is_active: true, activation_is_active: false, activation_config_version: null });
+		expect(personal.server).toMatchObject({ scope: 'user', has_headers: true, auth_connected: true, is_active: true, activation_is_active: true, activation_config_version: null });
 		expect(personal.server).not.toHaveProperty('headers');
 		const updated = await mcpRequest<TutorialMcpConnection>('PATCH', `/mcp-connections/${personal.server.id}`, { headers: { Authorization: 'replacement-secret' } });
-		expect(updated).toMatchObject({ config_version: 2, has_headers: true, is_active: true, activation_config_version: null });
-		expect(await mcpRequest('PATCH', `/mcp-connections/${personal.server.id}`, { is_active: false })).toMatchObject({ config_version: 3, server_is_active: false, is_active: false });
-		expect(await mcpRequest('PATCH', `/mcp-connections/${personal.server.id}`, { is_active: true })).toMatchObject({ config_version: 4, server_is_active: true, is_active: true, activation_config_version: null });
+		expect(updated).toMatchObject({ config_version: 2, has_headers: true, is_active: true, activation_is_active: true, activation_config_version: null });
+		expect(await mcpRequest('PATCH', `/mcp-connections/${personal.server.id}`, { is_active: false })).toMatchObject({ config_version: 3, server_is_active: false, is_active: false, activation_is_active: false, activation_config_version: null });
+		expect(await mcpRequest('PATCH', `/mcp-connections/${personal.server.id}`, { is_active: true })).toMatchObject({ config_version: 4, server_is_active: true, is_active: true, activation_is_active: true, activation_config_version: null });
 		expect(JSON.stringify(await mcpRequest('GET', '/mcp-settings'))).not.toContain(secret);
 		const oauth = await mcpRequest<TutorialMcpCreated>('POST', '/mcp-connections', { template_id: 'mock-reg-github' });
 		await mcpRequest('POST', `/mcp-servers/${oauth.server.id}/oauth/start`);
@@ -179,6 +181,29 @@ describe('MCP catalog tutorial fixtures', () => {
 		expect(localStorage.length).toBe(0);
 		await expect(mcpRequest('POST', '/mcp-connections', { template_id: 'mock-reg-github', owner_user_id: 'foreign' })).rejects.toMatchObject({ status: 400 });
 		await expect(mcpRequest('POST', '/mcp-connections', { template_id: 'mock-reg-fetch', headers: { Authorization: secret } })).rejects.toMatchObject({ status: 400 });
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it('enforces named template headers case-insensitively on personal and organization create and patch', async () => {
+		await expect(mcpRequest('POST', '/mcp-connections', { template_id: 'mock-reg-brave', headers: { 'X-Api-Key': 'wrong-name' } })).rejects.toMatchObject({ status: 400 });
+		const personal = await mcpRequest<TutorialMcpCreated>('POST', '/mcp-connections', { template_id: 'mock-reg-brave', headers: { authorization: 'personal-secret' } });
+		expect(personal.server.template_key).toBe('mock-reg-brave');
+		await expect(mcpRequest('PATCH', `/mcp-connections/${personal.server.id}`, { headers: { Authorization: 'allowed', 'X-Extra-Key': 'not-allowed' } })).rejects.toMatchObject({ status: 400 });
+		expect((await mcpRequest<TutorialMcpConnection[]>('GET', '/mcp-servers')).find(row => row.id === personal.server.id)).toMatchObject({ config_version: 1, has_headers: true, is_active: true });
+		expect(await mcpRequest('PATCH', `/mcp-connections/${personal.server.id}`, { headers: { AUTHORIZATION: 'replacement' } })).toMatchObject({ config_version: 2, has_headers: true });
+		setMcpTutorialProfile('admin');
+		const org = '/domains/mock-domain/mcp-connections';
+		await expect(mcpRequest('POST', org, { template_id: 'mock-reg-stripe', headers: { 'X-Api-Key': 'wrong-name' } })).rejects.toMatchObject({ status: 400 });
+		const shared = await mcpRequest<TutorialMcpCreated>('POST', org, { template_id: 'mock-reg-stripe', headers: { AUTHORIZATION: 'shared-secret' } });
+		expect(shared.server.template_key).toBe('mock-reg-stripe');
+		await expect(mcpRequest('PATCH', `${org}/${shared.server.id}`, { headers: { 'X-Extra-Key': 'wrong-name' } })).rejects.toMatchObject({ status: 400 });
+		expect(await mcpRequest('PATCH', `${org}/${shared.server.id}`, { headers: { authorization: 'shared-replacement' } })).toMatchObject({ config_version: 2, has_headers: true });
+		setMcpTutorialProfile('on');
+		const unhinted = await mcpRequest<TutorialMcpCreated>('POST', '/mcp-connections', { template_id: 'mock-reg-cloudflare', variables: { account: 'tutorial' }, auth_mode: 'admin', headers: { 'X-Custom-Token': 'custom-secret' } });
+		expect(unhinted.server).toMatchObject({ has_headers: true, is_active: true });
+		expect(await mcpRequest('PATCH', `/mcp-connections/${unhinted.server.id}`, { headers: { 'X-Replacement-Key': 'custom-replacement' } })).toMatchObject({ config_version: 2, has_headers: true });
+		await expect(mcpRequest('PATCH', `/mcp-connections/${unhinted.server.id}`, { headers: { 'Invalid Header Name': 'invalid' } })).rejects.toMatchObject({ status: 400 });
+		expect(JSON.stringify(await mcpRequest('GET', '/mcp-settings'))).not.toContain('custom-replacement');
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
@@ -197,7 +222,7 @@ describe('MCP catalog tutorial fixtures', () => {
 			['DELETE', '/mcp-servers/101/oauth', undefined],
 		] as const) await expect(mcpRequest(method, path, body)).rejects.toMatchObject({ status: 403 });
 		await expect(mcpRequest('GET', '/domains/foreign-domain/mcp-connections')).rejects.toMatchObject({ status: 403 });
-		await expect(mcpRequest('PATCH', '/mcp-connections/101', { is_active: false })).rejects.toMatchObject({ status: 404 });
+		await expect(mcpRequest('PATCH', '/mcp-connections/101', { is_active: false })).rejects.toMatchObject({ status: 403 });
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
@@ -253,7 +278,7 @@ describe('MCP catalog tutorial fixtures', () => {
 		expect(all.map(row => row.id)).toEqual(expect.arrayContaining([101, 102, 103, created.server.id, custom.id]));
 		setMcpTutorialProfile('admin');
 		expect((await mcpRequest<TutorialMcpConnection[]>('GET', '/mcp-servers')).map(row => row.id)).not.toContain(created.server.id);
-		await expect(mcpRequest('DELETE', `/mcp-connections/${created.server.id}`)).rejects.toMatchObject({ status: 404 });
+		await expect(mcpRequest('DELETE', `/mcp-connections/${created.server.id}`)).rejects.toMatchObject({ status: 403 });
 		setMcpTutorialProfile('on');
 		await expect(mcpRequest('PATCH', '/mcp-servers/103', { is_active: false })).rejects.toMatchObject({ status: 403 });
 		await expect(mcpRequest('POST', '/mcp-servers', { name: 'Secret custom', url: 'https://custom.example.test/mcp', headers: { Authorization: 'secret' } })).rejects.toMatchObject({ status: 400 });
@@ -277,7 +302,7 @@ describe('MCP catalog tutorial fixtures', () => {
 		const global = await mcpRequest<TutorialMcpConnection[]>('GET', '/admin/mcp-servers');
 		expect(global.every(row => row.scope === 'global' && !row.implicit_selection && row.server_is_active)).toBe(true);
 		expect((await mcpRequest<TutorialMcpConnection[]>('GET', '/mcp-servers')).every(row => !row.is_active)).toBe(true);
-		const brave = global.find(row => row.template_key === 'com.brave/search')!;
+		const brave = global.find(row => row.template_key === 'mock-reg-brave')!;
 		expect(brave).toMatchObject({ has_headers: false, auth_connected: false, state: 'needs_auth' });
 		await mcpRequest('PATCH', `/admin/mcp-servers/${brave.id}`, { headers: { Authorization: 'global-secret' }, load_policy: 'preloaded' });
 		expect(JSON.stringify(await mcpRequest('GET', '/admin/mcp-servers'))).not.toContain('global-secret');
@@ -315,16 +340,42 @@ describe('MCP catalog tutorial fixtures', () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
+	it('matches native labels, connected scope states, personal header restrictions, and exact project ownership', async () => {
+		const organizations = await mcpRequest<TutorialMcpSettings>('GET', '/mcp-settings?state=org_connected');
+		expect(organizations.total).toBe(2);
+		expect(organizations.entries.every(entry => entry.connections.every(row => row.state === 'org_connected' && !row.is_active))).toBe(true);
+		const created = await mcpRequest<TutorialMcpCreated>('POST', '/mcp-connections', { template_id: 'mock-reg-fetch' });
+		expect(created.server.connection_label).toBe('Fetch');
+		expect(await mcpRequest('POST', '/mcp-connections', { template_id: 'mock-reg-fetch', label: null })).toMatchObject({ created: false, server: { id: created.server.id } });
+		for (const label of ['', '   ', 'x'.repeat(101), 'internal\ncontrol']) {
+			await expect(mcpRequest('POST', '/mcp-connections', { template_id: 'mock-reg-fetch', label })).rejects.toMatchObject({ status: 400 });
+		}
+		await expect(mcpRequest('PATCH', `/mcp-connections/${created.server.id}`, { headers: {} })).rejects.toMatchObject({ status: 400 });
+		await expect(mcpRequest('PATCH', `/mcp-connections/${created.server.id}`, { headers: { Authorization: 'not-accepted' } })).rejects.toMatchObject({ status: 400 });
+		const oauth = await mcpRequest<TutorialMcpCreated>('POST', '/mcp-connections', { template_id: 'mock-reg-github' });
+		await expect(mcpRequest('PATCH', `/mcp-connections/${oauth.server.id}`, { headers: { Authorization: 'not-accepted' } })).rejects.toMatchObject({ status: 400 });
+		await mcpRequest('PATCH', `/mcp-connections/${created.server.id}`, { is_active: false });
+		const personal = await mcpRequest<TutorialMcpSettings>('GET', '/mcp-settings?q=fetch&state=personal_connected');
+		expect(personal.entries[0].connections.find(row => row.id === created.server.id)).toMatchObject({ state: 'personal_connected', is_active: false, activation_is_active: false });
+		expect((await mcpRequest<TutorialMcpConnection[]>('GET', '/mcp-servers', undefined, 'mock-project-2')).map(row => row.id)).not.toContain(created.server.id);
+		await expect(mcpRequest('PATCH', `/mcp-connections/${created.server.id}`, { is_active: true }, 'mock-project-2')).rejects.toMatchObject({ status: 403 });
+		const otherProject = await mcpRequest<TutorialMcpCreated>('POST', '/mcp-connections', { template_id: 'mock-reg-fetch' }, 'mock-project-2');
+		expect(otherProject.created).toBe(true);
+		expect(otherProject.server.id).not.toBe(created.server.id);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
 	it('validates configurable templates and owner publication while keeping global consent revision-bound', async () => {
 		await expect(mcpRequest('POST', '/mcp-connections', { template_id: 'mock-reg-cloudflare' })).rejects.toMatchObject({ status: 400 });
-		await expect(mcpRequest('POST', '/mcp-connections', { template_id: 'mock-reg-cloudflare', variables: { account: 'bad/path' } })).rejects.toMatchObject({ status: 400 });
+		await expect(mcpRequest('POST', '/mcp-connections', { template_id: 'mock-reg-cloudflare', variables: { account: 'bad/path' }, auth_mode: 'none' })).rejects.toMatchObject({ status: 400 });
+		await expect(mcpRequest('POST', '/mcp-connections', { template_id: 'mock-reg-cloudflare', variables: { account: 'demo-account' } })).rejects.toMatchObject({ status: 400 });
 		await expect(mcpRequest('POST', '/mcp-connections', { template_id: 'unknown-template' })).rejects.toMatchObject({ status: 404 });
 		const configured = await mcpRequest<TutorialMcpCreated>('POST', '/mcp-connections', { template_id: 'mock-reg-cloudflare', variables: { account: 'demo-account' }, auth_mode: 'none' });
-		expect(configured.server).toMatchObject({ url: 'https://demo-account.mcp.example.test/mcp', is_active: true, activation_config_version: null });
+		expect(configured.server).toMatchObject({ url: 'https://demo-account.mcp.example.test/mcp', is_active: true, activation_is_active: true, activation_config_version: null });
 		const disabled = await mcpRequest<TutorialMcpConnection>('PATCH', `/mcp-connections/${configured.server.id}`, { is_active: false });
-		expect(disabled).toMatchObject({ state: 'not_connected', is_active: false, server_is_active: false, config_version: 2 });
+		expect(disabled).toMatchObject({ state: 'personal_connected', is_active: false, server_is_active: false, config_version: 2, activation_is_active: false, activation_config_version: null });
 		const enabled = await mcpRequest<TutorialMcpConnection>('PATCH', `/mcp-connections/${configured.server.id}`, { is_active: true });
-		expect(enabled).toMatchObject({ state: 'personal_connected', is_active: true, server_is_active: true, config_version: 3, activation_config_version: null });
+		expect(enabled).toMatchObject({ state: 'personal_connected', is_active: true, server_is_active: true, config_version: 3, activation_is_active: true, activation_config_version: null });
 		await expect(mcpRequest('PATCH', '/mcp-servers/103/activation', { is_active: true })).rejects.toMatchObject({ status: 400 });
 		await expect(mcpRequest('PATCH', '/mcp-servers/103/activation', { is_active: true, config_version: 0 })).rejects.toMatchObject({ status: 409 });
 		expect(await mcpRequest('PATCH', '/mcp-servers/103/activation', { is_active: true, config_version: 1 })).toMatchObject({ state: 'global_connected', is_active: true, activation_generation: 1 });
@@ -341,7 +392,7 @@ describe('MCP catalog tutorial fixtures', () => {
 		expect(await mcpRequest('GET', `/mcp-servers/${id}/oauth`)).toMatchObject({ connected: true });
 		await mcpRequest('DELETE', `/mcp-servers/${id}/oauth`);
 		expect(await mcpRequest('GET', `/mcp-servers/${id}/oauth`)).toMatchObject({ connected: false });
-		expect((await mcpRequest<TutorialMcpConnection[]>('GET', '/mcp-servers')).find(row => row.id === id)).toMatchObject({ is_active: false, activation_is_active: false, state: 'needs_auth' });
+		expect((await mcpRequest<TutorialMcpConnection[]>('GET', '/mcp-servers')).find(row => row.id === id)).toMatchObject({ is_active: false, activation_is_active: true, activation_config_version: null, state: 'needs_auth' });
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 

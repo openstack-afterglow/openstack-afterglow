@@ -2,6 +2,9 @@
 	import { tick, type Snippet } from 'svelte';
 	import { t } from '$lib/i18n/ns/chat-panel';
 	import { serviceCapabilities } from '$lib/stores/servicePermissions';
+	import { managedSandboxTools, managedSandboxIssueMessage } from '$lib/stores/managedSandboxTools';
+	import { t as mcpT } from '$lib/i18n/ns/mcp-gallery';
+	import ManagedSandboxToolsPicker from './ManagedSandboxToolsPicker.svelte';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import type { CloudToolsCatalogue, ContextState, ModelCapabilities } from '$lib/api/chatContracts';
@@ -116,6 +119,37 @@
 	let fileInput = $state<HTMLInputElement | null>(null);
 	let effortOpen = $state(false);
 	let plusOpen = $state(false);
+	let plusTrigger = $state<HTMLButtonElement | null>(null);
+	let plusMenu = $state<HTMLDivElement | null>(null);
+	let plusPlacement = $state<'above' | 'below'>('above');
+
+	async function enterPlusMenu(event: KeyboardEvent) {
+		if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+		event.preventDefault();
+		plusOpen = true;
+		await tick();
+		const items = plusMenu?.querySelectorAll<HTMLButtonElement>('button:not(:disabled):not([aria-disabled="true"])');
+		(event.key === 'ArrowUp' ? items?.[items.length - 1] : items?.[0])?.focus();
+	}
+
+	function plusMenuKeydown(event: KeyboardEvent) {
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			event.stopPropagation();
+			plusOpen = false;
+			plusTrigger?.focus();
+			return;
+		}
+		if (event.key === 'Tab') { plusOpen = false; return; }
+		if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+		const items = Array.from(plusMenu?.querySelectorAll<HTMLButtonElement>('button:not(:disabled):not([aria-disabled="true"])') ?? []);
+		if (!items.length) return;
+		event.preventDefault();
+		const current = items.indexOf(document.activeElement as HTMLButtonElement);
+		const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+			: (current + (event.key === 'ArrowUp' ? -1 : 1) + items.length) % items.length;
+		items[next].focus();
+	}
 	let contextInfoOpen = $state(false);
 	let dragOver = $state(false);
 	const searchGate = $derived(modelCaps?.feature_gates?.web_search);
@@ -142,7 +176,67 @@
 	);
 	// 스킬은 프롬프트 주입이라 tool_call 없이도 사용 가능.
 	const canUseSkills = $derived($serviceCapabilities('lumen-tools_user') && availableSkills.length > 0);
-	const hasPlus = $derived(canAttach || canUseTools || canUseSkills);
+	// Selected names remain removable even after model support or authority is lost.
+	const hasManagedSelection = $derived($managedSandboxTools.selected.length > 0);
+	const showManagedTools = $derived(
+		($managedSandboxTools.canSelect && Boolean(modelCaps?.tool_call)) ||
+		hasManagedSelection || $managedSandboxTools.issue === 'invalid_saved' || $managedSandboxTools.issue === 'too_many'
+	);
+	const managedSelectionError = $derived.by(() => {
+		const state = $managedSandboxTools;
+		if (state.issue === 'invalid_saved' || state.issue === 'too_many') {
+			return managedSandboxIssueMessage(state.issue);
+		}
+		if (!hasManagedSelection) return null;
+		if (!$serviceCapabilities('lumen-tools_user')) return managedSandboxIssueMessage('permission');
+		if (!modelCaps?.tool_call) return mcpT('selectionModelUnsupported');
+		return state.issue ? managedSandboxIssueMessage(state.issue, state.unavailable) : null;
+	});
+
+	$effect(() => {
+		if (!plusOpen || !plusTrigger || !plusMenu) return;
+		// Selection warnings can change composer height without resizing the viewport.
+		void $managedSandboxTools;
+		void managedSelectionError;
+		const trigger = plusTrigger;
+		const menu = plusMenu;
+		const composer = trigger.closest('.composer');
+		const header = document.querySelector<HTMLElement>('.console-header');
+		const viewport = window.visualViewport;
+		let active = true;
+		const updateBounds = () => {
+			if (!active || !menu.isConnected || !trigger.isConnected) return;
+			const anchor = trigger.getBoundingClientRect();
+			const viewportTop = viewport?.offsetTop ?? 0;
+			const viewportBottom = viewportTop + (viewport?.height ?? window.innerHeight);
+			const topBoundary = Math.max(viewportTop, header?.getBoundingClientRect().bottom ?? 0);
+			const style = getComputedStyle(menu);
+			const above = Math.max(0, anchor.top - topBoundary - (parseFloat(style.marginBottom) || 0));
+			const below = Math.max(0, viewportBottom - anchor.bottom - (parseFloat(style.marginTop) || 0));
+			plusPlacement = below > above ? 'below' : 'above';
+			menu.style.setProperty('--composer-menu-height', `${Math.floor(Math.max(above, below))}px`);
+		};
+		updateBounds();
+		void tick().then(updateBounds);
+		const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateBounds);
+		observer?.observe(trigger);
+		observer?.observe(menu);
+		if (composer) observer?.observe(composer);
+		if (header) observer?.observe(header);
+		window.addEventListener('resize', updateBounds);
+		window.addEventListener('scroll', updateBounds, true);
+		viewport?.addEventListener('resize', updateBounds);
+		viewport?.addEventListener('scroll', updateBounds);
+		return () => {
+			active = false;
+			observer?.disconnect();
+			window.removeEventListener('resize', updateBounds);
+			window.removeEventListener('scroll', updateBounds, true);
+			viewport?.removeEventListener('resize', updateBounds);
+			viewport?.removeEventListener('scroll', updateBounds);
+		};
+	});
+	const hasPlus = $derived(canAttach || canUseTools || canUseSkills || showManagedTools);
 
 	type ComposerQuickAction = {
 		kind: 'quick-action';
@@ -190,8 +284,8 @@
 			id: 'features',
 			name: t('input.toolsAndSkills'),
 			description: t('input.toolsAndSkillsDescription'),
-			disabled: !canUseTools && !canUseSkills,
-			disabledReason: !canUseTools && !canUseSkills ? t('input.toolsAndSkillsUnavailable') : undefined,
+			disabled: !canUseTools && !canUseSkills && !showManagedTools,
+			disabledReason: !canUseTools && !canUseSkills && !showManagedTools ? t('input.toolsAndSkillsUnavailable') : undefined,
 			onSelect: () => (plusOpen = true)
 		}
 	]);
@@ -435,7 +529,7 @@
 		effortOpen = false;
 	}
 
-	const canSend = $derived($serviceCapabilities('lumen-chat_user') && (!searchRequired || $serviceCapabilities('lumen-tools_user')) && !disabled && !sendDisabled && !streaming && value.trim().length > 0);
+	const canSend = $derived($serviceCapabilities('lumen-chat_user') && (!searchRequired || $serviceCapabilities('lumen-tools_user')) && !disabled && !sendDisabled && !streaming && !$managedSandboxTools.preparing && !managedSelectionError && value.trim().length > 0);
 
 	const format = $derived(new Intl.NumberFormat(intlLocale()));
 	const knownContext = $derived(
@@ -629,6 +723,8 @@
 				<div class="plus" title={!hasPlus ? attachmentUnavailableReason : undefined}>
 					<button
 						type="button"
+						bind:this={plusTrigger}
+						onkeydown={enterPlusMenu}
 						class="tool-shell"
 						disabled={!hasPlus || streaming}
 						title={plusTitle}
@@ -641,7 +737,7 @@
 					</button>
 					{#if plusOpen}
 						<div class="scrim" role="button" tabindex="-1" aria-label={t('input.close')} onclick={() => (plusOpen = false)} onkeydown={(e) => e.key === 'Escape' && (plusOpen = false)}></div>
-						<div class="plus-menu" role="menu">
+						<div class="plus-menu" data-placement={plusPlacement} role="menu" tabindex="-1" bind:this={plusMenu} onkeydown={plusMenuKeydown}>
 							{#if canAttach}
 								<button type="button" class="plus-opt" role="menuitem" onclick={() => fileInput?.click()}>
 									<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="2.6" /></svg>
@@ -686,6 +782,10 @@
 										<span class="tool-name truncate">{m.name}</span>
 									</button>
 								{/each}
+							{/if}
+							{#if showManagedTools}
+								{#if canAttach || canUseTools}<div class="plus-sep"></div>{/if}
+								<ManagedSandboxToolsPicker menu />
 							{/if}
 							{#if canUseSkills}
 								{#if canAttach || canUseTools}<div class="plus-sep"></div>{/if}
@@ -803,6 +903,9 @@
 				{/if}
 			</div>
 		</div>
+		{#if managedSelectionError}
+			<p role="alert">{managedSelectionError}</p>
+		{/if}
 	</div>
 	{#if children}
 		<div class="composer-footer">{@render children()}</div>
@@ -1101,18 +1204,24 @@
 	}
 	.plus-menu {
 		position: absolute;
-		bottom: calc(100% + 0.35rem);
+		bottom: 100%;
+		margin-block: 0.35rem;
 		left: 0;
 		z-index: 21;
 		min-width: min(18rem, calc(100vw - 2rem));
 		max-width: min(24rem, calc(100vw - 2rem));
-		max-height: min(28rem, 60dvh);
+		box-sizing: border-box;
+		max-height: min(28rem, var(--composer-menu-height, 60dvh));
 		overflow-y: auto;
 		background: var(--color-surface-raised);
 		border: 1px solid var(--color-line);
 		border-radius: 0.6rem;
 		box-shadow: 0 10px 28px color-mix(in oklab, var(--color-ink-0) 20%, transparent);
 		padding: 0.3rem;
+	}
+	.plus-menu[data-placement='below'] {
+		top: 100%;
+		bottom: auto;
 	}
 	.cloud-tool { cursor: default; }
 	.cloud-tool .plus-opt-description { font-size: 0.75rem; overflow-wrap: anywhere; }

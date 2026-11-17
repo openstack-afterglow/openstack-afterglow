@@ -18,6 +18,7 @@ export function textOnlyToolPolicy(features: ChatFeatureOptions): void {
 	features.tool_policy.mode = 'none';
 	features.tool_policy.enabled_tool_ids = [];
 	features.tool_policy.enabled_mcp_ids = [];
+	features.tool_policy.enabled_sandbox_tools = [];
 	features.web_search.enabled = false;
 	features.web_fetch.enabled = false;
 	features.advisor.enabled = false;
@@ -29,7 +30,7 @@ export function chatRequestPermission(body: unknown, allows: LumenAccess): strin
 	// Attached inputs are existing owned assets, not paid media generation.
 	const request = body as { agent_id?: unknown; skill_ids?: number[]; features?: ChatFeatureOptions } | null;
 	const features = request?.features;
-	if (!allows('lumen-tools_user') && (request?.agent_id != null || request?.skill_ids?.length || features?.web_search.enabled || features?.web_fetch.enabled || features?.advisor.enabled || (features && features.tool_policy.mode !== 'none'))) return 'lumen-tools_user';
+	if (!allows('lumen-tools_user') && (request?.agent_id != null || request?.skill_ids?.length || features?.web_search.enabled || features?.web_fetch.enabled || features?.advisor.enabled || features?.tool_policy.enabled_sandbox_tools?.length || (features && features.tool_policy.mode !== 'none'))) return 'lumen-tools_user';
 	for (const modality of features?.output_modalities ?? []) {
 		const missing = outputPermission([{ type: modality }], allows);
 		if (missing) return missing;

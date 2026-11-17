@@ -1,6 +1,7 @@
 import { grantLumen, pendingLumen } from './lumenPermissionFixture';
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { tick } from 'svelte';
 
 vi.mock('$lib/api/chatAttachments', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('$lib/api/chatAttachments')>();
@@ -553,5 +554,107 @@ describe('ChatInput built-in cloud tools', () => {
 		await view.rerender({ projectId: 'project-1' });
 		grantLumen('lumen-chat_user');
 		await waitFor(() => expect((view.getByRole('button', { name: '추가' }) as HTMLButtonElement).disabled).toBe(true));
+	});
+});
+
+describe('ChatInput bounded tools popup', () => {
+	it('bounds a long menu to measured header/trigger boxes and updates viewport and composer geometry', async () => {
+		const originalRect = HTMLElement.prototype.getBoundingClientRect;
+		const originalObserver = globalThis.ResizeObserver;
+		const viewportDescriptor = Object.getOwnPropertyDescriptor(window, 'visualViewport');
+		const viewport = Object.assign(new EventTarget(), { offsetTop: 0, height: 844 });
+		Object.defineProperty(window, 'visualViewport', { configurable: true, value: viewport });
+		const viewportRemoval = vi.spyOn(viewport, 'removeEventListener');
+		const windowRemoval = vi.spyOn(window, 'removeEventListener');
+		const observers: ObservedResize[] = [];
+		class ObservedResize {
+			targets: Element[] = [];
+			disconnect = vi.fn();
+			constructor(public callback: ResizeObserverCallback) { observers.push(this); }
+			observe(target: Element) { this.targets.push(target); }
+		}
+		vi.stubGlobal('ResizeObserver', ObservedResize);
+		const header = document.createElement('header');
+		header.className = 'console-header';
+		const margins = document.createElement('style');
+		margins.textContent = '.plus-menu { margin-top: 5.6px !important; margin-bottom: 5.6px !important; }';
+		document.body.append(header, margins);
+		let anchor = new DOMRect(16, 452.44, 44, 44);
+		const headerBox = new DOMRect(0, 0, 390, 48);
+		const rects = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+			if (this === header) return headerBox;
+			if (this.matches('.tool-shell[aria-haspopup="menu"]')) return anchor;
+			return originalRect.call(this);
+		});
+		const view = render(ChatInput, {
+			value: '', modelCaps: { tool_call: true },
+			availableTools: Array.from({ length: 40 }, (_, id) => ({ id, name: `Long tool ${id}` })),
+			onSend: vi.fn(), onStop: vi.fn()
+		});
+		try {
+			const trigger = view.getByRole('button', { name: '추가' });
+			await fireEvent.click(trigger);
+			const menu = view.getByRole('menu') as HTMLDivElement;
+			const menuObserver = observers.find(observer => observer.targets.includes(menu))!;
+			expect(menuObserver.targets).toContain(view.container.querySelector('.composer'));
+			expect(menu.dataset.placement).toBe('above');
+			expect(menu.style.getPropertyValue('--composer-menu-height')).toBe('398px');
+			expect(anchor.top - 5.6 - 398).toBeGreaterThanOrEqual(headerBox.bottom);
+			expect(menu.getAttribute('tabindex')).toBe('-1');
+
+			// Below is preferred only when it has more usable space.
+			viewport.height = 600;
+			anchor = new DOMRect(16, 180, 44, 44);
+			window.dispatchEvent(new Event('resize'));
+			await tick();
+			expect(menu.dataset.placement).toBe('below');
+			expect(menu.style.getPropertyValue('--composer-menu-height')).toBe('370px');
+			expect(anchor.bottom + 5.6 + 370).toBeLessThanOrEqual(viewport.height);
+
+			// A warning/selection resize can move the composer without a viewport event.
+			anchor = new DOMRect(16, 380, 44, 44);
+			menuObserver.callback([], menuObserver as unknown as ResizeObserver);
+			await tick();
+			expect(menu.dataset.placement).toBe('above');
+			expect(menu.style.getPropertyValue('--composer-menu-height')).toBe('326px');
+			expect(anchor.top - 5.6 - 326).toBeGreaterThanOrEqual(headerBox.bottom);
+
+			viewport.offsetTop = 100;
+			viewport.height = 400;
+			viewport.dispatchEvent(new Event('scroll'));
+			await tick();
+			expect(menu.style.getPropertyValue('--composer-menu-height')).toBe('274px');
+			expect(anchor.top - 5.6 - 274).toBeGreaterThanOrEqual(viewport.offsetTop);
+			viewport.height = 120;
+			anchor = new DOMRect(16, 120, 44, 44);
+			viewport.dispatchEvent(new Event('resize'));
+			await tick();
+			expect(menu.dataset.placement).toBe('below');
+			expect(menu.style.getPropertyValue('--composer-menu-height')).toBe('50px');
+			expect(anchor.bottom + 5.6 + 50).toBeLessThanOrEqual(viewport.offsetTop + viewport.height);
+
+			await fireEvent.keyDown(menu, { key: 'Escape' });
+			expect(view.queryByRole('menu')).toBeNull();
+			expect(document.activeElement).toBe(trigger);
+			expect(menuObserver.disconnect).toHaveBeenCalledOnce();
+			expect(viewportRemoval).toHaveBeenCalledWith('resize', expect.any(Function));
+			expect(viewportRemoval).toHaveBeenCalledWith('scroll', expect.any(Function));
+			expect(windowRemoval).toHaveBeenCalledWith('resize', expect.any(Function));
+			expect(windowRemoval).toHaveBeenCalledWith('scroll', expect.any(Function), true);
+			const closedHeight = menu.style.getPropertyValue('--composer-menu-height');
+			anchor = new DOMRect(16, 400, 44, 44);
+			viewport.dispatchEvent(new Event('resize'));
+			expect(menu.style.getPropertyValue('--composer-menu-height')).toBe(closedHeight);
+		} finally {
+			view.unmount();
+			rects.mockRestore();
+			viewportRemoval.mockRestore();
+			windowRemoval.mockRestore();
+			vi.stubGlobal('ResizeObserver', originalObserver);
+			if (viewportDescriptor) Object.defineProperty(window, 'visualViewport', viewportDescriptor);
+			else Reflect.deleteProperty(window, 'visualViewport');
+			header.remove();
+			margins.remove();
+		}
 	});
 });
