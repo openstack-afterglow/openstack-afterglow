@@ -370,10 +370,13 @@ No production synchronization or deployment is performed by this source change.
      /etc/kolla/config/afterglow/secrets.yml
    ```
 
-   The initializer writes a random 64-hex value only when
-   `lumen_afterglow_ingress_secret` is absent or null. It preserves all other
-   values and an existing valid or explicitly empty (`""`) value, and never
-   prints credentials. Do not reinstall the sample over an existing file.
+   The initializer appends a random 64-hex value if
+   `lumen_afterglow_ingress_secret` is absent, or replaces a simple top-level
+   null entry. It leaves other bytes, including comments and inline Vault
+   values, untouched. If the edit cannot preserve the mapping, set the key
+   manually in the protected file. The initializer refuses to write if the key
+   already has a non-null value, including an explicitly empty (`""`) value.
+   It never prints credentials. Do not reinstall the sample over an existing file.
    Publish this one variable from the protected plugin secrets file, not from
    inventory, stock passwords, or service-specific overrides. The Afterglow
    role writes `[services] lumen_ingress_secret` in private backend TOML; the

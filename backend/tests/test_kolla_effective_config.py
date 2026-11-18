@@ -10,7 +10,6 @@ import tomllib
 from pathlib import Path
 
 import pytest
-import yaml
 
 _KOLLA = Path(__file__).resolve().parents[2] / "deploy/kolla"
 _ROLE = _KOLLA / "ansible/roles/afterglow"
@@ -320,41 +319,90 @@ def test_kolla_ingress_secret_failures_disclose_no_config(secret, override):
     assert result.stderr == "Cannot render effective Afterglow configuration; check protected inputs\n"
 
 
-@pytest.mark.parametrize("source", ["sample", "missing", "explicit-empty", "existing"])
-def test_kolla_ingress_generator_preserves_existing_values(tmp_path, source):
+@pytest.mark.parametrize("source", ["sample", "null-with-comment", "missing", "explicit-empty", "existing"])
+def test_kolla_ingress_generator_preserves_existing_bytes(tmp_path, source):
     path = tmp_path / "secrets.yml"
+    null_line = ""
     if source == "sample":
         original = (_KOLLA / "passwords.afterglow.additions.yml").read_text(encoding="utf-8")
-        assert _INGRESS_VAR in yaml.safe_load(original)
-        assert yaml.safe_load(original)[_INGRESS_VAR] is None
+        assert f"\n{_INGRESS_VAR}:\n" in original
+        null_line = f"{_INGRESS_VAR}:"
     else:
-        original = 'afterglow_secret_key: "unrelated existing value"\nlumen_encryption_key: "preserve this"\n'
-        if source == "explicit-empty":
-            original += f'{_INGRESS_VAR}: ""\n'
+        original = (
+            "# Keep this operator warning.\r\n"
+            "unrelated: 'keep this quoting'\r\n"
+            "afterglow_secret_key: !vault |\r\n"
+            "  opaque vault ciphertext"
+        )
+        if source == "missing":
+            # A final comment without a newline does not affect the preceding vault scalar.
+            original += "\r\n# end of operator values"
+        elif source == "null-with-comment":
+            null_line = f"{_INGRESS_VAR}:  null # Keep this inline comment."
+            original += f"\r\n{null_line}\r\n"
+        elif source == "explicit-empty":
+            original += f'\r\n{_INGRESS_VAR}: ""\r\n'
         elif source == "existing":
-            original += f'{_INGRESS_VAR}: "{"é" * 16}"\n'
-    path.write_text(original, encoding="utf-8")
-    path.chmod(0o600)
+            original += f'\r\n{_INGRESS_VAR}: "{"é" * 16}"\r\n'
+    path.write_bytes(original.encode("utf-8"))
+    path.chmod(0o400 if source == "missing" else 0o600)
+    original_stat = path.stat()
     command = [sys.executable, str(_INGRESS_GENERATOR), str(path)]
     result = subprocess.run(command, capture_output=True, check=False)
-    assert (result.returncode, result.stdout, result.stderr) == (0, b"", b"")
-    assert stat.S_IMODE(path.stat().st_mode) == 0o600
-    updated = path.read_text(encoding="utf-8")
-    if source in {"sample", "missing"}:
-        before = yaml.safe_load(original)
-        after = yaml.safe_load(updated)
-        assert re.fullmatch("[a-f0-9]{64}", after.pop(_INGRESS_VAR))
-        before.pop(_INGRESS_VAR, None)
-        assert after == before
+    configured = source in {"explicit-empty", "existing"}
+    assert result.returncode == int(configured)
+    assert result.stdout == b""
+    assert result.stderr == (
+        f"{_INGRESS_VAR} is already set; no changes were made\n".encode() if configured else b""
+    )
+    updated_stat = path.stat()
+    assert stat.S_IMODE(updated_stat.st_mode) == stat.S_IMODE(original_stat.st_mode)
+    assert (updated_stat.st_uid, updated_stat.st_gid) == (original_stat.st_uid, original_stat.st_gid)
+    updated = path.read_bytes().decode("utf-8")
+    if source in {"sample", "null-with-comment", "missing"}:
+        match = re.search(rf'(?m)^{_INGRESS_VAR}: +("[a-f0-9]{{64}}")', updated)
+        assert match is not None
+        secret = match[1]
+        if source == "missing":
+            assert updated == original + f"\r\n{_INGRESS_VAR}: {secret}\r\n"
+        elif source == "sample":
+            assert updated == original.replace(null_line + "\n", null_line + f" {secret}\n")
+        else:
+            assert updated == original.replace(null_line, null_line.replace("null", secret))
     else:
         assert updated == original
     repeated = subprocess.run(command, capture_output=True, check=False)
-    assert (repeated.returncode, repeated.stdout, repeated.stderr) == (0, b"", b"")
-    assert path.read_text(encoding="utf-8") == updated
+    assert repeated.returncode == 1
+    assert repeated.stdout == b""
+    assert repeated.stderr == f"{_INGRESS_VAR} is already set; no changes were made\n".encode()
+    assert path.read_bytes().decode("utf-8") == updated
     assert list(tmp_path.iterdir()) == [path]
 
 
-@pytest.mark.parametrize("failure", ["unsafe-mode", "symlink", "invalid-yaml", "short-key"])
+def test_kolla_ingress_generator_does_not_race_to_replace_published_key(tmp_path):
+    path = tmp_path / "secrets.yml"
+    original = b"# Protected input\nother: !vault |\n  opaque\n"
+    path.write_bytes(original)
+    path.chmod(0o600)
+    command = [sys.executable, str(_INGRESS_GENERATOR), str(path)]
+
+    with (
+        subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as first,
+        subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as second,
+    ):
+        first_stdout, _ = first.communicate(timeout=10)
+        second_stdout, _ = second.communicate(timeout=10)
+    assert [first_stdout, second_stdout] == [b"", b""]
+    assert sorted([first.returncode, second.returncode]) == [0, 1]
+    updated = path.read_bytes()
+    assert updated.startswith(original)
+    assert re.fullmatch(rb'lumen_afterglow_ingress_secret: "[a-f0-9]{64}"\n', updated[len(original):])
+
+
+@pytest.mark.parametrize(
+    "failure",
+    ["unsafe-mode", "symlink", "invalid-yaml", "short-key", "duplicate", "document-end", "clip-scalar", "flow-null"],
+)
 def test_kolla_ingress_generator_rejects_unsafe_input_without_disclosing_values(tmp_path, failure):
     path = tmp_path / "secrets.yml"
     original = 'afterglow_secret_key: "unrelated private material"\n'
@@ -362,7 +410,15 @@ def test_kolla_ingress_generator_rejects_unsafe_input_without_disclosing_values(
         original += f"{_INGRESS_VAR}: [SECRET WITHOUT CLOSING BRACKET"
     elif failure == "short-key":
         original += f'{_INGRESS_VAR}: "{"é" * 15}"\n'
-    path.write_text(original, encoding="utf-8")
+    elif failure == "duplicate":
+        original += f'{_INGRESS_VAR}:\n{_INGRESS_VAR}: ""\n'
+    elif failure == "document-end":
+        original += "...\n"
+    elif failure == "clip-scalar":
+        original += "vault_value: |\n  content without a final newline"
+    elif failure == "flow-null":
+        original = f'{{afterglow_secret_key: "unrelated private material", {_INGRESS_VAR}: null}}\n'
+    path.write_bytes(original.encode("utf-8"))
     path.chmod(0o640 if failure == "unsafe-mode" else 0o600)
     input_path = path
     if failure == "symlink":
