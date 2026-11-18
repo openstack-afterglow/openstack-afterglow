@@ -1,6 +1,7 @@
-import { grantLumen } from './lumenPermissionFixture';
+import { grantLumen, setVerifiedLumenActor } from './lumenPermissionFixture';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, expect, it, vi } from 'vitest';
+import { get } from 'svelte/store';
 import { auth } from '$lib/stores/auth';
 import { t } from '$lib/i18n/ns/chat-studio';
 import { t as settingsT } from '$lib/i18n/ns/chat-settings';
@@ -10,7 +11,10 @@ const calls = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn(), d
 vi.mock('$lib/api/client', () => ({ api: calls, ApiError: class extends Error {} }));
 beforeEach(() => {
 	vi.clearAllMocks();
-	auth.update((state) => ({ ...state, token: 'token', projectId: 'project', userId: 'owner' }));
+	setVerifiedLumenActor({
+		...get(auth), token: 'token', projectId: 'project', userId: 'owner',
+		domainId: 'working-domain', identityDomainId: 'identity-domain'
+	});
 	calls.get.mockImplementation(async (path: string) => path.split('?')[0].endsWith('/agents') ? [{ id: 1, name: 'Owned agent', is_owner: true, tool_ids: [], mcp_ids: [], visibility: 'private' }] : []);
 });
 
