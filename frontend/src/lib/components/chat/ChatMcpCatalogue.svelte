@@ -11,10 +11,15 @@
 		activation_is_active?: boolean;
 		config_version?: number;
 	}
+	export interface ApprovedMcpWorkspace {
+		cloud?: { active: boolean; invalid: boolean; toolCount: number };
+		approval: import('svelte').Snippet;
+		remoteActions: import('svelte').Snippet<[number]>;
+	}
 </script>
 
 <script lang="ts">
-	import { onMount, untrack } from 'svelte';
+	import { onMount, untrack, type Snippet } from 'svelte';
 	import { derived } from 'svelte/store';
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 	import { serviceCapabilities, projectPermissions } from '$lib/stores/servicePermissions';
@@ -30,11 +35,12 @@
 	import { t } from '$lib/i18n/ns/chat-settings';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
-	let { servers, loading, oauthStatus, onChanged }: {
+	let { servers, loading, oauthStatus, onChanged, children }: {
 		servers: ApprovedMcpServer[];
 		loading: boolean;
 		oauthStatus: Record<number, { connected: boolean }>;
 		onChanged: () => Promise<void>;
+		children?: Snippet<[ApprovedMcpWorkspace]>;
 	} = $props();
 
 	interface Scope { token: string; projectId: string; userId: string; projectName: string }
@@ -186,11 +192,41 @@
 	}
 </script>
 
+{#if children}
+	{@render children({
+		cloud: cloudActive && cloud ? { active: cloudActive, invalid: cloudCredentialInvalid, toolCount: cloud.tool_count } : undefined,
+		approval: approvalCard,
+		remoteActions: remoteControls
+	})}
+{:else}
 <section class="catalogue" aria-labelledby="approved-mcp-heading">
-	<div>
-		<h3 id="approved-mcp-heading" class="text-sm font-semibold text-ink-1">{t('extensions.catalogue.title')}</h3>
-		<p class="mt-1 text-xs text-ink-2">{t('extensions.catalogue.description')}</p>
-	</div>
+	{@render approvalCard()}
+	{#if loading}
+		<LoadingState label={t('extensions.mcp.loading')} />
+	{:else}
+		{#each servers as server (server.id)}
+			{@const connected = server.auth_mode !== 'oauth' || oauthStatus[server.id]?.connected === true}
+			{@const active = server.is_active && connected}
+			<Card surface="raised" padding="md">
+				<div class="server-row">
+					<div class="server-copy">
+						<div class="server-title"><strong>{server.name}</strong><Pill tone="neutral" size="xs">{t('extensions.catalogue.approved')}</Pill><Pill tone={active ? 'success' : 'neutral'} size="xs">{active ? t('extensions.state.active') : t('extensions.state.inactive')}</Pill></div>
+						{#if server.url}<p class="break-all">{server.url}</p>{/if}
+					</div>
+					{@render remoteControls(server.id)}
+				</div>
+			</Card>
+		{/each}
+	{/if}
+</section>
+{/if}
+
+{#snippet approvalCard()}
+	<div class="approval">
+		<div>
+			<h3 id="approved-mcp-heading" class="text-sm font-semibold text-ink-1">{t('extensions.catalogue.title')}</h3>
+			<p class="mt-1 text-xs text-ink-2">{t('extensions.catalogue.description')}</p>
+		</div>
 	<Card surface="raised" padding="md">
 		<div class="server-row">
 			<div class="server-copy">
@@ -213,33 +249,27 @@
 		</div>
 	</Card>
 	{#if loadError}<Alert tone="danger">{loadError}{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => scope && loadCloud(scope)}>{t('extensions.catalogue.retry')}</Button>{/snippet}</Alert>{/if}
-	{#if loading}
-		<LoadingState label={t('extensions.mcp.loading')} />
-	{:else}
-		{#each servers as server (server.id)}
-			{@const connected = server.auth_mode !== 'oauth' || oauthStatus[server.id]?.connected === true}
-			{@const active = server.is_active && connected}
-			<Card surface="raised" padding="md">
-				<div class="server-row">
-					<div class="server-copy">
-						<div class="server-title"><strong>{server.name}</strong><Pill tone="neutral" size="xs">{t('extensions.catalogue.approved')}</Pill><Pill tone={active ? 'success' : 'neutral'} size="xs">{active ? t('extensions.state.active') : t('extensions.state.inactive')}</Pill></div>
-						{#if server.url}<p class="break-all">{server.url}</p>{/if}
-						{#if server.auth_mode === 'oauth'}<p>{t('extensions.mcp.oauthRequired')}</p>{/if}
-					</div>
-					<div class="server-actions">
-						{#if server.activation_is_active === true || server.is_active}
-							<Button variant="secondary" size="sm" onclick={() => deactivate(server)} disabled={busy || !canMcp}>{t('extensions.actions.deactivate')}</Button>
-						{/if}
-						{#if !active}
-							<Button variant="outline" size="sm" onclick={() => openConsent(server)} disabled={busy || !canMcp || server.server_is_active !== true || !server.config_version}>{t('extensions.catalogue.activateServer', { name: server.name })}</Button>
-						{/if}
-					</div>
-				</div>
-			</Card>
-		{/each}
+	</div>
+{/snippet}
+
+{#snippet remoteControls(id: number)}
+	{@const server = servers.find((candidate) => candidate.id === id)}
+	{#if server}
+		{@const connected = server.auth_mode !== 'oauth' || oauthStatus[server.id]?.connected === true}
+		{@const active = server.is_active && connected}
+		{#if server.auth_mode === 'oauth'}<p class="text-xs text-ink-2">{t('extensions.mcp.oauthRequired')}</p>{/if}
+		<div class="server-actions">
+			{#if server.activation_is_active === true || server.is_active}
+				<Button variant="secondary" size="sm" onclick={() => deactivate(server)} disabled={busy || !canMcp}>{t('extensions.actions.deactivate')}</Button>
+			{/if}
+			{#if !active}
+				<Button variant="outline" size="sm" onclick={() => openConsent(server)} disabled={busy || !canMcp || server.server_is_active !== true || !server.config_version}>{t('extensions.catalogue.activateServer', { name: server.name })}</Button>
+			{/if}
+		</div>
 	{/if}
-	{#if actionError && !consentOpen}<Alert tone="danger">{actionError}</Alert>{/if}
-</section>
+{/snippet}
+
+{#if actionError && !consentOpen}<Alert tone="danger">{actionError}</Alert>{/if}
 
 <FormModal bind:open={consentOpen} title={t('extensions.catalogue.consentTitle', { name: consent?.kind === 'remote' ? consent.server.name : 'Afterglow MCP' })} submitting={busy}>
 	<div class="consent-fields">
@@ -264,6 +294,7 @@
 
 <style>
 	.catalogue { display: grid; gap: 0.75rem; margin-bottom: 1.5rem; }
+	.approval { display: grid; gap: 0.625rem; }
 	.server-row { display: flex; flex-direction: column; gap: 1rem; }
 	.server-copy { min-width: 0; }
 	.server-title { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-size: 0.875rem; color: var(--color-ink-0); }

@@ -1,5 +1,8 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack, type Snippet } from 'svelte';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+	import { page } from '$app/state';
+	import { pushState } from '$app/navigation';
 	import { derived } from 'svelte/store';
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 	import { serviceCapabilities } from '$lib/stores/servicePermissions';
@@ -14,18 +17,52 @@
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
-	import Pagination from '$lib/components/ui/Pagination.svelte';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import ConnectionTabs, { connectionTabs, type ConnectionTab } from './connections/ConnectionTabs.svelte';
+	import ConnectionMenu from './connections/ConnectionMenu.svelte';
+	import ConnectionName from './connections/ConnectionName.svelte';
+	import ConnectionStatus, { type ConnectionState } from './connections/ConnectionStatus.svelte';
+	import ConnectionsTable from './connections/ConnectionsTable.svelte';
 	import { t } from '$lib/i18n/ns/mcp-gallery';
 	import ManagedSandboxToolsPicker from './ManagedSandboxToolsPicker.svelte';
-	import { refreshManagedSandboxTools } from '$lib/stores/managedSandboxTools';
+	import { managedSandboxTools, refreshManagedSandboxTools } from '$lib/stores/managedSandboxTools';
 
 	import { t as settingsT } from '$lib/i18n/ns/chat-settings';
-	let { admin = false, onChanged = async () => {} }: { admin?: boolean; onChanged?: () => Promise<void> } = $props();
+	let {
+		admin = false, onChanged = async () => {}, remoteForm, approved, cloud, approvedActions,
+		adminRows = [], approvedRows = [], adminActions, oauthStatus = {}, inventoryLoading = false, onRemoteClose
+	}: {
+		admin?: boolean; onChanged?: () => Promise<void>; remoteForm?: Snippet; approved?: Snippet;
+		cloud?: { active: boolean; invalid: boolean; toolCount: number };
+		approvedActions?: Snippet<[number]>;
+		adminRows?: McpConnection[];
+		approvedRows?: McpConnection[];
+		adminActions?: Snippet<[McpConnection]>;
+		oauthStatus?: Record<number, { connected: boolean }>;
+		inventoryLoading?: boolean;
+		onRemoteClose?: () => void;
+	} = $props();
+	const id = $props.id();
+	const tabParam = 'connections';
+	const tabs = (search: URLSearchParams): ConnectionTab => {
+		const value = search.get(tabParam);
+		return value === 'connected' || value === 'manage' ? value : 'browse';
+	};
+	let tab = $state(untrack(() => tabs(page.url.searchParams)));
+	let preferredScope = $state<'user' | 'domain' | null>(null);
+	let queryTimer: ReturnType<typeof setTimeout> | undefined;
+	let access = $state<McpTemplate['access'] | ''>('');
+	let scopeFilter = $state<McpConnection['scope'] | ''>('');
+	const scopeState = { user: 'personal_connected', domain: 'org_connected', global: 'global_connected' } as const;
+	const scopes = ['user', 'domain', 'global'] as const;
+	const accessModes = ['open', 'oauth', 'credentials', 'configure', 'managed', 'unreachable', 'unavailable'] as const;
+	const expanded = new SvelteSet<number | 'cloud'>();
 	type Owner = { key: string; token: string; userId: string; projectId: string };
 	type Editor = { template?: McpTemplate; row?: McpConnection; scope: 'user' | 'domain' | 'global' };
 	let owner = $state.raw<Owner | null>(null);
 	let entries = $state<McpTemplate[]>([]);
 	let featured = $state<McpTemplate[]>([]);
+	let managedEntries = $state<McpTemplate[]>([]);
 	let adminEntries = $state<McpTemplate[]>([]);
 	let connections = $state<McpConnection[]>([]);
 	let domainId = $state<string | null>(null);
@@ -37,7 +74,8 @@
 	let busy = $state<Record<string, boolean>>({});
 	let query = $state('');
 	let appliedQuery = $state('');
-	let offset = $state(0);
+	let appliedAccess = $state<McpTemplate['access'] | ''>('');
+	let appliedState = $state('');
 	let total = $state(0);
 	let nextOffset = $state<number | null>(null);
 	let editor = $state<Editor | null>(null);
@@ -52,17 +90,115 @@
 	let installSummary = $state('');
 	let generation = 0;
 	let editorGeneration = 0;
-	const templates = new Map<string, McpTemplate>();
+	const templates = new SvelteMap<string, McpTemplate>();
 	let readController: AbortController | null = null;
 	const mutations = new Set<AbortController>();
 	const limit = 12;
 	const canWrite = $derived(admin ? $auth.isSystemAdmin === true : $serviceCapabilities('lumen-mcp_editor'));
 	const canDelete = $derived(admin ? $auth.isSystemAdmin === true : $serviceCapabilities('lumen-resources_admin'));
-	const lists = $derived([
-		{ scope: 'user', title: t('personal') },
-		{ scope: 'domain', title: t('organization') },
-		{ scope: 'global', title: t('global') }
-	]);
+	type ConnectedRow = { key: number; server: McpConnection; state: ConnectionState; description: string; count?: number }
+		| { key: 'cloud'; server: null; state: ConnectionState; description: string; count: number };
+	const inventory = $derived(admin ? adminRows : error && owner && !connections.length ? approvedRows : connections);
+	let loadedUntil = limit;
+
+	function displayedState(server: McpConnection): ConnectionState {
+		if (server.catalog_error || rowErrors[server.id]) return 'error';
+		if (admin) return server.is_active ? 'active' : 'inactive';
+		if (server.scope === 'global' && !server.template_key && approvedActions) {
+			if (server.auth_mode === 'oauth' && (oauthStatus[server.id]?.connected ?? server.auth_connected) !== true) return 'needsAuth';
+			if (server.activation_config_version != null && server.activation_is_active && server.activation_config_version !== server.config_version) return 'stale';
+			return server.is_active ? 'active' : 'inactive';
+		}
+		return mcpConnectionState(server);
+	}
+	const serverRows = $derived.by<ConnectedRow[]>(() => {
+		const rows: ConnectedRow[] = inventory.map((server) => ({
+			key: server.id,
+			server,
+			state: displayedState(server),
+			description: (server.template_key && templates.get(server.template_key)?.description) || server.connection_label || server.url || '',
+			count: server.tool_count ?? server.tools?.length
+		}));
+		if (cloud) rows.unshift({ key: 'cloud', server: null, state: cloud.invalid ? 'error' : cloud.active ? 'active' : 'inactive', description: settingsT('extensions.catalogue.cloudDescription'), count: cloud.toolCount });
+		return rows;
+	});
+	const connected = $derived.by(() => {
+		const needle = appliedQuery.toLocaleLowerCase();
+		return serverRows.filter(({ server, description }) => {
+			const scope = server?.scope ?? 'user';
+			const type = server ? (server.template_key && templates.get(server.template_key)?.access)
+				|| (server.auth_mode === 'admin' ? 'credentials' : server.auth_mode === 'oauth' ? 'oauth' : 'open') : 'managed';
+			return (!scopeFilter || scope === scopeFilter) && (!access || type === access)
+				&& [server?.name ?? 'Afterglow MCP', description, server?.url].some((value) => value?.toLocaleLowerCase().includes(needle));
+		});
+	});
+	const rowsByTemplate = $derived.by(() => {
+		const byTemplate = new Map<string, McpConnection[]>();
+		for (const row of inventory) {
+			if (!row.template_key) continue;
+			const matching = byTemplate.get(row.template_key);
+			if (matching) matching.push(row);
+			else byTemplate.set(row.template_key, [row]);
+		}
+		return byTemplate;
+	});
+	const builtinRows = $derived(managedEntries.filter((entry) => !access || access === entry.access));
+	const featuredRows = $derived(featured.filter((entry) => entry.access !== 'managed' && (!access || entry.access === access)));
+
+	function browseParams() {
+		const params = new URLSearchParams(page.url.searchParams);
+		params.set(tabParam, 'browse');
+		return params;
+	}
+
+	function changeTab(next: ConnectionTab) {
+		if (next === tab) return;
+		if (tab === 'manage') onRemoteClose?.();
+		clearDraft();
+		preferredScope = null;
+		tab = next;
+		const url = new URL(document.location.href);
+		url.searchParams.set(tabParam, next);
+		pushState(url, page.state);
+		applyFilters();
+	}
+
+	function addFromBrowse(scope: 'user' | 'domain') {
+		changeTab('browse');
+		preferredScope = scope;
+		void tick().then(() => document.getElementById(`${id}-search`)?.focus());
+	}
+
+	function openRemote() {
+		changeTab('manage');
+		void tick().then(() => document.getElementById(`${id}-remote`)?.querySelector('input')?.focus());
+	}
+
+	async function jumpToRow(key: number | 'cloud') {
+		changeTab('connected');
+		query = ''; access = ''; scopeFilter = '';
+		applyFilters();
+		expanded.add(key);
+		await tick();
+		const trigger = document.querySelector<HTMLElement>(`[data-connection-key=\"${id}-${key}\"] button`);
+		trigger?.focus();
+	}
+
+	function currentState() { return tab === 'connected' && scopeFilter ? scopeState[scopeFilter] : ''; }
+	function applyFilters() {
+		clearTimeout(queryTimer);
+		const search = query.trim(), state = currentState();
+		if (search === appliedQuery && access === appliedAccess && state === appliedState) return;
+		appliedQuery = search; appliedAccess = access; appliedState = state;
+		nextOffset = null;
+		loadedUntil = limit;
+		if (owner) void load(owner, 0);
+	}
+
+	function scheduleSearch() {
+		clearTimeout(queryTimer);
+		queryTimer = setTimeout(applyFilters, 250);
+	}
 
 	function clearDraft() {
 		++editorGeneration;
@@ -81,29 +217,46 @@
 		mutations.clear();
 		++generation;
 		templates.clear();
-		entries = []; featured = []; adminEntries = []; connections = [];
+		entries = []; featured = []; managedEntries = []; adminEntries = []; connections = [];
 		domainId = null; canManage = false; organizationError = false; error = ''; rowErrors = {}; busy = {};
-		loading = false; total = 0; offset = 0; nextOffset = null; query = ''; appliedQuery = '';
+		loading = false; total = 0; nextOffset = null; query = ''; appliedQuery = '';
+		access = ''; appliedAccess = ''; appliedState = ''; scopeFilter = ''; preferredScope = null;
+		expanded.clear(); clearTimeout(queryTimer);
 		installSummary = ''; clearDraft();
 	}
 	onMount(() => {
+		const stopSandbox = !admin ? managedSandboxTools.subscribe(() => {}) : undefined;
 		const unsubscribe = derived([auth, authReady, projectSwitching], ([actor, ready, switching]) => ({ actor, ready, switching })).subscribe(({ actor, ready, switching }) => {
 			const key = ready && !switching && actor.token && actor.userId && actor.projectId
 				? JSON.stringify([actor.sessionId, actor.userId, actor.identityDomainId, actor.domainId, actor.projectId, admin, actor.isSystemAdmin]) : null;
 			if (owner?.key === key) { if (actor.token) owner.token = actor.token; return; }
 			invalidate();
 			owner = key ? { key, token: actor.token!, userId: actor.userId!, projectId: actor.projectId! } : null;
-			if (owner) void load(owner, 0, '');
+			if (owner) void load(owner, 0);
 		});
-		return () => { unsubscribe(); invalidate(); owner = null; };
+		return () => { unsubscribe(); stopSandbox?.(); invalidate(); owner = null; };
+	});
+	function restoreTab(search = new URLSearchParams(document.location.search)) {
+		const next = tabs(search);
+		if (next === tab) return;
+		if (tab === 'manage') onRemoteClose?.();
+		tab = next;
+		preferredScope = null;
+		clearDraft();
+		applyFilters();
+	}
+	$effect(() => {
+		const search = page.url.searchParams;
+		untrack(() => restoreTab(search));
 	});
 
-	async function load(scope: Owner, start = offset, search = appliedQuery) {
+	async function load(scope: Owner, start = 0) {
 		const ticket = ++generation;
 		readController?.abort();
 		const controller = new AbortController(); readController = controller;
 		const options = { refresh: true, signal: controller.signal };
 		loading = true; error = '';
+		const search = appliedQuery, type = appliedAccess, state = appliedState;
 		try {
 			if (admin) {
 				const [result, managed] = await Promise.all([
@@ -114,13 +267,21 @@
 				const profiles = new Map((managed?.entries ?? []).filter((entry) => entry.access === 'managed').map((entry) => [entry.id, entry]));
 				adminEntries = result.entries.map((entry) => entry.access === 'managed' ? { ...entry, managed: profiles.get(entry.id)?.managed ?? null } : entry);
 				featured = adminEntries.filter((entry) => entry.featured);
-				showAdminPage(start, search);
+				const needle = search.toLocaleLowerCase();
+				managedEntries = adminEntries.filter((entry) => entry.access === 'managed' && [entry.name, entry.description, entry.registry_name].some((value) => value?.toLocaleLowerCase().includes(needle)));
+				showAdminPage(start, search, type, start ? limit : loadedUntil);
 			} else {
-				const params = new URLSearchParams({ offset: String(start), limit: String(limit), ...(search ? { q: search } : {}) });
-				const [page, defaults, rows] = await Promise.all([
-					api.get<McpSettingsPage>(`/api/v1/chat/mcp-settings?${params}`, scope.token, scope.projectId, options),
+				const fetchPage = (offset: number, size: number) => {
+					const params = new URLSearchParams({ offset: String(offset), limit: String(size), ...(search ? { q: search } : {}), ...(type ? { access: type } : {}), ...(state ? { state } : {}) });
+					return api.get<McpSettingsPage>(`/api/v1/chat/mcp-settings?${params}`, scope.token, scope.projectId, options);
+				};
+				const managedParams = new URLSearchParams({ access: 'managed', offset: '0', limit: '100', ...(search ? { q: search } : {}) });
+				const target = start ? start + limit : loadedUntil;
+				const [page, defaults, rows, managed] = await Promise.all([
+					fetchPage(start, Math.min(target - start, 100)),
 					api.get<McpSettingsPage>('/api/v1/chat/mcp-settings?featured=true&offset=0&limit=100', scope.token, scope.projectId, options),
-					api.get<McpConnection[]>('/api/v1/chat/mcp-servers', scope.token, scope.projectId, options)
+					api.get<McpConnection[]>('/api/v1/chat/mcp-servers', scope.token, scope.projectId, options),
+					api.get<McpSettingsPage>(`/api/v1/chat/mcp-settings?${managedParams}`, scope.token, scope.projectId, options).catch(() => null)
 				]);
 				if (owner !== scope || ticket !== generation) return;
 				const organization: McpConnection[] = [];
@@ -140,26 +301,46 @@
 					organization.length = 0;
 				}
 				if (owner !== scope || ticket !== generation) return;
-				entries = page.entries; featured = defaults.entries; total = page.total; nextOffset = page.next_offset;
+				const pageEntries = [...page.entries];
+				let next = page.next_offset;
+				let last = start;
+				while (!start && next !== null && next > last && next < target) {
+					last = next;
+					const extra = await fetchPage(next, Math.min(target - next, 100));
+					if (owner !== scope || ticket !== generation) return;
+					pageEntries.push(...extra.entries);
+					next = extra.next_offset;
+				}
+				setPage(pageEntries, start);
+				featured = defaults.entries;
+				managedEntries = [...new Map([...(managed?.entries ?? []), ...(!search ? defaults.entries : []), ...pageEntries]
+					.filter((entry) => entry.access === 'managed').map((entry) => [entry.id, entry])).values()];
+				total = page.total; nextOffset = next !== null && next > last ? next : null;
 				domainId = page.domain_id; organizationError = organizationUnavailable;
 				canManage = !organizationUnavailable && page.can_manage_domain === true;
 				if (!canManage && editor?.scope === 'domain') clearDraft();
-				for (const entry of [...page.entries, ...defaults.entries]) templates.set(entry.id, entry);
-				connections = [...new Map([...rows, ...organization, ...page.custom_connections]
-					.filter((row) => visibleMcpConnection(row, scope.userId, scope.projectId, page.domain_id) && (row.scope !== 'global' || !!row.template_key))
+				for (const entry of [...pageEntries, ...defaults.entries]) templates.set(entry.id, entry);
+				connections = [...new Map([...pageEntries.flatMap((entry) => entry.connections ?? []), ...rows, ...organization, ...page.custom_connections]
+					.filter((row) => visibleMcpConnection(row, scope.userId, scope.projectId, page.domain_id))
 					.map((row) => [row.id, row])).values()];
 			}
-			offset = start; appliedQuery = search;
+			if (start) loadedUntil = nextOffset ?? start + limit;
 		} catch {
-			if (owner === scope && ticket === generation) { error = t('loadFailed'); canManage = false; entries = []; featured = []; connections = []; clearDraft(); }
+			if (owner === scope && ticket === generation) {
+				error = t('loadFailed'); canManage = false;
+				if (!start) { entries = []; featured = []; managedEntries = []; connections = []; }
+				clearDraft();
+			}
 		} finally { if (owner === scope && ticket === generation) loading = false; }
 	}
-	function showAdminPage(start: number, search: string) {
-		const needle = search.toLocaleLowerCase();
-		const rows = adminEntries.filter((entry) => [entry.name, entry.registry_name, entry.description].some((value) => value?.toLocaleLowerCase().includes(needle)));
-		total = rows.length; entries = rows.slice(start, start + limit); nextOffset = start + limit < total ? start + limit : null;
+	function setPage(rows: McpTemplate[], start: number) {
+		entries = start ? [...new Map([...entries, ...rows].map((entry) => [entry.id, entry])).values()] : rows;
 	}
-	function browse(start: number, search = appliedQuery) { if (owner) void load(owner, start, search); }
+	function showAdminPage(start: number, search: string, access: string, size: number) {
+		const needle = search.toLocaleLowerCase();
+		const rows = adminEntries.filter((entry) => (!access || entry.access === access) && [entry.name, entry.registry_name, entry.description].some((value) => value?.toLocaleLowerCase().includes(needle)));
+		total = rows.length; setPage(rows.slice(start, start + size), start); nextOffset = start + size < total ? start + size : null;
+	}
 	function editable(row: McpConnection) { return row.scope === 'domain' ? canManage && row.owner_domain_id === domainId : row.scope === 'user' && row.owner_user_id === owner?.userId; }
 	function rowPath(row: McpConnection) {
 		if (row.scope === 'domain') {
@@ -285,47 +466,71 @@
 	}
 </script>
 
-<section class="gallery" aria-labelledby="mcp-gallery-title">
-	<header class="toolbar">
-		<div><h3 id="mcp-gallery-title">{t('title')}</h3><p>{t('description')}</p></div>
-		<div class="actions"><Button variant="secondary" size="sm" disabled={loading || !owner} onclick={() => { if (owner) void load(owner); if (!admin) void refreshManagedSandboxTools(); }}>{t('refresh')}</Button>{#if admin}<Button size="sm" disabled={!canWrite || busy.featured} onclick={installFeatured}>{t('installFeatured')}</Button>{/if}</div>
+<svelte:window onpopstate={() => restoreTab()} />
+
+<section class="gallery" aria-labelledby={`${id}-title`}>
+	<header class="workspace-header">
+		<div><h2 id={`${id}-title`}>{t('workspace.title')}</h2><p>{t('workspace.description')}</p></div>
+		{#if admin}
+			{#if remoteForm}<Button size="sm" disabled={!canWrite} onclick={openRemote}>{t('workspace.remote')}</Button>{/if}
+		{:else}
+			<ConnectionMenu label={t('workspace.add')} primary disabled={!canWrite}
+				items={[
+					{ label: t('connectPersonal'), run: () => addFromBrowse('user') },
+					...(canManage ? [{ label: t('connectOrganization'), run: () => addFromBrowse('domain') }] : []),
+					...(remoteForm ? [{ label: t('workspace.remote'), run: openRemote }] : [])
+				]} />
+		{/if}
 	</header>
+	<div class="workspace-navigation">
+		<ConnectionTabs selected={tab} count={connected.length} {id} onchange={changeTab} />
+		<Button variant="ghost" size="sm" class="workspace-refresh" ariaLabel={t('refresh')} title={t('refresh')} disabled={loading || !owner} onclick={() => { refresh(); if (!admin) void refreshManagedSandboxTools(); }}>
+			<svg aria-hidden="true" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16 8a6.5 6.5 0 1 0 .15 3.25M16 4v4h-4"/></svg>
+			<span class="refresh-label">{t('refresh')}</span>
+		</Button>
+	</div>
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if rowErrors.featured}<Alert tone="danger">{rowErrors.featured}</Alert>{/if}
 	{#if installSummary}<Alert tone="info">{installSummary}</Alert>{/if}
 	{#if loading}<LoadingState variant="inline" label={t('loading')} />{/if}
-	{#if !error && featured.length}
-		<h4>{t('featured')}</h4>
-		<div class="featured-grid">{#each featured as entry (entry.id)}{@render templateCard(entry)}{/each}</div>
+	{#if owner && organizationError}
+		<section aria-label={t('organization')}>
+			<Alert tone="warning" flat>{connections.some((row) => row.scope === 'domain') ? t('organizationManagementUnavailable') : t('organizationUnavailable')}</Alert>
+		</section>
 	{/if}
-	{#if !admin}<ManagedSandboxToolsPicker summaryOnly />{/if}
-	{#if !admin && !error && owner}
-		{#if domainId && !organizationError}<div class="scope-note"><span>{t('domain')}: <code>{domainId}</code></span><span>{canManage ? t('managerHelp') : t('memberHelp')}</span></div>{/if}
-		{#each lists as list}
-			<section class="connections" aria-label={list.title}>
-				<h4>{list.title}</h4>
-				{#if list.scope === 'domain' && organizationError}<Alert tone="warning" flat>{connections.some((row) => row.scope === 'domain') ? t('organizationManagementUnavailable') : t('organizationUnavailable')}</Alert>{/if}
-				{#each connections.filter((row) => row.scope === list.scope) as row (row.id)}
-					{@const state = mcpConnectionState(row)}
-					<div class="connection-row">
-						<div class="row-copy"><strong>{row.name}</strong>{#if row.connection_label}<p>{row.connection_label}</p>{/if}<div class="metadata"><Pill tone={state === 'active' ? 'success' : state === 'stale' || state === 'needsAuth' ? 'warning' : 'neutral'} size="xs">{t(state)}</Pill><span>{t('revision', { version: row.config_version })}</span>{#if row.has_headers}<span>{t('headersSaved')}</span>{/if}</div>{#if row.url}<p class="endpoint">{row.url}</p>{/if}{#if row.catalog_error}<p>{t('catalogError')}</p>{/if}</div>
-						{#if row.tools?.length}<details class="row-error"><summary>{t('tools', { count: row.tool_count ?? row.tools.length })}</summary><p>{t('schemaHelp')}</p>{#each row.tools as tool}<p><strong>{tool.name}</strong>{tool.description ? ` — ${tool.description}` : ''}</p>{/each}</details>{/if}
-						<div class="actions">
-							<Button variant="secondary" size="sm" disabled={!!busy[row.id] || !canWrite || (row.scope !== 'user' && !row.server_is_active) || !row.config_version} onclick={() => activate(row)}>{(row.scope === 'user' ? row.server_is_active : row.is_active) ? t('deactivate') : t('activate')}</Button>
-							{#if row.auth_mode === 'oauth' && (row.scope !== 'domain' || editable(row))}<Button variant="outline" size="sm" disabled={!!busy[row.id] || !canWrite} onclick={() => oauth(row)}>{row.auth_connected ? t('reconnect') : t('connectOAuth')}</Button>{#if row.auth_connected}<Button variant="subtle" size="sm" disabled={!!busy[row.id] || !canDelete} onclick={() => revokeTarget = row}>{t('revokeOAuth')}</Button>{/if}{/if}
-							{#if editable(row)}{#if row.scope === 'domain' || (row.template_key && row.auth_mode === 'admin')}<Button variant="subtle" size="sm" disabled={!!busy[row.id] || !canWrite} onclick={() => openEditor(undefined, row, row.scope)}>{t('edit')}</Button>{/if}<Button variant="danger" size="sm" disabled={!!busy[row.id] || !canDelete} onclick={() => deleteTarget = row}>{t('delete')}</Button>{/if}
-						</div>
-						{#if rowErrors[row.id]}<div class="row-error"><Alert tone="danger" flat>{rowErrors[row.id]}</Alert></div>{/if}
-						{#if deleteTarget?.id === row.id}<div class="row-error"><Alert tone="warning" flat>{t('deleteConfirm', { name: row.name })}</Alert><div class="actions"><Button variant="secondary" size="sm" onclick={() => deleteTarget = null}>{t('cancel')}</Button><Button variant="danger" size="sm" onclick={() => remove(row)}>{t('delete')}</Button></div></div>{/if}
-						{#if revokeTarget?.id === row.id}<div class="row-error"><Alert tone="warning" flat>{t('revokeConfirm', { name: row.name })}</Alert><div class="actions"><Button variant="secondary" size="sm" onclick={() => revokeTarget = null}>{t('cancel')}</Button><Button variant="danger" size="sm" onclick={() => { revokeTarget = null; oauth(row, true); }}>{t('revokeOAuth')}</Button></div></div>{/if}
-					</div>
-				{:else}{#if !loading && !(list.scope === 'domain' && organizationError)}<p>{t('emptyConnections')}</p>{/if}{/each}
-			</section>
-		{/each}
+
+	{#each connectionTabs as panel (panel)}
+		<div role="tabpanel" id={`${id}-panel-${panel}`} aria-labelledby={`${id}-tab-${panel}`} hidden={tab !== panel}>
+			{#if tab === panel}{@render panelBody()}{/if}
+		</div>
+	{/each}
+</section>
+
+{#snippet panelBody()}
+	<div class="tab-content">
+
+	{#if tab !== 'manage'}
+		<search aria-label={t('search')} class="search-tools">
+			<div class="search-input">
+				<TextInput id={`${id}-search`} type="search" ariaLabel={t('search')} placeholder={t('search')} bind:value={query} maxlength={100} oninput={scheduleSearch}
+					onkeydown={(event) => { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); applyFilters(); } }} />
+			</div>
+			<SelectInput ariaLabel={t('workspace.allTypes')} value={access} onchange={(event) => { access = (event.currentTarget as HTMLSelectElement).value as typeof access; applyFilters(); }}>
+				<option value="">{t('workspace.allTypes')}</option>
+				{#each accessModes as mode}<option value={mode}>{t(`workspace.access.${mode}`)}</option>{/each}
+			</SelectInput>
+			{#if tab === 'connected' && !admin}
+				<SelectInput ariaLabel={t('workspace.allScopes')} value={scopeFilter} onchange={(event) => { scopeFilter = (event.currentTarget as HTMLSelectElement).value as typeof scopeFilter; applyFilters(); }}>
+					<option value="">{t('workspace.allScopes')}</option>
+					{#each scopes as scope}<option value={scope}>{t(`workspace.scope.${scope}`)}</option>{/each}
+				</SelectInput>
+			{/if}
+		</search>
 	{/if}
+
 	{#if editor}
 		<form class="editor" aria-labelledby="mcp-editor-title" method="post" onsubmit={(event) => { event.preventDefault(); save(); }}>
-			<h4 id="mcp-editor-title">{editor.row ? t('editTitle', { name: editor.row.name }) : t('connectTitle', { name: editor.template!.name })}</h4>
+			<h3 id="mcp-editor-title">{editor.row ? t('editTitle', { name: editor.row.name }) : t('connectTitle', { name: editor.template!.name })}</h3>
 			<p>{editor.scope === 'domain' ? t('sharedWarning') : editor.scope === 'global' ? t('globalWarning') : t('personalHelp')}</p>
 			<p>{t('schemaHelp')}</p>
 			<Field label={editor.row ? settingsT('extensions.mcp.namePlaceholder') : t('label')} for="mcp-connection-label"><TextInput id="mcp-connection-label" bind:value={label} maxlength={100} required={!!editor.row && editor.scope === 'domain'} /></Field>
@@ -346,51 +551,234 @@
 			<div class="actions"><Button variant="secondary" onclick={clearDraft}>{t('cancel')}</Button><Button type="submit">{t('save')}</Button></div>
 		</form>
 	{/if}
-	<search><form class="search-form" method="get" aria-label={t('browse')} onsubmit={(event) => { event.preventDefault(); browse(0, query.trim()); }}><Field label={t('search')} for="mcp-gallery-search"><TextInput id="mcp-gallery-search" type="search" bind:value={query} maxlength={100} /></Field><Button type="submit" variant="secondary" disabled={loading || !owner}>{t('searchAction')}</Button></form></search>
-	<h4>{t('browse')} <span class="count">{total}</span></h4>
-	{#if !loading && !error && !entries.length}<p>{t('emptySearch')}</p>{/if}
-	<div class="catalog-list">{#each entries as entry (entry.id)}{@render templateCard(entry)}{/each}</div>
-	{#if total > 0}<Pagination page={Math.floor(offset / limit) + 1} totalPages={Math.ceil(total / limit)} total={total} pageSize={limit} hasPrev={offset > 0 && !loading} hasNext={nextOffset !== null && !loading} onPrev={() => browse(Math.max(0, offset - limit))} onNext={() => nextOffset !== null && browse(nextOffset)} />{/if}
-</section>
+	{#if tab === 'browse'}
+		{#if preferredScope}<p class="scope-choice" role="status">{t(preferredScope === 'domain' ? 'connectOrganization' : 'connectPersonal')}</p>{/if}
+		{#if !error && (featuredRows.length || admin)}
+			<section class="catalog-section">
+				<header><h3>{t('featured')}</h3>{#if admin}<Button size="sm" variant="outline" disabled={!canWrite || busy.featured} onclick={installFeatured}>{t('installFeatured')}</Button>{/if}</header>
+				<div class="template-grid">{#each featuredRows as entry (entry.id)}{@render templateRow(entry)}{/each}</div>
+			</section>
+		{/if}
+		{#if !error && builtinRows.length}
+			<section class="catalog-section">
+				<header><h3>{t('builtIn')}</h3></header>
+				<div class="template-grid">{#each builtinRows as entry (entry.id)}{@render templateRow(entry)}{/each}</div>
+			</section>
+		{/if}
+		<section class="catalog-section">
+			<header><h3>{t('browse')} <span class="count">({total.toLocaleString(intlLocale())})</span></h3></header>
+			{#if !loading && !error && !entries.length}<p class="empty">{t('emptySearch')}</p>{/if}
+			<div class="template-grid">{#each entries.filter((entry) => entry.access !== 'managed') as entry (entry.id)}{@render templateRow(entry)}{/each}</div>
+			{#if nextOffset !== null}
+				<div class="more"><Button variant="outline" size="sm" disabled={loading} onclick={() => owner && nextOffset !== null && void load(owner, nextOffset)}>{t('workspace.more')}</Button></div>
+			{/if}
+		</section>
+	{:else if tab === 'connected'}
+		{#if connected.length}
+			<ConnectionsTable label={t('workspace.connected')} rows={connected} keyOf={(row) => row.key}
+				columns={[
+					{ key: 'status', label: t('workspace.status'), cell: connectionStatus },
+					{ key: 'name', label: t('workspace.name'), cell: connectionName },
+					{ key: 'scope', label: t('workspace.scopeLabel'), cell: connectionScope },
+					{ key: 'description', label: t('workspace.details'), cell: connectionDescription },
+					{ key: 'count', label: t('workspace.tools'), cell: connectionCount }
+				]}
+				name={connectionName} actionsLabel={t('workspace.manage')} actions={manageRow}
+				expanded={(row) => expanded.has(row.key)} details={rowDetails} />
+		{:else if inventoryLoading && !loading}
+			<LoadingState variant="inline" label={settingsT('extensions.mcp.loading')} />
+		{:else if !loading && !error && !(organizationError && scopeFilter === 'domain')}
+			<div class="empty">
+				<p>{t(appliedQuery || access || scopeFilter ? 'emptySearch' : 'emptyConnections')}</p>
+				<Button variant="link" size="sm" href={`${page.url.pathname}?${browseParams()}`} onclick={(event) => { if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); changeTab('browse'); void tick().then(() => document.getElementById(`${id}-tab-browse`)?.focus()); } }}>{t('workspace.browse')}</Button>
+			</div>
+		{/if}
+	{:else}
+		<div id={`${id}-remote`}>{@render remoteForm?.()}</div>
+		{@render approved?.()}
+		{#if !admin}
+			<ManagedSandboxToolsPicker summaryOnly />
+			{#if domainId && !organizationError}
+				<section class="scope-note">
+					<h3>{t('organization')}</h3>
+					<p>{t('domain')}: <code>{domainId}</code></p>
+					<p>{canManage ? t('managerHelp') : t('memberHelp')}</p>
+				</section>
+			{/if}
+		{/if}
+	{/if}
+	</div>
+{/snippet}
 
-{#snippet templateCard(entry: McpTemplate)}
+{#snippet templateRow(entry: McpTemplate)}
+	{@const matching = preferredScope ? undefined : rowsByTemplate.get(entry.id)?.[0]}
+	{@const unavailable = entry.access === 'unreachable' || entry.access === 'unavailable'}
+	{@const blocked = !canWrite || loading || !!busy[`template-${entry.id}`]}
 	<article class="template" aria-label={entry.name}>
-		<div class="row-copy"><div class="template-heading"><strong>{entry.name}</strong>{#if entry.access === 'managed'}<Pill tone="neutral" size="xs">{t('builtIn')}</Pill>{/if}</div><p>{entry.description}</p><p class="registry-name">{entry.registry_name}</p>
-			{#if entry.access === 'managed'}<p>{entry.managed ? entry.managed.available ? t('managedAvailable') : reason(entry.managed.reason) : t('managedUnknown')}</p>{#if admin && entry.managed?.tools.length}<p>{entry.managed.tools.join(', ')}</p>{/if}
-			{:else if entry.access === 'unavailable' || entry.access === 'unreachable'}<p>{reason(entry.unavailable_reason)}</p>{:else}<p>{entry.access === 'oauth' ? t('oauthHelp') : entry.access === 'credentials' ? t('credentialsHelp') : entry.access === 'configure' ? t('configureHelp') : t('publicHelp')}</p>{/if}
+		<div class="template-line">
+			<details>
+				<summary aria-label={`${entry.name} · ${t('workspace.details')}`}>
+					<ConnectionName name={entry.name} identity={entry.id} description={entry.description}>
+						{#snippet badge()}<Pill tone="neutral" size="xs">{t(entry.access === 'managed' ? 'builtIn' : `workspace.access.${entry.access}`)}</Pill>{/snippet}
+					</ConnectionName>
+					<svg aria-hidden="true" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 4 4 4-4 4"/></svg>
+				</summary>
+				<div class="template-meta">
+					<p class="endpoint">{entry.registry_name}</p>
+					{#if entry.description}<p>{entry.description}</p>{/if}
+					{#if entry.access === 'managed' && admin && entry.managed?.tools.length}<p>{entry.managed.tools.join(', ')}</p>
+					{:else if !unavailable && entry.access !== 'managed'}<p>{t(entry.access === 'oauth' ? 'oauthHelp' : entry.access === 'credentials' ? 'credentialsHelp' : entry.access === 'configure' ? 'configureHelp' : 'publicHelp')}</p>{/if}
+				</div>
+			</details>
+			{#if unavailable}
+				<p class="unavailable">{reason(entry.unavailable_reason)}</p>
+			{:else if entry.access !== 'managed'}
+				{#if matching}
+					<Button variant="outline" size="sm" onclick={() => jumpToRow(matching.id)}>{t('workspace.manage')}</Button>
+				{:else if canManage && !preferredScope && !admin}
+					<ConnectionMenu label={t('workspace.connect')} disabled={blocked} items={[
+						{ label: t('connectPersonal'), run: () => void openEditor(entry, undefined, 'user') },
+						{ label: t('connectOrganization'), run: () => void openEditor(entry, undefined, 'domain') }
+					]} />
+				{:else}
+					<Button variant="outline" size="sm" disabled={blocked || (preferredScope === 'domain' && !canManage)}
+						onclick={() => openEditor(entry, undefined, admin ? 'global' : preferredScope ?? 'user')}>{t(admin ? 'install' : 'workspace.connect')}</Button>
+				{/if}
+			{/if}
 		</div>
-		{#if !admin && entry.access === 'managed' && (entry.managed?.profile || entry.managed_profile)}<ManagedSandboxToolsPicker profileId={entry.managed?.profile || entry.managed_profile || undefined} showReadiness={false} />{/if}
-		{#if !['managed', 'unavailable', 'unreachable'].includes(entry.access)}<div class="actions"><Button variant="outline" size="sm" disabled={!canWrite || loading || !!busy[`template-${entry.id}`]} onclick={() => openEditor(entry, undefined, admin ? 'global' : 'user')}>{admin ? t('install') : t('connectPersonal')}</Button>{#if !admin && canManage}<Button variant="secondary" size="sm" disabled={!canWrite || loading || !!busy[`template-${entry.id}`]} onclick={() => openEditor(entry, undefined, 'domain')}>{t('connectOrganization')}</Button>{/if}</div>{/if}
+		{#if entry.access === 'managed'}
+			<p>{entry.managed ? entry.managed.available ? t('managedAvailable') : reason(entry.managed.reason) : t('managedUnknown')}</p>
+			{#if !admin && (entry.managed?.profile || entry.managed_profile)}
+				<ManagedSandboxToolsPicker profileId={entry.managed?.profile || entry.managed_profile || undefined} showReadiness={false} />
+			{/if}
+		{/if}
 		{#if rowErrors[`template-${entry.id}`]}<Alert tone="danger" flat>{rowErrors[`template-${entry.id}`]}</Alert>{/if}
 	</article>
 {/snippet}
 
+{#snippet connectionStatus(row: ConnectedRow)}
+	<ConnectionStatus state={row.state} label={t(row.state === 'error' ? 'workspace.error' : row.state)} />
+{/snippet}
+{#snippet connectionName(row: ConnectedRow)}
+	<ConnectionName name={row.server?.name ?? 'Afterglow MCP'} identity={row.server?.template_key ?? row.server?.name ?? 'Afterglow MCP'} />
+{/snippet}
+{#snippet connectionScope(row: ConnectedRow)}
+	<Pill tone="neutral" size="xs">{t(`workspace.scope.${row.server?.scope ?? 'user'}`)}</Pill>
+{/snippet}
+{#snippet connectionDescription(row: ConnectedRow)}
+	<span class="single-line" title={row.description}>{row.description || '—'}</span>
+{/snippet}
+{#snippet connectionCount(row: ConnectedRow)}
+	{row.count?.toLocaleString(intlLocale()) ?? '—'}
+{/snippet}
+
+{#snippet manageRow(row: ConnectedRow)}
+	<span data-connection-key={`${id}-${row.key}`}>
+		<Button variant="outline" size="sm" ariaExpanded={expanded.has(row.key)} ariaLabel={`${t('workspace.manage')} ${row.server?.name ?? 'Afterglow MCP'}`}
+			onclick={() => expanded.has(row.key) ? expanded.delete(row.key) : expanded.add(row.key)}>{t('workspace.manage')}</Button>
+	</span>
+{/snippet}
+
+{#snippet rowDetails(item: ConnectedRow)}
+	<div class="detail-body">
+		{#if item.server}
+			{@const row = item.server}
+			<div class="metadata">
+				{#if row.config_version != null}<span>{t('revision', { version: row.config_version })}</span>{/if}
+				{#if row.has_headers != null || row.auth_mode === 'admin'}<span>{t(row.has_headers ? 'headersSaved' : 'workspace.headersMissing')}</span>{/if}
+				{#if row.transport}<span>{row.transport}</span>{/if}
+			</div>
+			{#if row.url}<p class="endpoint">{row.url}</p>{/if}
+			{#if row.catalog_error}<p>{t('catalogError')}</p>{/if}
+			{#if row.tools?.length}
+				<div><h3>{t('tools', { count: row.tool_count ?? row.tools.length })}</h3><p>{t('schemaHelp')}</p>
+					<ul>{#each row.tools as tool}<li><strong>{tool.name}</strong>{tool.description ? ` — ${tool.description}` : ''}</li>{/each}</ul>
+				</div>
+			{/if}
+			{#if admin}
+				{@render adminActions?.(row)}
+			{:else if row.scope === 'global' && !row.template_key && approvedActions}
+				{@render approvedActions(row.id)}
+			{:else}
+				<div class="actions">
+					<Button variant="secondary" size="sm" disabled={!!busy[row.id] || !canWrite || (row.scope !== 'user' && !row.server_is_active) || !row.config_version} onclick={() => activate(row)}>{(row.scope === 'user' ? row.server_is_active : row.is_active) ? t('deactivate') : t('activate')}</Button>
+					{#if row.auth_mode === 'oauth' && (row.scope !== 'domain' || editable(row))}
+						<Button variant="outline" size="sm" disabled={!!busy[row.id] || !canWrite} onclick={() => oauth(row)}>{row.auth_connected ? t('reconnect') : t('connectOAuth')}</Button>
+						{#if row.auth_connected}<Button variant="subtle" size="sm" disabled={!!busy[row.id] || !canDelete} onclick={() => revokeTarget = row}>{t('revokeOAuth')}</Button>{/if}
+					{/if}
+					{#if editable(row)}
+						{#if row.scope === 'domain' || (row.template_key && row.auth_mode === 'admin')}
+							<Button variant="subtle" size="sm" disabled={!!busy[row.id] || !canWrite} onclick={() => openEditor(undefined, row, row.scope)}>{t('edit')}</Button>
+						{/if}
+						<Button variant="danger-outline" size="sm" disabled={!!busy[row.id] || !canDelete} onclick={() => deleteTarget = row}>{t('delete')}</Button>
+					{/if}
+				</div>
+			{/if}
+			{#if rowErrors[row.id]}<Alert tone="danger" flat>{rowErrors[row.id]}</Alert>{/if}
+			{#if deleteTarget?.id === row.id}
+				<Alert tone="warning" flat>{t('deleteConfirm', { name: row.name })}</Alert>
+				<div class="actions"><Button variant="secondary" size="sm" onclick={() => deleteTarget = null}>{t('cancel')}</Button><Button variant="danger" size="sm" onclick={() => remove(row)}>{t('delete')}</Button></div>
+			{/if}
+			{#if revokeTarget?.id === row.id}
+				<Alert tone="warning" flat>{t('revokeConfirm', { name: row.name })}</Alert>
+				<div class="actions"><Button variant="secondary" size="sm" onclick={() => revokeTarget = null}>{t('cancel')}</Button><Button variant="danger" size="sm" onclick={() => { revokeTarget = null; oauth(row, true); }}>{t('revokeOAuth')}</Button></div>
+			{/if}
+		{:else}
+			{@render approved?.()}
+		{/if}
+	</div>
+{/snippet}
+
 <style>
-	.gallery { display: grid; gap: 1rem; min-width: 0; margin-block-end: 2rem; color: var(--color-ink-1); }
-	h3, h4 { margin: 0; font-size: var(--type-body); font-weight: 600; color: var(--color-ink-0); }
-	p { margin: 0.35rem 0 0; font-size: var(--type-support); color: var(--color-ink-2); overflow-wrap: anywhere; }
-	.toolbar, .connection-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 0.75rem 1.5rem; }
-	.toolbar > div:first-child, .row-copy { min-width: 0; flex: 1 1 16rem; }
-	.actions, .metadata, .template-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
-	.metadata { margin-block-start: 0.4rem; font-size: var(--type-support); color: var(--color-ink-2); }
-	.featured-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: 0.75rem; }
-	.featured-grid .template { border: 1px solid var(--color-line); border-radius: var(--radius-lg); padding: 1rem; background: var(--color-surface-base); }
-	.template { display: flex; flex-direction: column; gap: 0.75rem; padding-block: 1rem; min-width: 0; }
-	.catalog-list .template + .template, .connection-row { border-block-start: 1px solid var(--color-line); }
-	.catalog-list .template .row-copy { flex: auto; }
-	.featured-grid .row-copy { flex: 1; }
-	.registry-name, .endpoint { overflow-wrap: anywhere; font-size: var(--type-identifier); }
-	.scope-note { display: grid; gap: 0.4rem; padding-block: 0.75rem; font-size: var(--type-support); color: var(--color-ink-2); overflow-wrap: anywhere; }
-	.connections { display: grid; gap: 0.75rem; min-width: 0; }
-	.connection-row { padding-block: 0.875rem; }
-	.row-error { flex-basis: 100%; min-width: 0; }
-	.editor { display: grid; gap: 1rem; border-block: 1px solid var(--color-line); padding-block: 1.25rem; }
+	.gallery { display: grid; gap: 1rem; min-width: 0; color: var(--color-ink-1); }
+	h2, h3 { margin: 0; font-weight: 600; color: var(--color-ink-0); }
+	h2 { font-size: 1.25rem; }
+	h3 { font-size: var(--type-body); }
+	p { margin: 0.25rem 0 0; font-size: var(--type-support); color: var(--color-ink-2); overflow-wrap: anywhere; }
+	.workspace-header, .workspace-navigation, .catalog-section > header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; }
+	.workspace-header > div:first-child { flex: 1 1 17rem; min-width: 0; }
+	.workspace-header p { max-inline-size: 68ch; }
+	.search-tools { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+	.search-tools :global(.select-input) { flex: 0 1 auto; inline-size: auto; max-inline-size: 100%; }
+	.search-input { flex: 1 1 14rem; min-inline-size: 0; }
+	.tab-content { display: grid; gap: 1.375rem; min-inline-size: 0; }
+	.catalog-section { display: grid; gap: 0.5rem; }
+	.template-grid { display: grid; gap: 0 1.125rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, max(17rem, calc((100% - 1.125rem) / 2))), 1fr)); }
+	.template { min-width: 0; border-block-start: 1px solid var(--color-line); padding-block: 0.625rem; }
+	.template-line { display: flex; align-items: flex-start; gap: 0.625rem; }
+	.template-line > :global(button), .template-line > :global(.menu-group) { margin-inline-start: auto; }
+	.unavailable { flex: 0 1 9rem; min-inline-size: 0; text-align: end; }
+	.template details { flex: 1 1 0; min-inline-size: 0; font-size: var(--type-support); color: var(--color-ink-2); }
+	.template summary { display: flex; min-block-size: var(--control-height); align-items: center; justify-content: space-between; gap: 0.375rem; cursor: pointer; }
+	.template summary::-webkit-details-marker { display: none; }
+	.template summary :global(.name) { flex: 1; }
+	.template summary svg { flex: none; }
+	.template details[open] summary svg { rotate: 90deg; }
+	.template-meta { margin-inline-start: 2.625rem; }
+	.template summary:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+	.single-line { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--color-ink-2); }
+	.actions, .metadata { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+	.metadata { font-size: var(--type-support); color: var(--color-ink-2); }
+	.endpoint { overflow-wrap: anywhere; font-size: var(--type-identifier); }
+	.detail-body { display: grid; gap: 0.625rem; width: 100%; text-align: start; overflow-wrap: anywhere; }
+	.detail-body ul { margin: 0.375rem 0; padding-inline-start: 1.25rem; font-size: var(--type-support); list-style: disc; }
+	.scope-note { border-block-start: 1px solid var(--color-line); padding-block-start: 0.875rem; }
+	.scope-choice { border-block-end: 1px solid var(--color-line); padding-block-end: 0.5rem; }
+	.more { display: flex; justify-content: center; margin-block-start: 0.375rem; }
+	.empty { display: grid; justify-items: start; gap: 0.375rem; border-block: 1px solid var(--color-line); padding-block: 1rem; }
+	.count { color: var(--color-ink-2); font-weight: 400; font-variant-numeric: tabular-nums; }
+	.editor { display: grid; gap: 0.75rem; border-block: 1px solid var(--color-line); padding-block: 1rem; }
 	fieldset { display: grid; gap: 0.75rem; min-width: 0; border: 0; padding: 0; }
 	legend { font-size: var(--type-body); font-weight: 500; }
 	.header-fields { display: grid; gap: 0.75rem; align-items: end; }
-	.search-form { display: flex; flex-wrap: wrap; align-items: end; gap: 0.75rem; }
-	.search-form :global(.field) { flex: 1 1 16rem; }
-	.count { color: var(--color-ink-2); font-weight: 400; font-variant-numeric: tabular-nums; }
-	@media (min-width: 768px) { .header-fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; } .catalog-list .template { flex-direction: row; align-items: center; flex-wrap: wrap; } .catalog-list .template .row-copy { flex: 1 1 20rem; } }
-	.header-fields.declared-header { grid-template-columns: minmax(0, 1fr); }
+	@media (min-width: 768px) { .header-fields:not(.declared-header) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; } }
+	@media (max-width: 767px), (pointer: coarse) { .template summary { min-block-size: var(--control-touch-height); align-content: center; } }
+	@media (max-width: 767px) {
+		.template-grid { grid-template-columns: minmax(0, 1fr); }
+		.workspace-navigation { flex-wrap: nowrap; gap: 0.375rem; }
+		.workspace-navigation :global(.workspace-refresh) { min-inline-size: var(--control-touch-height); }
+		.refresh-label { display: none; }
+		.search-input { flex-basis: 100%; }
+		.search-tools :global(.select-input) { flex: 1 1 8rem; min-inline-size: 0; }
+	}
 </style>
