@@ -397,9 +397,7 @@ def test_lumen_ingress_secret_only_in_secret_and_optional_backend_reference(serv
     configmap = yaml.safe_load(artifacts["configmap.yaml"])
     assert "lumen_ingress_secret" not in tomllib.loads(configmap["data"]["afterglow.conf"])["services"]
     assert env_key not in artifacts["configmap.yaml"]
-    assert all(
-        "synthetic-ingress-" not in content for path, content in artifacts.items() if path != "secret.yaml"
-    )
+    assert all("synthetic-ingress-" not in content for path, content in artifacts.items() if path != "secret.yaml")
 
     deployment = yaml.safe_load(artifacts["base/backend/deployment.yaml"])
     env = deployment["spec"]["template"]["spec"]["containers"][0]["env"]

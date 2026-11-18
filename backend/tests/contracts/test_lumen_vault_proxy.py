@@ -97,7 +97,13 @@ async def test_vault_read_and_write_require_distinct_native_leaves(
         ("GET", "notes/7?workspace_id=31", 200, b"", b'{"id":7,"workspace_id":31}'),
         ("GET", "notes/7/revisions?workspace_id=31&before=3", 200, b"", b"[]"),
         ("PATCH", "notes/7?workspace_id=31", 200, b'{"content":"edit","expectedHash":"test-hash"}', b'{"id":7}'),
-        ("POST", "notes", 201, b'{"kind":"user_note","scope":"domain","workspace_id":31}', b'{"id":7,"workspace_id":31}'),
+        (
+            "POST",
+            "notes",
+            201,
+            b'{"kind":"user_note","scope":"domain","workspace_id":31}',
+            b'{"id":7,"workspace_id":31}',
+        ),
     ],
 )
 async def test_vault_forwards_exact_request_and_native_response(

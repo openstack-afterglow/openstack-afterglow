@@ -1389,13 +1389,21 @@ async def test_lumen_key_billing_manager_routes_deny_stale_or_spoofed_authority(
             {"detail": {"code": "idempotency_key_reused_with_different_intent"}},
         ),
         ("GET", "admin/domain-pools/domain-1/topups/topup-test-id", 200, None, {"found": False, "entry": None}),
-        ("GET", "admin/service-keys?owner_domain_id=domain-1&before_id=10", 200, None, {"items": [], "next_before_id": None}),
+        (
+            "GET",
+            "admin/service-keys?owner_domain_id=domain-1&before_id=10",
+            200,
+            None,
+            {"items": [], "next_before_id": None},
+        ),
     ],
 )
 async def test_lumen_key_billing_transport_preserves_scope_and_codes(
     api_client, current_system_admin, method, path, status, body, reply
 ):
-    app.dependency_overrides[get_token_info] = _authenticated_system_admin if path.startswith("admin/") else _authenticated
+    app.dependency_overrides[get_token_info] = (
+        _authenticated_system_admin if path.startswith("admin/") else _authenticated
+    )
 
     async def handler(request):
         assert request.method == method

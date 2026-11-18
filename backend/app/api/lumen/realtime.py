@@ -91,9 +91,7 @@ async def create_session(
     settings = get_settings()
     attach_lumen_ingress(headers, secret=settings.service_lumen_ingress_secret, method="POST", url=url)
     try:
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(20.0, connect=5.0), verify=settings.ssl_verify
-        ) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=5.0), verify=settings.ssl_verify) as client:
             # Older Lumen versions forbid newer optional keys even when null.
             optional = {"model_id", "model_row_id", "output_language", "reasoning_effort"}
             body = payload.model_dump(exclude={name for name in optional if getattr(payload, name) is None})

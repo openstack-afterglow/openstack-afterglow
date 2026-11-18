@@ -294,7 +294,10 @@ def test_kolla_ingress_secret_stays_in_private_config(effective_config, variable
     assert private["services"][_INGRESS_TOML] == expected
     public = subprocess.run(
         [sys.executable, str(_FILES / "render_frontend_config.py"), "--project-json"],
-        input=json.dumps({"config": merged}), capture_output=True, text=True, check=True,
+        input=json.dumps({"config": merged}),
+        capture_output=True,
+        text=True,
+        check=True,
     )
     projected = json.loads(public.stdout)
     assert _INGRESS_TOML not in projected["config"]["services"]
@@ -312,7 +315,9 @@ def test_kolla_ingress_secret_failures_disclose_no_config(secret, override):
     result = subprocess.run(
         [sys.executable, str(_HELPER_PATH)],
         input=json.dumps({"base": _render_backend_template(**{_INGRESS_VAR: secret}), "operator": override}),
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert result.returncode == 1
     assert result.stdout == ""
@@ -352,9 +357,7 @@ def test_kolla_ingress_generator_preserves_existing_bytes(tmp_path, source):
     configured = source in {"explicit-empty", "existing"}
     assert result.returncode == int(configured)
     assert result.stdout == b""
-    assert result.stderr == (
-        f"{_INGRESS_VAR} is already set; no changes were made\n".encode() if configured else b""
-    )
+    assert result.stderr == (f"{_INGRESS_VAR} is already set; no changes were made\n".encode() if configured else b"")
     updated_stat = path.stat()
     assert stat.S_IMODE(updated_stat.st_mode) == stat.S_IMODE(original_stat.st_mode)
     assert (updated_stat.st_uid, updated_stat.st_gid) == (original_stat.st_uid, original_stat.st_gid)
@@ -396,7 +399,7 @@ def test_kolla_ingress_generator_does_not_race_to_replace_published_key(tmp_path
     assert sorted([first.returncode, second.returncode]) == [0, 1]
     updated = path.read_bytes()
     assert updated.startswith(original)
-    assert re.fullmatch(rb'lumen_afterglow_ingress_secret: "[a-f0-9]{64}"\n', updated[len(original):])
+    assert re.fullmatch(rb'lumen_afterglow_ingress_secret: "[a-f0-9]{64}"\n', updated[len(original) :])
 
 
 @pytest.mark.parametrize(
@@ -426,7 +429,9 @@ def test_kolla_ingress_generator_rejects_unsafe_input_without_disclosing_values(
         input_path.symlink_to(path)
     result = subprocess.run(
         [sys.executable, str(_INGRESS_GENERATOR), str(input_path)],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert result.returncode == 1
     assert result.stdout == ""

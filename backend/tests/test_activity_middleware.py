@@ -162,7 +162,10 @@ async def test_vault_mutation_audit_omits_note_body_and_query():
     record.assert_awaited_once()
     event = record.call_args.kwargs
     assert (event["resource_type"], event["resource_id"], event["action"], event["status"]) == (
-        "chat_vault_note", "42", "chat_vault_note.update", "success"
+        "chat_vault_note",
+        "42",
+        "chat_vault_note.update",
+        "success",
     )
     assert "private fixture note text" not in repr(event)
     assert "91357" not in repr(event)
