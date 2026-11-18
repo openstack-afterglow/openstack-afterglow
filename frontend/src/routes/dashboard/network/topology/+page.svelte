@@ -106,6 +106,7 @@
 				{ label: t('network.shared'), kind: 'platform', tone: 'shared' },
 				{ label: t('network.internal'), kind: 'platform', tone: 'internal' },
 				{ label: t('grid.router'), kind: 'node', tone: 'router' },
+				{ label: isoText('kind.database'), kind: 'node', tone: 'internal-2' },
 				{ label: t('laneLegend.lbMember'), kind: 'edge', tone: 'accent' },
 				{ label: t('legend.floatingIp'), kind: 'edge', tone: 'external' },
 			],
