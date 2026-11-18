@@ -47,7 +47,7 @@
 	}
 </script>
 
-<div class="managed-picker" class:menu role={menu ? 'group' : undefined} aria-label={menu ? t('selectionTitle') : undefined}>
+<div class="managed-picker" class:menu class:embedded={!!profileId && !menu} role={menu ? 'group' : undefined} aria-label={menu ? t('selectionTitle') : undefined}>
 	{#if showSummary}
 		<div class="summary-row">
 			<strong>{t('selectionTitle')}</strong>
@@ -127,6 +127,8 @@
 
 <style>
 	.managed-picker { display: grid; gap: 0.65rem; min-width: 0; color: var(--color-ink-1); }
+	.embedded { margin-block-start: 0.375rem; padding-inline-start: 2.625rem; }
+	.embedded .profile { gap: 0; }
 	.summary-row, .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 	strong { font-size: var(--type-body); font-weight: 600; color: var(--color-ink-0); }
 	p { margin: 0; font-size: var(--type-support); color: var(--color-ink-2); overflow-wrap: anywhere; }

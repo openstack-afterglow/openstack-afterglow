@@ -1,10 +1,10 @@
 ## 1. Connections workspace (MCP and tools)
 
-- [ ] Browse / Connected (N) / Manage tabs with deep-linkable state, single search, server-side `access` and `state` filters.
-- [ ] Compact two-column catalogue rows (monogram tile, name, access badge, one-line description, primary action) grouped into Featured, Built-in sandbox tools and All catalogue with server pagination.
-- [ ] Connected table: status mark, name, scope (personal/organization/admin-public), access state, tool count, manage action; expandable tool list; activation and OAuth actions unchanged.
-- [ ] Manage tab: remote MCP server form, custom HTTP tools list/add dialog, Afterglow MCP approval card.
-- [ ] Preserve existing permission, consent, activation-version, stale-response and sandbox-selection behavior and tests; nine locales.
+- [x] Browse / Connected (N) / Manage tabs with deep-linkable state, single search, server-side `access` and `state` filters.
+- [x] Compact two-column catalogue rows (monogram tile, name, access badge, one-line description, primary action) grouped into Featured, Built-in sandbox tools and All catalogue with server pagination.
+- [x] Connected table: status mark, name, scope (personal/organization/admin-public), access state, tool count, manage action; expandable tool list; activation and OAuth actions unchanged.
+- [x] Manage tab: remote MCP server form, Afterglow MCP approval, sandbox selection summary and organization notes. Tools tab: custom HTTP tools list and add dialog.
+- [x] Preserve existing permission, consent, activation-version, stale-response and sandbox-selection behavior and tests; nine locales.
 
 ## 2. Isometric grid view
 

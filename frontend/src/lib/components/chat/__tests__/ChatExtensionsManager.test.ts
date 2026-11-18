@@ -1,5 +1,5 @@
 import { grantLumen, setVerifiedLumenActor } from './lumenPermissionFixture';
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { auth } from '$lib/stores/auth';
 
@@ -25,18 +25,18 @@ import ChatExtensionsManager from '../ChatExtensionsManager.svelte';
 describe('ChatExtensionsManager MCP OAuth', () => {
 	it.each(['mcp', 'tools', 'skills'] as const)('keeps the %s settings section in the page outline', async (only) => {
 		render(ChatExtensionsManager, { base: '/api/v1/chat', only });
-		const sectionTitle = only === 'mcp' ? 'MCP 서버' : only === 'tools' ? '커스텀 HTTP 툴' : '스킬';
+		const sectionTitle = only === 'mcp' ? 'MCP 연결' : only === 'tools' ? '커스텀 HTTP 툴' : '스킬';
 		expect(screen.getByRole('heading', { level: 2, name: sectionTitle })).toBeTruthy();
-		await screen.findByRole('button', { name: only === 'mcp' ? '+ MCP 서버 추가' : only === 'tools' ? '+ 커스텀 툴 추가' : '+ 스킬 추가' });
+		await screen.findByRole('button', { name: only === 'mcp' ? '연결 추가' : only === 'tools' ? '도구 추가' : '+ 스킬 추가' });
 	});
 	it('separates MCP editing from destruction and tool execution', async () => {
 		grantLumen('lumen-mcp_editor');
 		render(ChatExtensionsManager, { base: '/api/v1/chat', only: 'mcp' });
-		await screen.findByText('Notion');
-		expect(screen.getByRole('button', { name: '+ MCP 서버 추가' }).hasAttribute('disabled')).toBe(false);
+		await screen.findByRole('tab', { name: /연결됨 1/ });
+		expect(screen.getByRole('button', { name: '연결 추가' }).hasAttribute('disabled')).toBe(false);
 		expect(screen.queryByRole('button', { name: '삭제' })).toBeNull();
 		grantLumen('lumen-tools_user');
-		await waitFor(() => expect(screen.getByRole('button', { name: '+ MCP 서버 추가' }).hasAttribute('disabled')).toBe(true));
+		await waitFor(() => expect(screen.getByRole('button', { name: '연결 추가' }).hasAttribute('disabled')).toBe(true));
 	});
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -86,6 +86,8 @@ describe('ChatExtensionsManager MCP OAuth', () => {
 		mocks.patch.mockResolvedValue({});
 		mocks.post.mockRejectedValue(new Error('Provider is unavailable'));
 		render(ChatExtensionsManager, { base: '/api/v1/chat', only: 'mcp' });
+		await fireEvent.click(await screen.findByRole('tab', { name: /연결됨 1/ }));
+		await fireEvent.click(await screen.findByRole('button', { name: '관리 Notion' }));
 		const activate = await screen.findByRole('button', { name: 'Notion 활성화' });
 		await fireEvent.click(activate);
 		expect(screen.getByRole('dialog').textContent).toContain('https://mcp.notion.com/mcp');
@@ -101,10 +103,21 @@ describe('ChatExtensionsManager MCP OAuth', () => {
 	});
 
 
+	it('keeps approval state for a legacy global server without activation-version metadata', async () => {
+		grantLumen('lumen-mcp_editor');
+		const original = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation((path: string) => path.endsWith('/mcp-servers/7/oauth') ? Promise.resolve({ connected: true }) : original(path));
+		render(ChatExtensionsManager, { base: '/api/v1/chat', only: 'mcp' });
+		await fireEvent.click(await screen.findByRole('tab', { name: /연결됨 1/ }));
+		const notion = await screen.findByText('Notion');
+		await waitFor(() => expect(notion.closest('.connection-row')?.querySelector('[data-connection-status="active"] svg')).toBeTruthy());
+	});
+
 
 	it('submits the write-only static OAuth client only from the administrator form', async () => {
 		auth.update((state) => ({ ...state, isSystemAdmin: true }));
 		render(ChatExtensionsManager, { base: '/api/v1/chat/admin', only: 'mcp' });
+		await fireEvent.click(screen.getByRole('tab', { name: '관리' }));
 
 		await fireEvent.input(screen.getByPlaceholderText('이름'), { target: { value: 'GitHub' } });
 		await fireEvent.input(screen.getByPlaceholderText('URL (예: https://mcp.example/mcp)'), {
@@ -135,6 +148,30 @@ describe('ChatExtensionsManager MCP OAuth', () => {
 				expect.objectContaining({ signal: expect.any(AbortSignal) })
 			)
 		);
+	});
+
+	it('filters the HTTP tool table and creates a tool only on dialog submit', async () => {
+		grantLumen('lumen-assets_editor');
+		mocks.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/custom-tools') ? [
+			{ id: 1, name: 'Delivery status', description: 'Check tracking', method: 'GET', url: 'https://example.test/shipping', is_active: true },
+			{ id: 2, name: 'Send feedback', description: 'Notify team', method: 'POST', url: 'https://example.test/feedback', is_active: false }
+		] : []));
+		mocks.post.mockResolvedValue({});
+		render(ChatExtensionsManager, { base: '/api/v1/chat', only: 'tools' });
+		await screen.findByText('Delivery status');
+		const search = screen.getByRole('searchbox');
+		await fireEvent.input(search, { target: { value: 'feedback' } });
+		expect(screen.queryByText('Delivery status')).toBeNull();
+		expect(screen.getByText('Send feedback').closest('.connection-row')?.querySelector('[data-connection-status="inactive"] svg')).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: '도구 추가' }));
+		const dialog = within(screen.getByRole('dialog', { name: '도구 추가' }));
+		expect(mocks.post).not.toHaveBeenCalled();
+		await fireEvent.input(dialog.getByLabelText('툴 이름 (영숫자/_)'), { target: { value: 'new_tool' } });
+		await fireEvent.input(dialog.getByLabelText('URL'), { target: { value: 'https://example.test/new' } });
+		await fireEvent.click(dialog.getByRole('button', { name: '도구 추가' }));
+		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/chat/custom-tools',
+			{ name: 'new_tool', description: 'new_tool', method: 'GET', url: 'https://example.test/new' }, 'token', 'project-1'));
+		expect(screen.queryByRole('dialog')).toBeNull();
 	});
 
 });
