@@ -236,8 +236,8 @@
 		});
 		return () => { unsubscribe(); stopSandbox?.(); invalidate(); owner = null; };
 	});
-	function restoreTab(search = new URLSearchParams(document.location.search)) {
-		const next = tabs(search);
+	function restoreTab() {
+		const next = tabs(new URLSearchParams(document.location.search));
 		if (next === tab) return;
 		if (tab === 'manage') onRemoteClose?.();
 		tab = next;
@@ -246,8 +246,9 @@
 		applyFilters();
 	}
 	$effect(() => {
-		const search = page.url.searchParams;
-		untrack(() => restoreTab(search));
+		// SvelteKit's URL is a navigation signal; shallow history can retain the pre-push URL.
+		void page.url;
+		untrack(restoreTab);
 	});
 
 	async function load(scope: Owner, start = 0) {

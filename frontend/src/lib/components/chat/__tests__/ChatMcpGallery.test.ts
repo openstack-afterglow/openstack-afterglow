@@ -129,9 +129,13 @@ describe('Connections workspace', () => {
 		expect(connected.tabIndex).toBe(0);
 		expect(manage.tabIndex).toBe(-1);
 		expect(document.location.search).toBe('?section=mcp&connections=connected');
+		const connectedUrl = document.location.href;
 		document.defaultView!.history.replaceState({}, '', url);
 		await fireEvent.popState(document.defaultView!);
 		expect(manage.getAttribute('aria-selected')).toBe('true');
+		document.defaultView!.history.replaceState({}, '', connectedUrl);
+		await fireEvent.popState(document.defaultView!);
+		expect(connected.getAttribute('aria-selected')).toBe('true');
 	});
 
 	it('sends access, state and debounced q; filters a count that matches table rows', async () => {
@@ -242,6 +246,7 @@ describe('ChatMcpGallery ownership', () => {
 		await settle(() => oldPage.resolve(settings({ entries: [template({ name: 'Old owner catalog' })], can_manage_domain: true })));
 		expect(screen.queryByRole('article', { name: 'Old owner catalog' })).toBeNull();
 		expect(screen.queryByText(t('managerHelp'))).toBeNull();
+		await expectOrganizationOption(false);
 		expect(mocks.get).toHaveBeenCalledTimes(count);
 	});
 
