@@ -136,7 +136,7 @@ it('defaults to a read-only VPN map, opens a focused client row, and persists ex
 	const panel = within(await screen.findByRole('dialog', { name: t('project.server.details') }));
 	await panel.findByRole('figure', { name: t('project.iso.label') });
 	expect(panel.queryByRole('button', { name: t('project.actions.issueClient') })).toBeNull();
-	await fireEvent.click(await panel.findByRole('button', { name: /^laptop-a/ }));
+	await fireEvent.click(await panel.findByRole('button', { name: /^[^,]+, laptop-a(,|$)/ }));
 	expect(document.activeElement).toBe(await panel.findByText('laptop-a'));
 	expect(panel.getByRole('button', { name: t('project.actions.issueClient') })).toBeTruthy();
 	expect(localStorage.getItem('waygate.view')).not.toBe('list');
