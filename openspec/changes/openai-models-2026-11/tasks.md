@@ -11,4 +11,6 @@
 
 - [x] Run focused image, realtime, registry, and reasoning tests plus BFF and microphone header contracts.
 - [x] Capture desktop and mobile browser proof against an isolated mock BFF.
-- [ ] Run the isolated repository gate with no private config.
+- [x] Run the isolated repository gate with no private config.
+
+The detached gate passed on `210870b858`: 15,515 backend unit, 8,524 frontend (610 files), 281 contract, and 301 functional tests. Architecture, experience catalog and Ruff passed. Browser captures in `~/.local/share/afterglow-proofs/openai-models-2026-11-18/` exercise a synthetic BFF and a fake microphone, not live provider inference or billing.
