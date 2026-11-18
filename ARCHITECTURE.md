@@ -2303,9 +2303,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "8b80e907a85eebc9d2ed9509e68a2d1055b0632eaab08bf85c15f09b44591721",
-  "reviewed_at": "2026-11-18T17:30:02Z",
-  "summary": "Review service-key issuance policy form, fail-closed domain-pool top-up recovery with ledger lookup, domain-billing readiness in model pickers and admin list, and installers served under /api/v1/install behind the frontend proxy"
+  "source_sha256": "a7da3c8ccea2195f49d7156479e84014781dc8747f9d84299ebb28146e887cec",
+  "reviewed_at": "2026-11-18T17:37:17Z",
+  "summary": "Review service-key issuance policy form, fail-closed domain-pool top-up recovery with ledger lookup, domain-billing readiness in model pickers and admin list, installers under /api/v1/install, and formatting-only backend changes"
 }
 ```
 <!-- architecture-review:end -->
