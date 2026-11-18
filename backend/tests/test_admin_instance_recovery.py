@@ -21,6 +21,7 @@ _SOURCE_PROVIDER = "00000000-0000-4000-8000-000000000004"
 _DEST_PROVIDER = "00000000-0000-4000-8000-000000000005"
 _REQUEST_ID = "req-00000000-0000-4000-8000-000000000006"
 _SOURCE = "compute1"
+_SOURCE_NODE = "compute1.example.test"
 _DEST = "compute2"
 _MIGRATION_CREATED = "2026-01-01T09:19:25Z"
 _MIGRATION_UPDATED = "2026-01-01T09:20:05Z"
@@ -56,6 +57,7 @@ def _migration(**overrides):
                 "status": "error",
                 "migration_type": "live-migration",
                 "source_compute": _SOURCE,
+                "source_node": _SOURCE_NODE,
                 "dest_compute": _DEST,
                 "created_at": _MIGRATION_CREATED,
                 "updated_at": _MIGRATION_UPDATED,
@@ -85,6 +87,7 @@ def _configure_recovery(conn, scenario):
         task_state=None,
         power_state=4,
         compute_host=_SOURCE,
+        hypervisor_hostname=_SOURCE_NODE,
         flavor={"id": "flavor-1", "disk": 0},
         image={},
         fault={
@@ -161,7 +164,7 @@ def _configure_recovery(conn, scenario):
             "resource_providers": [
                 {
                     "uuid": _SOURCE_PROVIDER,
-                    "name": _SOURCE,
+                    "name": _SOURCE_NODE,
                     "root_provider_uuid": _SOURCE_PROVIDER,
                     "parent_provider_uuid": None,
                 }
@@ -237,7 +240,7 @@ def test_verified_live_migration_recovery_plan_and_execution(live_conn, power_st
     live_conn.network.get.assert_called_once_with(f"/ports/{_PORT_ID}/bindings", raise_exc=True)
     assert live_conn.placement.get.call_args_list == [
         call(f"/allocations/{_SERVER_ID}", raise_exc=True),
-        call("/resource_providers", params={"name": _SOURCE}, microversion="1.14", raise_exc=True),
+        call("/resource_providers", params={"name": _SOURCE_NODE}, microversion="1.14", raise_exc=True),
     ]
 
     result = instance_recovery.execute_recovery(live_conn, _SERVER_ID, expected_guest_restart=power_state != 1)
@@ -406,6 +409,14 @@ def test_live_migration_requires_exact_source_provider(live_conn, failure):
         providers[0]["root_provider_uuid"] = _DEST_PROVIDER
 
     _assert_recovery_blocked(live_conn, "live_migration_placement")
+
+
+@pytest.mark.parametrize("node", [None, "different.example.test"], ids=["missing", "mismatch"])
+def test_live_migration_requires_matching_nova_source_node(live_conn, node):
+    live_conn.compute.migrations.return_value[0].source_node = node
+
+    _assert_recovery_blocked(live_conn, "live_migration_placement")
+    live_conn.placement.get.assert_not_called()
 
 
 @pytest.mark.parametrize("failure", ["nova-task", "ongoing-migration"])

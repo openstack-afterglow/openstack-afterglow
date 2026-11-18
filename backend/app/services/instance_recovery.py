@@ -85,6 +85,7 @@ def _collect_server(conn: openstack.connection.Connection, server_id: str) -> di
             if isinstance(srv, Server)
             else hasattr(srv, "task_state"),
             "compute_host": getattr(srv, "compute_host", None),
+            "hypervisor_hostname": getattr(srv, "hypervisor_hostname", None),
             "flavor_disk": int(disk) if disk is not None else -1,
             "image_id": image.get("id") if isinstance(image, dict) else getattr(image, "id", None),
             "fault": fault,
@@ -115,6 +116,7 @@ def _collect_migrations(conn: openstack.connection.Connection, server_id: str) -
                     "status": status,
                     "migration_type": migration_type,
                     "source_compute": migration.source_compute,
+                    "source_node": getattr(migration, "source_node", None),
                     "dest_compute": migration.dest_compute,
                     "created_at": created.isoformat(),
                     "updated_at": updated.isoformat() if updated is not None else None,
@@ -375,10 +377,13 @@ def _check_live_volume_attachments(volumes: list[dict] | None, server_id: str, h
     return _check(key, label, True, f"볼륨 {len(volumes)}개 확인 — 모든 연결 호스트가 {host}")
 
 
-def _check_live_placement(conn: openstack.connection.Connection, server_id: str, source: str | None) -> dict:
+def _check_live_placement(
+    conn: openstack.connection.Connection, server_id: str, source_node: str | None, hypervisor_hostname: str | None
+) -> dict:
     key, label = "live_migration_placement", "Placement 소스 리소스 공급자 단일 할당"
-    if not isinstance(source, str) or not source:
-        return _check(key, label, False, "소스 호스트를 확인할 수 없습니다")
+    # Placement names compute providers after Nova's node, not the service host.
+    if not isinstance(source_node, str) or not source_node or source_node != hypervisor_hostname:
+        return _check(key, label, False, "Nova 하이퍼바이저 이름과 마이그레이션 소스 노드를 대조할 수 없습니다")
     try:
         allocations = conn.placement.get(f"/allocations/{quote(server_id, safe='')}", raise_exc=True).json()[
             "allocations"
@@ -396,14 +401,14 @@ def _check_live_placement(conn: openstack.connection.Connection, server_id: str,
         return _check(key, label, False, "Placement 공급자의 리소스 할당을 확인할 수 없습니다")
     try:
         source_providers = conn.placement.get(
-            "/resource_providers", params={"name": source}, microversion="1.14", raise_exc=True
+            "/resource_providers", params={"name": source_node}, microversion="1.14", raise_exc=True
         ).json()["resource_providers"]
         if not isinstance(source_providers, list) or len(source_providers) != 1:
             raise ValueError("Placement source provider not unique")
         root = source_providers[0]
         source_uuid = root["uuid"]
         if (
-            root["name"] != source
+            root["name"] != source_node
             or not isinstance(source_uuid, str)
             or not source_uuid
             or root["root_provider_uuid"] != source_uuid
@@ -412,10 +417,10 @@ def _check_live_placement(conn: openstack.connection.Connection, server_id: str,
             raise ValueError("Placement source provider is not the exact named root")
     except Exception:
         logger.warning("Placement 소스 리소스 공급자 확인 실패")
-        return _check(key, label, False, f"소스 호스트 {source}의 단일 Placement 공급자를 확인할 수 없습니다")
+        return _check(key, label, False, f"소스 노드 {source_node}의 단일 Placement 공급자를 확인할 수 없습니다")
     if provider != source_uuid:
         return _check(key, label, False, f"Placement 할당 {provider}가 소스 공급자 {source_uuid}와 일치하지 않습니다")
-    return _check(key, label, True, f"소스 {source}의 단일 리소스 공급자 확인: {provider}")
+    return _check(key, label, True, f"소스 노드 {source_node}의 단일 리소스 공급자 확인: {provider}")
 
 
 def _check_no_task_in_progress(srv: dict | None, active_migs: list | None) -> dict:
@@ -649,7 +654,12 @@ def analyze_error_instance(
                 _check_rollback_event(conn, server_id, last_error_migration),
                 _check_live_port_bindings(conn, ports, host),
                 _check_live_volume_attachments(volumes, server_id, host),
-                _check_live_placement(conn, server_id, source),
+                _check_live_placement(
+                    conn,
+                    server_id,
+                    last_error_migration["source_node"],
+                    srv.get("hypervisor_hostname") if srv else None,
+                ),
                 _check(
                     "live_migration_power_state",
                     "Nova 게스트 전원 상태 확인",

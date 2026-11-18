@@ -619,14 +619,14 @@ Manila의 `/v2/{project}` URL prefix도 논리 Personal이 아닌 실제 인증 
 |----------------|------|
 | `server.power_state` | Nova 전원 상태 코드. 미확인은 `null`. |
 | `server.fault` | 최신 Nova fault(`message`, `code`, `created`) 또는 `null`. 실패한 마이그레이션의 원인을 뜻하지 않습니다. |
-| `last_error_migration` | 실패 레코드(`id`, `status`, `migration_type`, `source_compute`, `dest_compute`, `created_at`, `updated_at`) 또는 `null`. |
+| `last_error_migration` | 실패 레코드(`id`, `status`, `migration_type`, `source_compute`, `source_node`, `dest_compute`, `created_at`, `updated_at`) 또는 `null`. |
 | `volumes`, `ports` | Nova/Cinder 연결 및 Neutron 바인딩 정보. 조회 실패는 `null`, 읽어서 없음을 확인한 경우는 `[]`. |
 | `checks[]` | 안정적인 `key`와 표시용 `label`, `passed`, `detail`. |
 | `scenario`, `scenario_description`, `steps[]` | 진단 및 순서가 있는 계획. 각 단계는 `action`, `params`, `description`을 포함합니다. `auto_executable`이 `true`일 때만 실행할 수 있습니다. |
 | `placement_note` | 레거시 마이그레이션에 대해 수동 할당 확인이 필요할 수 있다는 참고 정보 또는 `null`. |
 
 라이브 롤백은 소스 호스트, 실패 시각과 연결된 대상 호스트 롤백 성공 이벤트, 소스에만 남은 포트·볼륨 연결, 단일 Placement 공급자, 진행 중 작업 없음이 모두 확인되어야 합니다. 조회 불가·모호한 이력·복수 공급자는 자동 실행을 차단합니다. `live_migration_rolled_back`에서 `power_state=1`이면 `reset_server_state(active)`만 수행합니다. `SHUTDOWN`(`4`)과 `CRASHED`(`6`)는 게스트가 실행 중이지 않다는 명시적 상태이므로 재설정 뒤 `hard_reboot`를 수행합니다. `NOSTATE`(`0`)는 정지 증거가 아닙니다. 전원 상태를 알 수 없거나 다른 코드이면 수동 확인이 필요합니다.
-단일 Placement 할당은 소스 호스트 이름과 일치하는 유일한 루트 공급자의 UUID로 확인합니다. 대상·다른 호스트·중첩 공급자만 할당된 경우와 소스 공급자를 정확히 확인할 수 없는 경우도 차단합니다.
+Nova 서버의 `hypervisor_hostname`과 실패 레코드의 `source_node`가 일치해야 합니다. 단일 Placement 할당은 서비스 호스트명이 아닌 이 소스 노드 이름의 유일한 루트 공급자 UUID와 비교합니다. 대상·다른 호스트·중첩 공급자만 할당된 경우와 소스 공급자를 정확히 확인할 수 없는 경우도 차단합니다.
 
 `recover`는 서버별 공유 Redis 잠금을 획득한 뒤 재진단합니다. 같은 서버에서 다른 복구가 진행 중이면 `409`, 잠금 저장소에 접근할 수 없으면 `503`이며 잠금 없이 실행하지 않습니다. 소유 토큰을 확인해 쓰기 전 잠금을 갱신하고 Nova 관찰이 끝난 뒤 자신이 보유한 잠금만 해제합니다.
 
