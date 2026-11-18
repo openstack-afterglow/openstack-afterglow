@@ -326,7 +326,7 @@
 	"apiKeys.sdk.title": "SDK-eksempler",
 	"apiKeys.sdk.provider": "SDK-leverandør",
 	"apiKeys.sdk.language": "Eksempelspråk",
-	"apiKeys.sdk.help": "Sett {apiKey} i terminalen til den fullstendige Lumen API-nøkkelen med tillatelsen {scope}, og list deretter modellene.",
+	"apiKeys.sdk.help": "Sett {apiKey} i terminalen til den fullstendige Lumen API-nøkkelen. Modellisten krever tillatelsen {models}, tekstgenerering {completions}, embeddinger {embeddings} og bildegenerering {images}. Utsted nøkkelen med alle fire tillatelsene for å kjøre alle eksemplene.",
 	"apiKeys.sdk.copy": "Kopier SDK-eksempel",
 	"apiKeys.sdk.tutorial": "SDK-veiledning",
 	"apiKeys.guide.loading": "Laster inn tilkoblingsinformasjon for Lumen.",

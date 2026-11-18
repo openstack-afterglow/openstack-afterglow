@@ -60,7 +60,7 @@
 		<h5 class="text-sm font-semibold text-ink-1">{t('apiKeys.sdk.title')}</h5>
 		<Button href={tutorialUrl} variant="link" size="sm">{t('apiKeys.sdk.tutorial')}</Button>
 	</div>
-	<p class="mt-1 text-sm leading-6 text-ink-2">{t('apiKeys.sdk.help', { apiKey: 'LUMEN_API_KEY', scope: 'models:read' })}</p>
+	<p class="mt-1 text-sm leading-6 text-ink-2">{t('apiKeys.sdk.help', { apiKey: 'LUMEN_API_KEY', models: 'models:read', completions: 'compat:completions:write', embeddings: 'embeddings:write', images: 'compat:images:write' })}</p>
 	<Tabs id={`${id}-provider`} value={provider} items={providerTabs} ariaLabel={t('apiKeys.sdk.provider')} class="mt-3"
 		onchange={(value) => { provider = value as Provider; }} />
 	<div id={`${id}-provider-panel`} role="tabpanel" aria-labelledby={`${id}-provider-${provider}`} class="min-w-0">

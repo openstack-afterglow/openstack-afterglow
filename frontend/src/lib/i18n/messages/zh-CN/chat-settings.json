@@ -326,7 +326,7 @@
 	"apiKeys.sdk.title": "SDK 示例",
 	"apiKeys.sdk.provider": "SDK 提供方",
 	"apiKeys.sdk.language": "示例语言",
-	"apiKeys.sdk.help": "在终端中将 {apiKey} 设为具有 {scope} 权限的完整 Lumen API 密钥，然后列出模型。",
+	"apiKeys.sdk.help": "在终端中将 {apiKey} 设为完整的 Lumen API 密钥。列出模型需要 {models}，文本生成需要 {completions}，嵌入需要 {embeddings}，图像生成需要 {images} 权限。要运行所有示例，请在签发时包含全部四项权限。",
 	"apiKeys.sdk.copy": "复制 SDK 示例",
 	"apiKeys.sdk.tutorial": "SDK 使用教程",
 	"apiKeys.guide.loading": "正在加载 Lumen 连接信息。",

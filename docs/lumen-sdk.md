@@ -27,7 +27,17 @@ Lumen은 공식 OpenAI SDK, Anthropic SDK, Google GenAI SDK가 호출하는 HTTP
 
 1. 대시보드에서 **채팅 설정 → API 키**를 연다.
 2. 개인 키는 **새 API 키**로 발급한다. 도메인 관리자는 같은 화면의 **서비스 키**에서 **새 서비스 키**를 발급할 수 있다.
-3. 필요한 권한을 고른다. 모델 목록은 `models:read`, 채팅·Responses·Messages·Gemini 텍스트·임베딩은 `compat:completions:write`, 이미지는 `compat:images:write`가 필요하다.
+3. **권한**에서 **허용된 모든 권한**을 고르거나 **권한 선택**으로 아래 표의 권한을 모두 체크한다. 이 튜토리얼의 모든 예제를 실행하려면 `models:read`, `compat:completions:write`, `embeddings:write`, `compat:images:write`가 필요하다. 음성 API를 쓰려면 `compat:audio:write`도 추가한다. 권한은 발급 후 바꿀 수 없으므로 부족하면 새 키를 발급한다.
+
+   | 대시보드 권한 | scope | 이 문서의 예제 |
+   | --- | --- | --- |
+   | 모델 조회 | `models:read` | OpenAI·Anthropic·Gemini `models.list`, `curl.sh *-list` |
+   | 텍스트 생성 | `compat:completions:write` | OpenAI chat·responses·stream·provider 선택, Anthropic messages·stream, Gemini `generate_content`·stream |
+   | 임베딩 | `embeddings:write` | OpenAI `embeddings`, Gemini `embed_content` (`:embedContent`, `:batchEmbedContents`) |
+   | 이미지 생성 | `compat:images:write` | OpenAI `images.generate` |
+   | 음성 생성·전사 | `compat:audio:write` | `/v1/audio/speech`, `/v1/audio/transcriptions` (이 문서에는 예제 없음) |
+
+   현재 역할로 허용되지 않은 권한은 발급 화면에 표시되지 않는다. 필요한 권한이 없으면 프로젝트 또는 도메인 관리자에게 Lumen 권한을 요청한다.
 4. 발급 직후 한 번만 표시되는 전체 키를 안전한 곳에 보관한다. 목록의 접두사만으로는 인증할 수 없다.
 
 | 키 종류 | 소유자 | 청구 대상 |
@@ -170,7 +180,7 @@ curl --fail-with-body "$LUMEN_BASE_URL/v1/chat/completions" \
 
 ## Anthropic SDK
 
-Anthropic SDK의 `base_url`은 `/v1` 없는 Lumen 기본 주소다. SDK가 `x-api-key`와 `anthropic-version` 헤더를 보낸다.
+Anthropic SDK의 `base_url`은 `/v1` 없는 Lumen 기본 주소다. SDK가 `x-api-key`와 `anthropic-version` 헤더를 보낸다. `anthropic-version` 헤더가 있는 `GET /v1/models`는 Messages로 호출할 수 있는 모델만 반환한다.
 
 ### Python
 
@@ -232,7 +242,9 @@ curl --fail-with-body "$LUMEN_BASE_URL/v1/messages" \
 
 ## Google GenAI SDK (Gemini)
 
-Google GenAI SDK는 Lumen 기본 주소와 `api_version="v1beta"`를 사용한다. SDK가 키를 `x-goog-api-key` 헤더로 보낸다. 모델 리소스 이름은 `models/<공개 모델 ID>`이며 SDK는 `models/` 접두사를 자동으로 처리한다. 모델 목록의 `supportedGenerationMethods`(SDK의 `supported_actions`/`supportedActions`)를 보고 텍스트 생성 모델을 고른다.
+Google GenAI SDK는 Lumen 기본 주소(`/v1` 없음)와 `api_version="v1beta"`를 사용한다. SDK가 키를 `x-goog-api-key` 헤더로 보낸다. `X-API-Key`와 `Authorization: Bearer`도 받지만 `?key=` 쿼리는 읽지 않는다(`401`). 모델 목록의 `supportedGenerationMethods`(Python SDK의 `supported_actions`, JS SDK의 `supportedActions`)를 보고 모델을 고른다. 텍스트 모델은 `generateContent`·`streamGenerateContent`, Gemini 임베딩 모델은 `embedContent`·`batchEmbedContents`를 광고한다.
+
+모델 이름은 공개 ID가 하나의 provider에만 있으면 `models/<공개 모델 ID>`다. 여러 provider가 같은 공개 ID를 쓰면 각각 `models/lumen/<provider_id>/<model_id>`로 나열된다. 이 이름을 그대로 `model`에 넣거나, 공개 ID와 `X-Lumen-Provider` 헤더를 함께 보낸다. 헤더 없이 모호한 공개 ID를 쓰면 `409 FAILED_PRECONDITION`이다.
 
 ### Python
 
@@ -292,20 +304,23 @@ console.log(embedding.embeddings[0].values.length);
 ```bash
 curl --fail-with-body "$LUMEN_BASE_URL/v1beta/models" -H "x-goog-api-key: $LUMEN_API_KEY"
 
-curl --fail-with-body "$LUMEN_BASE_URL/v1beta/models/$LUMEN_GEMINI_MODEL:generateContent" \
+curl --fail-with-body "$LUMEN_BASE_URL/v1beta/models/${LUMEN_GEMINI_MODEL}:generateContent" \
   -H "x-goog-api-key: $LUMEN_API_KEY" -H 'Content-Type: application/json' \
   -d '{"contents":[{"role":"user","parts":[{"text":"Hello"}]}]}'
 
-curl --fail-with-body --no-buffer "$LUMEN_BASE_URL/v1beta/models/$LUMEN_GEMINI_MODEL:streamGenerateContent?alt=sse" \
+curl --fail-with-body --no-buffer "$LUMEN_BASE_URL/v1beta/models/${LUMEN_GEMINI_MODEL}:streamGenerateContent?alt=sse" \
   -H "x-goog-api-key: $LUMEN_API_KEY" -H 'Content-Type: application/json' \
   -d '{"contents":[{"role":"user","parts":[{"text":"Hello"}]}]}'
 ```
 
 Gemini 지원 범위와 제한:
 
-- 모델 목록·단일 모델 조회(`pageSize`, `pageToken`), `generateContent`, `streamGenerateContent?alt=sse`, `embedContent`, `batchEmbedContents`를 지원한다.
-- 텍스트, inline 이미지, client-side function 선언을 지원한다. Google 서버 도구(Google Search, code execution 등)는 모델 API 키에서 사용할 수 없다.
-- `countTokens`는 `501`을 반환한다.
+- 모델 목록·단일 모델 조회(`pageSize`, `pageToken`, `nextPageToken`), `generateContent`, `streamGenerateContent?alt=sse`(마지막 chunk에 `usageMetadata`), `embedContent`, `batchEmbedContents`를 지원한다.
+- 모델 목록에는 Gemini 모델뿐 아니라 OpenAI·Anthropic·Perplexity 텍스트 모델도 나온다. Gemini provider 모델은 그대로 실행하고 다른 텍스트 모델은 변환해 실행한다. 둘 다 텍스트, inline 이미지, `systemInstruction`, function 선언(`functionCall` 응답), `temperature`, `topP`, `maxOutputTokens`, `stopSequences`, JSON 모드(`responseMimeType: application/json`)를 지원한다.
+- inline 이미지 형식: Gemini 모델은 png/jpeg/webp/heic/heif, 변환 모델은 png/jpeg/webp/gif. 변환 모델에 `topK`, `safetySettings`, `thinkingConfig`, penalty, `seed`를 보내면 `400`이다.
+- 요청 필드는 닫혀 있어 알 수 없는 필드는 `400`이다. 모든 모델에서 거부: 서버 도구(`googleSearch` 등), `cachedContent`, `fileData`, 오디오·비디오·PDF 입력, `candidateCount` ≠ 1, `TEXT` 이외의 `responseModalities`, `functionCallingConfig` 이외의 `toolConfig`, 가상 모델 `lumen`.
+- `countTokens`는 `501 UNIMPLEMENTED`를 반환한다.
+- 오류 본문은 Google 형식 `{"error":{"code","message","status"}}`다.
 - 임베딩은 관리자가 등록한 Gemini 임베딩 모델만 사용한다.
 - Gemini 모델 목록과 텍스트 생성은 이 경로가 포함된 Lumen 릴리스부터 동작한다. 이전 Lumen은 이 경로에 `404`를 반환하므로 OpenAI SDK 경로를 사용한다.
 

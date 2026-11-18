@@ -326,7 +326,7 @@
 	"apiKeys.sdk.title": "Mifano ya SDK",
 	"apiKeys.sdk.provider": "Mtoa huduma wa SDK",
 	"apiKeys.sdk.language": "Lugha ya mfano",
-	"apiKeys.sdk.help": "Weka {apiKey} katika terminali kuwa ufunguo kamili wa API ya Lumen wenye ruhusa ya {scope}, kisha orodhesha modeli.",
+	"apiKeys.sdk.help": "Weka {apiKey} katika terminali kuwa ufunguo kamili wa API ya Lumen. Orodha ya modeli inahitaji ruhusa ya {models}, kuzalisha maandishi {completions}, embeddings {embeddings} na kuzalisha picha {images}. Toa ufunguo wenye ruhusa zote nne ili kuendesha mifano yote.",
 	"apiKeys.sdk.copy": "Nakili mfano wa SDK",
 	"apiKeys.sdk.tutorial": "Mwongozo wa SDK",
 	"apiKeys.guide.loading": "Inapakia taarifa za muunganisho wa Lumen.",

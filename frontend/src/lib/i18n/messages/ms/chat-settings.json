@@ -326,7 +326,7 @@
 	"apiKeys.sdk.title": "Contoh SDK",
 	"apiKeys.sdk.provider": "Penyedia SDK",
 	"apiKeys.sdk.language": "Bahasa contoh",
-	"apiKeys.sdk.help": "Tetapkan {apiKey} dalam terminal kepada kunci API Lumen penuh dengan kebenaran {scope}, kemudian senaraikan model.",
+	"apiKeys.sdk.help": "Tetapkan {apiKey} dalam terminal kepada kunci API Lumen penuh. Senarai model memerlukan kebenaran {models}, penjanaan teks {completions}, embedding {embeddings} dan penjanaan imej {images}. Keluarkan kunci dengan keempat-empat kebenaran untuk menjalankan semua contoh.",
 	"apiKeys.sdk.copy": "Salin contoh SDK",
 	"apiKeys.sdk.tutorial": "Tutorial SDK",
 	"apiKeys.guide.loading": "Sedang memuatkan maklumat sambungan Lumen.",

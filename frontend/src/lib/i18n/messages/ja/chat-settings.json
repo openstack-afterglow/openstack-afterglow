@@ -326,7 +326,7 @@
 	"apiKeys.sdk.title": "SDK の例",
 	"apiKeys.sdk.provider": "SDK プロバイダー",
 	"apiKeys.sdk.language": "サンプル言語",
-	"apiKeys.sdk.help": "ターミナルで {apiKey} に {scope} 権限のある Lumen API キーの全体を設定してから、モデル一覧を取得してください。",
+	"apiKeys.sdk.help": "ターミナルで {apiKey} に Lumen API キーの全体を設定してください。モデル一覧には {models}、テキスト生成には {completions}、埋め込みには {embeddings}、画像生成には {images} の権限が必要です。すべての例を使うには 4 つの権限をすべて含めて発行してください。",
 	"apiKeys.sdk.copy": "SDK の例をコピー",
 	"apiKeys.sdk.tutorial": "SDK チュートリアル",
 	"apiKeys.guide.loading": "Lumenの接続情報を読み込んでいます。",

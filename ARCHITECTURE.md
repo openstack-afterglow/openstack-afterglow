@@ -2302,9 +2302,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "a4388aad02586869157a232ef4b36f7c2231b1a691db5f5b8555367c51ed923c",
-  "reviewed_at": "2026-11-18T16:35:33Z",
-  "summary": "SDK examples panel reads validated public lumen_external_url from site config; tutorial docs and runnable examples added"
+  "source_sha256": "3caad6b8fac5a8fe9a3ed445be5e6fcef11a37f624d934f6e8f072079c965616",
+  "reviewed_at": "2026-11-18T16:40:30Z",
+  "summary": "SDK docs list embeddings:write, final Gemini contract and zsh-safe curl"
 }
 ```
 <!-- architecture-review:end -->

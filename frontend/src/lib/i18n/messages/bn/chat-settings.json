@@ -326,7 +326,7 @@
 	"apiKeys.sdk.title": "SDK উদাহরণ",
 	"apiKeys.sdk.provider": "SDK প্রদানকারী",
 	"apiKeys.sdk.language": "উদাহরণের ভাষা",
-	"apiKeys.sdk.help": "টার্মিনালে {apiKey} হিসেবে {scope} অনুমতিসহ সম্পূর্ণ Lumen API কী সেট করুন, তারপর মডেলের তালিকা দেখুন।",
+	"apiKeys.sdk.help": "টার্মিনালে {apiKey} হিসেবে সম্পূর্ণ Lumen API কী সেট করুন। মডেলের তালিকার জন্য {models}, টেক্সট তৈরির জন্য {completions}, এমবেডিংয়ের জন্য {embeddings} এবং ছবি তৈরির জন্য {images} অনুমতি লাগে। সব উদাহরণ চালাতে চারটি অনুমতিসহ কী ইস্যু করুন।",
 	"apiKeys.sdk.copy": "SDK উদাহরণ কপি করুন",
 	"apiKeys.sdk.tutorial": "SDK টিউটোরিয়াল",
 	"apiKeys.guide.loading": "Lumen সংযোগের তথ্য লোড হচ্ছে।",

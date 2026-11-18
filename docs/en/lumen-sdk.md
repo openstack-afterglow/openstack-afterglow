@@ -28,7 +28,17 @@ Lumen serves the HTTP formats used by the official OpenAI SDK, Anthropic SDK and
 
 1. Open **Chat settings → API keys** in the dashboard.
 2. Issue a personal key with **New API key**. Domain managers can issue a key under **Service keys** with **New service key**.
-3. Choose the permissions. Model listing needs `models:read`; chat, Responses, Messages, Gemini text and embeddings need `compat:completions:write`; images need `compat:images:write`.
+3. Under **Permissions**, choose **All allowed** or select every permission in the table below with **Restricted**. Running every example in this guide needs `models:read`, `compat:completions:write`, `embeddings:write` and `compat:images:write`. Add `compat:audio:write` for the audio APIs. Permissions cannot be changed after issuance; issue a new key if one is missing.
+
+   | Dashboard permission | Scope | Examples in this guide |
+   | --- | --- | --- |
+   | Read models | `models:read` | OpenAI, Anthropic and Gemini `models.list`, `curl.sh *-list` |
+   | Generate text | `compat:completions:write` | OpenAI chat, responses, stream and provider selection; Anthropic messages and stream; Gemini `generate_content` and stream |
+   | Embeddings | `embeddings:write` | OpenAI `embeddings`; Gemini `embed_content` (`:embedContent`, `:batchEmbedContents`) |
+   | Generate images | `compat:images:write` | OpenAI `images.generate` |
+   | Generate and transcribe audio | `compat:audio:write` | `/v1/audio/speech`, `/v1/audio/transcriptions` (no example in this guide) |
+
+   Permissions your current roles do not allow are not offered in the issuance form. Ask a project or domain manager for the Lumen permission if one is missing.
 4. Store the complete key shown once after issuance. The prefix in the list cannot authenticate.
 
 | Key type | Owner | Billed to |
@@ -171,7 +181,7 @@ curl --fail-with-body "$LUMEN_BASE_URL/v1/chat/completions" \
 
 ## Anthropic SDK
 
-The Anthropic SDK `base_url` is the Lumen root URL without `/v1`. The SDK sends the `x-api-key` and `anthropic-version` headers.
+The Anthropic SDK `base_url` is the Lumen root URL without `/v1`. The SDK sends the `x-api-key` and `anthropic-version` headers. `GET /v1/models` with an `anthropic-version` header lists only models callable through Messages.
 
 ### Python
 
@@ -233,7 +243,9 @@ curl --fail-with-body "$LUMEN_BASE_URL/v1/messages" \
 
 ## Google GenAI SDK (Gemini)
 
-The Google GenAI SDK uses the Lumen root URL with `api_version="v1beta"`. The SDK sends the key in the `x-goog-api-key` header. Model resource names are `models/<public model ID>`, and the SDK handles the `models/` prefix. Choose text models from the list by `supportedGenerationMethods` (the SDK's `supported_actions`/`supportedActions`).
+The Google GenAI SDK uses the Lumen root URL (no `/v1`) with `api_version="v1beta"`. The SDK sends the key in the `x-goog-api-key` header. `X-API-Key` and `Authorization: Bearer` also work, but the `?key=` query is not read (`401`). Choose models by `supportedGenerationMethods` (the Python SDK's `supported_actions`, the JS SDK's `supportedActions`). Text models advertise `generateContent` and `streamGenerateContent`; Gemini embedding models advertise `embedContent` and `batchEmbedContents`.
+
+A model is named `models/<public model ID>` when only one provider serves that ID. When several providers share a public ID, each is listed as `models/lumen/<provider_id>/<model_id>`. Pass that name as `model`, or send the public ID with the `X-Lumen-Provider` header. An ambiguous public ID without the header returns `409 FAILED_PRECONDITION`.
 
 ### Python
 
@@ -293,20 +305,23 @@ console.log(embedding.embeddings[0].values.length);
 ```bash
 curl --fail-with-body "$LUMEN_BASE_URL/v1beta/models" -H "x-goog-api-key: $LUMEN_API_KEY"
 
-curl --fail-with-body "$LUMEN_BASE_URL/v1beta/models/$LUMEN_GEMINI_MODEL:generateContent" \
+curl --fail-with-body "$LUMEN_BASE_URL/v1beta/models/${LUMEN_GEMINI_MODEL}:generateContent" \
   -H "x-goog-api-key: $LUMEN_API_KEY" -H 'Content-Type: application/json' \
   -d '{"contents":[{"role":"user","parts":[{"text":"Hello"}]}]}'
 
-curl --fail-with-body --no-buffer "$LUMEN_BASE_URL/v1beta/models/$LUMEN_GEMINI_MODEL:streamGenerateContent?alt=sse" \
+curl --fail-with-body --no-buffer "$LUMEN_BASE_URL/v1beta/models/${LUMEN_GEMINI_MODEL}:streamGenerateContent?alt=sse" \
   -H "x-goog-api-key: $LUMEN_API_KEY" -H 'Content-Type: application/json' \
   -d '{"contents":[{"role":"user","parts":[{"text":"Hello"}]}]}'
 ```
 
 Gemini scope and limits:
 
-- Supported: model list and single-model get (`pageSize`, `pageToken`), `generateContent`, `streamGenerateContent?alt=sse`, `embedContent` and `batchEmbedContents`.
-- Text, inline images and client-side function declarations are supported. Google server tools (Google Search, code execution and similar) are not available to model API keys.
-- `countTokens` returns `501`.
+- Supported: model list and single-model get (`pageSize`, `pageToken`, `nextPageToken`), `generateContent`, `streamGenerateContent?alt=sse` (the final chunk carries `usageMetadata`), `embedContent` and `batchEmbedContents`.
+- The model list includes OpenAI, Anthropic and Perplexity text models as well as Gemini models. Gemini-provider models run natively; other text models are translated. Both support text, inline images, `systemInstruction`, function declarations (returned as `functionCall`), `temperature`, `topP`, `maxOutputTokens`, `stopSequences` and JSON mode (`responseMimeType: application/json`).
+- Inline image types: png/jpeg/webp/heic/heif for Gemini models, png/jpeg/webp/gif for translated models. `topK`, `safetySettings`, `thinkingConfig`, penalties and `seed` return `400` on translated models.
+- The request schema is closed; unknown fields return `400`. Rejected for every model: server tools (`googleSearch` and similar), `cachedContent`, `fileData`, audio/video/PDF input, `candidateCount` other than 1, `responseModalities` other than `TEXT`, `toolConfig` other than `functionCallingConfig`, and the virtual `lumen` model.
+- `countTokens` returns `501 UNIMPLEMENTED`.
+- Error bodies use the Google shape `{"error":{"code","message","status"}}`.
 - Embeddings use only the Gemini embedding models registered by an administrator.
 - Gemini model listing and text generation require a Lumen release that includes these routes. Older Lumen releases return `404` on them; use the OpenAI SDK path there.
 
