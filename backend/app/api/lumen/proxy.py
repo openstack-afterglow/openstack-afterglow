@@ -76,7 +76,9 @@ class _PrivateLumenRoute(APIRoute):
                 or (bool(parts) and parts[0].startswith("mcp-"))
                 or parts[:2] == ["admin", "providers"]
                 or (len(parts) >= 2 and parts[0] == "admin" and parts[1].startswith("mcp-"))
-                or (len(parts) >= 3 and parts[0] == "domains" and parts[2] == "mcp-connections")
+                or parts[:1] == ["archived-connections"]
+                or (len(parts) >= 3 and parts[0] == "domains"
+                    and parts[2] in {"mcp-connections", "archived-connections"})
             )
             try:
                 response = await handler(request)

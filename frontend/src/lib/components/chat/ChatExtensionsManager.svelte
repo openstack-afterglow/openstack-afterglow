@@ -3,8 +3,9 @@
 	import { onMount, untrack } from 'svelte';
 	import { derived } from 'svelte/store';
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
+	import { chatDomainScope } from '$lib/stores/chatDomainScope';
 	import { api, ApiError } from '$lib/api/client';
-	import { serviceCapabilities } from '$lib/stores/servicePermissions';
+	import { serviceCapabilities, serviceDenials } from '$lib/stores/servicePermissions';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
 	import ChatMcpCatalogue, { type ApprovedMcpWorkspace } from './ChatMcpCatalogue.svelte';
 	import ChatMcpGallery from './ChatMcpGallery.svelte';
@@ -68,6 +69,8 @@
 	let loading = $state(true);
 	let catalogLoaded = $state(false);
 	let loadGeneration = 0;
+	let loadedOwner = -1;
+	let loadedPrivateSkills: boolean | null = null;
 	let gallery: { refresh: () => void } | undefined = $state();
 	const id = $props.id();
 	const approvedServers = $derived(mcps.filter((mcp) => mcp.scope === 'global' && !mcp.template_key));
@@ -135,10 +138,11 @@
 	let addingSkill = $state(false);
 
 	async function load() {
-		if (!token) return;
+		if (!token || !$authReady || $projectSwitching) return;
 		const requestToken = token;
 		const requestProject = projectId;
-		const includePrivate = !isAdmin && canAssets;
+		const includePrivate = !isAdmin && (canAssets || (loadedPrivateSkills === true && !$serviceDenials('lumen-assets_editor')));
+		loadedPrivateSkills = includePrivate;
 		loading = true;
 		const generation = ++loadGeneration;
 		try {
@@ -147,7 +151,7 @@
 				api.get<CustomTool[]>(`${base}/custom-tools`, token, projectId),
 				api.get<Skill[]>(`${base}/skills${includePrivate ? '?include_private=true' : ''}`, token, projectId)
 			]);
-			if (generation !== loadGeneration || requestToken !== token || requestProject !== projectId || (includePrivate && !canAssets)) return;
+			if (generation !== loadGeneration || (includePrivate && $serviceDenials('lumen-assets_editor'))) return;
 			mcps = ms;
 			tools = ts;
 			skills = ss;
@@ -163,7 +167,7 @@
 								] as const)
 						)
 					);
-			if (generation === loadGeneration && requestToken === token && requestProject === projectId) {
+			if (generation === loadGeneration) {
 				oauthStatus = statuses;
 				catalogLoaded = true;
 			}
@@ -176,11 +180,13 @@
 
 	async function addSkill() {
 		if (!canAssets) return;
+		if ($projectSwitching) return;
 		if (!sName.trim() || !sInstructions.trim()) {
 			toast.error(t('extensions.skills.nameInstructionsRequired'));
 			return;
 		}
 		addingSkill = true;
+		const owner = ownerGeneration;
 		try {
 			await api.post(
 				`${base}/skills`,
@@ -188,15 +194,16 @@
 				token,
 				projectId
 			);
+			if (owner !== ownerGeneration) return;
 			sName = '';
 			sDesc = '';
 			sInstructions = '';
 			await load();
-			toast.success(t('extensions.skills.added'));
+			if (owner === ownerGeneration) toast.success(t('extensions.skills.added'));
 		} catch (e) {
-			toast.error(e instanceof ApiError ? e.message : t('extensions.addFailed'));
+			if (owner === ownerGeneration) toast.error(e instanceof ApiError ? e.message : t('extensions.addFailed'));
 		} finally {
-			addingSkill = false;
+			if (owner === ownerGeneration) addingSkill = false;
 		}
 	}
 
@@ -339,12 +346,16 @@
 	}
 
 	onMount(() => {
-		const unsubscribe = derived([auth, authReady, projectSwitching], ([actor, ready, switching]) =>
-			ready && !switching && actor.token && actor.projectId && actor.userId
-				? `${actor.token}\u0000${actor.userId}\u0000${actor.projectId}\u0000${actor.domainId}` : null
+		const unsubscribe = derived([auth, authReady, projectSwitching, chatDomainScope], ([actor, ready, switching, domain]) =>
+			isAdmin
+				? ready && !switching && actor.token && actor.projectId && actor.userId
+					? JSON.stringify([actor.sessionId, actor.userId, actor.projectId, actor.domainId, actor.isSystemAdmin]) : null
+				: domain.revision
 		).subscribe(() => {
 			++loadGeneration;
 			++ownerGeneration;
+			loadedPrivateSkills = null;
+			addingSkill = false; sName = ''; sDesc = ''; sInstructions = '';
 			closeToolDialog(); addingTool = false; toolQuery = '';
 			mcpRequest?.abort();
 			mcpRequest = null;
@@ -358,11 +369,24 @@
 			oauthStatus = {};
 			catalogLoaded = false;
 		});
-		return () => { unsubscribe(); ++ownerGeneration; mcpRequest?.abort(); clearRemoteSecrets(); };
+		return () => { unsubscribe(); ++ownerGeneration; ++loadGeneration; mcpRequest?.abort(); clearRemoteSecrets(); };
 	});
 	$effect(() => {
-		void [token, projectId, $auth.userId, $auth.domainId, canAssets];
-		if (token && $authReady && !$projectSwitching) untrack(() => void load());
+		const ready = $authReady && !$projectSwitching;
+		const owner = $chatDomainScope;
+		const privateSkills = !isAdmin && canAssets;
+		const denied = !isAdmin && $serviceDenials('lumen-assets_editor');
+		if (isAdmin) {
+			void [token, projectId];
+			if (ready && token) untrack(() => void load());
+		} else if (ready && owner.key) {
+			untrack(() => {
+				if (ownerGeneration === loadedOwner && !(privateSkills && loadedPrivateSkills !== true) && !(denied && loadedPrivateSkills === true)) return;
+				loadedOwner = ownerGeneration;
+				if (denied) skills = skills.filter((skill) => skill.scope === 'global');
+				void load();
+			});
+		}
 	});
 
 	const inputCls =
@@ -470,6 +494,7 @@
 	<header>
 		<h2 id={`${id}-tools-title`}>{t('extensions.tools.title')}</h2>
 		<p class="section-copy">{t('extensions.tools.description', { scope: isAdmin ? t('extensions.scope.global') : t('extensions.scope.personal') })}</p>
+		{#if !isAdmin}<p class="section-copy">{galleryT('workspace.domainScope')}</p>{/if}
 	</header>
 	<div class="tools-toolbar">
 		<search><TextInput type="search" ariaLabel={t('extensions.workspace.searchTools')} placeholder={t('extensions.workspace.searchTools')} bind:value={toolQuery} /></search>

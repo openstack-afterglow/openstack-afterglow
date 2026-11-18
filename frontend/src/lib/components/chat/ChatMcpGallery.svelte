@@ -5,6 +5,7 @@
 	import { pushState } from '$app/navigation';
 	import { derived } from 'svelte/store';
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
+	import { chatDomainScope } from '$lib/stores/chatDomainScope';
 	import { serviceCapabilities } from '$lib/stores/servicePermissions';
 	import { api } from '$lib/api/client';
 	import type { McpConnection, McpTemplate, McpSettingsPage, McpDomainPage } from '$lib/api/mcpCatalog';
@@ -19,6 +20,7 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import ConnectionTabs, { connectionTabs, type ConnectionTab } from './connections/ConnectionTabs.svelte';
+	import ArchivedConnections from './connections/ArchivedConnections.svelte';
 	import ConnectionMenu from './connections/ConnectionMenu.svelte';
 	import ConnectionName from './connections/ConnectionName.svelte';
 	import ConnectionStatus, { type ConnectionState } from './connections/ConnectionStatus.svelte';
@@ -212,7 +214,7 @@
 		deleteTarget = null;
 		revokeTarget = null;
 	}
-	export function refresh() { if (owner) void load(owner); }
+	export function refresh() { if (owner && $authReady && !$projectSwitching) void load(owner); }
 	function invalidate() {
 		readController?.abort();
 		for (const controller of mutations) controller.abort();
@@ -228,13 +230,28 @@
 	}
 	onMount(() => {
 		const stopSandbox = !admin ? managedSandboxTools.subscribe(() => {}) : undefined;
-		const unsubscribe = derived([auth, authReady, projectSwitching], ([actor, ready, switching]) => ({ actor, ready, switching })).subscribe(({ actor, ready, switching }) => {
-			const key = ready && !switching && actor.token && actor.userId && actor.projectId
-				? JSON.stringify([actor.sessionId, actor.userId, actor.identityDomainId, actor.domainId, actor.projectId, admin, actor.isSystemAdmin]) : null;
-			if (owner?.key === key) { if (actor.token) owner.token = actor.token; return; }
-			invalidate();
-			owner = key ? { key, token: actor.token!, userId: actor.userId!, projectId: actor.projectId! } : null;
-			if (owner) void load(owner, 0);
+		const unsubscribe = derived([auth, authReady, projectSwitching, chatDomainScope],
+			([actor, ready, switching, domain]) => ({ actor, ready, switching, domain })
+		).subscribe(({ actor, ready, switching, domain }) => {
+			if (owner && (switching || actor.projectId !== owner.projectId)) {
+				for (const controller of mutations) controller.abort();
+				mutations.clear();
+				busy = {};
+			}
+			const key = admin
+				? ready && !switching && actor.token && actor.userId && actor.projectId
+					? JSON.stringify([actor.sessionId, actor.userId, actor.identityDomainId, actor.domainId, actor.projectId, actor.isSystemAdmin])
+					: null
+				: domain.key ? String(domain.revision) : null;
+			if (owner && owner.key !== key) { invalidate(); owner = null; }
+			if (!key || !ready || switching || !actor.token || !actor.userId || !actor.projectId) return;
+			if (owner) {
+				owner.token = actor.token;
+				owner.projectId = actor.projectId;
+				return;
+			}
+			owner = { key, token: actor.token, userId: actor.userId, projectId: actor.projectId };
+			void load(owner, 0);
 		});
 		return () => { unsubscribe(); stopSandbox?.(); invalidate(); owner = null; };
 	});
@@ -254,6 +271,9 @@
 	});
 
 	async function load(scope: Owner, start = 0) {
+		if (!$authReady || $projectSwitching) return;
+		const { token, projectId } = scope;
+		const workingDomain = $auth.domainId;
 		const ticket = ++generation;
 		readController?.abort();
 		const controller = new AbortController(); readController = controller;
@@ -263,8 +283,8 @@
 		try {
 			if (admin) {
 				const [result, managed] = await Promise.all([
-					api.get<{ entries: McpTemplate[] }>('/api/v1/chat/admin/mcp-registry', scope.token, scope.projectId, options),
-					api.get<McpSettingsPage>('/api/v1/chat/mcp-settings?access=managed&offset=0&limit=100', scope.token, scope.projectId, options).catch(() => null)
+					api.get<{ entries: McpTemplate[] }>('/api/v1/chat/admin/mcp-registry', token, projectId, options),
+					api.get<McpSettingsPage>('/api/v1/chat/mcp-settings?access=managed&offset=0&limit=100', token, projectId, options).catch(() => null)
 				]);
 				if (owner !== scope || ticket !== generation) return;
 				const profiles = new Map((managed?.entries ?? []).filter((entry) => entry.access === 'managed').map((entry) => [entry.id, entry]));
@@ -277,23 +297,23 @@
 				const previousErrors = { ...rowErrors };
 				const fetchPage = (offset: number, size: number) => {
 					const params = new URLSearchParams({ offset: String(offset), limit: String(size), ...(search ? { q: search } : {}), ...(type ? { access: type } : {}) });
-					return api.get<McpSettingsPage>(`/api/v1/chat/mcp-settings?${params}`, scope.token, scope.projectId, options);
+					return api.get<McpSettingsPage>(`/api/v1/chat/mcp-settings?${params}`, token, projectId, options);
 				};
 				const managedParams = new URLSearchParams({ access: 'managed', offset: '0', limit: '100', ...(search ? { q: search } : {}) });
 				const target = start ? start + limit : loadedUntil;
 				const [page, defaults, rows, managed] = await Promise.all([
 					fetchPage(start, Math.min(target - start, 100)),
-					api.get<McpSettingsPage>('/api/v1/chat/mcp-settings?featured=true&offset=0&limit=100', scope.token, scope.projectId, options),
-					api.get<McpConnection[]>('/api/v1/chat/mcp-servers', scope.token, scope.projectId, options),
-					api.get<McpSettingsPage>(`/api/v1/chat/mcp-settings?${managedParams}`, scope.token, scope.projectId, options).catch(() => null)
+					api.get<McpSettingsPage>('/api/v1/chat/mcp-settings?featured=true&offset=0&limit=100', token, projectId, options),
+					api.get<McpConnection[]>('/api/v1/chat/mcp-servers', token, projectId, options),
+					api.get<McpSettingsPage>(`/api/v1/chat/mcp-settings?${managedParams}`, token, projectId, options).catch(() => null)
 				]);
 				if (owner !== scope || ticket !== generation) return;
 				const organization: McpConnection[] = [];
-				let organizationUnavailable = page.organization_available === false || !page.domain_id;
+				let organizationUnavailable = page.organization_available === false || !page.domain_id || page.domain_id !== workingDomain;
 				try {
 					let next: number | null = 0;
 					while (!organizationUnavailable && page.domain_id && next !== null) {
-						const response: McpDomainPage = await api.get(`/api/v1/chat/domains/${encodeURIComponent(page.domain_id)}/mcp-connections?offset=${next}&limit=100`, scope.token, scope.projectId, options);
+						const response: McpDomainPage = await api.get(`/api/v1/chat/domains/${encodeURIComponent(page.domain_id)}/mcp-connections?offset=${next}&limit=100`, token, projectId, options);
 						if (owner !== scope || ticket !== generation) return;
 						organization.push(...response.connections);
 						if (response.next_offset !== null && response.next_offset <= next) throw new Error('Invalid catalog continuation');
@@ -325,12 +345,13 @@
 				managedEntries = [...new Map([...(managed?.entries ?? []), ...(!search ? defaults.entries : []), ...pageEntries]
 					.filter((entry) => entry.access === 'managed').map((entry) => [entry.id, entry])).values()];
 				total = remoteTotal; nextOffset = total !== 0 && next !== null && next > last ? next : null;
-				domainId = page.domain_id; organizationError = organizationUnavailable;
+				domainId = page.domain_id === workingDomain ? workingDomain : null;
+				organizationError = organizationUnavailable;
 				canManage = !organizationUnavailable && page.can_manage_domain === true;
 				if (!canManage && editor?.scope === 'domain') clearDraft();
 				for (const entry of [...pageEntries, ...defaults.entries]) templates.set(entry.id, entry);
 				connections = [...new Map([...pageEntries.flatMap((entry) => entry.connections ?? []), ...rows, ...organization, ...page.custom_connections]
-					.filter((row) => visibleMcpConnection(row, scope.userId, scope.projectId, page.domain_id))
+					.filter((row) => visibleMcpConnection(row, scope.userId, projectId, workingDomain))
 					.map((row) => [row.id, row])).values()];
 				for (const row of connections) {
 					const previous = previousErrors[row.id];
@@ -364,11 +385,12 @@
 		return `/api/v1/chat/${row.template_key ? 'mcp-connections' : 'mcp-servers'}/${row.id}`;
 	}
 	async function action(key: string, work: (scope: Owner, signal: AbortSignal) => Promise<void>, allowed: () => boolean = () => canWrite) {
-		if (!owner || busy[key] || !allowed()) return;
+		if (!owner || !$authReady || $projectSwitching || busy[key] || !allowed()) return;
 		const scope = owner, controller = new AbortController();
+		const credentials = { ...scope };
 		mutations.add(controller); busy[key] = true; delete rowErrors[key];
 		try {
-			await work(scope, AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]));
+			await work(credentials, AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]));
 			if (owner !== scope || controller.signal.aborted || !allowed()) return;
 			await load(scope);
 			if (owner === scope) await onChanged();
@@ -389,7 +411,7 @@
 			if (revoke) await api.delete(path, scope.token, scope.projectId, { signal });
 			else {
 				const result = await api.post<{ authorization_url: string }>(`${path}/start`, undefined, scope.token, scope.projectId, { signal });
-				if (owner !== scope || signal.aborted || !canWrite || (row.scope === 'domain' && !editable(row))) return;
+				if (owner?.key !== scope.key || owner.projectId !== scope.projectId || $projectSwitching || signal.aborted || !canWrite || (row.scope === 'domain' && !editable(row))) return;
 				const destination = new URL(result.authorization_url, window.location.origin);
 				const tutorialReturn = getActiveMockupProfile() !== null && destination.origin === window.location.origin;
 				if (destination.protocol !== 'https:' && !tutorialReturn) throw new Error('Unsafe OAuth destination');
@@ -408,6 +430,7 @@
 		if (!owner || !canWrite || (row && !editable(row)) || (scope === 'domain' && !canManage)) return;
 		clearDraft();
 		const currentOwner = owner, ticket = editorGeneration;
+		const { token, projectId } = currentOwner;
 		let source = template ?? (row?.template_key ? templates.get(row.template_key) : undefined);
 		if (row?.template_key && !source) {
 			const controller = new AbortController();
@@ -415,7 +438,7 @@
 			try {
 				let next: number | null = 0;
 				while (next !== null && !source) {
-					const page: McpSettingsPage = await api.get(`/api/v1/chat/mcp-settings?offset=${next}&limit=100`, currentOwner.token, currentOwner.projectId, { refresh: true, signal: controller.signal });
+					const page: McpSettingsPage = await api.get(`/api/v1/chat/mcp-settings?offset=${next}&limit=100`, token, projectId, { refresh: true, signal: controller.signal });
 					if (owner !== currentOwner || ticket !== editorGeneration || controller.signal.aborted || !canWrite || !editable(row)) return;
 					if (row.scope === 'domain' && (page.organization_available === false || page.domain_id !== domainId || page.can_manage_domain !== true)) {
 						canManage = false;
@@ -469,7 +492,7 @@
 	function installFeatured() {
 		void action('featured', async (scope, signal) => {
 			const result = await api.post<{ counts: Record<string, number> }>('/api/v1/chat/admin/mcp-registry/install-featured', undefined, scope.token, scope.projectId, { signal });
-			if (owner === scope && !signal.aborted) installSummary = t('installSummary', { created: result.counts.created ?? 0, existing: result.counts.existing ?? 0, skipped: result.counts.skipped ?? 0, failed: result.counts.failed ?? 0 });
+			if (owner?.key === scope.key && !signal.aborted) installSummary = t('installSummary', { created: result.counts.created ?? 0, existing: result.counts.existing ?? 0, skipped: result.counts.skipped ?? 0, failed: result.counts.failed ?? 0 });
 		});
 	}
 	function reason(code?: string | null) {
@@ -484,7 +507,10 @@
 
 <section class="gallery" aria-labelledby={`${id}-title`}>
 	<header class="workspace-header">
-		<div><h2 id={`${id}-title`}>{t('workspace.title')}</h2><p>{t('workspace.description')}</p></div>
+		<div>
+			<h2 id={`${id}-title`}>{t('workspace.title')}</h2>
+			<p>{t(admin ? 'workspace.description' : 'workspace.domainScope')}</p>
+		</div>
 		{#if admin}
 			{#if remoteForm}<Button size="sm" disabled={!canWrite} onclick={openRemote}>{t('workspace.remote')}</Button>{/if}
 		{:else}
@@ -616,6 +642,10 @@
 		{@render approved?.()}
 		{#if !admin}
 			<ManagedSandboxToolsPicker summaryOnly />
+			<ArchivedConnections onRestored={async () => { if (owner) await load(owner); await onChanged(); }} />
+			{#if canManage && domainId}
+				<ArchivedConnections {domainId} onRestored={async () => { if (owner) await load(owner); await onChanged(); }} />
+			{/if}
 			{#if domainId && !organizationError}
 				<section class="scope-note">
 					<h3>{t('organization')}</h3>

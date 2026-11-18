@@ -21,6 +21,7 @@ Afterglow 백엔드는 독자적인 AI 모델·에이전트 실행 엔진 및 �
 - `POST /mcp-connections`, `PATCH|DELETE /mcp-connections/{id}`: 본인 템플릿 연결을 관리한다.
 - `/domains/{domain_id}/mcp-connections`: 해당 domain 구성원은 비밀 없이 조회하고 본인의 활성화만 변경한다. 조직 연결 생성·수정·삭제와 공유 OAuth 관리는 exact-domain manager 또는 unrestricted human system admin만 가능하다. 프로젝트 admin 역할만으로 허용하지 않는다.
 - 기존 `/mcp-servers/{id}/activation` 및 OAuth 흐름은 유지된다. Catalog 설치와 조직 연결은 `implicit_selection=false`이며 활성화한 정확한 `config_version`과 현재 membership을 실행 전 재검증한다.
+- `GET /archived-connections`, `POST /archived-connections/{archive_id}/restore`: 현재 사용자의 도메인에서 보관된 중복 MCP 연결과 HTTP 도구를 조회·복원한다. `GET`은 `limit`(기본 100, 최대 200) 및 `before_id`를 받는다. 관리자는 `/domains/{domain_id}/archived-connections`의 동일 경로로 조직 소유 항목만 관리한다. Lumen이 현재 멤버십과 조직 관리자 권한을 다시 확인하며 BFF는 선택한 프로젝트의 인증 정보만 전달한다. 응답에는 연결 비밀이 없으며 캐시하지 않는다.
 - Playwright·Markitdown은 HTTPS 연결을 허위 생성하지 않는다. 검증된 실행별 sandbox profile이 있어야 사용 가능하고 미설정 상태에서는 그 이유를 표시한다.
 
 클라우드 VM 생성은 별도의 Afterglow MCP `manage` 동의와 프로토콜 v2가 필요하다. 모델은 실제 이미지·flavor·네트워크·부팅 볼륨 크기·사용자 SSH 키·보안그룹을 명시하고 사용자가 기존 승인 카드에서 확인한 뒤에만 변경 도구를 실행한다. API 요청 수락은 guest readiness가 아니다.

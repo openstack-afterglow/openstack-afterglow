@@ -176,6 +176,44 @@ beforeEach(() => {
 });
 
 describe('ChatPanel', () => {
+	it('retains the sidebar and shared inventories across a same-domain project change', async () => {
+		const fallback = mocks.get.getMockImplementation()!;
+		const history = { id: 'shared', title: 'Domain conversation', model_name: 'model-1', workspace_id: null, updated_at: at };
+		mocks.get.mockImplementation((path: string, ...args: unknown[]) =>
+			path === '/api/v1/chat/conversations' ? Promise.resolve([history]) : fallback(path, ...args));
+		render(ChatPanel);
+		const historyControl = await screen.findByRole('button', { name: '대화 기록과 설정 열기' });
+		await fireEvent.click(historyControl);
+		const row = await screen.findByText('Domain conversation');
+		await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/workspaces', 'token', 'project-1'));
+		projectSwitching.set(true);
+		await tick();
+		setVerifiedLumenActor({ ...get(auth), projectId: 'project-2', token: 'selected-token' });
+		projectSwitching.set(false);
+		await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/usage', 'selected-token', 'project-2'));
+		expect(screen.getByText('Domain conversation')).toBe(row);
+		for (const endpoint of ['conversations', 'agents', 'workspaces', 'custom-tools', 'mcp-servers?active_only=true']) {
+			expect(mocks.get.mock.calls.filter(([path]) => path === `/api/v1/chat/${endpoint}`)).toHaveLength(1);
+		}
+	});
+
+	it('discards a late conversation list when the working domain changes', async () => {
+		const previous = Promise.withResolvers<unknown[]>();
+		const fallback = mocks.get.getMockImplementation()!;
+		const history = (title: string) => ({ id: title, title, model_name: 'model-1', workspace_id: null, updated_at: at });
+		mocks.get.mockImplementation((path: string, token: string, ...args: unknown[]) => path === '/api/v1/chat/conversations'
+			? token === 'token' ? previous.promise : Promise.resolve([history('New domain conversation')])
+			: fallback(path, token, ...args));
+		render(ChatPanel);
+		await fireEvent.click(await screen.findByRole('button', { name: '대화 기록과 설정 열기' }));
+		await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/conversations', 'token', 'project-1'));
+		setVerifiedLumenActor({ ...get(auth), domainId: 'domain-2', projectId: 'project-2', token: 'other-domain' });
+		expect(await screen.findByText('New domain conversation')).toBeTruthy();
+		previous.resolve([history('Previous domain conversation')]);
+		await tick();
+		expect(screen.queryByText('Previous domain conversation')).toBeNull();
+		expect(screen.getByText('New domain conversation')).toBeTruthy();
+	});
 	it.each(['baseline', 'rich'] as const)('keeps %s unpositioned approval usable after SSE failure and restores its actual start after reload', async (shape) => {
 		let decided = false;
 		const descriptor = { run_id: 'run-1', conversation_id: null, temp_thread_id: 'temp-1', status: 'awaiting_input', run_kind: 'completion', events_url: '/events', cancel_url: '/cancel' };

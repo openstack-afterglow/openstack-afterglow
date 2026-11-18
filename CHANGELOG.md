@@ -11,6 +11,8 @@
 
 - Lumen CLI 설치기는 Afterglow 시작 시 배포의 공개 Lumen 주소를 포함한다. Codex·Claude Code 자동 설정 명령에는 URL 옵션이 없으며, 공개 주소가 없으면 명령을 표시하지 않는다.
 - Lumen CLI installers embed the deployment's public Lumen URL at Afterglow startup. Codex and Claude Code setup commands take no URL options and stay hidden when no public URL is configured.
+- 채팅 기록, 에이전트, 메모리 및 도구 연결은 같은 도메인의 프로젝트 전환 시 유지된다. 사용량 기록과 클라우드 도구는 선택한 프로젝트를 사용한다. 연결 관리에서 보관된 개인 연결과 도구를 복원할 수 있으며, 조직 항목은 권한을 확인한 관리자가 복원한다.
+- Chat history, agents, memory and tool connections persist across project switches in a domain. Usage attribution and cloud tools follow the selected project. Manage connections can restore archived personal duplicates; authorized managers can restore organization duplicates.
 
 ## [1.32.28] - 2026-11-18
 
