@@ -53,7 +53,6 @@
 	let queryTimer: ReturnType<typeof setTimeout> | undefined;
 	let access = $state<McpTemplate['access'] | ''>('');
 	let scopeFilter = $state<McpConnection['scope'] | ''>('');
-	const scopeState = { user: 'personal_connected', domain: 'org_connected', global: 'global_connected' } as const;
 	const scopes = ['user', 'domain', 'global'] as const;
 	const accessModes = ['open', 'oauth', 'credentials', 'configure', 'managed', 'unreachable', 'unavailable'] as const;
 	const expanded = new SvelteSet<number | 'cloud'>();
@@ -70,13 +69,12 @@
 	let organizationError = $state(false);
 	let loading = $state(false);
 	let error = $state('');
-	let rowErrors = $state<Record<string, string>>({});
+	let rowErrors = $state<Record<string, { message: string }>>({});
 	let busy = $state<Record<string, boolean>>({});
 	let query = $state('');
 	let appliedQuery = $state('');
 	let appliedAccess = $state<McpTemplate['access'] | ''>('');
-	let appliedState = $state('');
-	let total = $state(0);
+	let total = $state<number | null>(null);
 	let nextOffset = $state<number | null>(null);
 	let editor = $state<Editor | null>(null);
 	let label = $state('');
@@ -102,14 +100,18 @@
 	let loadedUntil = limit;
 
 	function displayedState(server: McpConnection): ConnectionState {
-		if (server.catalog_error || rowErrors[server.id]) return 'error';
-		if (admin) return server.is_active ? 'active' : 'inactive';
-		if (server.scope === 'global' && !server.template_key && approvedActions) {
-			if (server.auth_mode === 'oauth' && (oauthStatus[server.id]?.connected ?? server.auth_connected) !== true) return 'needsAuth';
-			if (server.activation_config_version != null && server.activation_is_active && server.activation_config_version !== server.config_version) return 'stale';
-			return server.is_active ? 'active' : 'inactive';
+		let state: ConnectionState;
+		if (admin) {
+			state = server.is_active ? 'active' : 'inactive';
+		} else if (server.scope === 'global' && !server.template_key && approvedActions) {
+			// Legacy approved rows may not include header or activation metadata.
+			if (server.activation_config_version != null && server.activation_is_active && server.activation_config_version !== server.config_version) state = 'stale';
+			else if (server.auth_mode === 'oauth' && (oauthStatus[server.id]?.connected ?? server.auth_connected) !== true) state = 'needsAuth';
+			else state = server.is_active ? 'active' : 'inactive';
+		} else {
+			state = mcpConnectionState(server);
 		}
-		return mcpConnectionState(server);
+		return server.catalog_error && (state === 'active' || state === 'inactive') ? 'error' : state;
 	}
 	const serverRows = $derived.by<ConnectedRow[]>(() => {
 		const rows: ConnectedRow[] = inventory.map((server) => ({
@@ -144,6 +146,7 @@
 	});
 	const builtinRows = $derived(managedEntries.filter((entry) => !access || access === entry.access));
 	const featuredRows = $derived(featured.filter((entry) => entry.access !== 'managed' && (!access || entry.access === access)));
+	const fullRows = $derived(entries.filter((entry) => entry.access !== 'managed'));
 
 	function browseParams() {
 		const params = new URLSearchParams(page.url.searchParams);
@@ -184,12 +187,11 @@
 		trigger?.focus();
 	}
 
-	function currentState() { return tab === 'connected' && scopeFilter ? scopeState[scopeFilter] : ''; }
 	function applyFilters() {
 		clearTimeout(queryTimer);
-		const search = query.trim(), state = currentState();
-		if (search === appliedQuery && access === appliedAccess && state === appliedState) return;
-		appliedQuery = search; appliedAccess = access; appliedState = state;
+		const search = query.trim();
+		if (search === appliedQuery && access === appliedAccess) return;
+		appliedQuery = search; appliedAccess = access;
 		nextOffset = null;
 		loadedUntil = limit;
 		if (owner) void load(owner, 0);
@@ -219,8 +221,8 @@
 		templates.clear();
 		entries = []; featured = []; managedEntries = []; adminEntries = []; connections = [];
 		domainId = null; canManage = false; organizationError = false; error = ''; rowErrors = {}; busy = {};
-		loading = false; total = 0; nextOffset = null; query = ''; appliedQuery = '';
-		access = ''; appliedAccess = ''; appliedState = ''; scopeFilter = ''; preferredScope = null;
+		loading = false; total = null; nextOffset = null; loadedUntil = limit; query = ''; appliedQuery = '';
+		access = ''; appliedAccess = ''; scopeFilter = ''; preferredScope = null;
 		expanded.clear(); clearTimeout(queryTimer);
 		installSummary = ''; clearDraft();
 	}
@@ -236,8 +238,8 @@
 		});
 		return () => { unsubscribe(); stopSandbox?.(); invalidate(); owner = null; };
 	});
-	function restoreTab(search = new URLSearchParams(document.location.search)) {
-		const next = tabs(search);
+	function restoreTab() {
+		const next = tabs(new URLSearchParams(document.location.search));
 		if (next === tab) return;
 		if (tab === 'manage') onRemoteClose?.();
 		tab = next;
@@ -246,8 +248,9 @@
 		applyFilters();
 	}
 	$effect(() => {
-		const search = page.url.searchParams;
-		untrack(() => restoreTab(search));
+		// SvelteKit's URL is a navigation signal; shallow history can retain the pre-push URL.
+		void page.url;
+		untrack(restoreTab);
 	});
 
 	async function load(scope: Owner, start = 0) {
@@ -256,7 +259,7 @@
 		const controller = new AbortController(); readController = controller;
 		const options = { refresh: true, signal: controller.signal };
 		loading = true; error = '';
-		const search = appliedQuery, type = appliedAccess, state = appliedState;
+		const search = appliedQuery, type = appliedAccess;
 		try {
 			if (admin) {
 				const [result, managed] = await Promise.all([
@@ -271,8 +274,9 @@
 				managedEntries = adminEntries.filter((entry) => entry.access === 'managed' && [entry.name, entry.description, entry.registry_name].some((value) => value?.toLocaleLowerCase().includes(needle)));
 				showAdminPage(start, search, type, start ? limit : loadedUntil);
 			} else {
+				const previousErrors = { ...rowErrors };
 				const fetchPage = (offset: number, size: number) => {
-					const params = new URLSearchParams({ offset: String(offset), limit: String(size), ...(search ? { q: search } : {}), ...(type ? { access: type } : {}), ...(state ? { state } : {}) });
+					const params = new URLSearchParams({ offset: String(offset), limit: String(size), ...(search ? { q: search } : {}), ...(type ? { access: type } : {}) });
 					return api.get<McpSettingsPage>(`/api/v1/chat/mcp-settings?${params}`, scope.token, scope.projectId, options);
 				};
 				const managedParams = new URLSearchParams({ access: 'managed', offset: '0', limit: '100', ...(search ? { q: search } : {}) });
@@ -304,18 +308,23 @@
 				const pageEntries = [...page.entries];
 				let next = page.next_offset;
 				let last = start;
-				while (!start && next !== null && next > last && next < target) {
+				const remoteTotal = type ? page.total : managed ? Math.max(0, page.total - managed.total) : null;
+				let hasRemoteEntries = pageEntries.some((entry) => entry.access !== 'managed');
+				while (next !== null && next > last && (
+					(!start && next < target) || (type !== 'managed' && remoteTotal !== 0 && !hasRemoteEntries)
+				)) {
 					last = next;
-					const extra = await fetchPage(next, Math.min(target - next, 100));
+					const extra = await fetchPage(next, !start && next < target ? Math.min(target - next, 100) : limit);
 					if (owner !== scope || ticket !== generation) return;
 					pageEntries.push(...extra.entries);
+					hasRemoteEntries ||= extra.entries.some((entry) => entry.access !== 'managed');
 					next = extra.next_offset;
 				}
 				setPage(pageEntries, start);
 				featured = defaults.entries;
 				managedEntries = [...new Map([...(managed?.entries ?? []), ...(!search ? defaults.entries : []), ...pageEntries]
 					.filter((entry) => entry.access === 'managed').map((entry) => [entry.id, entry])).values()];
-				total = page.total; nextOffset = next !== null && next > last ? next : null;
+				total = remoteTotal; nextOffset = total !== 0 && next !== null && next > last ? next : null;
 				domainId = page.domain_id; organizationError = organizationUnavailable;
 				canManage = !organizationUnavailable && page.can_manage_domain === true;
 				if (!canManage && editor?.scope === 'domain') clearDraft();
@@ -323,6 +332,10 @@
 				connections = [...new Map([...pageEntries.flatMap((entry) => entry.connections ?? []), ...rows, ...organization, ...page.custom_connections]
 					.filter((row) => visibleMcpConnection(row, scope.userId, scope.projectId, page.domain_id))
 					.map((row) => [row.id, row])).values()];
+				for (const row of connections) {
+					const previous = previousErrors[row.id];
+					if (previous && rowErrors[row.id] === previous) delete rowErrors[row.id];
+				}
 			}
 			if (start) loadedUntil = nextOffset ?? start + limit;
 		} catch {
@@ -339,7 +352,8 @@
 	function showAdminPage(start: number, search: string, access: string, size: number) {
 		const needle = search.toLocaleLowerCase();
 		const rows = adminEntries.filter((entry) => (!access || entry.access === access) && [entry.name, entry.registry_name, entry.description].some((value) => value?.toLocaleLowerCase().includes(needle)));
-		total = rows.length; setPage(rows.slice(start, start + size), start); nextOffset = start + size < total ? start + size : null;
+		total = rows.reduce((count, entry) => count + (entry.access === 'managed' ? 0 : 1), 0);
+		setPage(rows.slice(start, start + size), start); nextOffset = start + size < rows.length ? start + size : null;
 	}
 	function editable(row: McpConnection) { return row.scope === 'domain' ? canManage && row.owner_domain_id === domainId : row.scope === 'user' && row.owner_user_id === owner?.userId; }
 	function rowPath(row: McpConnection) {
@@ -352,13 +366,13 @@
 	async function action(key: string, work: (scope: Owner, signal: AbortSignal) => Promise<void>, allowed: () => boolean = () => canWrite) {
 		if (!owner || busy[key] || !allowed()) return;
 		const scope = owner, controller = new AbortController();
-		mutations.add(controller); busy[key] = true; rowErrors[key] = '';
+		mutations.add(controller); busy[key] = true; delete rowErrors[key];
 		try {
 			await work(scope, AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]));
 			if (owner !== scope || controller.signal.aborted || !allowed()) return;
 			await load(scope);
 			if (owner === scope) await onChanged();
-		} catch { if (owner === scope && !controller.signal.aborted) rowErrors[key] = t('actionFailed'); }
+		} catch { if (owner === scope && !controller.signal.aborted) rowErrors[key] = { message: t('actionFailed') }; }
 		finally { mutations.delete(controller); if (owner === scope) busy[key] = false; }
 	}
 	function activate(row: McpConnection) {
@@ -397,7 +411,7 @@
 		let source = template ?? (row?.template_key ? templates.get(row.template_key) : undefined);
 		if (row?.template_key && !source) {
 			const controller = new AbortController();
-			mutations.add(controller); busy[row.id] = true; rowErrors[row.id] = '';
+			mutations.add(controller); busy[row.id] = true; delete rowErrors[row.id];
 			try {
 				let next: number | null = 0;
 				while (next !== null && !source) {
@@ -414,7 +428,7 @@
 				}
 				if (!source) throw new Error('Template unavailable');
 			} catch {
-				if (owner === currentOwner && ticket === editorGeneration && !controller.signal.aborted) rowErrors[row.id] = t('actionFailed');
+				if (owner === currentOwner && ticket === editorGeneration && !controller.signal.aborted) rowErrors[row.id] = { message: t('actionFailed') };
 				return;
 			} finally {
 				mutations.delete(controller);
@@ -483,14 +497,14 @@
 		{/if}
 	</header>
 	<div class="workspace-navigation">
-		<ConnectionTabs selected={tab} count={connected.length} {id} onchange={changeTab} />
+		<ConnectionTabs selected={tab} count={tab === 'connected' ? connected.length : serverRows.length} {id} onchange={changeTab} />
 		<Button variant="ghost" size="sm" class="workspace-refresh" ariaLabel={t('refresh')} title={t('refresh')} disabled={loading || !owner} onclick={() => { refresh(); if (!admin) void refreshManagedSandboxTools(); }}>
 			<svg aria-hidden="true" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16 8a6.5 6.5 0 1 0 .15 3.25M16 4v4h-4"/></svg>
 			<span class="refresh-label">{t('refresh')}</span>
 		</Button>
 	</div>
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
-	{#if rowErrors.featured}<Alert tone="danger">{rowErrors.featured}</Alert>{/if}
+	{#if rowErrors.featured}<Alert tone="danger">{rowErrors.featured.message}</Alert>{/if}
 	{#if installSummary}<Alert tone="info">{installSummary}</Alert>{/if}
 	{#if loading}<LoadingState variant="inline" label={t('loading')} />{/if}
 	{#if owner && organizationError}
@@ -515,12 +529,12 @@
 				<TextInput id={`${id}-search`} type="search" ariaLabel={t('search')} placeholder={t('search')} bind:value={query} maxlength={100} oninput={scheduleSearch}
 					onkeydown={(event) => { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); applyFilters(); } }} />
 			</div>
-			<SelectInput ariaLabel={t('workspace.allTypes')} value={access} onchange={(event) => { access = (event.currentTarget as HTMLSelectElement).value as typeof access; applyFilters(); }}>
+			<SelectInput ariaLabel={t('workspace.type')} value={access} onchange={(event) => { access = (event.currentTarget as HTMLSelectElement).value as typeof access; applyFilters(); }}>
 				<option value="">{t('workspace.allTypes')}</option>
 				{#each accessModes as mode}<option value={mode}>{t(`workspace.access.${mode}`)}</option>{/each}
 			</SelectInput>
 			{#if tab === 'connected' && !admin}
-				<SelectInput ariaLabel={t('workspace.allScopes')} value={scopeFilter} onchange={(event) => { scopeFilter = (event.currentTarget as HTMLSelectElement).value as typeof scopeFilter; applyFilters(); }}>
+				<SelectInput ariaLabel={t('workspace.scopeLabel')} bind:value={scopeFilter}>
 					<option value="">{t('workspace.allScopes')}</option>
 					{#each scopes as scope}<option value={scope}>{t(`workspace.scope.${scope}`)}</option>{/each}
 				</SelectInput>
@@ -565,14 +579,18 @@
 				<div class="template-grid">{#each builtinRows as entry (entry.id)}{@render templateRow(entry)}{/each}</div>
 			</section>
 		{/if}
-		<section class="catalog-section">
-			<header><h3>{t('browse')} <span class="count">({total.toLocaleString(intlLocale())})</span></h3></header>
-			{#if !loading && !error && !entries.length}<p class="empty">{t('emptySearch')}</p>{/if}
-			<div class="template-grid">{#each entries.filter((entry) => entry.access !== 'managed') as entry (entry.id)}{@render templateRow(entry)}{/each}</div>
-			{#if nextOffset !== null}
-				<div class="more"><Button variant="outline" size="sm" disabled={loading} onclick={() => owner && nextOffset !== null && void load(owner, nextOffset)}>{t('workspace.more')}</Button></div>
-			{/if}
-		</section>
+		{#if access === 'managed'}
+			{#if !loading && !error && !builtinRows.length}<p class="empty">{t('emptySearch')}</p>{/if}
+		{:else}
+			<section class="catalog-section">
+				<header><h3>{t('browse')} {#if total !== null}<span class="count">({total.toLocaleString(intlLocale())})</span>{/if}</h3></header>
+				{#if !loading && !error && !fullRows.length}<p class="empty">{t('emptySearch')}</p>{/if}
+				<div class="template-grid">{#each fullRows as entry (entry.id)}{@render templateRow(entry)}{/each}</div>
+				{#if fullRows.length && nextOffset !== null}
+					<div class="more"><Button variant="outline" size="sm" disabled={loading} onclick={() => owner && nextOffset !== null && void load(owner, nextOffset)}>{t('workspace.more')}</Button></div>
+				{/if}
+			</section>
+		{/if}
 	{:else if tab === 'connected'}
 		{#if connected.length}
 			<ConnectionsTable label={t('workspace.connected')} rows={connected} keyOf={(row) => row.key}
@@ -611,15 +629,20 @@
 {/snippet}
 
 {#snippet templateRow(entry: McpTemplate)}
-	{@const matching = preferredScope ? undefined : rowsByTemplate.get(entry.id)?.[0]}
+	{@const existing = rowsByTemplate.get(entry.id)}
+	{@const matching = preferredScope ? undefined : existing?.find((row) => admin || editable(row))}
+	{@const shared = !admin && existing?.some((row) => row.scope !== 'user' && !editable(row))}
 	{@const unavailable = entry.access === 'unreachable' || entry.access === 'unavailable'}
 	{@const blocked = !canWrite || loading || !!busy[`template-${entry.id}`]}
 	<article class="template" aria-label={entry.name}>
 		<div class="template-line">
 			<details>
-				<summary aria-label={`${entry.name} · ${t('workspace.details')}`}>
+				<summary aria-label={t('workspace.detailsNamed', { name: entry.name })}>
 					<ConnectionName name={entry.name} identity={entry.id} description={entry.description}>
-						{#snippet badge()}<Pill tone="neutral" size="xs">{t(entry.access === 'managed' ? 'builtIn' : `workspace.access.${entry.access}`)}</Pill>{/snippet}
+						{#snippet badge()}
+							<Pill tone="neutral" size="xs">{t(entry.access === 'managed' ? 'builtIn' : `workspace.access.${entry.access}`)}</Pill>
+							{#if shared}<Pill tone="neutral" size="xs">{t('workspace.shared')}</Pill>{/if}
+						{/snippet}
 					</ConnectionName>
 					<svg aria-hidden="true" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 4 4 4-4 4"/></svg>
 				</summary>
@@ -652,7 +675,7 @@
 				<ManagedSandboxToolsPicker profileId={entry.managed?.profile || entry.managed_profile || undefined} showReadiness={false} />
 			{/if}
 		{/if}
-		{#if rowErrors[`template-${entry.id}`]}<Alert tone="danger" flat>{rowErrors[`template-${entry.id}`]}</Alert>{/if}
+		{#if rowErrors[`template-${entry.id}`]}<Alert tone="danger" flat>{rowErrors[`template-${entry.id}`].message}</Alert>{/if}
 	</article>
 {/snippet}
 
@@ -674,7 +697,7 @@
 
 {#snippet manageRow(row: ConnectedRow)}
 	<span data-connection-key={`${id}-${row.key}`}>
-		<Button variant="outline" size="sm" ariaExpanded={expanded.has(row.key)} ariaLabel={`${t('workspace.manage')} ${row.server?.name ?? 'Afterglow MCP'}`}
+		<Button variant="outline" size="sm" ariaExpanded={expanded.has(row.key)} ariaLabel={t('workspace.manageNamed', { name: row.server?.name ?? 'Afterglow MCP' })}
 			onclick={() => expanded.has(row.key) ? expanded.delete(row.key) : expanded.add(row.key)}>{t('workspace.manage')}</Button>
 	</span>
 {/snippet}
@@ -714,7 +737,7 @@
 					{/if}
 				</div>
 			{/if}
-			{#if rowErrors[row.id]}<Alert tone="danger" flat>{rowErrors[row.id]}</Alert>{/if}
+			{#if rowErrors[row.id]}<Alert tone="danger" flat>{rowErrors[row.id].message}</Alert>{/if}
 			{#if deleteTarget?.id === row.id}
 				<Alert tone="warning" flat>{t('deleteConfirm', { name: row.name })}</Alert>
 				<div class="actions"><Button variant="secondary" size="sm" onclick={() => deleteTarget = null}>{t('cancel')}</Button><Button variant="danger" size="sm" onclick={() => remove(row)}>{t('delete')}</Button></div>

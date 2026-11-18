@@ -1,6 +1,6 @@
 ## 1. Connections workspace (MCP and tools)
 
-- [x] Browse / Connected (N) / Manage tabs with deep-linkable state, single search, server-side `access` and `state` filters.
+- [x] Browse / Connected (N) / Manage tabs with deep links, debounced server `q` and `access` filters, and a local Connected scope filter.
 - [x] Compact two-column catalogue rows (monogram tile, name, access badge, one-line description, primary action) grouped into Featured, Built-in sandbox tools and All catalogue with server pagination.
 - [x] Connected table: status mark, name, scope (personal/organization/admin-public), access state, tool count, manage action; expandable tool list; activation and OAuth actions unchanged.
 - [x] Manage tab: remote MCP server form, Afterglow MCP approval, sandbox selection summary and organization notes. Tools tab: custom HTTP tools list and add dialog.

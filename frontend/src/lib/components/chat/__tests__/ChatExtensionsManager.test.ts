@@ -87,7 +87,7 @@ describe('ChatExtensionsManager MCP OAuth', () => {
 		mocks.post.mockRejectedValue(new Error('Provider is unavailable'));
 		render(ChatExtensionsManager, { base: '/api/v1/chat', only: 'mcp' });
 		await fireEvent.click(await screen.findByRole('tab', { name: /연결됨 1/ }));
-		await fireEvent.click(await screen.findByRole('button', { name: '관리 Notion' }));
+		await fireEvent.click(await screen.findByRole('button', { name: 'Notion 관리' }));
 		const activate = await screen.findByRole('button', { name: 'Notion 활성화' });
 		await fireEvent.click(activate);
 		expect(screen.getByRole('dialog').textContent).toContain('https://mcp.notion.com/mcp');
@@ -111,6 +111,20 @@ describe('ChatExtensionsManager MCP OAuth', () => {
 		await fireEvent.click(await screen.findByRole('tab', { name: /연결됨 1/ }));
 		const notion = await screen.findByText('Notion');
 		await waitFor(() => expect(notion.closest('.connection-row')?.querySelector('[data-connection-status="active"] svg')).toBeTruthy());
+	});
+
+	it('reports approved remote failures in the affected Connected row, not below the workspace', async () => {
+		grantLumen('lumen-mcp_editor');
+		mocks.patch.mockRejectedValueOnce(new Error('Provider is unavailable'));
+		render(ChatExtensionsManager, { base: '/api/v1/chat', only: 'mcp' });
+		await fireEvent.click(await screen.findByRole('tab', { name: /연결됨 1/ }));
+		const manage = await screen.findByRole('button', { name: 'Notion 관리' });
+		await fireEvent.click(manage);
+		const controls = within(manage.closest('tbody') ?? manage.closest<HTMLElement>('.connection-row')!);
+		await fireEvent.click(controls.getByRole('button', { name: '비활성화' }));
+		expect(await controls.findByRole('alert')).toBeTruthy();
+		expect(mocks.patch).toHaveBeenCalledWith('/api/v1/chat/mcp-servers/7/activation',
+			{ is_active: false, config_version: 1 }, 'token', 'project-1', { signal: expect.any(AbortSignal) });
 	});
 
 

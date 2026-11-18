@@ -95,7 +95,7 @@ async function row(name: string): Promise<HTMLElement> {
 	await selectTab('connected');
 	const element = (await screen.findByText(name, { exact: true })).closest('.connection-row');
 	if (!(element instanceof HTMLElement)) throw new Error(`Missing connection row: ${name}`);
-	const trigger = within(element).getByRole('button', { name: `${t('workspace.manage')} ${name}` });
+	const trigger = within(element).getByRole('button', { name: t('workspace.manageNamed', { name }) });
 	if (trigger.getAttribute('aria-expanded') !== 'true') await fireEvent.click(trigger);
 	return element.closest('tbody') ?? element;
 }
@@ -129,17 +129,21 @@ describe('Connections workspace', () => {
 		expect(connected.tabIndex).toBe(0);
 		expect(manage.tabIndex).toBe(-1);
 		expect(document.location.search).toBe('?section=mcp&connections=connected');
+		const connectedUrl = document.location.href;
 		document.defaultView!.history.replaceState({}, '', url);
 		await fireEvent.popState(document.defaultView!);
 		expect(manage.getAttribute('aria-selected')).toBe('true');
+		document.defaultView!.history.replaceState({}, '', connectedUrl);
+		await fireEvent.popState(document.defaultView!);
+		expect(connected.getAttribute('aria-selected')).toBe('true');
 	});
 
-	it('sends access, state and debounced q; filters a count that matches table rows', async () => {
+	it('sends access and debounced q; filters the Connected scope locally', async () => {
 		servers = [
 			connection({ id: 11, name: 'Connector A', server_is_active: true }),
 			connection({ id: 12, name: 'Connector B', auth_mode: 'oauth' }),
-			connection({ id: 13, name: 'Connector C', scope: 'global', template_key: null, auth_mode: 'oauth' }),
-			connection({ id: 14, name: 'Connector D', scope: 'global', activation_is_active: true, activation_config_version: 1, config_version: 3 }),
+			connection({ id: 13, name: 'Connector C', scope: 'global', template_key: null, auth_mode: 'oauth', catalog_error: 'provider-provided text' }),
+			connection({ id: 14, name: 'Connector D', scope: 'global', activation_is_active: true, activation_config_version: 1, config_version: 3, catalog_error: 'provider-provided text' }),
 			connection({ id: 15, name: 'Connector E', scope: 'global', catalog_error: 'provider-provided text' }),
 			connection({ id: 16, name: 'Connector F' })
 		];
@@ -156,10 +160,13 @@ describe('Connections workspace', () => {
 		}
 		expect(paths.size).toBe(5);
 		expect(document.body.textContent).not.toContain('provider-provided text');
-		await fireEvent.change(screen.getByLabelText(t('workspace.allScopes')), { target: { value: 'global' } });
-		await fireEvent.change(screen.getByLabelText(t('workspace.allTypes')), { target: { value: 'oauth' } });
+		const requests = mocks.get.mock.calls.length;
+		await fireEvent.change(screen.getByLabelText(t('workspace.scopeLabel')), { target: { value: 'global' } });
+		expect(tab('connected').textContent).toMatch(/3/);
+		expect(mocks.get).toHaveBeenCalledTimes(requests);
+		await fireEvent.change(screen.getByLabelText(t('workspace.type')), { target: { value: 'oauth' } });
 		await fireEvent.input(screen.getByRole('searchbox'), { target: { value: 'Connector C' }, isComposing: true });
-		await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/mcp-settings?offset=0&limit=12&q=Connector+C&access=oauth&state=global_connected', 'token-1', 'project-1', expect.anything()));
+		await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/mcp-settings?offset=0&limit=12&q=Connector+C&access=oauth', 'token-1', 'project-1', expect.anything()));
 		expect(tab('connected').textContent).toMatch(/1/);
 		expect(screen.getByText('Connector C')).toBeTruthy();
 		expect(screen.queryByText('Connector B')).toBeNull();
@@ -172,7 +179,40 @@ describe('Connections workspace', () => {
 		await fireEvent.click(within(card('Public catalog tool')).getByRole('button', { name: t('workspace.manage') }));
 		expect(tab('connected').getAttribute('aria-selected')).toBe('true');
 		expect(screen.getByText('Find a record', { exact: false })).toBeTruthy();
-		expect(document.activeElement?.getAttribute('aria-label')).toBe(`${t('workspace.manage')} Installed tool`);
+		expect(document.activeElement?.getAttribute('aria-label')).toBe(t('workspace.manageNamed', { name: 'Installed tool' }));
+	});
+
+	it('keeps the total Connected badge while Browse search has no matches', async () => {
+		servers = [connection(), connection({ id: 12, scope: 'global', name: 'Admin inventory row' })];
+		mocks.get.mockImplementation((path: string) => path.includes('q=absent')
+			? Promise.resolve(settings({ entries: [], total: 0 }))
+			: response(path));
+		render(ChatMcpGallery);
+		await loaded();
+		expect(tab('connected').textContent).toMatch(/2/);
+		await fireEvent.input(screen.getByRole('searchbox'), { target: { value: 'absent' } });
+		await screen.findByText(t('emptySearch'));
+		expect(tab('connected').textContent).toMatch(/2/);
+		await selectTab('connected');
+		expect(tab('connected').textContent).toMatch(/0/);
+		await selectTab('manage');
+		expect(tab('connected').textContent).toMatch(/2/);
+	});
+
+	it.each([false, true])('allows personal Connect when only an admin-published connection exists (manager=%s)', async (manager) => {
+		page = settings({ can_manage_domain: manager });
+		servers = [connection({ scope: 'global' })];
+		render(ChatMcpGallery);
+		await loaded();
+		const controls = within(card('Public catalog tool'));
+		expect(controls.getByText(t('workspace.shared'))).toBeTruthy();
+		expect(controls.queryByRole('button', { name: t('workspace.manage') })).toBeNull();
+		await fireEvent.click(controls.getByRole('button', { name: t('workspace.connect') }));
+		if (manager) {
+			expect(controls.getByRole('menuitem', { name: t('connectOrganization') })).toBeTruthy();
+			await fireEvent.click(controls.getByRole('menuitem', { name: t('connectPersonal') }));
+		}
+		expect(screen.getByRole('heading', { name: t('connectTitle', { name: 'Public catalog tool' }) })).toBeTruthy();
 	});
 });
 function requestSignal(mock: typeof mocks.get, index: number): AbortSignal {
@@ -242,6 +282,7 @@ describe('ChatMcpGallery ownership', () => {
 		await settle(() => oldPage.resolve(settings({ entries: [template({ name: 'Old owner catalog' })], can_manage_domain: true })));
 		expect(screen.queryByRole('article', { name: 'Old owner catalog' })).toBeNull();
 		expect(screen.queryByText(t('managerHelp'))).toBeNull();
+		await expectOrganizationOption(false);
 		expect(mocks.get).toHaveBeenCalledTimes(count);
 	});
 
@@ -601,10 +642,30 @@ describe('ChatMcpGallery catalog browsing and row feedback', () => {
 		const managed = within(card('Managed Playwright'));
 		expect(managed.getByText(t('builtIn'))).toBeTruthy();
 		expect(managed.getByText(t(key))).toBeTruthy();
-		expect(managed.queryByRole('button', { name: t('connectPersonal') })).toBeNull();
-		expect(managed.queryByRole('button', { name: t('connectOrganization') })).toBeNull();
+		expect(managed.queryByRole('button', { name: t('workspace.connect') })).toBeNull();
+		expect(managed.queryByRole('button', { name: t('workspace.manage') })).toBeNull();
 		expect(managed.getByRole('checkbox', { name: t('selectionProfile', { name: 'Managed Playwright' }) }).hasAttribute('disabled')).toBe(true);
 		expect(mocks.post).not.toHaveBeenCalled();
+	});
+
+	it('excludes built-in tools from the full catalogue total and hides its section for the managed filter', async () => {
+		managed = [template({ id: 'managed-01', access: 'managed', name: 'Built-in example' })];
+		page = settings({ entries: [template(), ...managed], total: 2 });
+		mocks.get.mockImplementation((path: string) => path.includes('q=missing')
+			? Promise.resolve(settings({ entries: [], total: 0 }))
+			: response(path));
+		render(ChatMcpGallery);
+		await loaded();
+		expect(screen.getByRole('heading', { name: `${t('browse')} (1)` })).toBeTruthy();
+		await fireEvent.change(screen.getByLabelText(t('workspace.type')), { target: { value: 'managed' } });
+		await loaded();
+		expect(card('Built-in example')).toBeTruthy();
+		expect(screen.queryByRole('heading', { name: new RegExp(t('browse')) })).toBeNull();
+		expect(screen.queryByRole('button', { name: t('workspace.more') })).toBeNull();
+		await fireEvent.input(screen.getByRole('searchbox'), { target: { value: 'missing' } });
+		await screen.findByText(t('emptySearch'));
+		expect(screen.queryByRole('article', { name: 'Built-in example' })).toBeNull();
+		expect(screen.queryByRole('button', { name: t('workspace.more') })).toBeNull();
 	});
 
 	it('requests q and next_offset while keeping featured catalog results independent', async () => {
@@ -634,6 +695,9 @@ describe('ChatMcpGallery catalog browsing and row feedback', () => {
 		await loaded();
 		expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/mcp-settings?offset=0&limit=24&q=remote+tool', 'token-1', 'project-1', expect.anything());
 		expect(card('Search page two')).toBeTruthy();
+		await replaceActor({ projectId: 'project-2' });
+		await loaded();
+		expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/mcp-settings?offset=0&limit=12', 'token-1', 'project-2', expect.anything());
 	});
 
 	it('keeps each failed mutation error and pending state scoped to its own connection', async () => {
@@ -653,6 +717,13 @@ describe('ChatMcpGallery catalog browsing and row feedback', () => {
 		expect(within(await row('Personal connection')).getByRole('alert')).toBeTruthy();
 		expect(within(await row('Second connection')).getByRole('alert')).toBeTruthy();
 		expect(document.body.textContent).not.toContain('private failure');
+		expect(within(await row('Personal connection')).getByText(t('inactive'))).toBeTruthy();
+		expect(within(await row('Personal connection')).queryByText(t('workspace.error'))).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: t('refresh') }));
+		await loaded();
+		expect(within(await row('Personal connection')).queryByRole('alert')).toBeNull();
+		expect(within(await row('Second connection')).queryByRole('alert')).toBeNull();
+		expect(within(await row('Personal connection')).getByText(t('inactive'))).toBeTruthy();
 	});
 
 	it('installs featured global templates without silently activating them', async () => {
@@ -726,8 +797,8 @@ describe('ChatMcpGallery catalog browsing and row feedback', () => {
 			? settings({ organization_available: false, domain_id: null, can_manage_domain: false })
 			: settings({ can_manage_domain: true });
 		servers = [
-			connection({ name: 'Personal survivor', template_key: 'other-personal' }),
-			connection({ id: 12, scope: 'global', name: 'Global survivor', template_key: 'other-global' })
+			connection({ name: 'Personal survivor' }),
+			connection({ id: 12, scope: 'global', name: 'Global survivor' })
 		];
 		mocks.get.mockImplementation((path: string) => path.includes('/domains/domain-1/mcp-connections?')
 			? Promise.reject(Object.assign(new Error('Organization lookup unavailable'), { status }))
@@ -735,6 +806,9 @@ describe('ChatMcpGallery catalog browsing and row feedback', () => {
 		render(ChatMcpGallery, { onChanged: mocks.changed });
 		await screen.findByText(t('organizationUnavailable'));
 		expect(card('Public catalog tool')).toBeTruthy();
+		expect(within(card('Public catalog tool')).getByRole('button', { name: t('workspace.manage') })).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: t('workspace.add') }));
+		await fireEvent.click(screen.getByRole('menuitem', { name: t('connectPersonal') }));
 		expect(within(card('Public catalog tool')).getByRole('button', { name: t('workspace.connect') }).hasAttribute('disabled')).toBe(false);
 		expect(within(await row('Global survivor')).getByRole('button', { name: t('activate') }).hasAttribute('disabled')).toBe(false);
 		await expectOrganizationOption(false);
