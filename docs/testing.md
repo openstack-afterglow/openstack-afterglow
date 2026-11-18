@@ -6,6 +6,25 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 운영 1.32.28 릴리스·롤아웃
+
+- Afterglow: 불변 tag `1.32.28` → `83b7cf88830805eb177b50c6b5b924447a5b6d91`(PR #113, 검토한 `a1de3680`과 트리 동일). [Tag 빌드](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/44328818195)(테스트·amd64 이미지)와 [Helm](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/44328820625) 통과. [GitHub Release](https://github.com/openstack-afterglow/openstack-afterglow/releases/tag/1.32.28)는 2026-11-18 15:35:16 UTC에 공개했다.
+- 이미지 tag와 `latest`의 인덱스 digest가 같고, `linux/amd64` 이미지에서 버전 `1.32.28`과 OCI revision을 확인했다.
+
+| 대상 | OCI digest |
+| --- | --- |
+| `afterglow-api` | `sha256:e55d62c38112e7f8848dbe6a36b1be175554b8a1fd2f96dbdf358ac8dad1f4aa` |
+| `afterglow` | `sha256:acc796b2a9702b416d2e92f1adeb6ab40cc4b07361e4710c546a325338784f07` |
+| `afterglow-worker` | `sha256:4af4fecbd45c89bea79bd2b69b7469d1369ca002825c15819cc117a22182bc61` |
+| Helm `afterglow` | `sha256:7653ee3c8ff158f47a07b9923975c0622047ebea6e0807cedc5dffcdaddd0851` |
+
+- 격리 `npm run test:gate`(`a1de3680`): backend 15,634, frontend 8,628(619 files), contract 281, functional 301 통과. Ruff·아키텍처 통과.
+- DMS Lab 세 컨트롤러: lock에서 `afterglow-kolla`만 변경했으며 pull·prechecks를 통과했다. staging 디렉터리에 Kolla 실행 문맥 symlink가 있었다. 배포 후보와 배포 후 설정 비교에서 DB·Redis, 키, 마운트, bootstrap·policy writer가 기준선과 일치했다. `kolla-ansible reconfigure -i multinode --limit control --tags afterglow --skip-tags haproxy -e afterglow_start_restart=true` 성공(15:29:16–15:31:14 UTC). 운영 스냅샷: `/etc/kolla/.afterglow-rollout-backups/1.32.28-20261118T152616Z`. Lumen은 `0.6.20` 그대로다.
+- 컨트롤러별 컨테이너 수는 배포 전후 각각 183/239/225개로 같았고, `afterglow_backend`·`afterglow_frontend`·`afterglow_notion_worker`만 교체했다. VIP는 `controller2`에 그대로 있었다. 정확한 digest·revision·버전 `1.32.28`과 재시작 0회를 확인했다. 직접 health 200×3, 공개 `/login`·`/api/v1/health` 200, 사이트 설정 `services.chat=true`, 비인증 판정 모델 목록 401을 확인했다. `Permissions-Policy`는 바뀌지 않았다.
+- 운영 인스턴스 복구: 관리자 대시보드 세션이 없어 운영자 CLI에서 `afterglow_backend` 컨테이너 내부의 배포된 `1.32.28` 분석·관리자 복구 엔드포인트 함수를 호출했다. ERROR 인스턴스 `librechat`(`06cb4082-bdbd-47a4-8dc9-2e97715ae80e`)의 시나리오는 `live_migration_rolled_back`이며 점검 12개가 모두 통과했다(계획 지문 `38016e3b…a71`). 15:33:15 UTC에 HARD 재부팅을 한 번 요청했다(`req-1120a406-1837-481a-ac39-feefa4040f70`). `dms-compute12`에서 `ACTIVE`, task 없음, `power_state=1`과 `virsh`의 running 상태를 확인했다. 게스트 콘솔은 로그인 프롬프트까지 도달했다. 독립 실행 스크립트에 DB 엔진이 없어 활동 로그 항목은 기록되지 않았다.
+- 최초 ERROR 원인: 라이브 마이그레이션 953(2026-11-12 09:19 UTC, `compute12` → `compute6`)이 libvirt 오류 `guest CPU doesn't match specification: missing features: pdcm,hle,rtm`으로 실패했다. 대상 호스트에서 롤백은 성공했다. 컴퓨트 호스트에 공통 CPU 모델 적용을 권장하지만 이번에는 적용하지 않았다.
+- 새 화면의 인증된 운영 UI는 검증하지 않았다.
+
 ## 운영 1.32.27·Lumen 0.6.20 릴리스·롤아웃
 
 - Afterglow: 불변 tag `1.32.27` → `5ba53a984aeae821a100b59437ce64a3ed30a926`(PR #111, 검토한 `8a7e0ea2`와 트리 동일). [정확한 dev SHA CI](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/44288989560), [tag 이미지](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/44290601531), [Helm](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/44290601209) 통과. [한영 GitHub Release](https://github.com/openstack-afterglow/openstack-afterglow/releases/tag/1.32.27)는 배포 수신증과 함께 2026-11-18 11:34:48 UTC에 공개했다.
