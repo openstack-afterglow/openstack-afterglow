@@ -16,11 +16,15 @@
 
 - [x] Personal keys without project selector; service keys for domain managers; domain pool card (balance, reserved, monthly used, manager limit, admin ceiling).
 - [x] System-admin pool top-up/ceiling and service-key inventory pages; BFF routes with pytest.
+- [x] Service-key form uses Lumen's manager-only service-key issuance policy (`allowed_scopes`, `default_scopes`); personal form keeps the personal policy.
+- [x] Top-up recovery: idempotency record persisted before dispatch (fail closed when storage fails), 재확인 via the Lumen ledger lookup, same-key retry only, discard only after a definitive answer.
+- [x] Domain-billing readiness (`domain_billing`) in every dashboard picker and the admin model list; unready models never auto-selected; exact 422 mapping.
 
 ## 5. Vault memory
 
 - [x] Vault UI in chat settings (kinds, search, revisions, hash-guarded edits, append-only kinds, secret refusal, memory.md, chat-folder notes) with domain-keyed lifetime; BFF routes with pytest and `chat_vault_note` audit.
-- [ ] Signed Afterglow→Lumen ingress (`X-Lumen-Ingress`, shared secret wired through Kolla/K8s/Helm/Compose) so the vault stays dashboard-only.
+- [x] Signed Afterglow→Lumen ingress (`X-Lumen-Ingress`, shared secret wired through Kolla/K8s/Helm/Compose) so the vault stays dashboard-only.
+- [x] Installer endpoints served at `/api/v1/install/*` behind the public `/install/*` frontend proxy (no new root routes).
 
 ## 6. Integration and verification
 
