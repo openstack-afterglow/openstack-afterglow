@@ -48,7 +48,7 @@ Lumen serves the HTTP formats used by the official OpenAI SDK, Anthropic SDK and
 
 Both key types are **model-API only**. They can call permitted model operations such as model listing, chat, embeddings, images, audio, realtime and decisions. They cannot use OpenStack cloud tools, server tools, conversation history, Agent Vault/memory or key management. The dashboard-only virtual model `model=lumen` is not available to keys.
 
-> **Perplexity Sonar and other web-search models are available only in dashboard chat.** They need Lumen's web-search tool permission, which model-only API keys cannot hold. They are hidden from key model lists, and key requests to them are rejected with `403`.
+> **Perplexity Sonar and other web-search models are available only in dashboard chat.** They need Lumen's web-search tool permission, which model-only API keys cannot hold. They are hidden from key model lists (`/v1/models`, `/v1beta/models`), and key requests to them are rejected with `403 model_requires_server_tools` before any credit hold or provider call.
 
 ## Environment variables
 
@@ -333,7 +333,7 @@ Gemini scope and limits:
 | `401` | Missing, invalid, revoked or expired key | Check the complete key or issue a new one. |
 | `403` | Missing key permission | Issue a new key with the required permissions. |
 | `403 model_not_allowed_for_key` | Model unavailable to keys (for example `model=lumen`) | Use a public model ID from the model list. |
-| `403` (web-search model) | Perplexity Sonar or another model that needs the web-search tool | Use it in dashboard chat; keys cannot call it. |
+| `403 model_requires_server_tools` | Perplexity Sonar or another model that needs the web-search tool. OpenAI returns it as `code`, Anthropic as a `permission_error` message, Gemini with `PERMISSION_DENIED` | Use it in dashboard chat; keys cannot call it. |
 | `409 model_route_ambiguous` | The model ID matches more than one provider | Send the `X-Lumen-Provider` header. |
 | `domain_credit_insufficient` | The service key's domain prepaid balance or limit is exhausted. OpenAI-compatible responses use `429` | Ask a domain manager or system administrator for a top-up or limit change. |
 | `429` (other) | User limit or provider rate limit | Check usage and retry later. |

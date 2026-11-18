@@ -47,7 +47,7 @@ Lumen은 공식 OpenAI SDK, Anthropic SDK, Google GenAI SDK가 호출하는 HTTP
 
 두 키 모두 **모델 API 전용**이다. 모델 조회·채팅·임베딩·이미지·오디오·실시간·의사결정처럼 허용된 모델 호출만 할 수 있다. OpenStack 클라우드 도구, 서버 도구, 대화 기록, Agent Vault/메모리, 키 관리에는 사용할 수 없다. 대시보드 전용 가상 모델 `model=lumen`도 키로 호출할 수 없다.
 
-> **Perplexity Sonar 등 웹 검색 모델은 대시보드 채팅에서만 사용할 수 있다.** 이 모델은 Lumen의 웹 검색 도구 권한이 필요하며 모델 전용 API 키는 이 권한을 가질 수 없다. 키의 모델 목록에는 표시되지 않고, 키로 호출하면 `403`으로 거부된다.
+> **Perplexity Sonar 등 웹 검색 모델은 대시보드 채팅에서만 사용할 수 있다.** 이 모델은 Lumen의 웹 검색 도구 권한이 필요하며 모델 전용 API 키는 이 권한을 가질 수 없다. 키로 조회하는 모델 목록(`/v1/models`, `/v1beta/models`)에는 표시되지 않고, 키로 호출하면 크레딧 차감이나 provider 호출 전에 `403 model_requires_server_tools`로 거부된다.
 
 ## 환경 변수
 
@@ -332,7 +332,7 @@ Gemini 지원 범위와 제한:
 | `401` | 키가 없거나 잘못됨, 폐기·만료됨 | 전체 키를 다시 확인하거나 새로 발급한다. |
 | `403` | 키 권한 부족 | 필요한 권한으로 새 키를 발급한다. |
 | `403 model_not_allowed_for_key` | 키로 쓸 수 없는 모델(예: `model=lumen`) | 모델 목록의 공개 모델 ID를 사용한다. |
-| `403` (웹 검색 모델) | Perplexity Sonar 등 웹 검색 도구가 필요한 모델 | 대시보드 채팅에서 사용한다. 키로는 호출할 수 없다. |
+| `403 model_requires_server_tools` | Perplexity Sonar 등 웹 검색 도구가 필요한 모델. OpenAI는 `code`, Anthropic은 `permission_error`, Gemini는 `PERMISSION_DENIED`와 함께 이 메시지를 반환한다 | 대시보드 채팅에서 사용한다. 키로는 호출할 수 없다. |
 | `409 model_route_ambiguous` | 같은 모델 ID가 여러 provider와 일치 | `X-Lumen-Provider` 헤더를 보낸다. |
 | `domain_credit_insufficient` | 서비스 키의 도메인 선불 잔액 또는 한도 부족. OpenAI 호환 응답은 `429` | 도메인 관리자 또는 시스템 관리자에게 충전·한도 조정을 요청한다. |
 | `429` (그 밖) | 사용자 한도 또는 provider 속도 제한 | 사용량을 확인하고 나중에 다시 시도한다. |
