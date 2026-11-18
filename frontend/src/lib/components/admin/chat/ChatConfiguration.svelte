@@ -32,8 +32,8 @@
 	import ProviderAccountsPanel from './ProviderAccountsPanel.svelte';
 	import {
 		MODEL_LABELS as MEDIA_LABELS, TOKEN_FIELDS, hasMediaPrices, imagePricingDraft, imagePricingError, imagePricingPayload,
-		imagePricingReady, inputTokenOnly, knownModelKind, modelKindLabel, pricingDraft, pricingError, pricingPayload,
-		pricingEquals, type ImagePricingDraft, type ModelKind, type MediaPricing, type PricingDraft
+		imagePricingReady, imageReadinessMessage, inputTokenOnly, knownModelKind, modelKindLabel, pricingDraft, pricingError, pricingPayload,
+		pricingEquals, type ImagePricingDraft, type ImagePricingReadiness, type ModelKind, type MediaPricing, type PricingDraft
 	} from './modelPricing';
 	import { t as commonT } from '$lib/i18n/ns/common';
 	import { compileRegexSearch } from '$lib/utils/regexSearch';
@@ -194,6 +194,7 @@
 		api_provider: string;
 		display_name: string | null;
 		is_active: boolean;
+		image_pricing_readiness?: ImagePricingReadiness | null;
 		model_kind?: ModelKind;
 		media_pricing?: MediaPricing | null;
 		effective_media_pricing?: MediaPricing | null;
@@ -584,6 +585,8 @@
 	const creationBusy = $derived(addingModel || registeringBulk);
 	let registrationReview = $state<RegistrationReview | null>(null);
 	let registrationOutcomes = $state<Record<string, 'pending' | 'success' | 'failed' | 'unknown'>>({});
+	// Image registrations Lumen reported as not executable stay inactive with this guidance.
+	let activationHeld = $state<Record<string, { message: string; unsupported: string[] }>>({});
 	let registrationMode = $state<'inactive' | 'active' | null>(null);
 	let discoveryGeneration = 0;
 	let registrationGeneration = 0;
@@ -604,6 +607,7 @@
 		registeringBulk = false;
 		registrationReview = null;
 		registrationOutcomes = {};
+		activationHeld = {};
 		registrationMode = null;
 	}
 
@@ -1624,7 +1628,10 @@
 				const cachePrices = inputTokenOnly(entry.kind) ? {} : presentCachePrices(parseCachePrices(entry.cachePrices).values);
 				const pricing = entry.kind === 'image' ? null : pricingPayload(entry.kind || 'text', entry.mediaPricing);
 				try {
-					await api.post(
+					// Lumen decides image readiness from the saved pricing, so image rows are
+					// created inactive and activated only after it reports them executable.
+					const holdActivation = activate && entry.kind === 'image';
+					const created = await api.post<Model>(
 						'/api/v1/chat/admin/models',
 						{
 							provider_id: review.providerId,
@@ -1637,11 +1644,23 @@
 								...cachePrices,
 								...(pricing ? { media_pricing: pricing } : {})
 							}),
-							is_active: activate
+							is_active: activate && !holdActivation
 						},
 						review.token,
 						review.projectId
 					);
+					if (holdActivation) {
+						const readiness = created?.image_pricing_readiness;
+						if (readiness?.ready === false) {
+							activationHeld = { ...activationHeld, [entry.name]: { message: imageReadinessMessage(readiness)!, unsupported: readiness.unsupported_variants } };
+						} else {
+							try {
+								await api.patch(`/api/v1/chat/admin/models/${created.id}`, { is_active: true }, review.token, review.projectId);
+							} catch (error) {
+								activationHeld = { ...activationHeld, [entry.name]: { message: knownRegistrationFailure(error) ? t('pricing.imageActivationFailed') : t('configuration.registrationOutcomeUnknown'), unsupported: [] } };
+							}
+						}
+					}
 					ok++;
 					invalidateChatModels();
 					if (registrationIsCurrent(generation, review)) registrationOutcomes = { ...registrationOutcomes, [entry.name]: 'success' };
@@ -1657,11 +1676,13 @@
 			if (!registrationIsCurrent(generation, review)) return;
 			if (ok > 0) await load();
 			if (!registrationIsCurrent(generation, review)) return;
-			if (ok > 0) toast.success(t('configuration.modelsAlternate', { v0: formatNumber(ok), v1: activate ? t('configuration.registeredAndActivated') : t('configuration.savedAsInactive') }));
+			const held = pending.filter((entry) => activationHeld[entry.name]).length;
+			if (ok > held) toast.success(t('configuration.modelsAlternate', { v0: formatNumber(ok - held), v1: activate ? t('configuration.registeredAndActivated') : t('configuration.savedAsInactive') }));
+			if (held > 0) toast.error(t('pricing.imageActivationHeld', { count: formatNumber(held) }));
 			if (review.entries.some((entry) => registrationOutcomes[entry.name] === 'unknown')) toast.error(t('configuration.registrationOutcomeUnknown'));
 			else if (failed.length > 0) toast.error(t('configuration.modelsFailedToRegisterYouCanRetryOnlyThe', { v0: formatNumber(failed.length) }));
 			selectedAvail = Object.fromEntries(failed.filter((name) => registrationOutcomes[name] === 'failed').map((name) => [name, true]));
-			if (failed.length === 0 && !review.entries.some((entry) => registrationOutcomes[entry.name] === 'unknown')) closeCreationAfterRegistration();
+			if (failed.length === 0 && held === 0 && !review.entries.some((entry) => registrationOutcomes[entry.name] === 'unknown')) closeCreationAfterRegistration();
 		} finally {
 			if (registrationIsCurrent(generation, review)) registeringBulk = false;
 		}
@@ -1733,6 +1754,11 @@
 	async function toggleModel(m: Model) {
 		if (!m.is_active && m.provider_family === 'compatible' && !requiredManualRates(m.model_kind ?? 'text', m.input_price_per_million ?? '', m.output_price_per_million ?? '', pricingDraft(m.media_pricing))) {
 			toast.error(nativeT('compatible.requiredRates'));
+			return;
+		}
+		const readinessMessage = !m.is_active && m.model_kind === 'image' ? imageReadinessMessage(m.image_pricing_readiness) : null;
+		if (readinessMessage) {
+			toast.error(readinessMessage);
 			return;
 		}
 		if ((m.model_kind ?? 'text') === 'text' && !m.is_active && (m.effective_input_price_per_million == null || m.effective_output_price_per_million == null)) {
@@ -2355,6 +2381,14 @@
 									<p class="mt-1 text-xs text-ink-2">{t('configuration.registrationReportedLimits', { v0: entry.purpose === 'unknown' ? t('pricing.candidateReadiness', { kind: t('pricing.unknownPurpose') }) : entry.purpose === 'non_chat' ? t('pricing.candidateReadiness', { kind: t('pricing.nonChatPurpose') }) : t('configuration.reviewChatCandidate'), v1: entry.inputTokenLimit == null ? t('configuration.unknown') : formatNumber(entry.inputTokenLimit), v2: entry.outputTokenLimit == null ? t('configuration.unknown') : formatNumber(entry.outputTokenLimit) })}</p>
 									{#if registrationOutcomes[entry.name] === 'success'}
 										<Pill tone="success" size="sm">{t('configuration.registeredNoRepeatRequest')}</Pill>
+										{#if activationHeld[entry.name]}
+											<Alert tone="warning" class="mt-2">
+												{t('pricing.imageSavedInactive')} {activationHeld[entry.name].message}
+												{#if activationHeld[entry.name].unsupported.length}
+													{t('pricing.imageUnsupportedVariantList', { variants: activationHeld[entry.name].unsupported.join(', ') })}
+												{/if}
+											</Alert>
+										{/if}
 									{:else if registrationOutcomes[entry.name] === 'unknown'}
 										<Alert tone="warning">{t('configuration.registrationOutcomeUnknown')}</Alert>
 									{:else}
@@ -2561,6 +2595,7 @@
 			<ModelMediaPricingEditor kind={editingPrice.model_kind ?? 'text'} bind:draft={editPricing} bind:imageDraft={editImagePricing}
 				useImageCatalog={editingPrice.catalog_entry?.kind === 'image'} providerType={providerType(editingPrice.provider_id)}
 				hasImageAudio={editingPrice.catalog_entry?.input_modalities?.includes('audio') || editingPrice.catalog_entry?.output_modalities?.includes('audio')}
+				readiness={editingPrice.image_pricing_readiness}
 				prefix="model-edit" disabled={priceSaving} hasStoredTextPrices={editingPrice.input_price_per_million != null || editingPrice.output_price_per_million != null || CACHE_PRICE_FIELDS.some(({ key }) => editingPrice?.[key] != null)}>
 				{#snippet textPricing()}
 				<p class="mt-1 text-sm text-[var(--color-ink-2)]">{t('pricing.independentTextEditHelp')}</p>
