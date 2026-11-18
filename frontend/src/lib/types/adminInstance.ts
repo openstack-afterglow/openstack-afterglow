@@ -38,8 +38,14 @@ export interface RecoveryStep {
 	action: string;
 	description: string;
 	params?: Record<string, string>;
-	status?: 'success' | 'failed' | 'skipped';
+	status?: 'success' | 'failed' | 'skipped' | 'unconfirmed';
 	detail?: string;
+}
+
+export interface RecoveryFault {
+	message: string | null;
+	created: string | null;
+	code: number | null;
 }
 
 export interface RecoveryAnalysis {
@@ -50,7 +56,7 @@ export interface RecoveryAnalysis {
 		compute_host: string | null;
 		hypervisor_hostname?: string | null;
 		power_state: number | null;
-		fault: { message: string | null; code: number | null; created: string | null } | null;
+		fault: RecoveryFault | null;
 	};
 	last_error_migration: {
 		migration_type: string;
@@ -75,10 +81,23 @@ export interface RecoveryRequest {
 	plan_fingerprint: string;
 }
 
-export interface RecoveryResult {
-	executed: boolean;
+export type UnconfirmedRecoveryAction = 'hard_reboot' | 'reset_server_state';
+
+export interface RecoveryObservation {
 	observed_status: string;
+	observed_task_state: string | null;
+	observed_fault: RecoveryFault | null;
+	observed_acceptance: boolean;
+	observation_timed_out: boolean;
+	observation_terminal: boolean;
 	recovered: boolean;
+}
+
+export interface RecoveryResult extends RecoveryObservation {
+	executed: boolean;
+	unconfirmed_action: UnconfirmedRecoveryAction | null;
+	observation_may_recover: boolean;
+	requested_at: string;
 	scenario: string;
 	steps: RecoveryStep[];
 }

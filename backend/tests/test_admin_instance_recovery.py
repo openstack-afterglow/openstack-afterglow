@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from itertools import count
 from threading import Event
 from types import SimpleNamespace
@@ -11,7 +11,9 @@ from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 from openstack.compute.v2.server import Server
+from requests.exceptions import ReadTimeout
 
+from app.api.identity import admin
 from app.services import instance_recovery
 
 _SERVER_ID = "00000000-0000-4000-8000-000000000001"
@@ -91,6 +93,7 @@ def _configure_recovery(conn, scenario):
         hypervisor_hostname=_SOURCE_NODE,
         flavor={"id": "flavor-1", "disk": 0},
         image={},
+        attached_volumes=[{"id": _VOLUME_ID}],
         fault={
             "code": 404,
             "message": "Guest does not have a console available.",
@@ -99,9 +102,11 @@ def _configure_recovery(conn, scenario):
     )
     conn.compute.migrations.return_value = []
     conn.compute.server_migrations.return_value = []
+    attachment_id = "00000000-0000-4000-8000-000000000007"
     conn.compute.volume_attachments.return_value = [
         SimpleNamespace(
-            id="attachment-1",
+            id=None,
+            attachment_id=attachment_id,
             volume_id=_VOLUME_ID,
             server_id=_SERVER_ID,
             device="/dev/vda",
@@ -113,7 +118,14 @@ def _configure_recovery(conn, scenario):
         status="in-use",
         is_bootable=True,
         bootable=True,
-        attachments=[{"host_name": _SOURCE, "server_id": _SERVER_ID}],
+        attachments=[
+            {
+                "attachment_id": attachment_id,
+                "volume_id": _VOLUME_ID,
+                "host_name": _SOURCE,
+                "server_id": _SERVER_ID,
+            }
+        ],
     )
     conn.network.ports.return_value = [
         SimpleNamespace(
@@ -127,6 +139,11 @@ def _configure_recovery(conn, scenario):
     ]
     conn.compute.get.return_value.json.return_value = _observed_server()
 
+    def reset_server_state(_server_id, state):
+        conn.compute.get_server.return_value.status = state.upper()
+
+    conn.compute.reset_server_state.side_effect = reset_server_state
+
     if scenario in ("volume_stuck", "migration_failed_volume_stuck"):
         volume = conn.block_storage.get_volume.return_value
         volume.status = "attaching"
@@ -135,6 +152,17 @@ def _configure_recovery(conn, scenario):
             conn.compute.migrations.return_value = [_migration(migration_type="migration")]
 
     if scenario == "live_migration_rolled_back":
+        conn.block_storage.get.return_value.json.return_value = {
+            "attachments": [
+                {
+                    "id": attachment_id,
+                    "status": "attached",
+                    "volume_id": _VOLUME_ID,
+                    "instance": _SERVER_ID,
+                    "connection_info": {},
+                }
+            ]
+        }
         conn.compute.migrations.return_value = [_migration()]
         conn.compute.server_actions.return_value = [
             SimpleNamespace(action="live-migration", request_id=_REQUEST_ID, start_time=_ACTION_STARTED)
@@ -229,7 +257,7 @@ def _assert_recovery_blocked(conn, check, *, live=True):
 
 @pytest.mark.parametrize(
     ("power_state", "actions"),
-    [(1, ["reset_server_state"]), (4, _RECOVERY_STEPS), (6, _RECOVERY_STEPS)],
+    [(1, ["reset_server_state"]), (4, ["hard_reboot"]), (6, ["hard_reboot"])],
     ids=["running", "shutdown", "crashed"],
 )
 def test_verified_live_migration_recovery_plan_and_execution(live_conn, power_state, actions):
@@ -260,11 +288,88 @@ def test_verified_live_migration_recovery_plan_and_execution(live_conn, power_st
     assert result["scenario"] == "live_migration_rolled_back"
     assert _actions(result) == actions
     live_conn.block_storage.reset_volume_status.assert_not_called()
-    live_conn.compute.reset_server_state.assert_called_once_with(_SERVER_ID, "active")
     if power_state == 1:
+        live_conn.compute.reset_server_state.assert_called_once_with(_SERVER_ID, "active")
         live_conn.compute.reboot_server.assert_not_called()
     else:
+        live_conn.compute.reset_server_state.assert_not_called()
         live_conn.compute.reboot_server.assert_called_once_with(_SERVER_ID, "HARD")
+
+
+def test_rejected_live_rollback_hard_reboot_does_not_reset_server_state(live_conn):
+    live_conn.compute.reboot_server.side_effect = RuntimeError("Nova rejected HARD reboot")
+    live_conn.compute.get.return_value.json.return_value = _observed_server("ERROR", power_state=4)
+
+    result = instance_recovery.execute_recovery(live_conn, _SERVER_ID, plan_fingerprint=_preview_fingerprint(live_conn))
+
+    assert result["executed"] is False
+    assert result["recovered"] is False
+    assert result["observed_status"] == "ERROR"
+    assert _actions(result) == ["hard_reboot"]
+    assert result["steps"][0]["status"] == "failed"
+    live_conn.compute.reboot_server.assert_called_once_with(_SERVER_ID, "HARD")
+    live_conn.compute.reset_server_state.assert_not_called()
+    live_conn.block_storage.reset_volume_status.assert_not_called()
+
+
+@pytest.mark.parametrize("power", [1, 4], ids=["running", "stopped"])
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("status", "ACTIVE"),
+        ("task_state", "migrating"),
+        ("task_state", Ellipsis),
+        ("compute_host", _DEST),
+        ("hypervisor_hostname", "different-node"),
+        ("power_state", 6),
+    ],
+    ids=["status", "busy", "missing-task", "different-host", "different-node", "different-power"],
+)
+def test_live_recovery_stops_if_server_changes_after_reanalysis(live_conn, power, field, value):
+    server = live_conn.compute.get_server.return_value
+    server.power_state = power
+    fingerprint = _preview_fingerprint(live_conn)
+    refreshed = SimpleNamespace(**vars(server))
+    if value is Ellipsis:
+        delattr(refreshed, field)
+    else:
+        setattr(refreshed, field, value)
+    live_conn.compute.get_server.side_effect = [server, refreshed]
+
+    result = instance_recovery.execute_recovery(live_conn, _SERVER_ID, plan_fingerprint=fingerprint)
+
+    assert result["executed"] is False
+    assert result["steps"][0]["status"] == "failed"
+    _assert_no_mutations(live_conn)
+
+
+def test_legacy_recovery_rechecks_state_before_hard_reboot(mock_conn):
+    conn = _configure_recovery(mock_conn, "volume_stuck")
+    server = conn.compute.get_server.return_value
+    fingerprint = _preview_fingerprint(conn)
+
+    def reset(_server_id, state):
+        server.status = state.upper()
+        server.compute_host = _DEST
+
+    conn.compute.reset_server_state.side_effect = reset
+    result = instance_recovery.execute_recovery(conn, _SERVER_ID, plan_fingerprint=fingerprint)
+
+    assert [step["status"] for step in result["steps"]] == ["success", "success", "failed"]
+    conn.compute.reboot_server.assert_not_called()
+
+
+@pytest.mark.parametrize("status", ["failed", "cancelled"])
+def test_failed_or_cancelled_live_migration_never_uses_generic_recovery(live_conn, status):
+    live_conn.compute.migrations.return_value[0].status = status
+    live_conn.compute.get_server_action.return_value.events = []
+
+    _assert_recovery_blocked(live_conn, "live_migration_rollback")
+
+
+def test_live_volume_list_rejects_missing_modern_bdm(live_conn):
+    live_conn.compute.get_server.return_value.attached_volumes.append({"id": "legacy-volume"})
+    _assert_recovery_blocked(live_conn, "live_migration_volumes")
 
 
 @pytest.mark.anyio
@@ -369,6 +474,74 @@ def test_live_migration_requires_clean_source_volume_attachments(live_conn, fail
         attachments.clear()
 
     _assert_recovery_blocked(live_conn, "live_migration_volumes")
+
+
+def test_live_migration_reads_each_attachment_view_once(live_conn):
+    analysis = instance_recovery.analyze_error_instance(live_conn, _SERVER_ID)
+
+    assert _checks(analysis)["live_migration_volumes"] is True
+    live_conn.compute.volume_attachments.assert_called_once_with(_SERVER_ID)
+    live_conn.block_storage.get_volume.assert_called_once_with(_VOLUME_ID)
+    live_conn.block_storage.get.assert_called_once_with(
+        "/attachments/detail",
+        params={"volume_id": _VOLUME_ID, "all_tenants": "1"},
+        microversion="3.27",
+        log=False,
+        raise_exc=True,
+    )
+
+
+@pytest.mark.parametrize("status", ["reserved", "attaching"])
+def test_live_migration_blocks_leftover_nonattached_cinder_records(live_conn, status):
+    records = live_conn.block_storage.get.return_value.json.return_value["attachments"]
+    records.append({**records[0], "id": _DEST_PROVIDER, "status": status})
+
+    _assert_recovery_blocked(live_conn, "live_migration_volumes")
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        pytest.param("id", _DEST_PROVIDER, id="attachment-id"),
+        pytest.param("volume_id", _DEST_PROVIDER, id="volume-id"),
+        pytest.param("instance", _DEST_PROVIDER, id="instance-id"),
+        pytest.param("status", "ATTACHED", id="inexact-status"),
+    ],
+)
+def test_live_migration_requires_exact_cinder_attachment(live_conn, field, value):
+    live_conn.block_storage.get.return_value.json.return_value["attachments"][0][field] = value
+
+    _assert_recovery_blocked(live_conn, "live_migration_volumes")
+
+
+def test_live_migration_requires_nova_bdm_attachment_id(live_conn):
+    del live_conn.compute.volume_attachments.return_value[0].attachment_id
+
+    _assert_recovery_blocked(live_conn, "live_migration_volumes")
+
+
+def test_live_migration_requires_legacy_host_evidence_for_same_attachment(live_conn):
+    live_conn.block_storage.get_volume.return_value.attachments[0]["attachment_id"] = _DEST_PROVIDER
+
+    _assert_recovery_blocked(live_conn, "live_migration_volumes")
+
+
+def test_live_migration_blocks_unreadable_cinder_attachment_detail(live_conn):
+    live_conn.block_storage.get.side_effect = RuntimeError("Cinder attachments unavailable")
+
+    _assert_recovery_blocked(live_conn, "live_migration_volumes")
+
+
+@pytest.mark.parametrize("scenario", ["generic_error", "volume_stuck", "migration_failed_volume_stuck"])
+def test_legacy_recovery_does_not_require_modern_volume_attachment_proof(mock_conn, scenario):
+    conn = _configure_recovery(mock_conn, scenario)
+    del conn.compute.volume_attachments.return_value[0].attachment_id
+
+    analysis = instance_recovery.analyze_error_instance(conn, _SERVER_ID)
+
+    assert analysis["auto_executable"] is True
+    assert analysis["scenario"] == scenario
+    conn.block_storage.get.assert_not_called()
 
 
 def test_live_migration_blocks_unreadable_cinder_volume(live_conn):
@@ -634,7 +807,7 @@ async def test_recover_serializes_concurrent_posts(admin_client, live_conn, _rec
         assert await asyncio.to_thread(started.wait, 5)
         second = await admin_client.post(f"{_INSTANCE_URL}/recover", json=payload)
         assert second.status_code == 409
-        assert "이미 진행 중" in second.json()["detail"]
+        assert second.json()["detail"]["code"] == "RECOVERY_IN_PROGRESS"
         live_conn.compute.get_server.assert_called_once()
         _assert_no_mutations(live_conn)
         if replace_owner:
@@ -650,7 +823,7 @@ async def test_recover_serializes_concurrent_posts(admin_client, live_conn, _rec
     else:
         assert result.status_code == 200
         assert result.json()["observed_status"] == "ACTIVE"
-        live_conn.compute.reset_server_state.assert_called_once_with(_SERVER_ID, "active")
+        live_conn.compute.reset_server_state.assert_not_called()
         live_conn.compute.reboot_server.assert_called_once_with(_SERVER_ID, "HARD")
         live_conn.block_storage.reset_volume_status.assert_not_called()
         assert await _recovery_redis.get(lock_key) is None
@@ -688,7 +861,8 @@ async def test_recover_returns_409_with_failed_evidence(admin_client, live_conn)
     assert analysis["auto_executable"] is False
     failed_check = next(check for check in analysis["checks"] if check["key"] == "live_migration_rollback")
     assert failed_check["passed"] is False
-    assert failed_check["label"] in resp.json()["detail"]
+    assert resp.json()["detail"]["code"] == "RECOVERY_BLOCKED"
+    assert failed_check["label"] in resp.json()["detail"]["message"]
     _assert_no_mutations(live_conn)
 
 
@@ -708,7 +882,7 @@ async def test_recover_rejects_stale_power_state_confirmation(admin_client, live
     resp = await admin_client.post(f"{_INSTANCE_URL}/recover", json={"plan_fingerprint": analysis["plan_fingerprint"]})
 
     assert resp.status_code == 409
-    assert "복구 계획이 변경" in resp.json()["detail"]
+    assert resp.json()["detail"]["code"] == "RECOVERY_PLAN_CHANGED"
     _assert_no_mutations(live_conn)
 
 
@@ -727,7 +901,7 @@ async def test_recover_rejects_same_reboot_plan_drift(admin_client, mock_conn):
     resp = await admin_client.post(f"{_INSTANCE_URL}/recover", json={"plan_fingerprint": preview["plan_fingerprint"]})
 
     assert resp.status_code == 409
-    assert "복구 계획이 변경" in resp.json()["detail"]
+    assert resp.json()["detail"]["code"] == "RECOVERY_PLAN_CHANGED"
     _assert_no_mutations(conn)
 
 
@@ -753,9 +927,9 @@ def test_recovery_polls_until_running_and_idle(live_conn, monkeypatch):
     monkeypatch.setattr(instance_recovery, "monotonic", lambda: next(clock))
     monkeypatch.setattr(instance_recovery, "sleep", lambda _seconds: None)
     live_conn.compute.get.return_value.json.side_effect = [
-        _observed_server(power_state=4),
-        _observed_server(task_state="reboot_pending_hard"),
-        _observed_server("REBOOT", task_state="rebooting_hard"),
+        _observed_server("ERROR", power_state=4, task_state="reboot_pending_hard"),
+        _observed_server("ERROR", power_state=4, task_state="reboot_started_hard"),
+        _observed_server("ERROR", power_state=4, task_state="rebooting_hard"),
         RuntimeError("transient Nova read failure"),
         _observed_server(),
     ]
@@ -769,17 +943,143 @@ def test_recovery_polls_until_running_and_idle(live_conn, monkeypatch):
     live_conn.compute.reboot_server.assert_called_once_with(_SERVER_ID, "HARD")
 
 
+@pytest.mark.parametrize("new_fault", [True, False], ids=["fresh-fault", "old-fault"])
+def test_recovery_waits_for_idle_error_and_reports_only_fresh_fault(live_conn, monkeypatch, new_fault):
+    monkeypatch.setattr(instance_recovery, "_OBSERVATION_SECONDS", 10)
+    monkeypatch.setattr(instance_recovery, "sleep", lambda _seconds: None)
+    fault = {
+        "message": "Unable to recreate the guest",
+        "created": (datetime.now(UTC) + timedelta(seconds=1)).isoformat() if new_fault else _FAULT_CREATED,
+        "code": 500,
+    }
+    terminal = _observed_server("ERROR", power_state=4)
+    terminal["server"]["fault"] = fault
+    live_conn.compute.get.return_value.json.side_effect = [
+        _observed_server("ERROR", power_state=4, task_state="rebooting_hard"),
+        terminal,
+    ]
+
+    result = instance_recovery.execute_recovery(live_conn, _SERVER_ID, plan_fingerprint=_preview_fingerprint(live_conn))
+
+    assert result["observed_status"] == "ERROR"
+    assert result["observation_terminal"] is True
+    assert result["observation_timed_out"] is False
+    assert result["observed_fault"] == (fault if new_fault else None)
+    assert live_conn.compute.get.call_count == 2
+
+
+@pytest.mark.parametrize("outcome", ["commit", "action", "no-commit", "refused"])
+def test_ambiguous_reboot_is_never_replayed(live_conn, monkeypatch, outcome):
+    if outcome in ("commit", "action"):
+        monkeypatch.setattr(instance_recovery, "_OBSERVATION_SECONDS", 10)
+        monkeypatch.setattr(instance_recovery, "sleep", lambda _seconds: None)
+    # The first observation is only allowed once reboot dispatch returned or raised.
+    first = _observed_server("ERROR", power_state=4)
+    if outcome == "commit":
+        first["server"]["OS-EXT-STS:task_state"] = "rebooting_hard"
+    observations = (
+        iter([first, _observed_server()])
+        if outcome == "commit"
+        else iter([_observed_server() if outcome == "action" else first])
+    )
+
+    def read_after_dispatch(*_args, **_kwargs):
+        live_conn.compute.reboot_server.assert_called_once_with(_SERVER_ID, "HARD")
+        return next(observations)
+
+    def submit(*_args):
+        if outcome == "refused":
+            raise ConnectionRefusedError("No TCP connection opened")
+        if outcome == "action":
+            live_conn.compute.server_actions.return_value.append(
+                SimpleNamespace(action="reboot", start_time=(datetime.now(UTC) + timedelta(seconds=1)).isoformat())
+            )
+        raise ReadTimeout("Response lost")
+
+    live_conn.compute.get.return_value.json.side_effect = read_after_dispatch
+    live_conn.compute.reboot_server.side_effect = submit
+    result = instance_recovery.execute_recovery(live_conn, _SERVER_ID, plan_fingerprint=_preview_fingerprint(live_conn))
+
+    assert result["executed"] is False
+    assert result["recovered"] is (outcome in ("commit", "action"))
+    assert result["observed_acceptance"] is (outcome in ("commit", "action"))
+    assert result["observation_timed_out"] is (outcome == "no-commit")
+    assert result["steps"][0]["status"] == ("failed" if outcome == "refused" else "unconfirmed")
+    assert result["unconfirmed_action"] == (None if outcome == "refused" else "hard_reboot")
+    live_conn.compute.reboot_server.assert_called_once_with(_SERVER_ID, "HARD")
+    live_conn.compute.reset_server_state.assert_not_called()
+
+
+def test_ambiguous_running_reset_is_observed_without_restarting(live_conn):
+    live_conn.compute.get_server.return_value.power_state = 1
+    observation = _observed_server()
+    observation["server"]["updated"] = (datetime.now(UTC) + timedelta(seconds=1)).isoformat()
+    live_conn.compute.get.return_value.json.return_value = observation
+    live_conn.compute.reset_server_state.side_effect = ReadTimeout("Response lost after reset")
+
+    result = instance_recovery.execute_recovery(live_conn, _SERVER_ID, plan_fingerprint=_preview_fingerprint(live_conn))
+
+    assert result["executed"] is False
+    assert result["recovered"] is True
+    assert result["unconfirmed_action"] == "reset_server_state"
+    live_conn.compute.reset_server_state.assert_called_once_with(_SERVER_ID, "active")
+    live_conn.compute.reboot_server.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_cancelled_recovery_request_drains_audit_before_unlock(live_conn, monkeypatch, _recovery_redis):
+    audit_started = asyncio.Event()
+    finish_audit = asyncio.Event()
+    lock_key = f"afterglow:instance-recovery:lock:{_SERVER_ID}"
+
+    async def record(*_args, **_kwargs):
+        audit_started.set()
+        await finish_audit.wait()
+
+    audit = AsyncMock(side_effect=record)
+    monkeypatch.setattr(admin, "rec", audit)
+    request = admin.RecoverInstanceRequest(plan_fingerprint=_preview_fingerprint(live_conn))
+    recovery = asyncio.create_task(admin.recover_instance(_SERVER_ID, request, live_conn, {"user_id": "admin"}))
+    try:
+        await asyncio.wait_for(audit_started.wait(), timeout=5)
+        recovery.cancel()
+        assert await _recovery_redis.get(lock_key)
+    finally:
+        finish_audit.set()
+        with pytest.raises(asyncio.CancelledError):
+            await recovery
+    audit.assert_awaited_once()
+    assert audit.await_args.kwargs["extra"]["observed_status"] == "ACTIVE"
+    assert await _recovery_redis.get(lock_key) is None
+
+
+@pytest.mark.anyio
+async def test_recovery_status_is_read_only_and_does_not_guess_acceptance(admin_client, live_conn):
+    live_conn.compute.get.return_value.json.return_value = _observed_server("ERROR", power_state=4)
+    params = {"requested_at": datetime.now(UTC).isoformat(), "unconfirmed_action": "hard_reboot"}
+
+    result = await admin_client.get(f"{_INSTANCE_URL}/recovery-status", params=params)
+
+    assert result.status_code == 200
+    assert result.headers["cache-control"] == "no-store"
+    assert result.json()["observed_status"] == "ERROR"
+    assert result.json()["observed_acceptance"] is False
+    assert result.json()["observation_terminal"] is False
+    _assert_no_mutations(live_conn)
+
+
 @pytest.mark.parametrize(
     ("observation", "status"),
     [
         (_observed_server("REBOOT", task_state="rebooting_hard"), "REBOOT"),
+        (_observed_server("ERROR", power_state=4, task_state="rebooting_hard"), "ERROR"),
         (_observed_server(power_state=4), "ACTIVE"),
         (_observed_server(task_state="reboot_pending_hard"), "ACTIVE"),
         ({"server": {"id": _SERVER_ID, "status": "ACTIVE", "OS-EXT-STS:power_state": 1}}, "ACTIVE"),
         (_observed_server("ERROR", power_state=4), "ERROR"),
         (None, "UNKNOWN"),
     ],
-    ids=["rebooting", "not-running", "task-in-progress", "task-unknown", "error", "unreadable"],
+    ids=["rebooting", "error-rebooting", "not-running", "task-in-progress", "task-unknown", "error", "unreadable"],
 )
 def test_recovery_does_not_confuse_accepted_requests_with_completion(live_conn, observation, status):
     if observation is None:
@@ -792,6 +1092,10 @@ def test_recovery_does_not_confuse_accepted_requests_with_completion(live_conn, 
     assert result["executed"] is True
     assert result["recovered"] is False
     assert result["observed_status"] == status
+    if observation and observation["server"].get("OS-EXT-STS:task_state") == "rebooting_hard":
+        assert result["observation_timed_out"] is True
+        assert result["observation_terminal"] is False
+        assert result["observed_task_state"] == "rebooting_hard"
     assert all(step["status"] == "success" for step in result["steps"])
     live_conn.compute.get.assert_called_once()
 
@@ -807,7 +1111,7 @@ async def test_recover_reports_and_audits_observed_status(
     audit = AsyncMock()
     monkeypatch.setattr("app.api.identity.admin.rec", audit)
     live_conn.compute.get.return_value.json.return_value = _observed_server(
-        status, task_state=None if recovered else "rebooting_hard"
+        status, task_state="rebooting_hard" if status == "REBOOT" else None
     )
 
     fingerprint = _preview_fingerprint(live_conn)
@@ -819,7 +1123,7 @@ async def test_recover_reports_and_audits_observed_status(
     assert body["recovered"] is recovered
     assert body["observed_status"] == status
     assert body["scenario"] == "live_migration_rolled_back"
-    assert _actions(body) == _RECOVERY_STEPS
+    assert _actions(body) == ["hard_reboot"]
     audit.assert_awaited_once()
     kwargs = audit.await_args.kwargs
     assert kwargs["resource_id"] == _SERVER_ID

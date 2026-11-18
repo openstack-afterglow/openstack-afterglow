@@ -1117,11 +1117,11 @@ Nova2.47+ embedded flavor의 `original_name`을 SDK가 가상ID로 노출하는 
 `instance_recovery`는 관리자 연결로 Nova 서버·task·진행 및 이력, Neutron 포트, Nova/Cinder 볼륨을 읽는다. 실패한 읽기는 관찰된 빈 결과와 구분해 모든 복구 시나리오에서 차단한다. 최신 실패가 라이브 마이그레이션이면 서버가 기록의 소스에 있고, 생성 시각 60초 이내의 유일한 최신 라이브 요청에서 `compute_rollback_live_migration_at_destination: Success`가 관찰되어야 한다. 모든 Neutron 포트는 소스 활성 바인딩만 보유하고 `migrating_to`가 없어야 하며, 모든 Cinder 연결은 소스에 있어야 한다. 인스턴스 consumer에 Placement 공급자가 하나뿐이어야 한다. Placement가 불가하면 대상 중복 할당을 배제할 수 없어 복구를 차단한다.
 Nova 서버의 `hypervisor_hostname`과 마이그레이션 `source_node`가 일치해야 하며, Placement compute 공급자 이름은 Nova 서비스 host가 아닌 이 노드 이름을 사용한다. 단일 할당은 그 이름으로 고유하게 식별된 소스 루트 공급자의 UUID와 정확히 일치해야 한다. 다른 호스트나 중첩 공급자 또는 확인할 수 없는 소스는 차단한다.
 
-복구 POST는 서버별 공유 Redis lease 아래에서 재진단·쓰기·최종 Nova 관찰을 직렬화한다. 동일 서버의 중복 요청은 409, 잠금 획득 불가는 503이다. 각 쓰기 직전에 현재 owner만 TTL을 갱신하며, worker 종료 뒤 원자적으로 자신의 lease만 해제한다.
+복구 POST는 서버별 공유 Redis lease 아래에서 재진단·쓰기·최종 Nova 관찰을 직렬화한다. 동일 서버의 중복 요청은 409, 잠금 획득 불가는 503이다. 각 쓰기 직전에 현재 owner만 TTL을 갱신하고 Nova 호스트·노드·전원·idle 상태를 다시 확인한다. 요청이 취소되어도 worker와 활동 기록 시도가 끝난 뒤 원자적으로 자신의 lease만 해제한다.
 
-모든 검사를 통과한 `live_migration_rolled_back`은 실행 중인 게스트(`power_state=1`)를 재시작하지 않고 Nova 상태만 `active`로 재설정한다. `SHUTDOWN`·`CRASHED`는 게스트가 실행 상태가 아님을 확인하므로 재설정 뒤 소스에서 하드 리부트한다. `NOSTATE`는 정지 증거가 아니므로 자동 실행을 차단한다. Cold/resize와 일반 볼륨 복구는 기존 단계 순서를 유지한다.
+모든 검사를 통과한 `live_migration_rolled_back`은 실행 중인 게스트(`power_state=1`)를 재시작하지 않고 Nova 상태만 `active`로 재설정한다. `SHUTDOWN`·`CRASHED`는 `ERROR` 상태에서 직접 하드 리부트만 요청해 Nova가 쓰기 조건을 원자적으로 확인하게 한다. 먼저 상태를 재설정하지 않아 실패한 요청이 종료된 VM을 `ACTIVE`로 남기지 않는다. `NOSTATE`는 정지 증거가 아니므로 자동 실행을 차단한다. Cold/resize와 일반 볼륨 복구는 기존 단계 순서를 유지한다. Cinder 전체 연결 상세의 유일한 소스 연결을 Nova BDM과 대조하여 예약 또는 연결 중인 잔여 연결도 차단한다.
 
-관리자는 확인한 대상·안전 증거·시나리오·순서 있는 단계의 `plan_fingerprint`를 제출한다. 잠금 아래 다시 분석한 fingerprint와 다르면 쓰기 없이 거부한다. 단계 요청을 수락한 뒤 최대 약 55초 동안 Nova가 보고한 상태를 관찰해 `observed_status`를 반환하고 업무 로그에 fingerprint, 순서 및 관찰 상태를 보존한다. Nova `ACTIVE` 확인은 게스트 애플리케이션 헬스를 증명하지 않는다. 새 DB schema나 컴퓨트 설정 변경은 없다. [응답 계약·CPU 모델 운영 예시](docs/api/admin.md#error-인스턴스-복구).
+관리자는 확인한 대상·안전 증거·시나리오·순서 있는 단계의 `plan_fingerprint`를 제출한다. 잠금 아래 다시 분석한 fingerprint와 다르면 쓰기 없이 거부한다. Native 작업 예산은 105초이고 Nova 상태 관찰은 남은 예산에서 최대 55초다. 하드 리부트 작업이 진행 중인 `ERROR`는 실패가 아니다. 응답 유실로 쓰기 수락이 불확실하면 재전송하지 않고 새 작업 또는 action 증거를 읽으며, UI는 읽기 전용 상태 조회를 한시적으로 지속한다. 활동 기록은 fingerprint, 단계, 불확실성 및 관찰 상태를 보존한다. Nova `ACTIVE`는 게스트 애플리케이션 헬스 증명이 아니다. 새 DB schema나 컴퓨트 설정 변경은 없다. [응답 계약·CPU 모델 운영 예시](docs/api/admin.md#error-인스턴스-복구).
 
 ### GPU·고성능 인스턴스 사용 일정
 
