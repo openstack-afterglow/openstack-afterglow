@@ -21,7 +21,7 @@ vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 		intervalOptions: [10, 15, 30, 60],
 	}),
 }));
-// 레인(GlobalTopology)·캔버스(TopologyCanvas) 두 뷰 모두 같은 intent 콜백 계약을 쓰므로 동일한 probe 로 대체한다
+// The incumbent views use the same probe; the grid exercises real scene selection targets.
 vi.mock('$lib/components/GlobalTopology.svelte', async () => ({
 	default: (await import('./_TopologyIntentProbe.svelte')).default,
 }));
@@ -36,15 +36,15 @@ const topology = {
 	subnets: [],
 	routers: [],
 	ports: [],
-	instances: [],
+	instances: [{ id: 'instance-1', name: 'grid-workload', status: 'ACTIVE', network_names: [], ip_addresses: [] }],
 	floating_ips: [],
 	load_balancers: [],
 };
 
-async function expectIntentContract() {
+async function expectIntentContract(name: string | RegExp = 'instance intent') {
 	render(Page);
 	await vi.advanceTimersByTimeAsync(0);
-	const instance = await screen.findByRole('button', { name: 'instance intent' });
+	const instance = await screen.findByRole('button', { name });
 
 	await fireEvent.pointerEnter(instance);
 	await vi.advanceTimersByTimeAsync(149);
@@ -93,7 +93,10 @@ describe('topology detail intent', () => {
 		});
 	});
 
-	describe('canvas view (default)', () => {
+	describe('canvas view', () => {
+		beforeEach(() => {
+			localStorage.setItem('topology.view', 'canvas');
+		});
 		it('keeps the same 150ms intent contract and persists the toggle choice', async () => {
 			await expectIntentContract();
 
@@ -101,5 +104,14 @@ describe('topology detail intent', () => {
 			await vi.advanceTimersByTimeAsync(0);
 			expect(localStorage.getItem('topology.view')).toBe('lane');
 		});
+	});
+
+	it('defaults to grid, uses the same intent contract, and persists both transitions', async () => {
+		await expectIntentContract(/grid-workload/);
+		expect(screen.getByRole('button', { name: '그리드' }).getAttribute('aria-pressed')).toBe('true');
+		await fireEvent.click(screen.getByRole('button', { name: '캔버스' }));
+		expect(localStorage.getItem('topology.view')).toBe('canvas');
+		await fireEvent.click(screen.getByRole('button', { name: '그리드' }));
+		expect(localStorage.getItem('topology.view')).toBe('grid');
 	});
 });

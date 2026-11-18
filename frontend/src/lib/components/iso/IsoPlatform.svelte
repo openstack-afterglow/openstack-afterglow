@@ -40,7 +40,7 @@
 	.right { fill: color-mix(in oklab, var(--tone) 35%, var(--color-surface-base)); }
 	.pill { fill: var(--color-surface-base); }
 	.notch { fill: var(--tone); }
-	.active { --tone: var(--color-ink-2); }
+	.active .notch { fill: var(--color-ink-2); }
 	.active .surface, .active .pill { fill: var(--color-surface-selected); stroke: var(--color-ink-0); stroke-width: 1.7; }
 	.name { fill: var(--color-ink-0); font-size: 12px; font-weight: 650; }
 	.meta { fill: var(--color-ink-2); font-size: 11px; font-variant-numeric: tabular-nums; }

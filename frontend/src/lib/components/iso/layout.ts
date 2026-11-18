@@ -146,9 +146,38 @@ export type PlacedEdge = { edge: IsoEdge; path: string; label: Point; length: nu
 export type PlacedNode = { node: IsoNode; point: Point };
 export type PlacedPlatform = { platform: IsoPlatform; corners: readonly [Point, Point, Point, Point]; label: Point };
 
+function labelAnchor(points: Point[], width: number, footprints: GridRect[]): Point {
+	const segments = points.slice(1).map((end, i) => ({ start: points[i], end, length: length(points[i], end) }))
+		.sort((a, b) => b.length - a.length);
+	let best = points[0];
+	let bestOverlap = Infinity;
+	for (const { start, end, length: distance } of segments) {
+		for (const ratio of [0.5, 0.3, 0.7, 0.15, 0.85]) {
+			if (ratio !== 0.5 && distance < 70) continue;
+			const x = start.x + (end.x - start.x) * ratio;
+			const y = start.y + (end.y - start.y) * ratio;
+			const left = x - width / 2 - 3, right = x + width / 2 + 3;
+			const top = y - 13, bottom = y + 13;
+			let overlap = 0;
+			for (const { x, y, w, h } of footprints) {
+				if (left >= x + w || x >= right || top >= y + h || y >= bottom) continue;
+				overlap += (Math.min(right, x + w) - Math.max(left, x)) * (Math.min(bottom, y + h) - Math.max(top, y));
+				if (overlap >= bestOverlap) break;
+			}
+			if (overlap === 0) return { x, y };
+			if (overlap < bestOverlap) {
+				best = { x, y };
+				bestOverlap = overlap;
+			}
+		}
+	}
+	return best;
+}
+
 export function layoutScene(scene: IsoScene) {
 	const nodesById = new Map(scene.nodes.map((node) => [node.id, node]));
 	const platformsById = new Map(scene.platforms.map((platform) => [platform.id, platform]));
+	const footprints: GridRect[] = [];
 	let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
 	function include({ x, y }: Point, horizontal = 0, above = 0, below = above) {
 		minX = Math.min(minX, x - horizontal); maxX = Math.max(maxX, x + horizontal);
@@ -157,8 +186,19 @@ export function layoutScene(scene: IsoScene) {
 	const nodes = scene.nodes.map((node) => {
 		const ground = project(node);
 		const point = project(node, node.z);
-		const half = Math.max(pillWidth(isoLabel(node.label), 22), pillWidth(isoLabel(node.sublabel ?? ''))) / 2;
-		include(point, Math.max(half, 58), 65, 37 + 19 * Math.min(node.badges?.length ?? 0, 2));
+		const badges = node.badges?.slice(0, 2) ?? [];
+		const hasMeta = !!(node.sublabel || node.status);
+		const base = hasMeta ? 68 : 46;
+		const labelHalf = pillWidth(isoLabel(node.label), 26) / 2;
+		const metaHalf = pillWidth(isoLabel(node.sublabel ?? '', 25), node.status ? 102 : 18) / 2;
+		let half = Math.max(labelHalf, hasMeta ? metaHalf : 0, 44);
+		for (const { text } of badges) half = Math.max(half, pillWidth(isoLabel(text, 28), 20) / 2);
+		const below = base + badges.length * 20;
+		footprints.push(
+			{ x: point.x - 44, y: point.y - 52, w: 88, h: 72 },
+			{ x: point.x - half, y: point.y + 24, w: half * 2, h: below - 24 },
+		);
+		include(point, half, 52, below);
 		include(ground);
 		return { node, point };
 	}).sort((a, b) => a.node.x + a.node.y - b.node.x - b.node.y || a.point.x - b.point.x);
@@ -166,7 +206,11 @@ export function layoutScene(scene: IsoScene) {
 		const corners = slabCorners(platform);
 		const label = platform.style === 'zone' ? corners[0] : corners[2];
 		for (const corner of corners) include(corner, 0, 0, 8);
-		include(label, Math.max(pillWidth(isoLabel(platform.label, 26)), pillWidth(isoLabel(platform.sublabel ?? '', 30))) / 2, 23, 42);
+		const width = Math.max(pillWidth(isoLabel(platform.label, 26), 28), pillWidth(isoLabel(platform.sublabel ?? '', 30), 20));
+		const top = platform.style === 'zone' ? -19 : 1;
+		const height = platform.sublabel ? 38 : 23;
+		footprints.push({ x: label.x - width / 2, y: label.y + top, w: width, h: height });
+		include(label, width / 2, -top, top + height);
 		return { platform, corners, label };
 	}).sort((a, b) => Number(a.platform.style !== 'zone') - Number(b.platform.style !== 'zone') || a.corners[0].y - b.corners[0].y);
 
@@ -192,18 +236,15 @@ export function layoutScene(scene: IsoScene) {
 		const start = endpoint(aNode, points[0], points[1]);
 		points[last] = endpoint(bNode, points[last], points[last - 1]);
 		points[0] = start;
-		let longest = 0, total = 0;
-		let label = start;
-		for (let i = 1; i <= last; i++) {
-			const segment = length(points[i - 1], points[i]);
-			total += segment;
-			if (segment > longest) {
-				longest = segment;
-				label = { x: (points[i - 1].x + points[i].x) / 2, y: (points[i - 1].y + points[i].y) / 2 };
-			}
-		}
+		let total = 0;
+		for (let i = 1; i <= last; i++) total += length(points[i - 1], points[i]);
 		for (const point of points) include(point);
-		if (edge.label) include(label, pillWidth(isoLabel(edge.label, 25)) / 2, 14);
+		const width = edge.label ? pillWidth(isoLabel(edge.label, 25)) : 0;
+		const label = width ? labelAnchor(points, width, footprints) : start;
+		if (width) {
+			footprints.push({ x: label.x - width / 2, y: label.y - 10, w: width, h: 20 });
+			include(label, width / 2, 10);
+		}
 		edges.push({ edge, path: roundedPath(points), label, length: total });
 	}
 	const bounds = Number.isFinite(minX)
