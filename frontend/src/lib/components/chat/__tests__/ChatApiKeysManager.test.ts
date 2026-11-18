@@ -554,7 +554,7 @@ describe('ChatApiKeysManager', () => {
 	afterEach(() => {
 		cleanup();
 		initLocale('ko');
-		initSiteConfig({ lumen_installer_configured: false });
+		initSiteConfig({ lumen_installer_configured: false, lumen_external_url: '' });
 	});
 
 	it('shows download-only installer commands when configured even if SDK discovery fails', async () => {
@@ -582,6 +582,24 @@ describe('ChatApiKeysManager', () => {
 		expect(screen.queryByRole('button', { name: t('apiKeys.installer.copyWindows') })).toBeNull();
 		expect(screen.queryByRole('link', { name: t('apiKeys.installer.viewPosix') })).toBeNull();
 		expect(screen.queryByRole('link', { name: t('apiKeys.installer.viewWindows') })).toBeNull();
+	});
+
+	it('shows SDK examples only for the configured public Lumen URL, independent of discovery', async () => {
+		render(ChatApiKeysManager);
+		await screen.findByRole('tab', { name: t('apiKeys.guide.codexTab') });
+		expect(screen.queryByRole('heading', { name: t('apiKeys.sdk.title') })).toBeNull();
+		cleanup();
+
+		initSiteConfig({ lumen_installer_configured: true, lumen_external_url: 'https://lumen.public.example' });
+		mocks.get.mockImplementation(async (path: string) => {
+			if (path.endsWith('/compat')) throw new Error('offline');
+			return response(path);
+		});
+		render(ChatApiKeysManager);
+		await screen.findByRole('heading', { name: t('apiKeys.sdk.title') });
+		const example = screen.getByRole('region', { name: 'OpenAI · Python' }).textContent;
+		expect(example).toContain('base_url="https://lumen.public.example/v1"');
+		expect(example).not.toContain('inference.example');
 	});
 
 	it('switches a single accessible guide without refetching discovery', async () => {

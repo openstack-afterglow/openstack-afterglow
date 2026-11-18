@@ -16,6 +16,7 @@
 	import Tabs from '$lib/components/ui/Tabs.svelte';
 	import FormModal from '$lib/components/ui/FormModal.svelte';
 	import ChatDomainCredentials from './ChatDomainCredentials.svelte';
+	import ChatSdkExamples from './ChatSdkExamples.svelte';
 	import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 	import { formatCredit, isCreditInput } from '$lib/api/chatQuotas';
@@ -765,6 +766,9 @@ claude` : '');
 				<p class="mt-2 text-sm leading-6 text-ink-2">{t('apiKeys.installer.unavailable')}</p>
 			{/if}
 		</section>
+		{#if $siteConfig.lumen_external_url}
+			<ChatSdkExamples baseUrl={$siteConfig.lumen_external_url} />
+		{/if}
 	</div>
 </section>
 

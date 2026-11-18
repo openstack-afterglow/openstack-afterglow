@@ -394,6 +394,7 @@ Lumen은 외부 프로그램을 위한 OpenAI/Anthropic 호환 API를 제공한�
 - Anthropic SDK와 Claude Code: `endpoints.anthropic.sdk_base_url`을 그대로 사용한다. client가 `/v1/messages`를 붙이므로 직접 `/v1`을 추가하지 않는다.
 - Codex: `clients.codex.base_url`을 custom provider의 `base_url`로 사용하고 `wire_api = "responses"`를 선택한다. 일반 Lumen API 키를 환경 변수로 읽는다.
 - 대시보드 호스트 앞에 `api.`를 붙여 추측하지 않는다. localhost에서 실행하는 Afterglow도 연결된 Lumen의 공개 주소를 사용한다. Discovery 조회 실패 시 화면은 주소를 추측하지 않고 오류와 재시도를 표시한다.
+- **SDK 예제** 패널은 discovery가 아니라 설치기와 같은 `[services] lumen_external_url`을 사용한다. 공개 site config의 `lumen_external_url`로 이 검증된 공개 주소만 받아 OpenAI(`<url>/v1`)·Anthropic(`<url>`)·Google GenAI(`<url>`, `v1beta`) 예제에 넣고, 값이 없으면 패널을 숨긴다. 전체 튜토리얼은 [Lumen API를 SDK로 사용하기](../lumen-sdk.md)다.
 
 2026-09-06 실제 SDK로 확인한 DMSLab 배포 주소:
 

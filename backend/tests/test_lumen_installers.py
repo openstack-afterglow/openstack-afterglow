@@ -151,9 +151,12 @@ def test_unconfigured_powershell_fails_without_closing_the_session(tmp_path):
     assert b"session-alive" in caught.stdout
 
 
-def test_public_site_config_reports_installer_availability_without_url():
-    base_url = "https://lumen.example"
-    assert configured_public_site_config(Settings(service_lumen_external_url=""))["lumen_installer_configured"] is False
-    configured = configured_public_site_config(Settings(service_lumen_external_url=base_url))
+def test_public_site_config_reports_only_the_validated_public_lumen_url():
+    unconfigured = configured_public_site_config(Settings(service_lumen_external_url=""))
+    assert unconfigured["lumen_installer_configured"] is False
+    assert unconfigured["lumen_external_url"] == ""
+
+    base_url = "https://lumen.example/tenant"
+    configured = configured_public_site_config(Settings(service_lumen_external_url=f"{base_url}/"))
     assert configured["lumen_installer_configured"] is True
-    assert base_url not in str(configured)
+    assert configured["lumen_external_url"] == base_url
