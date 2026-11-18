@@ -13,7 +13,7 @@ export const GET: RequestHandler = async ({ params, request }) => {
 	let upstream: Response;
 	try {
 		// Never derive the upstream from the browser origin or forward its credentials.
-		const url = new URL(`/install/${filename}`, env.BACKEND_INTERNAL_ORIGIN || 'http://127.0.0.1:8000');
+		const url = new URL(`/api/v1/install/${filename}`, env.BACKEND_INTERNAL_ORIGIN || 'http://127.0.0.1:8000');
 		upstream = await fetch(url, { method: request.method, headers, redirect: 'error', signal: AbortSignal.timeout(5000) });
 	} catch {
 		error(502, 'Lumen installer service unavailable');

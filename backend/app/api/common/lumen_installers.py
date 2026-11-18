@@ -44,5 +44,6 @@ def build_lumen_installer_router(base_url: str) -> APIRouter:
         return download
 
     for filename in ("lumen.sh", "lumen.ps1"):
-        router.add_api_route(f"/install/{filename}", installer(filename), methods=["GET", "HEAD"], name=filename)
+        # Public /install/* belongs to the frontend proxy; keep FastAPI under the existing /api ingress prefix.
+        router.add_api_route(f"/api/v1/install/{filename}", installer(filename), methods=["GET", "HEAD"], name=filename)
     return router

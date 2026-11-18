@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 from pydantic import ValidationError
 
 from app.api.common import lumen_installers
@@ -31,7 +32,7 @@ def test_public_installer_is_rendered_at_startup(filename, monkeypatch):
         pytest.fail("the installer must already be rendered before the first request")
 
     monkeypatch.setattr(lumen_installers, "_render_installer", unexpected_render)
-    path = f"/install/{filename}"
+    path = f"/api/v1/install/{filename}"
     response = client.get(path, headers={"Host": "other.example"}, params={"url": "https://ignored.example"})
     assert response.status_code == 200
     assert response.headers["content-type"] == "text/plain; charset=utf-8"
@@ -57,6 +58,7 @@ def test_public_installer_is_rendered_at_startup(filename, monkeypatch):
     assert client.get(path, headers={"If-None-Match": '"older"'}).content == response.content
     assert client.head(path).headers["etag"] == etag
     assert client.get(path + ".template").status_code == 404
+    assert client.get(f"/install/{filename}").status_code == 404
 
 
 @pytest.mark.parametrize(
@@ -98,8 +100,21 @@ def test_http_loopback_only_in_development(url, monkeypatch):
         Settings(service_lumen_external_url=url)
 
 
+async def test_application_serves_installers_under_api_without_auth_or_root_route():
+    from app.main import app
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://afterglow.test") as client:
+        for filename in ("lumen.sh", "lumen.ps1"):
+            response = await client.get(f"/api/v1/install/{filename}")
+            assert response.status_code == 200
+            assert response.headers["content-type"] == "text/plain; charset=utf-8"
+            assert response.headers["cache-control"] == "no-cache"
+            assert response.headers["etag"] == f'"{sha256(response.content).hexdigest()}"'
+            assert (await client.get(f"/install/{filename}")).status_code == 404
+
+
 def test_posix_installer_syntax_and_preflight_without_terminal(tmp_path):
-    script = _client("https://lumen.example").get("/install/lumen.sh").content
+    script = _client("https://lumen.example").get("/api/v1/install/lumen.sh").content
     env = {"HOME": str(tmp_path), "PATH": f"{Path(sys.executable).parent}{os.pathsep}{os.defpath}"}
     subprocess.run(["sh", "-n"], input=script, check=True, env=env, timeout=5)
     run = subprocess.run(["sh"], input=script, capture_output=True, env=env, start_new_session=True, timeout=5)
@@ -110,8 +125,8 @@ def test_posix_installer_syntax_and_preflight_without_terminal(tmp_path):
 
 def test_unconfigured_scripts_fail_without_using_inputs(tmp_path):
     client = _client("")
-    posix = client.get("/install/lumen.sh")
-    windows = client.get("/install/lumen.ps1")
+    posix = client.get("/api/v1/install/lumen.sh")
+    windows = client.get("/api/v1/install/lumen.ps1")
     for response in (posix, windows):
         assert response.status_code == 200
         assert response.headers["cache-control"] == "no-cache"
@@ -130,7 +145,7 @@ def test_unconfigured_powershell_fails_without_closing_the_session(tmp_path):
     if not pwsh:
         pytest.skip("PowerShell runtime unavailable")
     script = tmp_path / "lumen.ps1"
-    script.write_bytes(_client("").get("/install/lumen.ps1").content)
+    script.write_bytes(_client("").get("/api/v1/install/lumen.ps1").content)
     command = [pwsh, "-NoLogo", "-NoProfile", "-NonInteractive"]
     run = subprocess.run([*command, "-File", str(script)], capture_output=True, timeout=10)
     assert run.returncode == 1
