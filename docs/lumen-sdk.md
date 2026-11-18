@@ -40,7 +40,7 @@ Lumen은 공식 OpenAI SDK, Anthropic SDK, Google GenAI SDK가 호출하는 HTTP
    | 음성 생성 (대시보드 경로) | `native:audio:write` | `/v1/chat/audio/speech` (이 문서에는 예제 없음) |
    | 실시간 음성 | `compat:realtime:write` | `/v1/realtime`, `/v1/realtime/translations`, `/v1/live/sessions`, `/v1beta/realtime` WebSocket (이 문서에는 예제 없음) |
 
-   발급 화면은 Lumen 발급 정책이 반환한 권한만 표시하며, 현재 역할로 허용되지 않은 권한도 표시하지 않는다. 필요한 권한이 없으면 프로젝트 또는 도메인 관리자에게 Lumen 권한을 요청한다. 사용량 조회, 배치·파일, 대화 기록·메모리, 서버 도구 실행 권한은 API 키로 발급할 수 없다. 클라이언트가 요청에 정의한 함수 도구(function calling)는 사용할 수 있지만 웹 검색·코드 실행·MCP·클라우드 도구 같은 서버 또는 호스팅 도구는 사용할 수 없다.
+   발급 화면은 Lumen 발급 정책이 반환한 권한만 표시하며, 현재 역할로 허용되지 않은 권한도 표시하지 않는다. 필요한 권한이 없으면 프로젝트 또는 도메인 관리자에게 Lumen 권한을 요청한다. 사용량 조회, 배치·파일, 대화 기록·메모리, 서버 도구 실행 권한은 API 키로 발급할 수 없다. 클라이언트가 요청에 선언하고 직접 실행하는 도구(function calling)는 사용할 수 있지만 웹 검색·코드 실행·MCP·클라우드 도구 같은 서버 또는 호스팅 도구는 사용할 수 없다. 자세한 목록은 [도구 호출](#도구-호출)을 참고한다.
 4. 발급 직후 한 번만 표시되는 전체 키를 안전한 곳에 보관한다. 목록의 접두사만으로는 인증할 수 없다.
 
 | 키 종류 | 소유자 | 청구 대상 |
@@ -322,11 +322,58 @@ Gemini 지원 범위와 제한:
 - 모델 목록·단일 모델 조회(`pageSize`, `pageToken`, `nextPageToken`), `generateContent`, `streamGenerateContent?alt=sse`(마지막 chunk에 `usageMetadata`), `embedContent`, `batchEmbedContents`를 지원한다.
 - 모델 목록에는 Gemini 모델뿐 아니라 OpenAI·Anthropic 등 다른 공급자의 텍스트 모델도 나온다(웹 검색 도구가 필요한 Perplexity Sonar 모델 제외). Gemini provider 모델은 그대로 실행하고 다른 텍스트 모델은 변환해 실행한다. 둘 다 텍스트, inline 이미지, `systemInstruction`, function 선언(`functionCall` 응답), `temperature`, `topP`, `maxOutputTokens`, `stopSequences`, JSON 모드(`responseMimeType: application/json`)를 지원한다.
 - inline 이미지 형식: Gemini 모델은 png/jpeg/webp/heic/heif, 변환 모델은 png/jpeg/webp/gif. 변환 모델에 `topK`, `safetySettings`, `thinkingConfig`, penalty, `seed`를 보내면 `400`이다.
-- 요청 필드는 닫혀 있어 알 수 없는 필드는 `400`이다. 모든 모델에서 거부: 서버 도구(`googleSearch` 등), `cachedContent`, `fileData`, 오디오·비디오·PDF 입력, `candidateCount` ≠ 1, `TEXT` 이외의 `responseModalities`, `functionCallingConfig` 이외의 `toolConfig`, 가상 모델 `lumen`.
+- 요청 필드는 닫혀 있어 알 수 없는 필드는 `400`이다. 모든 모델에서 거부: `cachedContent`, `fileData`, 오디오·비디오·PDF 입력, `candidateCount` ≠ 1, `TEXT` 이외의 `responseModalities`, `functionCallingConfig` 이외의 `toolConfig`, 가상 모델 `lumen`.
+- 도구는 `functionDeclarations`만 허용한다. `googleSearch`, `codeExecution`, `urlContext` 같은 서버 도구는 키 요청에서 `403 PERMISSION_DENIED`(`server_tool_not_allowed_for_key`)로 거부된다.
 - `countTokens`는 `501 UNIMPLEMENTED`를 반환한다.
 - 오류 본문은 Google 형식 `{"error":{"code","message","status"}}`다.
 - 임베딩은 관리자가 등록한 Gemini 임베딩 모델만 사용한다.
 - Gemini 모델 목록과 텍스트 생성은 이 경로가 포함된 Lumen 릴리스부터 동작한다. 이전 Lumen은 이 경로에 `404`를 반환하므로 OpenAI SDK 경로를 사용한다.
+
+## 도구 호출
+
+개인 키와 서비스 키는 **클라이언트가 선언하고 직접 실행하는 도구**를 보낼 수 있다. Lumen은 모델이 만든 도구 호출을 반환할 뿐 실행하지 않으며, 실행 결과는 클라이언트가 다음 요청에 넣어 보낸다. Codex CLI와 Claude Code가 개인 키로 동작하는 것도 이 방식이다.
+
+| SDK | 허용(클라이언트 실행) | 거부(서버/호스팅 도구) |
+| --- | --- | --- |
+| OpenAI | `function`, `custom`, `local_shell`, `apply_patch`, `environment.type: "local"`인 `shell` | `web_search*`, `web_search_options`, `file_search`, `code_interpreter`, computer use, `image_generation`, `mcp`, 호스팅되거나 환경을 알 수 없는 `shell` |
+| Anthropic | custom 도구(`type` 없음 또는 `custom`), `bash_*`, `text_editor_*`, `memory_*` | `web_search_*`, `web_fetch_*`, `code_execution_*`, `computer_*`, `container`, `mcp_servers` |
+| Gemini | `functionDeclarations` | `googleSearch`, `codeExecution`, `urlContext` 등 |
+
+거부되는 도구가 하나라도 있으면 크레딧 예약이나 provider 호출 전에 `403 server_tool_not_allowed_for_key`로 요청 전체가 거부된다. OpenAI와 Gemini는 오류 코드로, Anthropic과 기존 Claude gateway는 오류 메시지에 이 코드를 넣는다. 웹 검색이 내장된 Perplexity Sonar 모델은 별도로 `model_requires_server_tools`로 거부된다.
+
+OpenAI Python 함수 호출 예:
+
+```python
+import json
+import os
+
+from openai import OpenAI
+
+client = OpenAI(api_key=os.environ["LUMEN_API_KEY"], base_url=f"{os.environ['LUMEN_BASE_URL']}/v1")
+model = os.environ["LUMEN_OPENAI_MODEL"]
+tools = [{
+    "type": "function",
+    "function": {
+        "name": "get_weather",
+        "description": "Return the current weather for a city.",
+        "parameters": {
+            "type": "object",
+            "properties": {"city": {"type": "string"}},
+            "required": ["city"],
+        },
+    },
+}]
+messages = [{"role": "user", "content": "What is the weather in Seoul?"}]
+
+first = client.chat.completions.create(model=model, messages=messages, tools=tools)
+call = first.choices[0].message.tool_calls[0]
+city = json.loads(call.function.arguments)["city"]
+result = {"city": city, "condition": "sunny", "celsius": 21}  # 클라이언트가 직접 실행한 결과
+
+messages += [first.choices[0].message, {"role": "tool", "tool_call_id": call.id, "content": json.dumps(result)}]
+final = client.chat.completions.create(model=model, messages=messages, tools=tools)
+print(final.choices[0].message.content)
+```
 
 ## 오류 처리
 
@@ -336,10 +383,12 @@ Gemini 지원 범위와 제한:
 | `403` | 키 권한 부족 | 필요한 권한으로 새 키를 발급한다. |
 | `403 model_not_allowed_for_key` | 키로 쓸 수 없는 모델(예: `model=lumen`) | 모델 목록의 공개 모델 ID를 사용한다. |
 | `403 model_requires_server_tools` | Perplexity Sonar 등 웹 검색 도구가 필요한 모델. OpenAI는 `code`, Anthropic은 `permission_error`, Gemini는 `PERMISSION_DENIED`와 함께 이 메시지를 반환한다 | 대시보드 채팅에서 사용한다. 키로는 호출할 수 없다. |
+| `403 server_tool_not_allowed_for_key` | 요청에 서버/호스팅 도구(웹 검색, 코드 실행, MCP 등)가 있음 | 해당 도구를 빼고 클라이언트가 실행하는 함수 도구를 사용한다. [도구 호출](#도구-호출) 참고. |
 | `409 model_route_ambiguous` | 같은 모델 ID가 여러 provider와 일치 | `X-Lumen-Provider` 헤더를 보낸다. |
 | `domain_credit_insufficient` | 서비스 키의 도메인 선불 잔액 또는 한도 부족. OpenAI 호환 응답은 `429` | 도메인 관리자 또는 시스템 관리자에게 충전·한도 조정을 요청한다. |
 | `429` (그 밖) | 사용자 한도 또는 provider 속도 제한 | 사용량을 확인하고 나중에 다시 시도한다. |
 | `501` | 지원하지 않는 기능(Gemini `countTokens` 등) | 해당 기능을 호출하지 않는다. |
+| `422 … domain_billing (<reason>)` | **대시보드 채팅 전용.** 모델이 도메인 과금 준비가 되지 않음(`pricing_unavailable`, `output_budget_unenforced`, `context_limit_unknown`). 대시보드 모델 선택기는 이 사유와 함께 해당 모델을 비활성으로 표시한다 | 관리자에게 모델 가격·출력 한도·컨텍스트 한도 설정을 요청하거나 다른 모델을 고른다. API 키 요청에서는 나오지 않는다. |
 
 SDK의 자동 재시도는 과금 요청을 반복할 수 있다. 예제는 `max_retries=0`/`maxRetries: 0`으로 자동 재시도를 끈다. 운영 코드에서는 idempotency와 비용을 고려해 재시도 정책을 정한다.
 
