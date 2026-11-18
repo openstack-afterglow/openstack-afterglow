@@ -6,7 +6,7 @@ import type * as ImageStudioModule from '$lib/api/imageStudio';
 import { ApiError } from '$lib/api/client';
 import ImageStudio from '../ImageStudio.svelte';
 import { IMAGE_STUDIO_STYLES, imageRequestAspectRatio } from '../imageStudioStyles';
-import { estimateImageOutputTokens, validCustomImageSize } from '../imageStudioOptions';
+import { estimateImageOutputTokens, imageInteger, validCustomImageSize } from '../imageStudioOptions';
 import { t } from '$lib/i18n/ns/chat-studio';
 import { initLocale } from '$lib/i18n/runtime.svelte';
 import * as experience from '$lib/utils/experience';
@@ -74,6 +74,12 @@ describe('Image Studio', () => {
 		['3856x2160', false], ['3072x1008', false], ['2880x2896', false], ['1024x624', false], ['auto', false]
 	] as const)('validates custom dimensions %s', (size, valid) => {
 		expect(validCustomImageSize(size, limits)).toBe(valid);
+	});
+
+	it('preserves a blank numeric option without treating it as zero', () => {
+		expect(imageInteger(null, 0, 100)).toBeUndefined();
+		expect(imageInteger('', 0, 100)).toBeUndefined();
+		expect(imageInteger(0, 0, 100)).toBe(0);
 	});
 
 	it('estimates output-only tokens with the published family-specific calculator', () => {

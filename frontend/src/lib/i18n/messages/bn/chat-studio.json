@@ -539,6 +539,7 @@
 	"realtimeModes.languageHelp": "bn, en বা pt-BR-এর মতো ভাষা কোড দিন। সেশন চলাকালে কোড বদলানো যায় না।",
 	"realtimeModes.invalidLanguage": "একটি বৈধ ভাষা কোড দিন।",
 	"realtimeModes.instructions": "সেশনের নির্দেশনা (ঐচ্ছিক)",
+	"realtimeModes.usageUnconfirmed": "সংযোগ শেষ হয়েছে। চূড়ান্ত ব্যবহার এখনো নিশ্চিত হয়নি।",
 	"realtimeTranscription.description": "মাইক্রোফোন ব্যবহার করে রিয়েলটাইমে কথা বলুন অথবা কথাকে টেক্সটে রূপান্তর করুন। অডিও ও ট্রান্সক্রিপশন শুধু এই স্ক্রিনেই রাখা হয়।",
 	"realtimeTranscription.mode": "সেশন মোড",
 	"realtimeTranscription.conversation": "ভয়েস কথোপকথন",

@@ -539,6 +539,7 @@
 	"realtimeModes.languageHelp": "Enter a language code such as en, es, or pt-BR. It stays fixed during the session.",
 	"realtimeModes.invalidLanguage": "Enter a valid language code.",
 	"realtimeModes.instructions": "Session instructions (optional)",
+	"realtimeModes.usageUnconfirmed": "The connection ended. Final usage has not been confirmed.",
 	"realtimeTranscription.description": "Converse in real time using your microphone or transcribe speech into text. Audio and transcripts stay only on this screen.",
 	"realtimeTranscription.mode": "Session mode",
 	"realtimeTranscription.conversation": "Voice conversation",

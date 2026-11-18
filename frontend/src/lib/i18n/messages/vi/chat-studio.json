@@ -539,6 +539,7 @@
 	"realtimeModes.languageHelp": "Nhập mã ngôn ngữ như vi, en hoặc pt-BR. Không thể đổi mã trong phiên.",
 	"realtimeModes.invalidLanguage": "Nhập mã ngôn ngữ hợp lệ.",
 	"realtimeModes.instructions": "Chỉ dẫn cho phiên (không bắt buộc)",
+	"realtimeModes.usageUnconfirmed": "Kết nối đã kết thúc. Mức sử dụng cuối cùng chưa được xác nhận.",
 	"realtimeTranscription.description": "Trò chuyện theo thời gian thực bằng micrô hoặc chuyển giọng nói thành văn bản. Âm thanh và bản chuyển giọng nói thành văn bản chỉ được giữ trên màn hình này.",
 	"realtimeTranscription.mode": "Chế độ phiên",
 	"realtimeTranscription.conversation": "Trò chuyện bằng giọng nói",

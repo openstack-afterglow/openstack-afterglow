@@ -6,6 +6,8 @@ import type { ExperienceContext } from '$lib/utils/experience';
 
 export type RealtimeMode = 'conversation' | 'transcription' | 'translation' | 'live';
 export const REALTIME_OUTPUT_LANGUAGE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/;
+export const REALTIME_REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh'] as const;
+export type RealtimeReasoningEffort = typeof REALTIME_REASONING_EFFORTS[number];
 export interface RealtimeTranscript {
 	id: string;
 	text: string;
@@ -27,7 +29,9 @@ export interface RealtimeCapabilities {
 	max_duration_seconds: number;
 	default_duration_seconds?: number;
 	realtime_kind?: string | null;
-	realtime_session_fields?: ('voice' | 'instructions' | 'output_language')[];
+	realtime_session_fields?: ('voice' | 'instructions' | 'output_language' | 'reasoning_effort')[];
+	available_reasoning_efforts?: RealtimeReasoningEffort[];
+	default_reasoning_effort?: RealtimeReasoningEffort | null;
 }
 export interface RealtimeSession {
 	session_id: string;
@@ -91,7 +95,7 @@ export function realtimeReadiness(model: RealtimeModel | undefined, current: Rea
 export const realtimeVoiceApi = {
 	models: (scope: RealtimeScope) => api.get<RealtimeModel[]>('/api/v1/chat/models?model_kind=realtime', scope.token, scope.projectId, { refresh: true, experience: scope.experience }),
 	capabilities: (id: number, scope: RealtimeScope) => api.get<RealtimeCapabilities>(`/api/v1/chat/capabilities?model_id=${id}&model_kind=realtime`, scope.token, scope.projectId, { refresh: true, experience: scope.experience }),
-	async createSession(modelId: number, voice: string | null, scope: RealtimeScope, key: string, signal: AbortSignal, kind: RealtimeMode = 'conversation', options?: { output_language?: string; instructions?: string; max_duration_seconds?: number }): Promise<RealtimeSession> {
+	async createSession(modelId: number, voice: string | null, scope: RealtimeScope, key: string, signal: AbortSignal, kind: RealtimeMode = 'conversation', options?: { output_language?: string; instructions?: string; reasoning_effort?: RealtimeReasoningEffort; max_duration_seconds?: number }): Promise<RealtimeSession> {
 		requireLumenCapability('lumen-audio_user', scope.token, scope.projectId);
 		const response = await fetchWithAuth('/api/v1/chat/realtime/sessions', {
 			method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
@@ -101,6 +105,7 @@ export const realtimeVoiceApi = {
 				...(kind === 'conversation' || kind === 'live' ? { voice } : {}),
 				...(options?.output_language ? { output_language: options.output_language } : {}),
 				...(options?.instructions ? { instructions: options.instructions } : {}),
+				...(options?.reasoning_effort ? { reasoning_effort: options.reasoning_effort } : {}),
 				max_duration_seconds: options?.max_duration_seconds ?? 300
 			}), signal
 		}, scope.token, scope.projectId, { experience: scope.experience });

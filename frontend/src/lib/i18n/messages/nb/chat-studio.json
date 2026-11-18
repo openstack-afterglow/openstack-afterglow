@@ -539,6 +539,7 @@
 	"realtimeModes.languageHelp": "Angi en språkkode, for eksempel nb, en eller pt-BR. Koden kan ikke endres under økten.",
 	"realtimeModes.invalidLanguage": "Angi en gyldig språkkode.",
 	"realtimeModes.instructions": "Øktinstruksjoner (valgfritt)",
+	"realtimeModes.usageUnconfirmed": "Forbindelsen er avsluttet. Endelig bruk er ikke bekreftet.",
 	"realtimeTranscription.description": "Ha en samtale i sanntid med mikrofonen, eller transkriber tale til tekst. Lyd og transkripsjoner beholdes bare på denne skjermen.",
 	"realtimeTranscription.mode": "Øktmodus",
 	"realtimeTranscription.conversation": "Talesamtale",

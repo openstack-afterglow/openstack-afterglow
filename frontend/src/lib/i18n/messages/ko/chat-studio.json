@@ -539,6 +539,7 @@
 	"realtimeModes.languageHelp": "언어 코드(예: ko, en, pt-BR)를 입력하세요. 세션 중 변경할 수 없습니다.",
 	"realtimeModes.invalidLanguage": "유효한 언어 코드를 입력하세요.",
 	"realtimeModes.instructions": "세션 지침(선택)",
+	"realtimeModes.usageUnconfirmed": "연결이 종료되었습니다. 최종 사용량은 아직 확인되지 않았습니다.",
 	"realtimeTranscription.description": "마이크 음성을 실시간으로 대화하거나 텍스트로 전사합니다. 오디오와 전사는 이 화면에만 유지됩니다.",
 	"realtimeTranscription.mode": "세션 모드",
 	"realtimeTranscription.conversation": "음성 대화",

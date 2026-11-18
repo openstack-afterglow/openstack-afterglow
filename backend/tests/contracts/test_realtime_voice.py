@@ -63,6 +63,7 @@ async def test_realtime_admission_returns_only_project_bound_browser_ticket(monk
                 **({"voice": "alloy"} if kind not in {"transcription", "translation"} else {}),
                 **({"output_language": "pt-BR"} if kind == "translation" else {}),
                 **({"instructions": "Speak slowly"} if kind == "live" else {}),
+                **({"reasoning_effort": "xhigh"} if kind == "conversation" else {}),
                 **({"kind": kind} if kind is not None else {}),
             },
             headers={"Idempotency-Key": key},
@@ -87,6 +88,10 @@ async def test_realtime_admission_returns_only_project_bound_browser_ticket(monk
     else:
         assert "output_language" not in payload
     assert payload["instructions"] == ("Speak slowly" if kind == "live" else None)
+    if kind == "conversation":
+        assert payload["reasoning_effort"] == "xhigh"
+    else:
+        assert "reasoning_effort" not in payload
     issue.assert_awaited_once_with(
         "chat-realtime",
         {
@@ -110,6 +115,8 @@ async def test_realtime_admission_returns_only_project_bound_browser_ticket(monk
         {"kind": "translation", "output_language": "es", "instructions": "Speak slowly"},
         {"kind": "live", "output_language": "es"},
         {"kind": "live", "delegation": {"type": "responses"}},
+        {"kind": "live", "reasoning_effort": "low"},
+        {"kind": "conversation", "reasoning_effort": "none"},
     ],
 )
 async def test_realtime_rejects_fields_outside_the_mode_contract(monkeypatch, payload):

@@ -539,6 +539,7 @@
 	"realtimeModes.languageHelp": "Masukkan kod bahasa seperti ms, en atau pt-BR. Kod tidak boleh diubah semasa sesi.",
 	"realtimeModes.invalidLanguage": "Masukkan kod bahasa yang sah.",
 	"realtimeModes.instructions": "Arahan sesi (pilihan)",
+	"realtimeModes.usageUnconfirmed": "Sambungan telah tamat. Penggunaan akhir belum disahkan.",
 	"realtimeTranscription.description": "Berbual dalam masa nyata menggunakan mikrofon atau transkripsikan pertuturan kepada teks. Audio dan transkripsi hanya disimpan pada skrin ini.",
 	"realtimeTranscription.mode": "Mod sesi",
 	"realtimeTranscription.conversation": "Perbualan suara",

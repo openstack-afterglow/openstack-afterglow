@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
-	import { realtimeVoiceApi, realtimeReadiness, realtimeMode, applyTranscriptionFrame, pcm16Base64, decodePcm16, REALTIME_OUTPUT_LANGUAGE, type RealtimeModel, type RealtimeCapabilities, type RealtimeScope, type RealtimeMode, type RealtimeTranscript } from '$lib/api/realtimeVoice';
+	import { realtimeVoiceApi, realtimeReadiness, realtimeMode, applyTranscriptionFrame, pcm16Base64, decodePcm16, REALTIME_OUTPUT_LANGUAGE, REALTIME_REASONING_EFFORTS, type RealtimeReasoningEffort, type RealtimeModel, type RealtimeCapabilities, type RealtimeScope, type RealtimeMode, type RealtimeTranscript } from '$lib/api/realtimeVoice';
 	import { ApiError } from '$lib/api/client';
 	import { Alert, Button, Card, Field, PageShell, SelectInput, TextareaInput, TextInput } from '$lib/components/ui';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/chat-studio';
+	import { t as chatT } from '$lib/i18n/ns/chat-panel';
+	import { effortLabel } from '$lib/api/chatEffort';
 	import { serviceCapabilities, serviceDenials } from '$lib/stores/servicePermissions';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
 	import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, type ExperienceContext } from '$lib/utils/experience';
@@ -22,6 +24,7 @@
 	let voice = $state('');
 	let outputLanguage = $state('');
 	let instructions = $state('');
+	let reasoningEffort = $state<RealtimeReasoningEffort | ''>('');
 	let loading = $state(false);
 	let capabilityLoading = $state(false);
 	let connecting = $state(false);
@@ -58,6 +61,10 @@
 	const translation = $derived(mode === 'translation');
 	const showVoice = $derived(mode === 'conversation' || mode === 'live');
 	const showInstructions = $derived(showVoice && capabilities?.realtime_session_fields?.includes('instructions'));
+	const reasoningEfforts = $derived(mode === 'conversation' && capabilities?.realtime_session_fields?.includes('reasoning_effort')
+		? (capabilities.available_reasoning_efforts ?? []).filter((effort) => REALTIME_REASONING_EFFORTS.includes(effort))
+		: []);
+	const selectedEffort = $derived(reasoningEffort && reasoningEfforts.includes(reasoningEffort) ? reasoningEffort : '');
 	const languageValid = $derived(!translation || REALTIME_OUTPUT_LANGUAGE.test(outputLanguage.trim()));
 	const modeLabel = $derived(
 		mode === 'translation' ? t('realtimeModes.translation')
@@ -66,7 +73,7 @@
 			: mode === 'conversation' ? t('realtimeTranscription.conversation')
 			: t('realtimeTranscription.unsupported')
 	);
-	const fingerprint = $derived(JSON.stringify([ownerKey, selected, mode, showVoice ? voice : '', translation ? outputLanguage.trim() : '', showInstructions ? instructions.trim() : '']));
+	const fingerprint = $derived(JSON.stringify([ownerKey, selected, mode, showVoice ? voice : '', translation ? outputLanguage.trim() : '', showInstructions ? instructions.trim() : '', selectedEffort]));
 	$effect(() => {
 		const current = fingerprint;
 		untrack(() => { if (pendingIntent?.fingerprint !== current) pendingIntent = null; });
@@ -164,12 +171,16 @@
 				releaseMicrophone();
 				socket.send(JSON.stringify({ type: 'session.close' }));
 				closeTimer = setTimeout(() => {
-					if (epoch === generation && ending) { error = t('realtimeVoice.connectionClosed'); stop(false, false, true); }
+					if (epoch === generation && ending) { error = disconnectMessage(); stop(false, false, true); }
 				}, 30000);
 			}
 		} catch {
 			if (epoch === generation) { error = t('realtimeVoice.microphoneStreamFailed'); stop(false, false, true); }
 		} finally { if (epoch === generation) commitBusy = false; }
+	}
+	function disconnectMessage(): string {
+		return connected && activeMode === 'live' ? t('realtimeModes.usageUnconfirmed')
+			: connected ? t('realtimeVoice.connectionClosed') : t('realtimeVoice.connectionFailed');
 	}
 	function endSession() {
 		if (activeMode !== 'conversation' && connected && audioAllowed) void commitSegment(true);
@@ -222,6 +233,7 @@
 			voice = response.available_voices?.includes(voice) ? voice : (response.default_voice ?? '');
 			outputLanguage = '';
 			instructions = '';
+			reasoningEffort = '';
 			inputTranscript = '';
 			outputTranscript = '';
 			segments = [];
@@ -245,6 +257,9 @@
 			selected = '';
 			capabilities = null;
 			voice = '';
+			outputLanguage = '';
+			instructions = '';
+			reasoningEffort = '';
 			loading = false;
 			capabilityLoading = false;
 			if (audioAllowed && scope) void loadModels(scope, generation);
@@ -259,6 +274,9 @@
 			selected = '';
 			capabilities = null;
 			voice = '';
+			outputLanguage = '';
+			instructions = '';
+			reasoningEffort = '';
 			loading = false;
 			capabilityLoading = false;
 		});
@@ -396,6 +414,7 @@
 		const sessionOptions = {
 			...(translation ? { output_language: outputLanguage.trim() } : {}),
 			...(showInstructions && instructions.trim() ? { instructions: instructions.trim() } : {}),
+			...(selectedEffort ? { reasoning_effort: selectedEffort } : {}),
 			max_duration_seconds: Math.min(capabilities.default_duration_seconds ?? 300, capabilities.max_duration_seconds)
 		};
 		const experience = beginExperienceAction('lumen', 'start', 'shared.stream');
@@ -415,8 +434,8 @@
 			activeProvider = session.provider_type;
 			socket = realtimeVoiceApi.connect(session);
 			socket.onmessage = (event) => onFrame(event, epoch, experience);
-			socket.onclose = () => { if (epoch === generation) { error = connected ? t('realtimeVoice.connectionClosed') : t('realtimeVoice.connectionFailed'); experienceState(experience, connected ? 'disabled' : 'error', connected ? 4 : 5); stop(false, !connected, activeMode === 'transcription'); } };
-			socket.onerror = () => { if (epoch === generation) { error = t('realtimeVoice.connectionUnavailable'); experienceState(experience, 'error', 5); stop(false, !connected, activeMode === 'transcription'); } };
+			socket.onclose = () => { if (epoch === generation) { error = disconnectMessage(); experienceState(experience, connected ? 'disabled' : 'error', connected ? 4 : 5); stop(false, !connected, activeMode === 'transcription'); } };
+			socket.onerror = () => { if (epoch === generation) { error = connected && activeMode === 'live' ? disconnectMessage() : t('realtimeVoice.connectionUnavailable'); experienceState(experience, 'error', 5); stop(false, !connected, activeMode === 'transcription'); } };
 		} catch (cause) {
 			if (epoch !== generation) return;
 			if (cause instanceof DOMException && cause.name === 'NotAllowedError') error = t('realtimeVoice.microphoneDenied');
@@ -455,6 +474,9 @@
 			{/if}
 			{#if showInstructions}
 				<Field label={t('realtimeModes.instructions')} for="realtime-instructions"><TextareaInput id="realtime-instructions" bind:value={instructions} maxlength={4096} rows={2} disabled={!audioAllowed || connecting || connected || capabilityLoading} /></Field>
+			{/if}
+			{#if reasoningEfforts.length}
+				<Field label={chatT('input.reasoningEffort')} for="realtime-effort"><SelectInput id="realtime-effort" bind:value={reasoningEffort} disabled={!audioAllowed || connecting || connected || capabilityLoading}><option value="">{effortLabel('auto')}</option>{#each reasoningEfforts as effort (effort)}<option value={effort}>{effortLabel(effort)}</option>{/each}</SelectInput></Field>
 			{/if}
 			{#if error}<Alert tone="danger">{error}</Alert>{:else if loading || capabilityLoading}<LoadingState variant="inline" label={t('realtimeVoice.checking')} />{:else if readiness}<Alert tone="warning">{readiness}</Alert>{:else if audioAllowed}<Alert tone="success">{transcription ? t('realtimeTranscription.ready') : t('realtimeVoice.ready')}</Alert>{/if}
 			<div class="actions">

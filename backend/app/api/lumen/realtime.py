@@ -33,6 +33,7 @@ class SessionRequest(BaseModel):
     voice: str | None = Field(default=None, max_length=100)
     instructions: str | None = Field(default=None, max_length=4096)
     output_language: str | None = Field(default=None, pattern=r"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$")
+    reasoning_effort: Literal["minimal", "low", "medium", "high", "xhigh"] | None = None
     max_duration_seconds: int = Field(default=300, ge=10, le=900)
 
     @model_validator(mode="after")
@@ -42,6 +43,8 @@ class SessionRequest(BaseModel):
                 raise ValueError("Translation requires only an output language")
         elif self.output_language is not None:
             raise ValueError("Only translation accepts an output language")
+        if self.kind != "conversation" and self.reasoning_effort is not None:
+            raise ValueError("Only conversation accepts a reasoning effort")
         return self
 
 
@@ -75,8 +78,9 @@ async def create_session(
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(20.0, connect=5.0), verify=get_settings().ssl_verify
         ) as client:
-            # Older Lumen versions forbid unknown keys, including a null output_language.
-            body = payload.model_dump(exclude={"output_language"} if payload.output_language is None else None)
+            # Older Lumen versions forbid unknown keys, including optional null fields.
+            optional = {"output_language", "reasoning_effort"}
+            body = payload.model_dump(exclude={name for name in optional if getattr(payload, name) is None})
             response = await client.post(url, headers=headers, json=body)
     except httpx.RequestError as exc:
         raise HTTPException(status_code=503, detail="Realtime service unavailable") from exc

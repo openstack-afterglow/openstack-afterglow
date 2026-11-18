@@ -5,6 +5,7 @@ import { authReady, projectSwitching } from '$lib/stores/auth';
 import type * as RealtimeModule from '$lib/api/realtimeVoice';
 import RealtimeVoice from '../RealtimeVoice.svelte';
 import { t } from '$lib/i18n/ns/chat-studio';
+import { t as chatT } from '$lib/i18n/ns/chat-panel';
 import * as experience from '$lib/utils/experience';
 
 const calls = vi.hoisted(() => ({ models: vi.fn(), capabilities: vi.fn(), createSession: vi.fn(), connect: vi.fn() }));
@@ -128,6 +129,57 @@ describe('Realtime Voice', () => {
 		socket.message({ type: 'session.closed' });
 		expect(await screen.findByText('Final words')).toBeTruthy();
 		expect(socket.closed).toBe(true);
+	});
+	it.each(['translation', 'live'] as const)('clears %s drafts on a project switch', async (kind) => {
+		calls.capabilities.mockResolvedValue({
+			...capability(), realtime_kind: kind,
+			...(kind === 'translation' ? { available_voices: [], default_voice: null, realtime_session_fields: ['output_language'] } :
+				{ available_voices: ['marin'], default_voice: 'marin', realtime_session_fields: ['voice', 'instructions'] })
+		});
+		const label = t(kind === 'translation' ? 'realtimeModes.outputLanguage' : 'realtimeModes.instructions');
+		render(RealtimeVoice);
+		const input = await screen.findByRole('textbox', { name: label }) as HTMLInputElement;
+		await fireEvent.input(input, { target: { value: kind === 'translation' ? 'es' : 'private session draft' } });
+		const response = Promise.withResolvers<unknown>();
+		calls.capabilities.mockReturnValueOnce(response.promise);
+		setVerifiedLumenActor(user('project-2'));
+		await waitFor(() => expect(screen.queryByRole('textbox', { name: label })).toBeNull());
+		response.resolve({ ...capability(), realtime_kind: kind, realtime_session_fields: ['output_language', 'instructions'] });
+		expect((await screen.findByRole('textbox', { name: label }) as HTMLInputElement).value).toBe('');
+	});
+
+	it('shows only advertised conversation reasoning and forwards the chosen effort', async () => {
+		const track = { stop: vi.fn(), enabled: true };
+		vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [track] }) } });
+		calls.capabilities.mockResolvedValue({
+			...capability(), realtime_kind: 'conversation', realtime_session_fields: ['voice', 'reasoning_effort'],
+			available_reasoning_efforts: ['low', 'xhigh', 'none'], default_reasoning_effort: 'low'
+		});
+		render(RealtimeVoice);
+		const effort = await screen.findByLabelText(chatT('input.reasoningEffort'));
+		expect(Array.from((effort as HTMLSelectElement).options, (option) => option.value)).toEqual(['', 'low', 'xhigh']);
+		await fireEvent.change(effort, { target: { value: 'xhigh' } });
+		await fireEvent.click(screen.getByRole('button', { name: t('realtimeVoice.startSession') }));
+		await waitFor(() => expect(calls.createSession.mock.calls[0]?.[6]).toEqual({ reasoning_effort: 'xhigh', max_duration_seconds: 300 }));
+	});
+
+	it('reports unconfirmed Live usage if the connection closes without a terminal frame', async () => {
+		const track = { stop: vi.fn(), enabled: true };
+		vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [track] }) } });
+		calls.capabilities.mockResolvedValue({ ...capability(), realtime_kind: 'live' });
+		render(RealtimeVoice);
+		await screen.findByText(t('realtimeVoice.ready'));
+		await fireEvent.click(screen.getByRole('button', { name: t('realtimeVoice.startSession') }));
+		await waitFor(() => expect(Socket.instances).toHaveLength(1));
+		const socket = Socket.instances[0];
+		socket.open();
+		socket.message({ type: 'session.ready', realtime_kind: 'live', input_sample_rate_hz: 24000, output_sample_rate_hz: 24000 });
+		await screen.findByText(t('realtimeVoice.connectedMicrophoneOn'));
+		socket.close();
+		socket.onclose?.();
+		expect(await screen.findByText(t('realtimeModes.usageUnconfirmed'))).toBeTruthy();
+		expect(screen.queryByText(t('realtimeTranscription.ended'))).toBeNull();
+		expect(track.stop).toHaveBeenCalled();
 	});
 	it('does not acquire a microphone or create a session with chat-only authority', async () => {
 		grantLumen('lumen-chat_user');

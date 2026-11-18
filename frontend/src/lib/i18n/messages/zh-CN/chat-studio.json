@@ -539,6 +539,7 @@
 	"realtimeModes.languageHelp": "输入语言代码，例如 zh-CN、en 或 pt-BR。会话期间无法更改。",
 	"realtimeModes.invalidLanguage": "请输入有效的语言代码。",
 	"realtimeModes.instructions": "会话指令（选填）",
+	"realtimeModes.usageUnconfirmed": "连接已结束。最终用量尚未确认。",
 	"realtimeTranscription.description": "通过麦克风进行实时语音对话，或将语音转录为文本。音频和转录内容仅保留在此界面。",
 	"realtimeTranscription.mode": "会话模式",
 	"realtimeTranscription.conversation": "语音对话",

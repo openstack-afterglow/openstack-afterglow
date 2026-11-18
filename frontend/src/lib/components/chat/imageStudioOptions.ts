@@ -15,8 +15,8 @@ export function validCustomImageSize(value: string, limits: ImageSizeLimits): bo
 		width * height >= limits.min_pixels && width * height <= limits.max_pixels;
 }
 
-export function imageInteger(value: string | number | undefined, min: number, max: number): number | undefined {
-	if (value === undefined || (typeof value === 'string' && !/^\d+$/.test(value))) return undefined;
+export function imageInteger(value: string | number | null | undefined, min: number, max: number): number | undefined {
+	if (value == null || (typeof value === 'string' && !/^\d+$/.test(value))) return undefined;
 	const number = Number(value);
 	return Number.isSafeInteger(number) && number >= min && number <= max ? number : undefined;
 }

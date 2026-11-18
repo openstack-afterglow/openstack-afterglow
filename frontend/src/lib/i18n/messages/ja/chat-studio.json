@@ -539,6 +539,7 @@
 	"realtimeModes.languageHelp": "ja、en、pt-BRなどの言語コードを入力してください。セッション中は変更できません。",
 	"realtimeModes.invalidLanguage": "有効な言語コードを入力してください。",
 	"realtimeModes.instructions": "セッションの指示（任意）",
+	"realtimeModes.usageUnconfirmed": "接続が終了しました。最終使用量はまだ確認されていません。",
 	"realtimeTranscription.description": "マイクの音声でリアルタイムに会話したり、音声をテキストに書き起こしたりできます。音声と文字起こしはこの画面にのみ保持されます。",
 	"realtimeTranscription.mode": "セッションモード",
 	"realtimeTranscription.conversation": "音声会話",

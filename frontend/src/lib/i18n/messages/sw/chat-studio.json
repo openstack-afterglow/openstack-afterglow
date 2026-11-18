@@ -539,6 +539,7 @@
 	"realtimeModes.languageHelp": "Weka msimbo wa lugha kama vile sw, en au pt-BR. Msimbo haubadiliki wakati wa kipindi.",
 	"realtimeModes.invalidLanguage": "Weka msimbo halali wa lugha.",
 	"realtimeModes.instructions": "Maagizo ya kipindi (si lazima)",
+	"realtimeModes.usageUnconfirmed": "Muunganisho umekatika. Matumizi ya mwisho hayajathibitishwa.",
 	"realtimeTranscription.description": "Zungumza kwa wakati halisi ukitumia maikrofoni au badili matamshi kuwa maandishi. Sauti na maandishi yaliyotokana nayo hubaki kwenye skrini hii pekee.",
 	"realtimeTranscription.mode": "Hali ya kipindi",
 	"realtimeTranscription.conversation": "Mazungumzo ya sauti",
