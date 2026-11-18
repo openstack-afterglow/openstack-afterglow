@@ -4,30 +4,30 @@ function storage(): Storage | null {
 	return typeof window === 'undefined' ? null : window.sessionStorage;
 }
 
-function key(projectId: string): string {
-	return `${PREFIX}${projectId}`;
+function key(owner: string): string {
+	return `${PREFIX}${owner}`;
 }
 
 /** Persistent chat IDs are non-secret routing state; message content is never stored here. */
-export function loadActiveConversationId(projectId: string): string | null {
+export function loadActiveConversationId(owner: string): string | null {
 	try {
-		return storage()?.getItem(key(projectId)) || null;
+		return storage()?.getItem(key(owner)) || null;
 	} catch {
 		return null;
 	}
 }
 
-export function saveActiveConversationId(projectId: string, conversationId: string): void {
+export function saveActiveConversationId(owner: string, conversationId: string): void {
 	try {
-		storage()?.setItem(key(projectId), conversationId);
+		storage()?.setItem(key(owner), conversationId);
 	} catch {
 		// Private browsing/storage policy must not block chat navigation.
 	}
 }
 
-export function clearActiveConversationId(projectId: string): void {
+export function clearActiveConversationId(owner: string): void {
 	try {
-		storage()?.removeItem(key(projectId));
+		storage()?.removeItem(key(owner));
 	} catch {
 		// Private browsing/storage policy must not block chat navigation.
 	}

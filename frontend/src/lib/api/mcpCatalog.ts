@@ -60,7 +60,9 @@ export interface McpDomainPage {
  * hint must not hide those rows; a known domain still constrains every row exactly. */
 export function visibleMcpConnection(row: McpConnection, userId: string, projectId: string, domainId: string | null): boolean {
 	if (row.scope === 'domain') return !!row.owner_domain_id && (!domainId || row.owner_domain_id === domainId);
-	if (row.scope === 'user') return row.owner_user_id === userId && row.owner_project_id === projectId;
+	if (row.scope === 'user') return row.owner_user_id === userId && (
+		row.owner_domain_id ? row.owner_domain_id === domainId : row.owner_project_id === projectId
+	);
 	return row.scope === 'global';
 }
 

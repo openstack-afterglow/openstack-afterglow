@@ -136,6 +136,7 @@
 	"sidebar.summarizingTitle": "タイトルを要約中",
 	"sidebar.newConversation": "新しい会話",
 	"sidebar.history": "会話履歴",
+	"sidebar.domainScope": "会話履歴はこのドメイン内のプロジェクト間で共有されます。使用量は選択中のプロジェクトに記録され、クラウドツールもそこで動作します。",
 	"sidebar.closeHistory": "会話履歴を閉じる",
 	"sidebar.openHistory": "会話履歴を開く",
 	"sidebar.newChat": "新しいチャット",

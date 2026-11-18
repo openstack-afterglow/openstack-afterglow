@@ -1,6 +1,8 @@
 <script lang="ts">
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
-	import { auth } from '$lib/stores/auth';
+	import { onDestroy, untrack } from 'svelte';
+	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
+	import { chatDomainScope } from '$lib/stores/chatDomainScope';
 	import { api, ApiError } from '$lib/api/client';
 	import { serviceCapabilities } from '$lib/stores/servicePermissions';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
@@ -23,33 +25,48 @@
 	let query = $state('');
 	let agents = $state<Agent[]>([]);
 	let loading = $state(true);
-	let loadedAgentScope = $state('');
-	const agentScope = $derived(JSON.stringify([token, projectId]));
+	let loadedAgentScope = $state(-1);
+	const agentScope = $derived($chatDomainScope.revision);
+	let generation = 0;
+	let destroyed = false;
 	let cloningId = $state<number | null>(null);
 	let debounce: ReturnType<typeof setTimeout> | null = null;
+	onDestroy(() => { destroyed = true; if (debounce) clearTimeout(debounce); });
 
 	async function load() {
-		if (!token) return;
+		if (!token || !projectId || !$authReady || $projectSwitching || !$chatDomainScope.key) return;
 		const requestScope = agentScope;
+		const request = ++generation;
+		const current = () => !destroyed && requestScope === agentScope && request === generation;
 		loading = true;
 		try {
 			const q = query.trim();
 			const path = `/api/v1/chat/agents/hub?limit=50${q ? `&query=${encodeURIComponent(q)}` : ''}`;
-			agents = await api.get<Agent[]>(path, token, projectId);
+			const result = await api.get<Agent[]>(path, token, projectId);
+			if (!current()) return;
+			agents = result;
 			loadedAgentScope = requestScope;
 		} catch {
-			toast.error(t('agentHub.loadFailed'));
+			if (current()) toast.error(t('agentHub.loadFailed'));
 		} finally {
-			loading = false;
+			if (current()) loading = false;
 		}
 	}
 
-	// 열릴 때 초기 로드
+	let openScope = -1;
 	$effect(() => {
-		if (open) {
+		const ready = $authReady && !$projectSwitching;
+		const scope = agentScope;
+		if (!open) { openScope = -1; return; }
+		if (!ready || openScope === scope) return;
+		openScope = scope;
+		untrack(() => {
+			if (debounce) clearTimeout(debounce);
 			query = '';
+			agents = [];
+			cloningId = null;
 			void load();
-		}
+		});
 	});
 
 	function onQueryInput() {
@@ -59,16 +76,19 @@
 
 	async function clone(a: Agent) {
 		if (!$serviceCapabilities('lumen-agents_editor')) return;
-		if (!token) return;
+		if (!token || !projectId || !$authReady || $projectSwitching) return;
+		const requestScope = agentScope;
+		const current = () => !destroyed && requestScope === agentScope;
 		cloningId = a.id;
 		try {
 			await api.post(`/api/v1/chat/agents/${a.id}/clone`, {}, token, projectId);
+			if (!current()) return;
 			toast.success(t('agentHub.cloned', { name: a.name }));
 			onCloned?.();
 		} catch (e) {
-			toast.error(e instanceof ApiError ? e.message : t('agentHub.cloneFailed'));
+			if (current()) toast.error(e instanceof ApiError ? e.message : t('agentHub.cloneFailed'));
 		} finally {
-			cloningId = null;
+			if (current()) cloningId = null;
 		}
 	}
 

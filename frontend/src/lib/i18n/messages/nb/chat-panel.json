@@ -136,6 +136,7 @@
 	"sidebar.summarizingTitle": "Oppsummerer tittel",
 	"sidebar.newConversation": "Ny samtale",
 	"sidebar.history": "Samtalehistorikk",
+	"sidebar.domainScope": "Samtalehistorikken din deles mellom prosjektene i dette domenet. Bruk registreres på det valgte prosjektet, og skyverktøy virker der.",
 	"sidebar.closeHistory": "Lukk samtalehistorikk",
 	"sidebar.openHistory": "Åpne samtalehistorikk",
 	"sidebar.newChat": "Ny chat",

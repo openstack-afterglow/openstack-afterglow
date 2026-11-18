@@ -3,9 +3,10 @@
 	import { page } from '$app/stores';
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
+	import { chatDomainScope, chatHistoryStorageOwner } from '$lib/stores/chatDomainScope';
 	import { derived } from 'svelte/store';
 	import { siteConfig } from '$lib/config/site';
-	import { serviceCapabilities } from '$lib/stores/servicePermissions';
+	import { serviceCapabilities, serviceDenials } from '$lib/stores/servicePermissions';
 	import { chatRequestPermission, permissionReason, textOnlyToolPolicy } from '$lib/api/lumenPermissions';
 	import { onChatModelsInvalidated } from '$lib/stores/chatModels';
 	import {
@@ -163,6 +164,7 @@
 	});
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
+	const historyOwner = $derived(chatHistoryStorageOwner($auth));
 	const canChat = $derived($serviceCapabilities('lumen-chat_user'));
 	const canTools = $derived($serviceCapabilities('lumen-tools_user'));
 
@@ -184,7 +186,6 @@
 	let modelsRefreshing = $state(false);
 	let modelsError = $state('');
 	let modelRequestGeneration = 0;
-	let modelScope = '';
 	let selectedModelId = $state<number | null>(null);
 	let effort = $state('auto'); // auto=provider 기본, none=명시적 비활성.
 	let searchEnabled = $state(false);
@@ -199,54 +200,48 @@
 	let selectedSkillIds = $state<number[]>([]);
 	let composerAnchor = $state<HTMLDivElement | null>(null);
 
-	interface ToolScope {
-		token: string | null;
-		userId: string | null;
-		projectId: string | null;
-		enabled: boolean;
-		mcpEnabled: boolean;
-	}
-	let toolScope = $state.raw<ToolScope | null>(null);
 	let cloudTools = $state<CloudToolsCatalogue | null>(null);
-	let toolRequestGeneration = 0;
 	let toolController: AbortController | null = null;
+	let cloudScopeRevision = $state(0);
+	let toolOwner: typeof $chatDomainScope | null = null;
 
-	function ownsTools(owner: ToolScope | null): owner is ToolScope & { token: string; projectId: string } {
-		return owner !== null && owner === toolScope && owner.enabled && !!owner.token && !!owner.projectId;
-	}
-
-	onMount(() => {
-		// A batched A → B → A must still discard A's pending catalog response.
-		const unsubscribe = derived([auth, authReady, projectSwitching, siteConfig, serviceCapabilities], ([actor, ready, switching, config, allows]): ToolScope => ({
-			token: actor.token,
-			userId: actor.userId,
-			projectId: actor.projectId,
-			enabled: ready && !switching && allows('lumen-tools_user'),
-			mcpEnabled: config.services.mcp,
-		})).subscribe((next) => {
-			if (toolScope?.token === next.token && toolScope?.userId === next.userId && toolScope?.projectId === next.projectId && toolScope?.enabled === next.enabled && toolScope?.mcpEnabled === next.mcpEnabled) return;
-			toolController?.abort();
-			toolController = null;
-			toolScope = next;
-			availableTools = [];
-			availableMcp = [];
-			availableSkills = [];
-			cloudTools = null;
-			selectedToolIds = null;
-			selectedMcpIds = null;
-			selectedSkillIds = [];
+	$effect(() => {
+		const owner = $chatDomainScope;
+		const denied = $serviceDenials('lumen-tools_user');
+		const ready = $authReady && !$projectSwitching && canTools;
+		untrack(() => {
+			if (toolOwner && (toolOwner !== owner || denied)) {
+				toolController?.abort();
+				toolOwner = null;
+				availableTools = [];
+				availableMcp = [];
+				availableSkills = [];
+				selectedToolIds = null;
+				selectedMcpIds = null;
+				selectedSkillIds = [];
+			}
+			if (owner.key && ready && !toolOwner && token && projectId) {
+				toolOwner = owner;
+				void loadToolsAndMcp(owner, token, projectId);
+			}
 		});
-		return () => {
-			unsubscribe();
-			toolController?.abort();
-			toolController = null;
-			toolScope = null;
-		};
 	});
 
 	$effect(() => {
-		const owner = toolScope;
-		untrack(() => { void loadToolsAndMcp(owner); });
+		const revision = cloudScopeRevision;
+		const requestToken = token;
+		const requestProject = projectId;
+		const enabled = $authReady && !$projectSwitching && canTools && $siteConfig.services.mcp;
+		cloudTools = null;
+		if (!enabled || !requestToken || !requestProject) return;
+		const controller = new AbortController();
+		void api.get<CloudToolsCatalogue>('/api/v1/chat/cloud-tools', requestToken, requestProject, {
+			refresh: true, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]), suppressAuthRedirect: true
+		}).then((catalogue) => {
+			if (revision === cloudScopeRevision && !controller.signal.aborted && token === requestToken && projectId === requestProject &&
+				!$projectSwitching && canTools && catalogue?.enabled === true && catalogue.project_id === requestProject) cloudTools = catalogue;
+		}).catch(() => {});
+		return () => controller.abort();
 	});
 
 	let activeConvId = $state<string | null>(null);
@@ -270,7 +265,6 @@
 		return features;
 	}
 	let selectionGeneration = 0;
-	let restoredConversationProjectId: string | null = null;
 	let allMessages = $state<ChatMsg[]>([]);
 	let activeLeafId = $state<string | null>(null);
 	let input = $state('');
@@ -451,6 +445,7 @@
 
 	onDestroy(() => {
 		destroyed = true;
+		toolController?.abort();
 		for (const frame of revealFrames) cancelAnimationFrame(frame);
 		streamAttachment.detach();
 		teardownAllTitlePolling();
@@ -704,9 +699,11 @@
 		};
 	}
 	async function refreshServerRunSnapshot(): Promise<ChatRunDescriptor[]> {
-		if (!token || !projectId) return [];
+		const requestToken = token, requestProject = projectId, generation = streamGeneration;
+		if (!requestToken || !requestProject || $projectSwitching) return [];
 		try {
-			const payload = await api.get<unknown[]>('/api/v1/chat/runs?active=true', token, projectId);
+			const payload = await api.get<unknown[]>('/api/v1/chat/runs?active=true', requestToken, requestProject);
+			if (destroyed || generation !== streamGeneration || projectId !== requestProject || $projectSwitching) return [];
 			const runs = payload.map(parseChatRunDescriptor);
 			runningConversationIds = new Set(
 				runs.flatMap((run) => (run.conversation_id ? [run.conversation_id] : []))
@@ -923,11 +920,10 @@
 	async function refreshConversationsMetadata() {
 		if (!token || !projectId || destroyed) return;
 		const reqEpoch = localMutationEpoch;
-		const reqProjectId = projectId;
-		const reqToken = token;
+		const owner = $chatDomainScope;
 		try {
 			const loaded = await api.get<Conversation[]>('/api/v1/chat/conversations', token, projectId);
-			if (destroyed || projectId !== reqProjectId || token !== reqToken) return;
+			if (destroyed || owner !== $chatDomainScope) return;
 			if (reqEpoch !== localMutationEpoch) {
 				scheduleMetadataRefresh();
 				return;
@@ -938,10 +934,10 @@
 		}
 	}
 	async function restoreInitialSelection() {
-		if (!token || !projectId) return;
-		if (restoredConversationProjectId === projectId) return;
-		const reqProjectId = projectId;
-		const reqToken = token;
+		if (!token || !projectId || !historyOwner) return;
+		const owner = $chatDomainScope;
+		const requestProject = projectId;
+		const storageOwner = historyOwner;
 		const capturedSelectionGeneration = selectionGeneration;
 		const capturedMutationEpoch = localMutationEpoch;
 		const capturedActiveConversationId = activeConvId;
@@ -950,7 +946,7 @@
 				api.get<Conversation[]>('/api/v1/chat/conversations', token, projectId),
 				refreshServerRunSnapshot()
 			]);
-			if (destroyed || projectId !== reqProjectId || token !== reqToken) return;
+			if (destroyed || owner !== $chatDomainScope) return;
 			if (
 				selectionGeneration !== capturedSelectionGeneration ||
 				localMutationEpoch !== capturedMutationEpoch ||
@@ -966,27 +962,28 @@
 				return;
 			}
 			reconcileConversationsList(loaded, capturedMutationEpoch);
-			restoredConversationProjectId = projectId;
 			if (projectRoute !== undefined || initialWorkspaceId !== null) {
-				if (initialWorkspaceId !== null) clearActiveConversationId(projectId);
+				if (initialWorkspaceId !== null) clearActiveConversationId(storageOwner);
 				return;
 			}
 			let savedThread: string | null = null;
-			try { savedThread = sessionStorage.getItem(tempThreadStorageKey()); } catch { /* Storage is optional. */ }
+			if (requestProject === projectId && !$projectSwitching) {
+				try { savedThread = sessionStorage.getItem(tempThreadStorageKey()); } catch { /* Storage is optional. */ }
+			}
 			if (savedThread) {
 				await restoreTemporaryThread(savedThread, capturedSelectionGeneration);
 				return;
 			}
-			const savedId = loadActiveConversationId(projectId);
+			const savedId = loadActiveConversationId(storageOwner);
 			const savedConversation = savedId ? conversations.find((c) => c.id === savedId) : undefined;
-			const activeConversation = activeRuns
+			const activeConversation = (requestProject === projectId ? activeRuns : [])
 				.map((run) => (run.conversation_id ? conversations.find((c) => c.id === run.conversation_id) : undefined))
 				.find((c): c is Conversation => Boolean(c));
 			const conversation = savedConversation ?? activeConversation;
 			if (conversation) void selectConversation(conversation);
-			else if (savedId) clearActiveConversationId(projectId);
+			else if (savedId) clearActiveConversationId(storageOwner);
 		} catch (e) {
-			error = e instanceof Error ? e.message : t('panel.errors.loadConversations');
+			if (!destroyed && owner === $chatDomainScope) error = e instanceof Error ? e.message : t('panel.errors.loadConversations');
 		}
 	}
 
@@ -1145,21 +1142,26 @@
 	}
 	async function searchConversations(query: string): Promise<Conversation[]> {
 		if (!token || !projectId) return [];
+		const owner = $chatDomainScope;
 		const params = new URLSearchParams({ q: query, limit: '20' });
-		return api.get<Conversation[]>(`/api/v1/chat/conversations/search?${params}`, token, projectId);
+		const result = await api.get<Conversation[]>(`/api/v1/chat/conversations/search?${params}`, token, projectId);
+		return !destroyed && owner === $chatDomainScope ? result : [];
 	}
 	async function loadModels() {
 		const generation = ++modelRequestGeneration;
 		const requestToken = token;
 		const requestProject = projectId;
-		if (!requestToken || !requestProject || destroyed) return;
+		if (!requestToken || !requestProject || destroyed || $projectSwitching) return;
+		const owner = $chatDomainScope;
+		const current = () => !destroyed && owner === $chatDomainScope && generation === modelRequestGeneration
+			&& token === requestToken && projectId === requestProject && !$projectSwitching;
 		const experience = beginExperienceLoad('lumen', 'resource.list');
 		experienceState(experience, 'loading', 0);
 		modelsRefreshing = true;
 		modelsError = '';
 		try {
 			const loaded = await api.withExperience(experience).get<AvailableModel[]>('/api/v1/chat/models', requestToken, requestProject);
-			if (destroyed || generation !== modelRequestGeneration || token !== requestToken || projectId !== requestProject) { experienceDiscarded(experience, 'stale'); return; }
+			if (!current()) { experienceDiscarded(experience, 'stale'); return; }
 			models = loaded.filter((model) => model.model_kind === undefined || model.model_kind === 'text');
 			if (selectedModelId === null || !resolveCatalogModel(models, selectedModelId)) {
 				let saved: AvailableModel | null | undefined;
@@ -1172,9 +1174,9 @@
 				syncSelectedModel();
 			}
 			experienceState(experience, models.length ? 'ready' : 'empty', 0);
-			void experienceApplied(experience, {}, () => !destroyed && generation === modelRequestGeneration && token === requestToken && projectId === requestProject);
+			void experienceApplied(experience, {}, current);
 		} catch (caught) {
-			if (!destroyed && generation === modelRequestGeneration && token === requestToken && projectId === requestProject) {
+			if (current()) {
 				// ApiError.message may be an unparsed proxy body; never display it here.
 				modelsError = caught instanceof ApiError
 					? t('panel.errors.refreshModelsHttp', { status: caught.status })
@@ -1182,10 +1184,10 @@
 				experienceState(experience, 'error', 0);
 				experienceMessage(experience, { ...resolveExperienceMessage('chat-panel', caught instanceof ApiError ? 'panel.errors.refreshModelsHttp' : 'panel.errors.refreshModels'), tone: 'danger' });
 				const displayedError = modelsError;
-				void experienceApplied(experience, {}, () => !destroyed && generation === modelRequestGeneration && token === requestToken && projectId === requestProject && modelPickerOpen && modelsError === displayedError);
+				void experienceApplied(experience, {}, () => current() && modelPickerOpen && modelsError === displayedError);
 			}
 		} finally {
-			if (!destroyed && generation === modelRequestGeneration && token === requestToken && projectId === requestProject) modelsRefreshing = false;
+			if (current()) modelsRefreshing = false;
 		}
 	}
 	function normalizeMessagePage(page: MessagesResponse): MessagesResponse {
@@ -1204,11 +1206,10 @@
 		convId: string,
 		selection: number,
 		mutationEpoch: number,
-		requestToken: string,
-		requestProjectId: string
+		owner: typeof $chatDomainScope
 	): boolean {
 		return !destroyed && !tempMode && activeConvId === convId && selectionGeneration === selection &&
-			localMutationEpoch === mutationEpoch && token === requestToken && projectId === requestProjectId;
+			localMutationEpoch === mutationEpoch && owner === $chatDomainScope;
 	}
 
 	function applyHistoryPages(pages: MessagesResponse[], clearNewActivity: boolean): void {
@@ -1242,6 +1243,7 @@
 		const convId = activeConvId;
 		const requestToken = token;
 		const requestProjectId = projectId;
+		const owner = $chatDomainScope;
 		if (!convId || !requestToken || !requestProjectId || historyLoading) return false;
 		const mutationEpoch = localMutationEpoch;
 		historyLoading = true;
@@ -1249,17 +1251,17 @@
 		try {
 			const params = new URLSearchParams({ anchor: 'latest', limit: String(HISTORY_PAGE_SIZE) });
 			const page = await requestMessagePage(convId, params, requestToken, requestProjectId, experience);
-			if (!historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) { experienceDiscarded(experience, 'stale'); return false; }
+			if (!historyRequestIsCurrent(convId, selection, mutationEpoch, owner)) { experienceDiscarded(experience, 'stale'); return false; }
 			applyHistoryPages([page], true);
 			experienceState(experience, allMessages.length ? 'ready' : 'empty', 1);
-			void experienceApplied(experience, {}, () => historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId));
+			void experienceApplied(experience, {}, () => historyRequestIsCurrent(convId, selection, mutationEpoch, owner));
 			return true;
 		} catch (cause) {
-			if (historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) {
+			if (historyRequestIsCurrent(convId, selection, mutationEpoch, owner)) {
 				error = cause instanceof Error ? cause.message : t('panel.errors.loadHistory');
 				experienceState(experience, 'error', 1);
 				const displayedError = error;
-				void experienceApplied(experience, {}, () => historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId) && error === displayedError);
+				void experienceApplied(experience, {}, () => historyRequestIsCurrent(convId, selection, mutationEpoch, owner) && error === displayedError);
 			}
 			return false;
 		} finally {
@@ -1278,6 +1280,7 @@
 		const hasMore = direction === 'before' ? historyHasBefore : historyHasAfter;
 		const requestToken = token;
 		const requestProjectId = projectId;
+		const owner = $chatDomainScope;
 		if (!convId || !cursor || !hasMore || !requestToken || !requestProjectId || historyLoading) return;
 		const selection = selectionGeneration;
 		const mutationEpoch = localMutationEpoch;
@@ -1289,7 +1292,7 @@
 				requestToken,
 				requestProjectId
 			);
-			if (!historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) return;
+			if (!historyRequestIsCurrent(convId, selection, mutationEpoch, owner)) return;
 			const next = direction === 'before' ? [page, ...historyPages] : [...historyPages, page];
 			if (next.length > HISTORY_WINDOW_PAGES) {
 				if (direction === 'before') next.pop();
@@ -1297,7 +1300,7 @@
 			}
 			applyHistoryPages(next, false);
 		} catch (cause) {
-			if (!historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) return;
+			if (!historyRequestIsCurrent(convId, selection, mutationEpoch, owner)) return;
 			if (cause instanceof ApiError && cause.status === 409) {
 				error = t('panel.errors.historyChanged');
 				try {
@@ -1307,11 +1310,11 @@
 						requestToken,
 						requestProjectId
 					);
-					if (historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) {
+					if (historyRequestIsCurrent(convId, selection, mutationEpoch, owner)) {
 						applyHistoryPages([latest], true);
 					}
 				} catch (recoveryCause) {
-					if (historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) {
+					if (historyRequestIsCurrent(convId, selection, mutationEpoch, owner)) {
 						error = recoveryCause instanceof Error ? recoveryCause.message : t('panel.errors.loadLatestHistory');
 					}
 				}
@@ -1346,8 +1349,10 @@
 
 	async function loadUsage() {
 		if (!token || !projectId) return;
+		const requestToken = token, requestProject = projectId, generation = streamGeneration;
 		try {
-			usage = await api.get<ChatUsage>('/api/v1/chat/usage', token, projectId);
+			const next = await api.get<ChatUsage>('/api/v1/chat/usage', requestToken, requestProject);
+			if (!destroyed && requestProject === projectId && generation === streamGeneration && !$projectSwitching) usage = next;
 		} catch {
 			/* 사용량 위젯은 실패해도 채팅에 영향 없음 */
 		}
@@ -1355,8 +1360,11 @@
 
 	async function loadAgents() {
 		if (!token || !projectId) return;
+		const owner = $chatDomainScope;
 		try {
-			agents = await api.get<Agent[]>('/api/v1/chat/agents', token, projectId);
+			const next = await api.get<Agent[]>('/api/v1/chat/agents', token, projectId);
+			if (destroyed || owner !== $chatDomainScope) return;
+			agents = next;
 			// 바인딩된 에이전트가 삭제/변경됐으면 동기화
 			if (activeAgent) {
 				const fresh = agents.find((a) => a.id === activeAgent!.id);
@@ -1369,30 +1377,18 @@
 
 	async function loadWorkspaces() {
 		if (!token || !projectId) return;
+		const owner = $chatDomainScope;
 		try {
-			workspaces = await api.get<Workspace[]>('/api/v1/chat/workspaces', token, projectId);
+			const next = await api.get<Workspace[]>('/api/v1/chat/workspaces', token, projectId);
+			if (!destroyed && owner === $chatDomainScope) workspaces = next;
 		} catch {
 			/* 프로젝트 로드 실패는 채팅 자체를 막지 않음 */
 		}
 	}
-	async function loadToolsAndMcp(owner: ToolScope | null) {
-		if (!ownsTools(owner)) return;
-		const request = ++toolRequestGeneration;
-		toolController?.abort();
+	async function loadToolsAndMcp(owner: typeof $chatDomainScope, requestToken: string, requestProject: string) {
 		const controller = new AbortController();
 		toolController = controller;
-		const current = () => ownsTools(owner) && request === toolRequestGeneration && !controller.signal.aborted;
-		cloudTools = null;
-		if (owner.mcpEnabled) {
-			try {
-				const catalogue = await api.get<CloudToolsCatalogue>('/api/v1/chat/cloud-tools', owner.token, owner.projectId, { refresh: true, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]), suppressAuthRedirect: true });
-				if (!current()) return;
-				if (catalogue?.enabled === true && catalogue.project_id === owner.projectId) cloudTools = catalogue;
-			} catch {
-				if (!current()) return;
-				cloudTools = null;
-			}
-		}
+		const current = () => !destroyed && owner === $chatDomainScope && !controller.signal.aborted;
 		// Keep catalogue requests sequential to avoid exhausting the chat DB pool.
 		for (const [path, publish] of [
 			['/api/v1/chat/custom-tools', (items: { id: number; name: string }[]) => { availableTools = items; }],
@@ -1401,7 +1397,7 @@
 		] as const) {
 			if (!current()) return;
 			try {
-				const items = await api.get<{ id: number; name: string }[]>(path, owner.token, owner.projectId, { refresh: true, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]), suppressAuthRedirect: true });
+				const items = await api.get<{ id: number; name: string }[]>(path, requestToken, requestProject, { refresh: true, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]), suppressAuthRedirect: true });
 				if (!current()) return;
 				publish(items);
 			} catch {
@@ -1511,7 +1507,7 @@
 		metricsById.clear(); // 런타임 tok/s 계측값은 대화 전환 시 초기화(누적 방지)
 		allMessages = [];
 		activeConvId = conv.id;
-		if (projectId) saveActiveConversationId(projectId, conv.id);
+		if (historyOwner) saveActiveConversationId(historyOwner, conv.id);
 		if (conv.model_name) selectedModelId = resolveCatalogModel(models, null, conv.model_name)?.id ?? null;
 		error = null;
 		contextError = null;
@@ -1542,7 +1538,7 @@
 		metricsById.clear();
 		activeConvId = null;
 		newlyCreatedConversationId = null;
-		if (projectId) clearActiveConversationId(projectId);
+		if (historyOwner) clearActiveConversationId(historyOwner);
 		allMessages = [];
 		activeLeafId = null;
 		tempMessages = [];
@@ -1576,7 +1572,7 @@
 		historyNewActivity = false;
 		historyLoading = false;
 		rememberTempThread(null);
-		if (projectId) clearActiveConversationId(projectId);
+		if (historyOwner) clearActiveConversationId(historyOwner);
 		activeConvId = null;
 		allMessages = [];
 		activeLeafId = null;
@@ -1933,7 +1929,7 @@
 		localMutationEpoch += 1;
 		newlyCreatedConversationId = conv.id;
 		newlyCreatedConversationEpoch = localMutationEpoch;
-		if (projectId) saveActiveConversationId(projectId, conv.id);
+		if (historyOwner) saveActiveConversationId(historyOwner, conv.id);
 		conversations = [conv, ...conversations.filter((c) => c.id !== conv.id)];
 		checkAndStartPendingTitlePolling();
 		void executeContextPreview({ experience });
@@ -2921,19 +2917,22 @@
 	async function deleteConversation(conv: Conversation) {
 		if (!$serviceCapabilities('lumen-history_editor')) return;
 		if (streaming || !token || !projectId) return;
+		const owner = $chatDomainScope;
+		const current = () => !destroyed && owner === $chatDomainScope;
 		const label = conv.title?.trim();
 		const message = label ? t('panel.dialog.deleteNamedConversation', { name: label }) : t('panel.dialog.deleteConversation');
 		if (!(await confirmDialog(message))) return;
-		if (!$serviceCapabilities('lumen-history_editor')) return;
+		if (!current() || $projectSwitching || !$serviceCapabilities('lumen-history_editor')) return;
 		try {
 			await api.delete(`/api/v1/chat/conversations/${conv.id}`, token, projectId);
+			if (!current()) return;
 			localMutationEpoch += 1;
 			pendingTitleTrackers.delete(conv.id);
 			conversations = conversations.filter((c) => c.id !== conv.id);
 			if (activeConvId === conv.id) newConversation();
 			toast.success(t('panel.toast.conversationDeleted'));
 		} catch (e) {
-			error = e instanceof Error ? e.message : t('panel.errors.deleteConversation');
+			if (current()) error = e instanceof Error ? e.message : t('panel.errors.deleteConversation');
 		}
 	}
 
@@ -2976,27 +2975,79 @@
 		return () => document.removeEventListener('keydown', onKeydown);
 	});
 
-	// 최초 로드 — 초기 동시 쿼리 폭주가 chat DB 커넥션 풀(size 5)을 고갈시켜
-	// 경합/플래핑(503)을 유발하므로 2파도로 나눈다: 핵심(첫 화면) 먼저 동시, 보조는 그 뒤 순차.
+	// Shared reads start once per domain owner. Project-specific run, model and usage reads
+	// keep the selected project and do not reset the shared transcript or tool selection.
+	let loadedDomain: typeof $chatDomainScope | null = null;
+	let loadedProject: string | undefined;
+	let loadedModelToken: string | undefined;
+	onMount(() => {
+		let previousToken = token;
+		let previousProject = projectId;
+		let previousOwner = $chatDomainScope;
+		return derived([auth, projectSwitching, chatDomainScope], ([actor, switching, owner]) => ({
+			project: actor.projectId ?? undefined, token: actor.token ?? undefined, switching, owner
+		})).subscribe(({ project, token: nextToken, switching, owner }) => {
+				if (switching || owner !== previousOwner || project !== previousProject || nextToken !== previousToken) cloudScopeRevision += 1;
+				previousToken = nextToken;
+				if (switching || owner !== previousOwner || project !== previousProject) {
+					previousOwner = owner;
+					loadedProject = undefined;
+					++modelRequestGeneration;
+					detachLocalStream();
+					pendingToolApprovals = [];
+					runningConversationIds = new Set();
+					usage = null;
+				}
+				if (owner !== loadedDomain && loadedDomain !== null) {
+					selectionGeneration += 1;
+					teardownAllTitlePolling();
+					conversations = []; workspaces = []; agents = []; activeAgent = null;
+					activeConvId = null; activeLeafId = null; historyPages = []; allMessages = [];
+					historyLoading = false; historyNewActivity = false; newlyCreatedConversationId = null;
+					input = ''; error = null; pendingWorkspaceId = null;
+					selectedModelId = null;
+				}
+				if (project !== previousProject) {
+					models = [];
+					previousProject = project;
+					failedSubmission = null;
+					attachments = [];
+					if (tempMode) {
+						tempMode = false;
+						tempThreadId = null;
+						tempMessages = [];
+						error = null;
+					}
+				}
+			});
+	});
+
 	$effect(() => {
-		void [token, projectId];
+		const owner = $chatDomainScope;
+		const requestProject = projectId;
+		const requestToken = token;
+		if (!owner.key || !requestToken || !requestProject || !$authReady || $projectSwitching) return;
 		untrack(() => {
-			invalidateContextPreview();
-			teardownAllTitlePolling();
-			const scope = `${$auth.userId ?? ''}:${projectId ?? ''}`;
-			if (!token || scope !== modelScope) {
-				models = [];
-				selectedModelId = null;
-				modelsRefreshing = false;
-				modelsError = '';
-				modelScope = scope;
+			if (loadedDomain !== owner) {
+				loadedDomain = owner;
+				loadedProject = requestProject;
+				loadedModelToken = requestToken;
+				void (async () => {
+					await Promise.allSettled([restoreInitialSelection(), loadModels(), loadUsage()]);
+					if (destroyed || owner !== $chatDomainScope) return;
+					await loadAgents();
+					if (!destroyed && owner === $chatDomainScope) await loadWorkspaces();
+				})();
+			} else if (loadedProject !== requestProject) {
+				loadedProject = requestProject;
+				loadedModelToken = requestToken;
+				void loadModels();
+				void loadUsage();
+				void refreshServerRunSnapshot();
+			} else if (loadedModelToken !== requestToken) {
+				loadedModelToken = requestToken;
+				void loadModels();
 			}
-			void (async () => {
-				await Promise.allSettled([restoreInitialSelection(), loadModels(), loadUsage()]);
-				// 보조: 에이전트·프로젝트·확장(tool/MCP/skill)은 초기 버스트에서 제외해 풀 경합 완화.
-				await loadAgents();
-				await loadWorkspaces();
-			})();
 		});
 	});
 </script>
@@ -3197,7 +3248,7 @@
 					bind:selectedSkillIds
 					availableTools={canTools ? availableTools : []}
 					availableMcp={canTools ? availableMcp : []}
-					cloudTools={canTools && toolScope?.mcpEnabled ? cloudTools : null}
+					cloudTools={canTools && $siteConfig.services.mcp ? cloudTools : null}
 					availableSkills={canTools ? availableSkills : []}
 					availableAgents={canTools ? agents : []}
 					onSelectAgent={(agentId) => {

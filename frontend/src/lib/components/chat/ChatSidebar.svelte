@@ -240,6 +240,7 @@
 		<span>{t('sidebar.search')}</span>
 		<kbd>{t('sidebar.searchShortcut')}</kbd>
 	</button>
+	<p class="mx-3 my-1 text-xs text-[var(--color-ink-2)]">{t('sidebar.domainScope')}</p>
 
 	<div class="list">
 		{#if grouped.total === 0 && !grouped.hasGroups}

@@ -22,6 +22,7 @@
 	import { onMount, untrack, type Snippet } from 'svelte';
 	import { derived } from 'svelte/store';
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
+	import { chatDomainScope } from '$lib/stores/chatDomainScope';
 	import { serviceCapabilities, projectPermissions } from '$lib/stores/servicePermissions';
 	import { api, ApiError } from '$lib/api/client';
 	import type { CloudToolsCatalogue } from '$lib/api/chatContracts';
@@ -43,7 +44,7 @@
 		children?: Snippet<[ApprovedMcpWorkspace]>;
 	} = $props();
 
-	interface Scope { token: string; projectId: string; userId: string; projectName: string }
+	interface Scope { token: string; projectId: string; projectName: string }
 	let scope = $state.raw<Scope | null>(null);
 	let cloud = $state<CloudToolsCatalogue | null>(null);
 	let cloudLoading = $state(false);
@@ -74,11 +75,19 @@
 	});
 
 	onMount(() => {
-		const unsubscribe = derived([auth, authReady, projectSwitching], ([actor, ready, switching]) =>
-			ready && !switching && actor.token && actor.projectId && actor.userId
-				? { token: actor.token, projectId: actor.projectId, userId: actor.userId, projectName: actor.projectName || actor.projectId } : null
-		).subscribe((owner) => {
-			if (owner && scope && owner.token === scope.token && owner.projectId === scope.projectId && owner.userId === scope.userId) return;
+		let domainRevision: number | undefined;
+		const unsubscribe = derived([auth, authReady, projectSwitching, chatDomainScope], ([actor, ready, switching, domain]) => ({
+			revision: domain.revision,
+			owner: ready && !switching && domain.key && actor.token && actor.projectId
+				? { token: actor.token, projectId: actor.projectId, projectName: actor.projectName || actor.projectId } : null
+		})).subscribe(({ revision, owner }) => {
+			const domainChanged = domainRevision !== revision;
+			domainRevision = revision;
+			if (!domainChanged && owner && scope && owner.projectId === scope.projectId) {
+				scope.token = owner.token;
+				scope.projectName = owner.projectName;
+				return;
+			}
 			controller?.abort();
 			actionController?.abort();
 			++loadGeneration;
@@ -87,9 +96,11 @@
 			cloud = null;
 			cloudLoading = false;
 			loadError = '';
-			actionError = null;
-			consentOpen = false;
-			consent = null;
+			if (domainChanged || actionError?.target === 'cloud') actionError = null;
+			if (domainChanged || consent?.kind === 'cloud') {
+				consentOpen = false;
+				consent = null;
+			}
 			busy = false;
 		});
 		return () => {
@@ -110,6 +121,7 @@
 		loadError = '';
 		try {
 			const result = await api.get<CloudToolsCatalogue>('/api/v1/chat/cloud-tools', owner.token, owner.projectId, { refresh: true, signal: controller.signal });
+			if (result.project_id !== owner.projectId) return;
 			if (scope !== owner || generation !== loadGeneration || !canCloud) return;
 			cloud = result;
 		} catch (error) {

@@ -72,7 +72,6 @@ function response(path: string): Promise<unknown> {
 
 const identityChanges = [
 	['user', { userId: 'user-2' }],
-	['project', { projectId: 'project-2' }],
 	['working domain', { domainId: 'domain-2' }],
 	['identity domain', { identityDomainId: 'identity-2' }],
 	['session', { sessionId: 'session-2' }]
@@ -286,13 +285,14 @@ describe('ChatMcpGallery ownership', () => {
 		expect(mocks.get).toHaveBeenCalledTimes(count);
 	});
 
-	it('discards a stale organization page after project ownership changes', async () => {
+	it('discards a stale organization page after domain ownership changes', async () => {
 		const oldDomain = deferred<McpDomainPage>();
 		mocks.get.mockImplementation((path: string, _token: string, projectId: string) => path.includes('/domains/') && projectId === 'project-1' ? oldDomain.promise : response(path));
 		render(ChatMcpGallery);
 		await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(expect.stringContaining('/domains/domain-1/'), 'token-1', 'project-1', expect.anything()));
 		const signal = requestSignal(mocks.get, 4);
-		await replaceActor({ projectId: 'project-2' });
+		page = settings({ domain_id: 'domain-2' });
+		await replaceActor({ projectId: 'project-2', domainId: 'domain-2' });
 		await loaded();
 		await settle(() => oldDomain.resolve({ connections: [connection({ scope: 'domain', name: 'Old organization secret-free row' })], total: 1, next_offset: null }));
 		expect(signal.aborted).toBe(true);
@@ -319,7 +319,7 @@ describe('ChatMcpGallery ownership', () => {
 		expect(screen.queryByText('Personal connection')).toBeNull();
 	});
 
-	it('clears the editor and ignores a pending create failure during project switching', async () => {
+	it('keeps the catalogue while dropping a pending create from the previous project', async () => {
 		const pending = deferred<unknown>();
 		mocks.post.mockReturnValue(pending.promise);
 		render(ChatMcpGallery, { onChanged: mocks.changed });
@@ -332,9 +332,49 @@ describe('ChatMcpGallery ownership', () => {
 		await settle(() => pending.reject(new Error('Old project rejected secret-value')));
 		expect(signal.aborted).toBe(true);
 		expect(screen.queryByLabelText(t('label'))).toBeNull();
-		expect(screen.queryByRole('article')).toBeNull();
+		expect(card('Public catalog tool')).toBeTruthy();
 		expect(screen.queryByRole('alert')).toBeNull();
 		expect(mocks.changed).not.toHaveBeenCalled();
+	});
+
+	it('keeps domain rows and their disclosure open without refetching during same-domain rescope', async () => {
+		servers = [connection()];
+		render(ChatMcpGallery);
+		await loaded();
+		await row('Personal connection');
+		const count = mocks.get.mock.calls.length;
+		await act(async () => {
+			projectSwitching.set(true);
+			setVerifiedLumenActor({ ...get(auth), projectId: 'project-2', token: 'token-2' });
+			projectSwitching.set(false);
+		});
+		expect(mocks.get).toHaveBeenCalledTimes(count);
+		const controls = within(await row('Personal connection'));
+		await fireEvent.click(controls.getByRole('button', { name: t('activate') }));
+		expect(mocks.patch).toHaveBeenCalledWith('/api/v1/chat/mcp-connections/11', { is_active: true }, 'token-2', 'project-2', expect.anything());
+	});
+
+	it.each([false, true])('lists and restores the selected archive namespace (organization: %s)', async (managedArchive) => {
+		page = settings({ can_manage_domain: managedArchive });
+		const base = managedArchive ? '/api/v1/chat/domains/domain-1/archived-connections' : '/api/v1/chat/archived-connections';
+		mocks.get.mockImplementation((path: string) => path === base ? Promise.resolve({
+			items: [{ id: 17, kind: 'tool', name: 'Previous webhook', original_id: 24, canonical_id: 42, archived_at: '2026-11-19T00:00:00Z' }]
+		}) : response(path));
+		mocks.post.mockResolvedValue({ kind: 'tool', id: 24 });
+		render(ChatMcpGallery, { onChanged: mocks.changed });
+		await loaded();
+		await selectTab('manage');
+		if (!managedArchive) expect(screen.queryByText(t('archive.organization'))).toBeNull();
+		const summary = screen.getByText(t(managedArchive ? 'archive.organization' : 'archive.personal'));
+		(summary.parentElement as HTMLDetailsElement).open = true;
+		await fireEvent(summary.parentElement!, new Event('toggle'));
+		const button = await screen.findByRole('button', { name: t('archive.restoreNamed', { name: 'Previous webhook #24' }) });
+		await replaceActor({ projectId: 'project-2', token: 'token-2' });
+		await fireEvent.click(button);
+		expect(mocks.post).toHaveBeenCalledWith(`${base}/17/restore`, undefined, 'token-2', 'project-2', expect.anything());
+		await waitFor(() => expect(mocks.changed).toHaveBeenCalledTimes(1));
+		expect(within(summary.parentElement!).getByRole('status').textContent).toContain(t('archive.restored', { name: 'Previous webhook' }));
+		expect(screen.queryByRole('button', { name: t('archive.restoreNamed', { name: 'Previous webhook #24' }) })).toBeNull();
 	});
 
 	it('does not reload or notify when write permission disappears during activation', async () => {
@@ -383,7 +423,7 @@ describe('ChatMcpGallery authority and visibility', () => {
 	it('hides foreign-domain, foreign-user and foreign-project rows from every returned collection', async () => {
 		const foreignDomain = connection({ id: 31, scope: 'domain', name: 'Foreign domain', owner_domain_id: 'domain-elsewhere' });
 		const foreignUser = connection({ id: 32, name: 'Foreign user', owner_user_id: 'user-elsewhere' });
-		const foreignProject = connection({ id: 33, name: 'Foreign project', owner_project_id: 'project-elsewhere' });
+		const foreignProject = connection({ id: 33, name: 'Foreign project', owner_domain_id: null, owner_project_id: 'project-elsewhere' });
 		servers = [foreignDomain, foreignUser, foreignProject, connection()];
 		organization = [foreignDomain, connection({ id: 34, scope: 'domain', name: 'Our organization' })];
 		page = settings({ custom_connections: [foreignDomain, foreignUser, foreignProject] });
@@ -513,6 +553,7 @@ describe('ChatMcpGallery secrets and OAuth', () => {
 	});
 
 	it('creates an organization connection using only the live settings domain', async () => {
+		await replaceActor({ domainId: 'live-domain' });
 		page = settings({ domain_id: 'live-domain', can_manage_domain: true });
 		render(ChatMcpGallery);
 		await loaded();
@@ -695,9 +736,14 @@ describe('ChatMcpGallery catalog browsing and row feedback', () => {
 		await loaded();
 		expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/mcp-settings?offset=0&limit=24&q=remote+tool', 'token-1', 'project-1', expect.anything());
 		expect(card('Search page two')).toBeTruthy();
+		const count = mocks.get.mock.calls.length;
 		await replaceActor({ projectId: 'project-2' });
 		await loaded();
-		expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/mcp-settings?offset=0&limit=12', 'token-1', 'project-2', expect.anything());
+		expect(mocks.get).toHaveBeenCalledTimes(count);
+		expect(card('Search page two')).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: t('refresh') }));
+		await loaded();
+		expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/mcp-settings?offset=0&limit=24&q=remote+tool', 'token-1', 'project-2', expect.anything());
 	});
 
 	it('keeps each failed mutation error and pending state scoped to its own connection', async () => {
@@ -831,6 +877,7 @@ describe('ChatMcpGallery catalog browsing and row feedback', () => {
 			? settings({ organization_available: false, domain_id: null, can_manage_domain: false })
 			: settings({ can_manage_domain: true });
 		const nativeDomain = status === null ? 'native-org/one' : 'domain-1';
+		await replaceActor({ domainId: nativeDomain });
 		const shared = connection({
 			id: 21, scope: 'domain', owner_domain_id: nativeDomain, name: 'Independently visible organization tool',
 			auth_mode: 'oauth', auth_connected: true, config_version: 29,

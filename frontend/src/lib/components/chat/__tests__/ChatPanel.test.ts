@@ -176,6 +176,45 @@ beforeEach(() => {
 });
 
 describe('ChatPanel', () => {
+	it('retains the sidebar and shared inventories across a same-domain project change', async () => {
+		const fallback = mocks.get.getMockImplementation()!;
+		const history = { id: 'shared', title: 'Domain conversation', model_name: 'model-1', workspace_id: null, updated_at: at };
+		mocks.get.mockImplementation((path: string, ...args: unknown[]) =>
+			path === '/api/v1/chat/conversations' ? Promise.resolve([history]) : fallback(path, ...args));
+		render(ChatPanel);
+		const historyControl = await screen.findByRole('button', { name: '대화 기록과 설정 열기' });
+		await fireEvent.click(historyControl);
+		const row = await screen.findByText('Domain conversation');
+		await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/workspaces', 'token', 'project-1'));
+		projectSwitching.set(true);
+		await tick();
+		setVerifiedLumenActor({ ...get(auth), projectId: 'project-2', token: 'selected-token' });
+		projectSwitching.set(false);
+		await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/usage', 'selected-token', 'project-2'));
+		expect(screen.getByText('Domain conversation')).toBe(row);
+		for (const endpoint of ['conversations', 'agents', 'workspaces', 'custom-tools', 'mcp-servers?active_only=true']) {
+			expect(mocks.get.mock.calls.filter(([path]) => path === `/api/v1/chat/${endpoint}`)).toHaveLength(1);
+		}
+	});
+
+	it('discards a late conversation list when the working domain changes', async () => {
+		const previous = Promise.withResolvers<unknown[]>();
+		const fallback = mocks.get.getMockImplementation()!;
+		const history = (title: string) => ({ id: title, title, model_name: 'model-1', workspace_id: null, updated_at: at });
+		mocks.get.mockImplementation((path: string, token: string, ...args: unknown[]) => path === '/api/v1/chat/conversations'
+			? token === 'token' ? previous.promise : Promise.resolve([history('New domain conversation')])
+			: fallback(path, token, ...args));
+		render(ChatPanel);
+		await fireEvent.click(await screen.findByRole('button', { name: '대화 기록과 설정 열기' }));
+		await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/conversations', 'token', 'project-1'));
+		setVerifiedLumenActor({ ...get(auth), domainId: 'domain-2', projectId: 'project-2', token: 'other-domain' });
+		expect(await screen.findByText('New domain conversation')).toBeTruthy();
+		previous.resolve([history('Previous domain conversation')]);
+		await tick();
+		expect(screen.queryByText('Previous domain conversation')).toBeNull();
+		expect(screen.getByText('New domain conversation')).toBeTruthy();
+	});
+
 	const duplicateRows = [
 		{ id: 41, provider_id: 11, provider: 'Provider A', model_name: 'shared-model', display_name: 'Shared model' },
 		{ id: 57, provider_id: 22, provider: 'Provider B', model_name: 'shared-model', display_name: 'Shared model' }
@@ -205,6 +244,32 @@ describe('ChatPanel', () => {
 			model_id: 'shared-model', model_row_id: 57
 		}));
 		expect(mocks.createRun.mock.calls[0][0]).toBe('/api/v1/chat/conversations/selected-provider/completions');
+	});
+
+	it('keeps the exact provider row when retained chat moves to another project in its domain', async () => {
+		loadDuplicateCatalog();
+		render(ChatPanel);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Shared model · Provider A' }));
+		const picker = within(screen.getByRole('dialog'));
+		await fireEvent.click(picker.getByRole('button', { name: /Provider B/ }));
+		await fireEvent.click(picker.getByRole('button', { name: 'Shared model 모델 선택' }));
+		const composer = screen.getByRole('textbox') as HTMLTextAreaElement;
+		await fireEvent.input(composer, { target: { value: 'Keep provider B' } });
+
+		projectSwitching.set(true);
+		await tick();
+		setVerifiedLumenActor({ ...get(auth), projectId: 'project-2', token: 'selected-token' });
+		projectSwitching.set(false);
+		await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/models', 'selected-token', 'project-2'));
+		await screen.findByRole('button', { name: 'Shared model · Provider B' });
+		expect(screen.getByRole('textbox')).toBe(composer);
+		expect(composer.value).toBe('Keep provider B');
+		expect(mocks.get.mock.calls.filter(([path]) => path === '/api/v1/chat/conversations')).toHaveLength(1);
+
+		mocks.post.mockResolvedValue({ id: 'selected-provider', model_name: 'shared-model', workspace_id: null });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		await waitFor(() => expect(mocks.createRun.mock.calls[0]?.[1]).toMatchObject({ model_id: 'shared-model', model_row_id: 57 }));
+		expect(mocks.createRun.mock.calls[0][2]).toMatchObject({ token: 'selected-token', projectId: 'project-2' });
 	});
 
 	it('migrates a uniquely matching legacy chat model', async () => {
