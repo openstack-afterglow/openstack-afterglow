@@ -414,6 +414,24 @@ describe('image official-price provenance', () => {
 		const base = mocks.get.getMockImplementation()!;
 		mocks.get.mockImplementation(async (path: string) => path === '/api/v1/chat/admin/providers' ? [{ ...provider, provider_type: providerType }] : base(path));
 	}
+	const readiness = (overrides: Record<string, unknown>) => ({
+		ready: false, reason: null, executable_variants: [], unsupported_variants: [], supported_variants: [], ...overrides
+	});
+	async function reviewUnitImage() {
+		candidates = [{ id: 'unit-image', purpose: 'non_chat', model_kind: 'image' }];
+		render(ModelPage);
+		const dialog = await openDiscovery();
+		await fireEvent.click(within(dialog).getByRole('button', { name: '모델 불러오기' }));
+		await fireEvent.click(await screen.findByRole('checkbox', { name: 'unit-image' }));
+		await fireEvent.click(within(dialog).getByRole('button', { name: '선택 모델 검토' }));
+		await fireEvent.input(within(dialog).getByLabelText('이미지 기본 단가'), { target: { value: '0.04' } });
+		return dialog;
+	}
+	async function addVariant(dialog: HTMLElement, name: string, price: string) {
+		await fireEvent.click(within(dialog).getByRole('button', { name: '+ variant 추가' }));
+		await fireEvent.input(within(dialog).getByLabelText('이미지 variant 이름'), { target: { value: name } });
+		await fireEvent.input(within(dialog).getByLabelText('이미지 variant 단가'), { target: { value: price } });
+	}
 
 	it('prefills official token prices with labels and omits untouched catalog leaves', async () => {
 		const { dialog, entry } = await reviewSunburst();
@@ -430,10 +448,12 @@ describe('image official-price provenance', () => {
 		expect(within(entry).getAllByText('공식 가격')).toHaveLength(5);
 		expect(image.getByText(t('pricing.imageCachedInputHelp'))).toBeTruthy();
 		expect(value(within(entry).getByLabelText('요청 전체 예약 상한'))).toBe('');
+		mocks.post.mockResolvedValue({ id: 9, image_pricing_readiness: readiness({ ready: true, executable_variants: ['1024x1024:high'] }) });
 		await fireEvent.click(within(dialog).getByRole('button', { name: '가격 확인 후 등록·활성화' }));
-		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/chat/admin/models', {
-			provider_id: 1, model_name: catalogEntry.id, model_kind: 'image', is_active: true
-		}, 'token', 'project'));
+		await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith('/api/v1/chat/admin/models/9', { is_active: true }, 'token', 'project'));
+		expect(mocks.post).toHaveBeenCalledWith('/api/v1/chat/admin/models', {
+			provider_id: 1, model_name: catalogEntry.id, model_kind: 'image', is_active: false
+		}, 'token', 'project');
 	});
 	it('sends only edited leaves and resets a field to its official price', async () => {
 		const { dialog, entry } = await reviewSunburst();
@@ -493,46 +513,61 @@ describe('image official-price provenance', () => {
 			media_pricing: { override_mode: 'leaf', billing_basis: 'tokens', ...(valid ? {} : { reservation_usd: '2' }), token_rates: { image: { output_per_million: '30' } } }
 		}));
 	});
-	it('activates per-image billing only after an exact positive size:quality variant', async () => {
-		candidates = [{ id: 'unit-image', purpose: 'non_chat', model_kind: 'image' }];
-		render(ModelPage);
-		const dialog = await openDiscovery();
-		await fireEvent.click(within(dialog).getByRole('button', { name: '모델 불러오기' }));
-		await fireEvent.click(await screen.findByRole('checkbox', { name: 'unit-image' }));
-		await fireEvent.click(within(dialog).getByRole('button', { name: '선택 모델 검토' }));
-		await fireEvent.input(within(dialog).getByLabelText('이미지 기본 단가'), { target: { value: '0.04' } });
-		const save = within(dialog).getByRole('button', { name: '비활성으로 저장' }) as HTMLButtonElement;
+	it('keeps a base-only per-image draft inactive-only', async () => {
+		const dialog = await reviewUnitImage();
 		const activate = within(dialog).getByRole('button', { name: '가격 확인 후 등록·활성화' }) as HTMLButtonElement;
 		const guidance = within(dialog).getByText(t('pricing.imageVariantHelp'));
 		expect(activate.disabled).toBe(true);
-		expect(save.disabled).toBe(false);
 		expect(guidance.classList.contains('font-semibold')).toBe(true);
-		await fireEvent.click(within(dialog).getByRole('button', { name: '+ variant 추가' }));
-		await fireEvent.input(within(dialog).getByLabelText('이미지 variant 이름'), { target: { value: '1024x1024:high' } });
-		await fireEvent.input(within(dialog).getByLabelText('이미지 variant 단가'), { target: { value: '0' } });
+		await addVariant(dialog, '1024x1024:high', '0');
 		expect(activate.disabled).toBe(true);
-		await fireEvent.input(within(dialog).getByLabelText('이미지 variant 단가'), { target: { value: '0.08' } });
-		expect(activate.disabled).toBe(false);
-		expect(guidance.classList.contains('font-semibold')).toBe(false);
-		await fireEvent.click(activate);
-		await waitFor(() => expect(mocks.post.mock.calls[0][1]).toEqual({
-			provider_id: 1, model_name: 'unit-image', model_kind: 'image', is_active: true,
-			media_pricing: { override_mode: 'leaf', image_per_unit: '0.04', image_variants: { '1024x1024:high': '0.08' } }
-		}));
-	});
-	it('saves a base-only per-image draft inactive', async () => {
-		candidates = [{ id: 'unit-image', purpose: 'non_chat', model_kind: 'image' }];
-		render(ModelPage);
-		const dialog = await openDiscovery();
-		await fireEvent.click(within(dialog).getByRole('button', { name: '모델 불러오기' }));
-		await fireEvent.click(await screen.findByRole('checkbox', { name: 'unit-image' }));
-		await fireEvent.click(within(dialog).getByRole('button', { name: '선택 모델 검토' }));
-		await fireEvent.input(within(dialog).getByLabelText('이미지 기본 단가'), { target: { value: '0.04' } });
+		await fireEvent.click(within(dialog).getByRole('button', { name: t('configuration.delete') }));
 		await fireEvent.click(within(dialog).getByRole('button', { name: '비활성으로 저장' }));
 		await waitFor(() => expect(mocks.post.mock.calls[0][1]).toEqual({
 			provider_id: 1, model_name: 'unit-image', model_kind: 'image', is_active: false,
-			media_pricing: { override_mode: 'leaf', image_per_unit: '0.04' }
+			media_pricing: { override_mode: 'leaf', billing_basis: 'unit', image_per_unit: '0.04' }
 		}));
+		expect(mocks.patch).not.toHaveBeenCalled();
+	});
+	it('saves an unsupported positive variant inactive and flags it from the server result', async () => {
+		const dialog = await reviewUnitImage();
+		await addVariant(dialog, '1024x1024:high', '0.08');
+		const activate = within(dialog).getByRole('button', { name: '가격 확인 후 등록·활성화' }) as HTMLButtonElement;
+		expect(activate.disabled).toBe(false);
+		mocks.post.mockResolvedValue({ id: 12, image_pricing_readiness: readiness({
+			reason: 'unsupported_image_variants', unsupported_variants: ['1024x1024:high'], supported_variants: ['auto:auto']
+		}) });
+		await fireEvent.click(activate);
+		const entry = await within(dialog).findByTestId('registration-entry');
+		await within(entry).findByText(new RegExp(t('pricing.imageSavedInactive')));
+		expect(within(entry).getByText(new RegExp(t('pricing.imageUnsupportedVariantList', { variants: '1024x1024:high' })))).toBeTruthy();
+		expect(within(entry).getByText(new RegExp(t('pricing.imageReadinessVariants').slice(0, 20)))).toBeTruthy();
+		expect(mocks.post.mock.calls[0][1]).toMatchObject({ is_active: false, media_pricing: { image_variants: { '1024x1024:high': '0.08' } } });
+		expect(mocks.patch).not.toHaveBeenCalled();
+		expect(mocks.error).toHaveBeenCalledWith(t('pricing.imageActivationHeld', { count: '1' }));
+		expect(screen.getByTestId('model-registration-review')).toBeTruthy();
+	});
+	it('activates a supported positive variant after the server reports it ready', async () => {
+		const dialog = await reviewUnitImage();
+		await addVariant(dialog, 'auto:auto', '0.05');
+		mocks.post.mockResolvedValue({ id: 13, image_pricing_readiness: readiness({ ready: true, executable_variants: ['auto:auto'], supported_variants: ['auto:auto'] }) });
+		await fireEvent.click(within(dialog).getByRole('button', { name: '가격 확인 후 등록·활성화' }));
+		await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith('/api/v1/chat/admin/models/13', { is_active: true }, 'token', 'project'));
+		expect(mocks.post.mock.calls[0][1]).toEqual({
+			provider_id: 1, model_name: 'unit-image', model_kind: 'image', is_active: false,
+			media_pricing: { override_mode: 'leaf', billing_basis: 'unit', image_per_unit: '0.04', image_variants: { 'auto:auto': '0.05' } }
+		});
+		expect(mocks.error).not.toHaveBeenCalled();
+	});
+	it('flags unsupported saved variants and server guidance in the edit form', async () => {
+		rows = [{ ...model('image', { override_mode: 'leaf', billing_basis: 'unit', image_variants: { '1024x1024:high': '0.08' } }),
+			image_pricing_readiness: readiness({ reason: 'unsupported_image_variants', unsupported_variants: ['1024x1024:high'], supported_variants: ['auto:auto'] }) }];
+		render(ModelPage);
+		const modal = await openEditor();
+		expect(within(modal).getByText(t('pricing.imageReadinessVariants'))).toBeTruthy();
+		expect(within(modal).getByText(t('pricing.imageSupportedVariants', { variants: 'auto:auto' }))).toBeTruthy();
+		expect(within(modal).getByText(t('pricing.imageVariantUnsupported'))).toBeTruthy();
+		expect(within(modal).getByLabelText('이미지 variant 이름').getAttribute('aria-invalid')).toBe('true');
 	});
 	it('shows stored and official provenance in the edit form and resets one leaf with null', async () => {
 		rows = [{ ...model('image', { override_mode: 'leaf', token_rates: { image: { output_per_million: '31' } } }), provider_family: 'native',

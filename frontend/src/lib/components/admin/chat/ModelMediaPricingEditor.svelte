@@ -3,19 +3,20 @@
 	import type { Snippet } from 'svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 	import {
-		effectiveBasis, imageBasis, imageFollowsMedia, imagePricingReady, imageReservationDerived, imageVariants, inputTokenOnly,
+		effectiveBasis, imageBasis, imageFollowsMedia, imagePricingReady, imageReadinessMessage, imageReservationDerived, imageVariants, inputTokenOnly,
 		IMAGE_TEXT_FIELDS, manualImagePrice, MODEL_LABELS, TOKEN_FIELDS, visibleImagePrice,
-		type ImagePriceLeaf, type ImagePricingDraft, type ModelKind, type PricingDraft
+		type ImagePriceLeaf, type ImagePricingDraft, type ImagePricingReadiness, type ModelKind, type PricingDraft
 	} from './modelPricing';
 	let {
-		kind, draft = $bindable(), imageDraft = $bindable(), useImageCatalog = false, hasImageAudio = false, providerType,
+		kind, draft = $bindable(), imageDraft = $bindable(), useImageCatalog = false, hasImageAudio = false, providerType, readiness = null,
 		prefix, disabled = false, textPricing, hasStoredTextPrices = false
 	}: {
 		kind: ModelKind; draft: PricingDraft; imageDraft?: ImagePricingDraft; useImageCatalog?: boolean; hasImageAudio?: boolean;
-		providerType?: string; prefix: string; disabled?: boolean; textPricing?: Snippet; hasStoredTextPrices?: boolean
+		providerType?: string; readiness?: ImagePricingReadiness | null; prefix: string; disabled?: boolean; textPricing?: Snippet; hasStoredTextPrices?: boolean
 	} = $props();
 	type Modality = 'text' | 'image' | 'audio';
 	const modalities: Modality[] = ['text', 'image', 'audio'];
@@ -94,6 +95,9 @@
 		{@render provenance(prices.basis, follows, `${prefix}-basis-${prices.basis.official}`, t('pricing.imageBillingBasis'))}
 		<p id="{prefix}-basis-help" class="text-xs leading-relaxed text-ink-2">{t('pricing.imageBasisHelp')}</p>
 	</fieldset>
+	{#if imageReadinessMessage(readiness)}
+		<Alert tone="warning">{imageReadinessMessage(readiness)}</Alert>
+	{/if}
 	{#if selectedBasis === 'tokens'}
 		<fieldset class="min-w-0 border-t border-line pt-2">
 			<legend class="pr-2 text-sm font-semibold text-ink-1">{t('pricing.imageTextTokens')}</legend>
@@ -122,13 +126,18 @@
 	{:else}
 		{@render imageRate(prices.rates.image_per_unit, follows, `${prefix}-image_per_unit`, t('pricing.imageBaseRate'), t('pricing.imageBaseHelp'))}
 		<p class="text-xs leading-relaxed text-ink-2" class:font-semibold={!imagePricingReady(prices, useImageCatalog)}>{t('pricing.imageVariantHelp')}</p>
+		{#if readiness?.supported_variants.length}
+			<p class="text-xs leading-relaxed text-ink-2">{t('pricing.imageSupportedVariants', { variants: readiness.supported_variants.join(', ') })}</p>
+		{/if}
 		{#if prices.stored?.reservation_usd && manualImagePrice(prices.basis) === 'unit'}
 			<p class="text-xs text-ink-2">{t('pricing.imageUnitClearsReservation')}</p>
 		{/if}
 		{#each imageVariants(prices, follows) as row (row.id)}
 			<div class="grid items-start gap-2 sm:grid-cols-[1fr_1fr_auto]">
-				<Field label={t('configuration.imageVariantName')} for="{prefix}-variant-{row.id}-key">
-					<TextInput id="{prefix}-variant-{row.id}-key" placeholder="1024x1024:high" bind:value={row.name} disabled={disabled || (follows && row.rate.official !== null)} />
+				<Field label={t('configuration.imageVariantName')} for="{prefix}-variant-{row.id}-key"
+					error={readiness?.unsupported_variants.includes(row.name.trim()) ? t('pricing.imageVariantUnsupported') : undefined}>
+					<TextInput id="{prefix}-variant-{row.id}-key" placeholder="1024x1024:high" bind:value={row.name} disabled={disabled || (follows && row.rate.official !== null)}
+						ariaInvalid={readiness?.unsupported_variants.includes(row.name.trim())} />
 				</Field>
 				{@render imageRate(row.rate, follows, `${prefix}-variant-${row.id}-price`, t('configuration.imageVariantRate'), t('configuration.usdImage'))}
 				{#if !follows || row.rate.official === null}

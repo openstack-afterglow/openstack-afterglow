@@ -234,7 +234,10 @@ export function imagePricingError(draft: ImagePricingDraft, useCatalog: boolean,
 	}
 }
 
-/** Per-image execution prices only exact positive size:quality variants; a base price alone cannot run. */
+/**
+ * Client gate for obviously incomplete drafts only. Variant support is model-specific,
+ * so activation readiness comes from Lumen's `image_pricing_readiness`.
+ */
 export function imagePricingReady(draft: ImagePricingDraft, useCatalog: boolean): boolean {
 	const follows = imageFollowsMedia(draft, useCatalog);
 	if (imageBasis(draft, useCatalog) === 'tokens') {
@@ -244,6 +247,25 @@ export function imagePricingReady(draft: ImagePricingDraft, useCatalog: boolean)
 		const price = effectiveImagePrice(rate, follows);
 		return price !== null && DECIMAL.test(price) && !ZERO.test(price);
 	});
+}
+
+/** Lumen's server-side image readiness for saved pricing; credentials are not considered. */
+export interface ImagePricingReadiness {
+	ready: boolean;
+	reason: string | null;
+	executable_variants: string[];
+	unsupported_variants: string[];
+	supported_variants: string[];
+}
+
+export function imageReadinessMessage(readiness: ImagePricingReadiness | null | undefined): string | null {
+	if (!readiness || readiness.ready) return null;
+	switch (readiness.reason) {
+		case 'pricing_unavailable': return t('pricing.imageReadinessPricing');
+		case 'unsupported_image_variants': return t('pricing.imageReadinessVariants');
+		case 'route_unavailable': return t('pricing.imageReadinessRoute');
+		default: return t('pricing.imageReadinessUnknown');
+	}
 }
 
 /** Compare against stored leaves, not rendered catalog suggestions. */
@@ -280,6 +302,11 @@ export function imagePricingPayload(draft: ImagePricingDraft, useCatalog: boolea
 	if (!Object.keys(patch).length && !draft.convert) return body;
 
 	if (!draft.legacy || draft.convert) {
+		// Lumen overlays leaf patches on any catalog entry for the model name. When this
+		// form is not following that catalog, pin the basis it displays.
+		if (!imageFollowsMedia(draft, useCatalog) && manualImagePrice(draft.basis) === null && stored?.billing_basis == null) {
+			patch.billing_basis = imageBasis(draft, useCatalog);
+		}
 		body.media_pricing = { override_mode: 'leaf', ...patch };
 	} else {
 		// Never convert legacy replacement rows implicitly or drop unknown fields.

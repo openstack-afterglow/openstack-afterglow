@@ -443,7 +443,7 @@ describe("admin media model registration", () => {
       model_name: "gpt-image-1",
       display_name: null,
       model_kind: "image",
-      media_pricing: { override_mode: "leaf", image_variants: { "1024x1024:high": "0.08" } },
+      media_pricing: { override_mode: "leaf", billing_basis: "unit", image_variants: { "1024x1024:high": "0.08" } },
     });
   });
 
