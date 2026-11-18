@@ -217,9 +217,9 @@ async def _forward(
         )
         upstream_response = await client.send(outgoing, stream=True)
     except Exception as exc:
-        if service_type == "lumen" and upstream_path.startswith("/v1/admin/providers"):
-            # Private URLs and transport exception text can contain credentials.
-            _logger.warning("Upstream proxy request to lumen provider administration failed")
+        if service_type == "lumen" and upstream_path.startswith(("/v1/admin/providers", "/v1/vault/")):
+            # Private URLs and transport exception text can contain credentials or Vault queries.
+            _logger.warning("Upstream proxy request to private Lumen route failed")
         else:
             _logger.warning("Upstream proxy request to %s failed: %s", upstream_url, exc)
         await client.aclose()

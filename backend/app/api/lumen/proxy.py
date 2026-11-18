@@ -19,6 +19,14 @@ from app.services.service_proxy import get_policy_capabilities, proxy
 _PROXY_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
 _NO_STORE = {"Cache-Control": "no-store", "Pragma": "no-cache"}
 _DECISIONS_MAX_BODY_BYTES = 20 * 1024 * 1024
+_VAULT_METHODS = {
+    "notes": ("GET", "POST"),
+    "search": ("GET",),
+    "document": ("GET",),
+    "short-term": ("GET", "PUT"),
+    "profile": ("GET", "PUT"),
+    "coding-standards": ("GET", "PUT"),
+}
 
 
 async def _bounded_decisions_body(request: Request) -> AsyncIterator[bytes]:
@@ -71,7 +79,7 @@ class _PrivateLumenRoute(APIRoute):
             private = (
                 _noncanonical_path(parts)
                 or source_response
-                or parts[:1] in (["embeddings"], ["decisions"])
+                or parts[:1] in (["embeddings"], ["decisions"], ["vault"])
                 or parts[:3] == ["admin", "models", "native-catalog"]
                 or (bool(parts) and parts[0].startswith("mcp-"))
                 or parts[:2] == ["admin", "providers"]
@@ -204,6 +212,27 @@ async def disable_cloud_tools(request: Request) -> Response:
     return await cloud_tools(request)
 
 
+async def _proxy_vault(parts: list[str], request: Request) -> Response:
+    """Limit the browser surface to dashboard Vault operations."""
+    tail = parts[1:]
+    allowed = _VAULT_METHODS.get(tail[0]) if len(tail) == 1 else None
+    if len(tail) >= 2 and tail[0] == "notes" and tail[1].isascii() and tail[1].isdecimal():
+        if len(tail) == 2:
+            allowed = ("GET", "PATCH")
+        elif tail[2:] == ["revisions"]:
+            allowed = ("GET",)
+    if allowed is None:
+        raise HTTPException(status_code=404, detail="Lumen browser route not found")
+    if request.method not in allowed:
+        raise HTTPException(status_code=405, detail="Method not allowed", headers={"Allow": ", ".join(allowed)})
+
+    principal = await current_service_principal(request)
+    native = await get_policy_capabilities("lumen", principal)
+    leaf = "lumen-history_reader" if request.method == "GET" else "lumen-history_editor"
+    require_service_permission({**principal, "service_permissions": {"lumen": native["capabilities"]}}, leaf)
+    return await proxy("lumen", request, "/v1/" + "/".join(parts))
+
+
 @router.api_route("", methods=_PROXY_METHODS)
 @router.api_route("/{path:path}", methods=_PROXY_METHODS)
 async def proxy_lumen(path: str = "", *, request: Request) -> Response:
@@ -211,6 +240,8 @@ async def proxy_lumen(path: str = "", *, request: Request) -> Response:
     if _noncanonical_path(parts):
         # Authorization and forwarding must interpret the exact same namespace.
         raise HTTPException(status_code=400, detail="Non-canonical Lumen API path", headers=_NO_STORE)
+    if parts[:1] == ["vault"]:
+        return await _proxy_vault(parts, request)
     if parts[:4] == ["admin", "models", "pricing", "models-dev"]:
         raise HTTPException(status_code=404, detail="Lumen browser route not found", headers=_NO_STORE)
     expected_method = {"decisions": "POST", "admin/models/native-catalog": "GET"}.get(path)

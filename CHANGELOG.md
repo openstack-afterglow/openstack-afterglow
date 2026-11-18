@@ -15,6 +15,8 @@
 - Chat history, agents, memory and tool connections persist across project switches in a domain. Usage attribution and cloud tools follow the selected project. Manage connections can restore archived personal duplicates; authorized managers can restore organization duplicates.
 - 채팅·에이전트·Studio에서 공급자를 먼저 선택하고 등록 모델을 고른다. 공급자가 다른 동명 모델은 별도 선택지로 표시하며 실행에서도 정확한 등록 모델을 사용한다.
 - Chat, agents, and Studios select a provider before a registered model. Same-name models from different providers stay distinct during selection and execution.
+- 채팅 설정의 메모리를 Agent Vault로 교체했다. 도메인·전역 노트 검색, 버전 확인, 충돌을 보호하는 편집, 추가 전용 기록과 `memory.md` 내보내기를 지원한다. 대시보드 로그인 세션과 Vault를 지원하는 Lumen이 필요하다.
+- Agent Vault replaces chat memory settings with scoped note search, revision history, conflict-safe editing, append-only records, and `memory.md` export. Requires a dashboard session and a Vault-capable Lumen deployment.
 
 ## [1.32.28] - 2026-11-18
 

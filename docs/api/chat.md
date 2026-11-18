@@ -22,6 +22,23 @@ Afterglow 백엔드는 독자적인 AI 모델·에이전트 실행 엔진 및 �
 - 저장된 실행 재시도는 실행 이력에 제공된 `execution.model_row_id`를 원래 경로의 확인값으로 전송한다. 레거시 이력에 값이 없으면 빈 요청을 보내고 Lumen이 스냅샷으로 판단한다.
 - BFF는 기존 세션과 선택 프로젝트를 전달하며 Lumen이 활성 상태, 모델 종류, 기존 선택자 일치 및 실행 가능 여부를 검증한다.
 
+## Agent Vault
+
+채팅 설정의 **Agent Vault**는 대시보드 로그인 세션 전용이다. 같은 사용자의 도메인 노트는 해당 도메인의 프로젝트 간에 공유되며 전역 노트는 사용자의 다른 도메인에서도 보인다. 메모리는 대시보드 채팅에서만 사용하며 API 키와 외부 MCP로 조회할 수 없다.
+
+아래 경로 앞에 `/api/v1/chat`을 붙인다. BFF는 기존 Keystone token과 현재 프로젝트를 사용해 각각 Lumen `/v1/vault/*`로 전달한다. 조회는 `lumen-history_reader`, 수정은 `lumen-history_editor`를 요구하며 결과는 `Cache-Control: no-store`다.
+
+| 메서드 · 경로 | 동작 |
+| --- | --- |
+| `GET /vault/notes`, `GET /vault/search?query=…` | 유형·범위·프로젝트 키·역할로 거르고 `limit`/`before`로 페이지를 이동한다. |
+| `GET /vault/document` | Lumen이 생성한 `memory.md`의 `filename`, `content_type`, `content`를 반환한다. |
+| `POST /vault/notes` | 수동 메모리를 `user_note`로 만든다. Append-only 유형은 별도 새 기록을 추가한다. |
+| `GET /vault/notes/{id}`, `GET /vault/notes/{id}/revisions` | 노트 또는 읽기 전용 버전 기록을 조회한다. |
+| `PATCH /vault/notes/{id}` | `expectedHash`가 최신일 때만 내용과 선택적 제목을 교체한다. |
+| `GET\|PUT /vault/profile`, `/vault/coding-standards`, `/vault/short-term` | 프로필·코딩 규칙·단기 메모리를 읽거나 쓴다. 기존 노트 수정에는 `expectedHash`가 필요하다. |
+
+`409 hash_mismatch`에서는 원본을 다시 읽고 초안을 비교한다. `422 secret_detected`에서는 비밀번호·토큰·키를 제거한 뒤 다시 저장한다. 실패한 쓰기는 자동 재전송하지 않는다.
+
 ## MCP 개인·조직 연결
 
 브라우저의 `/api/v1/chat/mcp-settings`는 Lumen `/v1/mcp-settings`로 전달된다. 브라우저 access JWT는 Afterglow가 검증하고 실제 Lumen 요청에는 검증된 native identity와 프로젝트를 전달한다. 클라이언트가 보낸 domain/manager 표시는 권위가 아니다.

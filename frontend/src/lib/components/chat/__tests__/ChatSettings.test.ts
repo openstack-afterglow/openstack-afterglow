@@ -1,5 +1,5 @@
 import './lumenPermissionFixture';
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { auth } from '$lib/stores/auth';
 
@@ -35,14 +35,6 @@ describe('ChatSettings', () => {
 					quota_weekly_max: 1000
 				});
 			}
-			if (path.endsWith('/memories/document')) {
-				return Promise.resolve({
-					filename: 'memory.md',
-					content_type: 'text/markdown',
-					content: '# Memory\n\n## Preferences\n\n- Prefers concise answers\n'
-				});
-			}
-			if (path.endsWith('/memories')) return Promise.resolve([]);
 			return Promise.resolve([]);
 		});
 	});
@@ -55,7 +47,7 @@ describe('ChatSettings', () => {
 		expect(screen.getByRole('heading', { level: 2, name: '이번 달 사용량' })).toBeTruthy();
 		expect(container.querySelector('.eyebrow')).toBeNull();
 		expect(await screen.findByText('주간 쿼터 12 / 1,000')).toBeTruthy();
-		const sectionButtons = ['사용량', 'API 키', '메모리', 'MCP 서버', '도구', '스킬'].map(
+		const sectionButtons = ['사용량', 'API 키', 'Agent Vault', 'MCP 서버', '도구', '스킬'].map(
 			(name) => screen.getByRole('button', { name })
 		);
 		expect(sectionButtons).toHaveLength(6);
@@ -74,30 +66,9 @@ describe('ChatSettings', () => {
 		expect(screen.getByRole('button', { name: 'MCP 서버' }).getAttribute('aria-current')).toBe('page');
 	});
 
-	it('shows the automatically maintained memory.md and copies its plaintext content', async () => {
-		const writeText = vi.fn().mockResolvedValue(undefined);
-		Object.defineProperty(navigator, 'clipboard', {
-			configurable: true,
-			value: { writeText }
-		});
-		render(ChatSettings, {
-			initialSection: 'memory'
-		});
-		expect(await screen.findByRole('heading', { level: 2, name: 'memory.md' })).toBeTruthy();
-		expect(screen.getAllByRole('heading').some((heading) => heading.tagName === 'H4')).toBe(false);
-
-		const document = await screen.findByLabelText('memory.md 내용');
-		expect(document.textContent).toContain('# Memory');
-		expect(document.textContent).toContain('Prefers concise answers');
-		expect(mocks.get).toHaveBeenCalledWith(
-			'/api/v1/chat/memories/document',
-			'browser-token',
-			'project-1'
-		);
-
-		await fireEvent.click(screen.getByRole('button', { name: '복사' }));
-		await waitFor(() =>
-			expect(writeText).toHaveBeenCalledWith(expect.stringContaining('Prefers concise answers'))
-		);
+	it('keeps the memory deep link for Agent Vault', async () => {
+		render(ChatSettings, { initialSection: 'memory' });
+		expect(await screen.findByRole('heading', { level: 2, name: 'Agent Vault' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Agent Vault' }).getAttribute('aria-current')).toBe('page');
 	});
 });
