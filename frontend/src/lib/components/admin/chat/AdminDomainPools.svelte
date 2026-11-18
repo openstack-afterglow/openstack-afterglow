@@ -51,7 +51,10 @@
 	let saveError = $state('');
 	// Persisted per admin and domain; a retry reuses the exact recorded key and body.
 	let pending = $state<Record<string, PendingTopup>>({});
+	// found:false only means "not committed yet": a delayed original POST can still commit.
 	let rechecked = $state<Record<string, boolean>>({});
+	// A same-key resend got a definite 4xx answer; set before any later lookup, never persisted.
+	let retryRejected = $state<Record<string, boolean>>({});
 	let pendingError = $state<Record<string, string>>({});
 
 	const session = () => alive ? currentBillingSession(scopeKey, 'admin') : null;
@@ -107,16 +110,25 @@
 		const { [record.domainId]: _removed, ...rest } = pending;
 		pending = rest;
 		rechecked = { ...rechecked, [record.domainId]: false };
+		retryRejected = { ...retryRejected, [record.domainId]: false };
 		pendingError = { ...pendingError, [record.domainId]: '' };
 		clearPendingTopup(record);
 	}
 
 	// Lumen applies one Idempotency-Key at most once, so resending this record cannot double-credit.
-	async function sendTopup(record: PendingTopup): Promise<'applied' | 'rejected' | 'unknown' | 'stale'> {
+	async function sendTopup(record: PendingTopup, resend = false): Promise<'applied' | 'rejected' | 'unsaved' | 'unknown' | 'stale'> {
 		const owner = session();
 		if (!owner || denied || owner.userId !== record.userId) return 'stale';
+		// Without a durable record a lost reply could be resent under a new key after reload.
+		if (!savePendingTopup(record)) {
+			saveError = t('domainBilling.recoveryUnavailable');
+			if (!open) toast.error(saveError);
+			return 'unsaved';
+		}
 		pending = { ...pending, [record.domainId]: record };
-		savePendingTopup(record);
+		// A new dispatch may commit; earlier lookup or rejection evidence no longer applies.
+		rechecked = { ...rechecked, [record.domainId]: false };
+		retryRejected = { ...retryRejected, [record.domainId]: false };
 		try {
 			const next = await api.post<DomainPool>(`${path}/${encodeURIComponent(record.domainId)}/topups`,
 				{ amount_credits: record.amount_credits, note: record.note }, owner.token, owner.projectId, { ...mutation, idempotencyKey: record.key });
@@ -129,11 +141,18 @@
 			if (!session()) return 'stale';
 			const status = cause instanceof ApiError ? cause.status : 0;
 			if (status === 403) { denied = true; pools = null; open = false; }
-			// A definitive client rejection did not apply; timeouts and throttling stay unknown.
-			if (status >= 400 && status < 500 && status !== 408 && status !== 429) {
+			// The reply to the only request is final. A resend's reply says nothing about the original
+			// POST, which may still commit later, so the record stays; a definite rejection only unlocks
+			// discard after a subsequent lookup and the admin's typed acceptance of the duplicate risk.
+			const definite = status >= 400 && status < 500 && ![401, 403, 408, 429].includes(status);
+			if (resend && definite) {
+				retryRejected = { ...retryRejected, [record.domainId]: true };
+				pendingError = { ...pendingError, [record.domainId]: domainBillingErrorMessage(cause) ?? t('domainBilling.saveFailed') };
+				return 'rejected';
+			}
+			if (!resend && (definite || status === 401 || status === 403)) {
 				forget(record);
 				saveError = domainBillingErrorMessage(cause) ?? t('domainBilling.saveFailed');
-				if (!open) toast.error(saveError);
 				return 'rejected';
 			}
 			pendingError = { ...pendingError, [record.domainId]: domainBillingErrorMessage(cause) ?? t('domainBilling.topupUnconfirmed') };
@@ -152,21 +171,60 @@
 		if (!session() || busy || denied) return;
 		busy = true;
 		try {
-			if (await confirmTopup(record)) await sendTopup(record);
+			if (await confirmTopup(record)) await sendTopup(record, true);
 		} finally {
 			if (session()) busy = false;
 		}
 	}
 
-	async function recheck(domainId: string) {
-		if (busy || loading) return;
+	// Lumen reports whether this exact key committed; only "not found" makes retry or discard safe to choose.
+	async function recheck(record: PendingTopup) {
+		const owner = session();
+		if (!owner || busy || loading || denied || owner.userId !== record.userId) return;
+		busy = true;
+		rechecked = { ...rechecked, [record.domainId]: false };
+		pendingError = { ...pendingError, [record.domainId]: '' };
+		try {
+			const result = await api.get<{ found?: unknown; entry?: { amount_credits?: unknown; balance_after?: unknown; note?: unknown; created_at?: unknown } | null }>(
+				`${path}/${encodeURIComponent(record.domainId)}/topups/${encodeURIComponent(record.key)}`,
+				owner.token, owner.projectId, { cache: 'no-store', suppressAuthRedirect: true },
+			);
+			if (!session() || pending[record.domainId]?.key !== record.key) return;
+			if (result?.found === false) {
+				rechecked = { ...rechecked, [record.domainId]: true };
+			} else if (result?.found === true && result.entry) {
+				const entry = result.entry;
+				// Keys are per-operation UUIDs; a different committed intent is never treated as this top-up.
+				if (Number(entry.amount_credits) !== Number(record.amount_credits) || (entry.note ?? null) !== record.note) {
+					pendingError = { ...pendingError, [record.domainId]: t('domainBilling.topupConflict') };
+				} else {
+					forget(record);
+					toast.success(t('domainBilling.recheckFound', {
+						amount: displayDomainCredit(record.amount_credits),
+						balance: typeof entry.balance_after === 'string' ? displayDomainCredit(entry.balance_after) : '—',
+						time: typeof entry.created_at === 'string' ? new Date(entry.created_at).toLocaleString(intlLocale()) : '—',
+					}));
+				}
+			} else {
+				throw new Error('Invalid top-up lookup');
+			}
+		} catch (cause) {
+			if (!session()) return;
+			if (cause instanceof ApiError && cause.status === 403) { denied = true; pools = null; return; }
+			pendingError = { ...pendingError, [record.domainId]: t('domainBilling.recheckFailed') };
+		} finally {
+			if (session()) busy = false;
+		}
 		await load();
-		if (session() && !poolError) rechecked = { ...rechecked, [domainId]: true };
 	}
 
 	async function discardPending(record: PendingTopup) {
-		if (!session() || busy || !rechecked[record.domainId]) return;
-		if (await confirmDialog(t('domainBilling.discardConfirm'), { confirmLabel: t('domainBilling.discardPending') }) && session()) forget(record);
+		if (!session() || busy || !retryRejected[record.domainId] || !rechecked[record.domainId]) return;
+		const accepted = await confirmDialog(t('domainBilling.discardConfirm'), {
+			confirmLabel: t('domainBilling.discardPending'),
+			requiredText: t('domainBilling.discardPhrase'),
+		});
+		if (accepted && session() && retryRejected[record.domainId] && rechecked[record.domainId]) forget(record);
 	}
 
 	async function submit(event: SubmitEvent) {
@@ -196,7 +254,7 @@
 			if (isTopup) {
 				const outcome = await sendTopup({ v: 1, userId: owner.userId, domainId, key: crypto.randomUUID(), ...body, created_at: new Date().toISOString() });
 				// An unknown outcome is recovered from the domain row, never from a new draft.
-				if (outcome !== 'rejected') open = false;
+				if (outcome !== 'rejected' && outcome !== 'unsaved') open = false;
 				return;
 			}
 			const next = await api.patch<DomainPool>(resource, { admin_ceiling_credits: limit || null, is_active: active }, owner.token, owner.projectId, mutation);
@@ -247,12 +305,12 @@
 						<Alert class="mb-3" flat tone="warning" title={t('domainBilling.pendingTopupTitle')}>
 							<p>{t('domainBilling.pendingTopup', { amount: displayDomainCredit(record.amount_credits), note: record.note ?? t('domainBilling.noNote'), time: new Date(record.created_at).toLocaleString(intlLocale()) })}</p>
 							{#if pendingError[row.domainId]}<p>{pendingError[row.domainId]}</p>{/if}
-							{#if rechecked[row.domainId]}<p>{t('domainBilling.recheckHint')}</p>{/if}
+							{#if rechecked[row.domainId]}<p>{t('domainBilling.recheckNotFound')}</p>{/if}
 						</Alert>
 						<div class="mb-3 flex flex-wrap gap-2">
-							<Button size="sm" variant="secondary" disabled={busy || loading} onclick={() => recheck(row.domainId)}>{t('domainBilling.recheck')}</Button>
+							<Button size="sm" variant="secondary" disabled={busy || loading} onclick={() => recheck(record)}>{t('domainBilling.recheck')}</Button>
 							<Button size="sm" disabled={busy} onclick={() => retryPending(record)}>{t('domainBilling.resumeTopup')}</Button>
-							<Button size="sm" variant="ghost" disabled={busy || !rechecked[row.domainId]} onclick={() => discardPending(record)}>{t('domainBilling.discardPending')}</Button>
+							<Button size="sm" variant="ghost" disabled={busy || !retryRejected[row.domainId] || !rechecked[row.domainId]} onclick={() => discardPending(record)}>{t('domainBilling.discardPending')}</Button>
 						</div>
 					{/if}
 					{#if row.pool}<DomainPoolMetrics pool={row.pool} />

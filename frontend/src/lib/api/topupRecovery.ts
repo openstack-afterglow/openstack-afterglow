@@ -35,11 +35,13 @@ function parse(raw: string | null, userId: string, domainId: string): PendingTop
 	}
 }
 
-/** Persist before dispatch; returns false when browser storage is unavailable. */
+/** Persist and read back before dispatch; false means the caller must not send the money write. */
 export function savePendingTopup(record: PendingTopup): boolean {
 	try {
-		localStorage.setItem(storageKey(record.userId, record.domainId), JSON.stringify(record));
-		return true;
+		const name = storageKey(record.userId, record.domainId);
+		const serialized = JSON.stringify(record);
+		localStorage.setItem(name, serialized);
+		return localStorage.getItem(name) === serialized;
 	} catch {
 		return false;
 	}

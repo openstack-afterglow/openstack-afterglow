@@ -1318,6 +1318,7 @@ async def test_private_account_transport_failure_does_not_log_url_or_exception_s
         ("GET", "admin/domain-pools"),
         ("PATCH", "admin/domain-pools/domain-1"),
         ("POST", "admin/domain-pools/domain-1/topups"),
+        ("GET", "admin/domain-pools/domain-1/topups/topup-test-id"),
         ("GET", "admin/service-keys"),
     ],
 )
@@ -1336,6 +1337,7 @@ async def test_lumen_key_billing_routes_require_session(api_client, method, path
         ("GET", "admin/domain-pools"),
         ("PATCH", "admin/domain-pools/domain-1"),
         ("POST", "admin/domain-pools/domain-1/topups"),
+        ("GET", "admin/domain-pools/domain-1/topups/topup-test-id"),
         ("GET", "admin/service-keys"),
     ],
 )
@@ -1386,6 +1388,7 @@ async def test_lumen_key_billing_manager_routes_deny_stale_or_spoofed_authority(
             {"amount_credits": "1.5", "note": "test receipt"},
             {"detail": {"code": "idempotency_key_reused_with_different_intent"}},
         ),
+        ("GET", "admin/domain-pools/domain-1/topups/topup-test-id", 200, None, {"found": False, "entry": None}),
         ("GET", "admin/service-keys?owner_domain_id=domain-1&before_id=10", 200, None, {"items": [], "next_before_id": None}),
     ],
 )
@@ -1438,6 +1441,9 @@ async def test_lumen_key_billing_transport_preserves_scope_and_codes(
         ("GET", "service-keys/7", 405),
         ("POST", "service-keys/issuance-policy", 405),
         ("POST", "admin/domain-pools/a/topup", 404),
+        ("POST", "admin/domain-pools/a/topups/topup-test-id", 405),
+        ("GET", f"admin/domain-pools/a/topups/{'k' * 121}", 404),
+        ("GET", "admin/domain-pools/a/topups/key.with.dots", 404),
         ("POST", "domain-pool", 405),
     ],
 )
