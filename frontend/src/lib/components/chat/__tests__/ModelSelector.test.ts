@@ -1,6 +1,7 @@
 import { fireEvent, render } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import ModelSelector from '../ModelSelector.svelte';
+import { t } from '$lib/i18n/ns/chat-studio';
 
 const models = [
 	{ id: 1, provider_id: 1, provider_type: 'openai', provider_sort_order: 0, sort_order: 0, model_name: 'route/alpha', api_model_name: 'alpha-v1', api_provider: 'openai', display_name: 'Alpha', provider: 'Provider A' },
@@ -10,7 +11,7 @@ const models = [
 describe('ModelSelector regex resource matching', () => {
 	it('matches independent anchored fields and never changes selection when filtering or refreshing', async () => {
 		const onSelect = vi.fn();
-		const view = render(ModelSelector, { models, value: models[0].model_name, onSelect });
+		const view = render(ModelSelector, { models, value: models[0].id, onSelect });
 		await fireEvent.click(view.getByRole('button', { expanded: false }));
 		const input = view.getByRole('textbox');
 		expect(document.activeElement).toBe(input);
@@ -20,13 +21,14 @@ describe('ModelSelector regex resource matching', () => {
 		await view.rerender({ models: [...models].reverse() });
 		expect((input as HTMLInputElement).value).toBe('^(BETA-V1|anthropic)$');
 		expect(onSelect).not.toHaveBeenCalled();
-		await fireEvent.click(view.getByRole('option', { name: /Beta/ }));
-		expect(onSelect).toHaveBeenCalledWith(models[1].model_name);
+		await fireEvent.change(view.getByRole('combobox', { name: t('modelSelector.select') }), { target: { value: '2' } });
+		await fireEvent.click(view.getByRole('button', { name: t('modelSelector.select') }));
+		expect(onSelect).toHaveBeenCalledWith(models[1]);
 	});
 
 	it('shows an inline error and no options for malformed patterns', async () => {
 		const onSelect = vi.fn();
-		const view = render(ModelSelector, { models, value: models[0].model_name, onSelect });
+		const view = render(ModelSelector, { models, value: models[0].id, onSelect });
 		await fireEvent.click(view.getByRole('button', { expanded: false }));
 		const input = view.getByRole('textbox');
 		await fireEvent.input(input, { target: { value: '[' } });

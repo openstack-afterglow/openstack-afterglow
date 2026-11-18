@@ -18,6 +18,8 @@ Decision Studio keeps separate drafts when switching between OpenAI and Gemini m
 
 Gemini validation identifies the question and field, links the summary to the invalid input, and focuses that input on submit. Removing a rubric row focuses its neighbour. Editor rows and remove buttons use the same one-based numbering; result legends still show the provider's zero-based score scale.
 
+Chat, agent, and Studio model pickers scope the model choices by provider. Existing chat overlay grouping, search, and copy actions stay available. Compact regeneration and Studio/agent forms use visibly labelled native controls; a different provider clears the prior model choice. Displayed readiness remains based on catalog and capability data, not the presence of an option.
+
 인스턴스 사용 일정은 현재 종료일과 승인 대기 요청을 별도로 표시한다. 날짜 단축과 한 달 이내 사유 있는 연장을 구분하고, 사유가 부적절하면 관리자가 별도 확인할 수 있으며 승인 대기는 만료를 미루지 않음을 안내한다. 도메인 manager 정책과 도메인/프로젝트 검토 목록은 현재 권한·scope를 따르고 결과 불명은 명시적 재조회 전 재전송하지 않는다. 기존 form·상태·alert primitives와9locale를 사용한다.
 
 Drover 작업의 초기 비결정 progress는 전체 track 너비에 분산한다. 이후 관측된 단계 기반 추정치와 native 보고 진행률은 구분하며, authoritative terminal 전100%를 표시하지 않는다. 생성 modal 최소화 뒤 동일 소유자·프로젝트의 하단 dock에서 상태를 계속 볼 수 있고, 실제 terminal 전에는 완전히 닫지 않는다. 연결 유실과 operation ID 미수신은 unknown이며 재시도·성공으로 합성하지 않는다. Dock은 기존 upload 표시와 겹치지 않고 좁은 화면에서도 조작할 수 있다.

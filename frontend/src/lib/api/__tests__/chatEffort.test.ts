@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { effortForModel, effortLabel, effortOptionsFor, normalizeEffort } from '../chatEffort';
+import { effortLabel, effortOptionsFor, normalizeEffort } from '../chatEffort';
 
 describe('effortOptionsFor', () => {
 	it('reasoning 미지원이면 빈 배열', () => {
@@ -70,35 +70,5 @@ describe('normalizeEffort', () => {
 	it('null/빈값은 auto다', () => {
 		expect(normalizeEffort(null, caps)).toBe('auto');
 		expect(normalizeEffort('', caps)).toBe('auto');
-	});
-});
-
-describe('effortForModel', () => {
-	const models = [
-		{
-			model_name: 'gpt-5.1',
-			reasoning_none_supported: true,
-			capabilities: {
-				reasoning: true,
-				reasoning_options: [{ type: 'effort', values: ['none', 'low', 'high'] }]
-			}
-		},
-		{
-			model_name: 'gpt-5',
-			reasoning_none_supported: false,
-			capabilities: {
-				reasoning: true,
-				reasoning_options: [{ type: 'effort', values: ['minimal', 'low', 'high'] }]
-			}
-		}
-	];
-	it('재생성 대상 모델이 none을 지원하지 않으면 auto로 보낸다', () => {
-		expect(effortForModel('none', models, 'gpt-5.1')).toBe('none');
-		expect(effortForModel('none', models, 'gpt-5')).toBe('auto');
-		expect(effortForModel('high', models, 'gpt-5')).toBe('high');
-	});
-	it('목록에 없는 모델은 auto로 보낸다', () => {
-		expect(effortForModel('none', models, 'unknown')).toBe('auto');
-		expect(effortForModel('low', models, undefined)).toBe('auto');
 	});
 });

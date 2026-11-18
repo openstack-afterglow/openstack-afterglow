@@ -146,14 +146,15 @@ describe('decision transport', () => {
 		await expect(decisionStudioApi.capabilities(9, scope)).resolves.toEqual(verified);
 		expect(calls.get.mock.calls.map(([path]) => path)).toEqual(['/api/v1/chat/models?model_kind=text', '/api/v1/chat/models?model_kind=decision', '/api/v1/chat/capabilities?model_id=9&model_kind=text']);
 	});
-	it('posts the registered model name once with cancellation and no 401 replay', async () => {
+	it('posts the registered model name and row ID once with cancellation and no 401 replay', async () => {
 		const signal = new AbortController().signal;
+		const selected = { ...request, model_row_id: model.id };
 		calls.fetch.mockResolvedValue(new Response(JSON.stringify(response()), { status: 200 }));
-		await expect(decisionStudioApi.decide(request, scope, signal)).resolves.toEqual(response());
+		await expect(decisionStudioApi.decide(selected, scope, signal)).resolves.toEqual(response());
 		expect(calls.fetch).toHaveBeenCalledTimes(1);
 		const [path, init, token, project, options] = calls.fetch.mock.calls[0];
 		expect(path).toBe('/api/v1/chat/decisions'); expect(init.method).toBe('POST'); expect(init.signal.aborted).toBe(false);
-		expect(JSON.parse(init.body)).toEqual(request); expect(JSON.parse(init.body).model_id).toBeUndefined();
+		expect(JSON.parse(init.body)).toEqual(selected); expect(JSON.parse(init.body).model_id).toBeUndefined();
 		expect(token).toBe(scope.token); expect(project).toBe(scope.projectId); expect(options.replayOnUnauthorized).toBe(false);
 	});
 	it('keeps a single Decisions dispatch alive past 30 seconds with a scoped 150-second deadline', async () => {
@@ -232,7 +233,7 @@ const geminiDraft = (): GeminiDecisionDraft => ({ text: 'Broken mug', json: '', 
 const signal = new AbortController().signal;
 const image = (contents: BlobPart = 'mug', type = 'image/heif') => new File([contents], 'mug.heif', { type });
 const geminiWire: GeminiDecisionRequest = {
-	model: 'lumen/14/19', input: [{ type: 'text', text: 'Broken mug' }], questions: { damaged: { type: 'noul', instructions: noul.instructions } }
+	model: 'lumen/14/19', model_row_id: 19, input: [{ type: 'text', text: 'Broken mug' }], questions: { damaged: { type: 'noul', instructions: noul.instructions } }
 };
 const preparedGemini = { body: JSON.stringify(geminiWire), questions: geminiWire.questions };
 const geminiResponse = () => ({

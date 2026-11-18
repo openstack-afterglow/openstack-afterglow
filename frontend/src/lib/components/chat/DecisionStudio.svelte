@@ -16,6 +16,7 @@
 	import GeminiDecisionEditor from './GeminiDecisionEditor.svelte';
 	import GeminiDecisionResults from './GeminiDecisionResults.svelte';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
+	import ProviderModelSelect from './ProviderModelSelect.svelte';
 	import { t } from '$lib/i18n/ns/decision-studio';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
@@ -35,7 +36,7 @@
 	let geminiDraft = $state(newGeminiDraft());
 	let questions = $state<QuestionDraft[]>([newQuestion()]);
 	let models = $state<DecisionModel[]>([]);
-	let selected = $state('');
+	let selected = $state<number | null>(null);
 	let verified = $state<DecisionCapabilities | null>(null);
 	let inputType = $state<'text' | 'json' | 'image' | 'file'>('text');
 	let content = $state('');
@@ -64,7 +65,7 @@
 	const scope = $derived($authReady && !$projectSwitching && $auth.token && $auth.projectId && $auth.userId
 		? { token: $auth.token, projectId: $auth.projectId } : null);
 	const allowed = $derived(Boolean(scope) && $serviceCapabilities('lumen-chat_user'));
-	const model = $derived(models.find((entry) => String(entry.id) === selected));
+	const model = $derived(models.find((entry) => entry.id === selected));
 	const gemini = $derived(isGeminiDecisionModel(model));
 	const readiness = $derived(decisionReadiness(model, verified));
 	const canRun = $derived(allowed && !loading && !checking && !busy && !fileReading && !loadError && !readiness);
@@ -98,7 +99,7 @@
 	}
 	function reset() {
 		suspendRequests();
-		models = []; selected = ''; verified = null; questions = [newQuestion()];
+		models = []; selected = null; verified = null; questions = [newQuestion()];
 		content = ''; inputType = 'text'; imageDetail = 'auto'; fileData = ''; fileName = '';
 		geminiDraft = newGeminiDraft();
 		invalidField = undefined;
@@ -121,11 +122,11 @@
 		capabilityRequest = null; checking = false;
 		const request = new AbortController(); modelRequest = request;
 		const epoch = generation, owner = activeOwner, requestScope = scope;
-		loading = true; loadError = ''; selected = ''; verified = null; models = []; clearResults();
+		loading = true; loadError = ''; selected = null; verified = null; models = []; clearResults();
 		try {
 			const list = await decisionStudioApi.models(requestScope, request.signal);
 			if (request.signal.aborted || modelRequest !== request || epoch !== generation || owner !== activeOwner || !allowed) return;
-			models = list; selected = list[0] ? String(list[0].id) : '';
+			models = list; selected = list[0]?.id ?? null;
 		} catch (cause) {
 			if (!request.signal.aborted && modelRequest === request && epoch === generation && owner === activeOwner && allowed) loadError = message(cause);
 		} finally {
@@ -140,10 +141,10 @@
 		checking = true; verified = null; clearResults();
 		try {
 			const value = await decisionStudioApi.capabilities(id, requestScope, request.signal, kind);
-			if (request.signal.aborted || capabilityRequest !== request || epoch !== generation || owner !== activeOwner || !allowed || selected !== String(id)) return;
+			if (request.signal.aborted || capabilityRequest !== request || epoch !== generation || owner !== activeOwner || !allowed || selected !== id) return;
 			verified = value;
 		} catch (cause) {
-			if (!request.signal.aborted && capabilityRequest === request && epoch === generation && owner === activeOwner && allowed && selected === String(id)) {
+			if (!request.signal.aborted && capabilityRequest === request && epoch === generation && owner === activeOwner && allowed && selected === id) {
 				loadError = kind === 'decision' && cause instanceof ApiError && cause.status === 422 ? t('gemini.lumenUpdate') : message(cause);
 			}
 		} finally {
@@ -158,10 +159,10 @@
 		const entry = model, enabled = allowed, epoch = generation;
 		untrack(() => { if (epoch === generation && enabled && entry && verified?.model_id !== entry.id && !checking && !loadError) void loadCapabilities(entry.id, entry.model_kind); });
 	});
-	function selectModel(event: Event) {
+	function selectModel(row: DecisionModel | null) {
 		if (!allowed || busy) return;
 		capabilityRequest?.abort(); capabilityRequest = null; checking = false; verified = null;
-		stopFileRead(); selected = (event.currentTarget as HTMLSelectElement).value;
+		stopFileRead(); selected = row?.id ?? null;
 		invalidField = undefined;
 		loadError = ''; failure = ''; status = ''; clearResults();
 	}
@@ -237,7 +238,7 @@
 					if (question.type === 'score') return { ...base, type: 'score', levels: question.options.map((entry) => ({ label: entry.value, description: entry.description })) };
 					return { ...base, type: 'predicate' };
 				});
-				payload = { model: selectedModel.model_name, input, questions: built };
+				payload = { model: selectedModel.model_name, model_row_id: selectedModel.id, input, questions: built };
 				validateDecisionRequest(payload);
 			} catch (cause) {
 				failure = message(cause); await tick(); errorSummary?.focus(); return;
@@ -287,7 +288,7 @@
 		</header>
 		<form class="workspace" aria-labelledby="decision-title" method="post" novalidate={gemini} oninput={clearValidation} onsubmit={(event) => { event.preventDefault(); void decide(); }}>
 			<section class="settings" aria-label={t('decisions.model')}>
-				<Field label={t('decisions.model')} for="decision-model"><SelectInput id="decision-model" value={selected} onchange={selectModel} disabled={!allowed || loading || busy}><option value="">{t('decisions.selectModel')}</option>{#each models as item (item.id)}<option value={String(item.id)}>{item.display_name}</option>{/each}</SelectInput></Field>
+				<ProviderModelSelect {models} value={selected} onSelect={selectModel} modelLabel={t('decisions.model')} placeholder={t('decisions.selectModel')} id="decision-model" disabled={!allowed || loading || busy} />
 				{#if allowed}
 					{#if loading || checking}<LoadingState variant="inline" label={t('decisions.checking')} />
 					{:else if loadError}<Alert tone="danger">{loadError}<Button variant="subtle" onclick={() => void loadModels()}>{t('decisions.reload')}</Button></Alert>

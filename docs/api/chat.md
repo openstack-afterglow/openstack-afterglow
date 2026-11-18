@@ -13,6 +13,15 @@ Afterglow 백엔드는 독자적인 AI 모델·에이전트 실행 엔진 및 �
 
 직접적인 OpenAI / Anthropic 호환 API 호스팅은 Lumen 서비스가 전담합니다.
 
+## 공급자별 모델 선택
+
+`GET /api/v1/chat/models`의 `id`는 모델 레코드 ID다. 같은 `model_name`을 여러 공급자가 등록할 수 있으므로 dashboard는 `provider_id`로 선택지를 묶고 종류에 맞는 `id`를 보낸다.
+
+- 채팅 완료·재생성·임시 채팅·컨텍스트 미리보기/정리, Decision·이미지·음성·실시간 실행은 기존 선택자에 양의 정수 `model_row_id`를 추가한다. 임베딩은 기존 정수 `model_id`를 그대로 사용한다.
+- 에이전트 생성·수정은 선택한 `model_name`과 `model_row_id`를 저장한다. 변경하지 않은 레거시 모델 이름은 고유한 경우에만 정확한 행으로 이관한다.
+- 저장된 실행 재시도는 실행 이력에 제공된 `execution.model_row_id`를 원래 경로의 확인값으로 전송한다. 레거시 이력에 값이 없으면 빈 요청을 보내고 Lumen이 스냅샷으로 판단한다.
+- BFF는 기존 세션과 선택 프로젝트를 전달하며 Lumen이 활성 상태, 모델 종류, 기존 선택자 일치 및 실행 가능 여부를 검증한다.
+
 ## MCP 개인·조직 연결
 
 브라우저의 `/api/v1/chat/mcp-settings`는 Lumen `/v1/mcp-settings`로 전달된다. 브라우저 access JWT는 Afterglow가 검증하고 실제 Lumen 요청에는 검증된 native identity와 프로젝트를 전달한다. 클라이언트가 보낸 domain/manager 표시는 권위가 아니다.
@@ -239,6 +248,8 @@ When advertised, `image_moderation_options` permits `moderation`, and an SVG gen
 ### 실시간 음성 browser session
 
 `GET /api/v1/chat/models?model_kind=realtime`와 `GET /api/v1/chat/capabilities?model_id=<id>&model_kind=realtime`의 양방향 오디오 gate, 정확한 USD 가격, voice·sample-rate readiness를 먼저 확인합니다. 사용자가 **음성 세션 시작**을 누를 때에만 `getUserMedia` permission을 요청하고, `POST /api/v1/chat/realtime/sessions`에 `{model_id:"<id>",voice:"alloy",max_duration_seconds:300}` 및 UUID `Idempotency-Key`를 보냅니다. BFF는 Lumen의 provider key나 `connect_token`을 반환하지 않고 `{session_id,status,model_name,provider_type,expires_in_seconds,expires_at,ticket,websocket_path:"/api/v1/chat/realtime/ws",realtime_image_input}`만 반환합니다. `realtime_image_input`은 Lumen이 2 MiB 프레임을 승인한 conversation에서만 `true`입니다. `ticket`은 Redis 60초, project-scoped, 단일 소비이며 일반 auth token을 WebSocket URL에 넣지 않습니다.
+
+`model_row_id`는 선택된 카탈로그 행을 가리키는 JSON 정수(1–2⁶³−1)입니다. Studio는 기존 `model_id` 문자열과 함께 이 값을 보냅니다. API는 두 필드 중 하나 이상을 요구하며, BFF는 두 값이 있으면 그대로 전달합니다. Lumen이 두 선택 및 `provider_id`의 일치 여부를 검증합니다. BFF는 `model_id`나 `model_row_id`가 생략되거나 `null`이면 해당 필드를 전달하지 않습니다. `model_row_id`를 보내려면 이 필드를 지원하는 Lumen이 필요합니다.
 
 브라우저는 반환된 경로에 ticket으로 WSS 연결하고 `session.ready`의 `input_sample_rate_hz`(Gemini 16 kHz/OpenAI 24 kHz)에 맞춰 mono PCM16 worklet을 시작합니다. `audio.input.append`의 base64 chunk, `audio.output.delta`의 24 kHz playback, 자막 delta, `session.interrupted`, `response.cancel`을 처리합니다. 브라우저 프로젝트/사용자 변경·로그아웃·세션 종료 시 microphone track, AudioContext, playback, socket과 표시 자막을 즉시 정리합니다. 원본 오디오는 Afterglow→Lumen→선택 provider로 전송되며 Afterglow/Lumen은 원본 PCM·실시간 자막을 DB/S3에 보존하지 않습니다. Provider의 데이터 처리 정책은 별도로 확인해야 합니다. 생성 이미지·유한 오디오의 durable run/asset·usage는 **Lumen**이 소유합니다. 장애 시 upstream usage가 확정되지 않으면 Lumen hold가 unknown으로 남으며 BFF는 이를 임의 정산하지 않습니다.
 

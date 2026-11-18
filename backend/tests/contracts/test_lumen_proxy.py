@@ -138,29 +138,78 @@ def test_lumen_feature_gate_routes_inclusion():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("path", "request_body", "request_type", "response_body", "response_type"),
+    ("method", "path", "upstream_path", "request_body", "response_body", "response_type"),
     [
         (
+            "POST",
             "audio/speech",
-            b'{"model_id":1,"input":"hello"}',
-            "application/json",
+            "/v1/chat/audio/speech",
+            b'{"model_id":"12","model_row_id":12,"input":"hello","voice":"alloy"}',
             b"\x00\xffID3\x01\x80",
             "audio/mpeg",
         ),
         (
+            "POST",
             "audio/transcriptions",
-            b'{"model_id":1,"input_asset_id":"f6d18ec7-c8d8-4db8-9bd7-2dceb0f0f68e"}',
-            "application/json",
+            "/v1/chat/audio/transcriptions",
+            b'{"model_row_id":23,"input_asset_id":"f6d18ec7-c8d8-4db8-9bd7-2dceb0f0f68e"}',
             b'{"text":"hello"}',
+            "application/json",
+        ),
+        (
+            "POST",
+            "images/generations",
+            "/v1/chat/images/generations",
+            b'{"model_row_id":34, "prompt":"A blue square"}',
+            b'{"run_id":"image-run"}',
+            "application/json",
+        ),
+        (
+            "POST",
+            "images/edits",
+            "/v1/chat/images/edits",
+            b'{"model_row_id":34,"input_asset_id":"f6d18ec7-c8d8-4db8-9bd7-2dceb0f0f68e","prompt":"Make it red"}',
+            b'{"run_id":"image-run"}',
+            "application/json",
+        ),
+        (
+            "POST",
+            "temp-completions",
+            "/v1/temp-completions",
+            b'{"model_id":"configured-model","model_row_id":45,"parts":[{"type":"text","text":"hello"}]}',
+            b'{"run_id":"chat-run"}',
+            "application/json",
+        ),
+        (
+            "POST",
+            "conversations/42/runs/chat-run/retry",
+            "/v1/conversations/42/runs/chat-run/retry",
+            b'{"model_row_id":45}',
+            b'{"run_id":"retried-run"}',
+            "application/json",
+        ),
+        (
+            "POST",
+            "agents",
+            "/v1/agents",
+            b'{"name":"Agent","model_name":"configured-model","model_row_id":45}',
+            b'{"id":1}',
+            "application/json",
+        ),
+        (
+            "PATCH",
+            "agents/1",
+            "/v1/agents/1",
+            b'{"model_name":"configured-model","model_row_id":56}',
+            b'{"id":1}',
             "application/json",
         ),
     ],
 )
-async def test_audio_routes_preserve_bytes_types_and_caller_scope(
-    api_client, current_access, path, request_body, request_type, response_body, response_type
+async def test_model_routes_preserve_bytes_types_and_caller_scope(
+    api_client, method, path, upstream_path, request_body, response_body, response_type
 ):
     app.dependency_overrides[get_token_info] = _authenticated
-    current_access["roles"].append("lumen-audio_user")
     received = []
 
     async def handler(request):
@@ -176,23 +225,24 @@ async def test_audio_routes_preserve_bytes_types_and_caller_scope(
         patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1"),
         patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
     ):
-        response = await api_client.post(
+        response = await api_client.request(
+            method,
             f"/api/v1/chat/{path}",
             content=request_body,
             headers={
-                "content-type": request_type,
+                "content-type": "application/json",
                 "authorization": "Bearer browser-jwt",
-                "idempotency-key": "audio-request-1",
+                "idempotency-key": "model-request-1",
             },
         )
 
     assert response.status_code == 200
     assert response.content == response_body
     assert response.headers["content-type"] == response_type
-    method, url, headers, body = received.pop()
-    assert (method, url, body) == ("POST", f"http://isolated.test/v1/chat/{path}", request_body)
-    assert headers["content-type"] == request_type
-    assert headers["idempotency-key"] == "audio-request-1"
+    forwarded_method, url, headers, body = received.pop()
+    assert (forwarded_method, url, body) == (method, f"http://isolated.test{upstream_path}", request_body)
+    assert headers["content-type"] == "application/json"
+    assert headers["idempotency-key"] == "model-request-1"
     assert headers["x-auth-token"] == "caller-token"
     assert headers["x-project-id"] == "project-1"
     assert "authorization" not in headers
@@ -228,7 +278,10 @@ async def test_embedding_playground_proxy_uses_native_route_and_no_store(api_cli
 async def test_decisions_proxy_preserves_wire_scope_and_private_response(api_client, current_access, decisions_policy):
     app.dependency_overrides[get_token_info] = _authenticated
     current_access["roles"].append("lumen-chat_user")
-    body = b'{"model":"gpt-6-luna","input":"Synthetic","questions":[{"type":"predicate","instructions":"Is it text?"}]}'
+    body = (
+        b'{"model":"gpt-6-luna","model_row_id":67,"input":"Synthetic",'
+        b'"questions":[{"type":"predicate","instructions":"Is it text?"}]}'
+    )
     result = b'{"model":"gpt-6-luna","answers":[{"type":"predicate","probability":0.9}],"cost_usd":"0.000001"}'
     received = []
 
@@ -662,6 +715,7 @@ async def test_context_routes_preserve_post_body_and_idempotency(api_client, cur
         current_access["roles"].append("lumen-chat_user")
     request_body = {"model_id": "configured-model"}
     if operation == "context-preview":
+        request_body["model_row_id"] = 78
         request_body["parts"] = [{"type": "text", "text": "unsent draft"}]
     else:
         request_body["expected_context_revision"] = "revision-1"

@@ -12,6 +12,7 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { visibleActivityItems } from './chatActivityPresentation';
 	import type { AvailableModel, ChatMessage } from '$lib/api/chatTree';
+	import { resolveCatalogModel } from '$lib/api/modelCatalog';
 	import { formatMetrics, type StreamMetrics } from '$lib/api/chatMetrics';
 	import {
 		parseAssistantToolCalls,
@@ -47,7 +48,7 @@
 		modelLocked?: boolean;
 		modelDisplayName?: string | null;
 		onCopy: (text: string) => void;
-		onRegenerate: (modelName: string) => void;
+		onRegenerate: (model: AvailableModel | null) => void;
 		onRetry: () => void;
 		onFork: () => void;
 		onPrevVersion: () => void;
@@ -253,11 +254,12 @@
 
 				{#if !isUser}
 					{#if modelLocked}
-						<button type="button" class="act" disabled={busy} onclick={() => onRegenerate('')} title={t('message.regenerate')} aria-label={t('message.regenerate')}>
+						<button type="button" class="act" disabled={busy} onclick={() => onRegenerate(null)} title={t('message.regenerate')} aria-label={t('message.regenerate')}>
 							<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4v6h6M20 20v-6h-6" stroke-linecap="round" stroke-linejoin="round" /><path d="M20 10a8 8 0 0 0-14.9-3M4 14a8 8 0 0 0 14.9 3" stroke-linecap="round" stroke-linejoin="round" /></svg>
 						</button>
 					{:else}
-						<ModelSelector {models} value={message.model_name ?? ''} compact disabled={busy} onSelect={onRegenerate} align="left" />
+						<ModelSelector {models} value={resolveCatalogModel(models, message.execution?.model_row_id, message.model_name)?.id ?? null}
+							compact disabled={busy} onSelect={onRegenerate} align="left" />
 					{/if}
 					<button type="button" class="act" disabled={busy} onclick={onFork} title={t('message.forkHere')} aria-label={t('message.fork')}>
 						<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2.5" /><circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="9" r="2.5" /><path d="M6 8.5v3a3 3 0 0 0 3 3h6M18 11.5v.5" stroke-linecap="round" /></svg>
