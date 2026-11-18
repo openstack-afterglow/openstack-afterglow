@@ -36,8 +36,11 @@ Lumen은 공식 OpenAI SDK, Anthropic SDK, Google GenAI SDK가 호출하는 HTTP
    | 임베딩 | `embeddings:write` | OpenAI `embeddings`, Gemini `embed_content` (`:embedContent`, `:batchEmbedContents`) |
    | 이미지 생성 | `compat:images:write` | OpenAI `images.generate` |
    | 음성 생성·전사 | `compat:audio:write` | `/v1/audio/speech`, `/v1/audio/transcriptions` (이 문서에는 예제 없음) |
+   | 의사결정 | `decisions:write` | `/v1/decisions`, `/v1/chat/decisions`, `/v1beta/decisions` (이 문서에는 예제 없음) |
+   | 음성 생성 (대시보드 경로) | `native:audio:write` | `/v1/chat/audio/speech` (이 문서에는 예제 없음) |
+   | 실시간 음성 | `compat:realtime:write` | `/v1/realtime`, `/v1/realtime/translations`, `/v1/live/sessions`, `/v1beta/realtime` WebSocket (이 문서에는 예제 없음) |
 
-   현재 역할로 허용되지 않은 권한은 발급 화면에 표시되지 않는다. 필요한 권한이 없으면 프로젝트 또는 도메인 관리자에게 Lumen 권한을 요청한다.
+   발급 화면은 Lumen 발급 정책이 반환한 권한만 표시하며, 현재 역할로 허용되지 않은 권한도 표시하지 않는다. 필요한 권한이 없으면 프로젝트 또는 도메인 관리자에게 Lumen 권한을 요청한다. 사용량 조회, 배치·파일, 대화 기록·메모리, 서버 도구 실행 권한은 API 키로 발급할 수 없다. 클라이언트가 요청에 정의한 함수 도구(function calling)는 사용할 수 있지만 웹 검색·코드 실행·MCP·클라우드 도구 같은 서버 또는 호스팅 도구는 사용할 수 없다.
 4. 발급 직후 한 번만 표시되는 전체 키를 안전한 곳에 보관한다. 목록의 접두사만으로는 인증할 수 없다.
 
 | 키 종류 | 소유자 | 청구 대상 |

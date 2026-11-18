@@ -37,8 +37,11 @@ Lumen serves the HTTP formats used by the official OpenAI SDK, Anthropic SDK and
    | Embeddings | `embeddings:write` | OpenAI `embeddings`; Gemini `embed_content` (`:embedContent`, `:batchEmbedContents`) |
    | Generate images | `compat:images:write` | OpenAI `images.generate` |
    | Generate and transcribe audio | `compat:audio:write` | `/v1/audio/speech`, `/v1/audio/transcriptions` (no example in this guide) |
+   | Decisions | `decisions:write` | `/v1/decisions`, `/v1/chat/decisions`, `/v1beta/decisions` (no example in this guide) |
+   | Generate audio (dashboard route) | `native:audio:write` | `/v1/chat/audio/speech` (no example in this guide) |
+   | Realtime audio | `compat:realtime:write` | `/v1/realtime`, `/v1/realtime/translations`, `/v1/live/sessions`, `/v1beta/realtime` WebSocket (no example in this guide) |
 
-   Permissions your current roles do not allow are not offered in the issuance form. Ask a project or domain manager for the Lumen permission if one is missing.
+   The issuance form offers only the scopes returned by Lumen's issuance policy, and hides scopes your current roles do not allow. Ask a project or domain manager for the Lumen permission if one is missing. Usage reads, batches and files, conversation history and memory, and server tool execution cannot be issued to API keys. Function tools your client defines in a request (function calling) are allowed; server-side or hosted tools such as web search, code execution, MCP and cloud tools are not.
 4. Store the complete key shown once after issuance. The prefix in the list cannot authenticate.
 
 | Key type | Owner | Billed to |

@@ -97,7 +97,7 @@ Native Lumen의 fresh Keystone core role·유효 할당과 실제 `oslo.policy` 
 BFF·UI는 native capability 결과를 사용하고 표시 역할 배열/`can_write`로 장애를 우회하지 않습니다. 현재 core role floor는 operator policy보다 먼저 적용하여 `@`로 reader의 mutation/paid inference를 허용하지 않습니다. Provider/model/pricing/quota 및 전역 통계 API는 project member와 별개인 genuine human system-admin 전용입니다. Original credential/issued-role-ID, API key scope, owner/private content와 frozen budget/approval/tool 권한은 각각 유지됩니다.
 
 
-개인 API 키는 프로젝트에 묶이지 않고 발급 사용자에게 귀속됩니다. 서비스 키는 도메인 소유이며 발급자가 도메인을 떠나도 유지됩니다. 두 키 종류 모두 모델 조회·채팅·임베딩·이미지·오디오·실시간·의사결정의 허용된 모델 API만 호출할 수 있습니다. 클라우드 도구, 대화 이력, 메모리 및 키 관리에는 사용할 수 없습니다. 개인 키의 발급 및 관리에는 계속 native keys action이 필요합니다. 서비스 키는 현재 도메인 매니저만 관리할 수 있습니다.
+개인 API 키는 프로젝트에 묶이지 않고 발급 사용자에게 귀속됩니다. 서비스 키는 도메인 소유이며 발급자가 도메인을 떠나도 유지됩니다. 두 키 종류 모두 모델 조회·채팅·임베딩·이미지·오디오·실시간·의사결정의 허용된 모델 API만 호출할 수 있습니다. 사용량 조회, native 이미지·실시간 run, 배치·파일, 클라우드 도구, 대화 이력, 메모리 및 키 관리에는 사용할 수 없습니다. 클라이언트가 정의한 함수 도구는 허용되지만 서버 또는 호스팅 도구는 허용되지 않습니다. 개인·서비스 키 발급 화면은 `GET /api/v1/chat/api-keys/issuance-policy`의 `allowed_scopes`만 표시하며 별도 scope 목록을 두지 않습니다. 개인 키의 발급 및 관리에는 계속 native keys action이 필요합니다. 서비스 키는 현재 도메인 매니저만 관리할 수 있습니다.
 
 동일 user/project의 token 갱신·권한 확인 pending/error 동안 Studio는 입력·이미 표시한 결과 Blob을 메모리에 유지하되 미리보기/다운로드·새 액션을 숨기거나 차단합니다. 현재 권한이 복구되면 같은 Blob을 다시 보여 줍니다. 확인 중 완료한 새 응답은 게시하지 않으며 같은 입력의 명시적 재요청은 기존 idempotency intent를 재사용합니다. Native 사용 capability의 확정 회수와 user/project 전환은 해당 결과·요청·object URL을 폐기합니다.
 

@@ -3,9 +3,12 @@ import { t } from '$lib/i18n/ns/chat-settings';
 import { intlLocale } from '$lib/i18n/runtime.svelte';
 import { auth, logoutInProgress } from '$lib/stores/auth';
 import { authDisplayContext } from '$lib/stores/authDisplayContext';
-import type { ApiKey } from './chatUsage';
+import { api } from './client';
+import { isCreditInput } from './chatQuotas';
+import type { ApiKey, ApiKeyIssuancePolicy } from './chatUsage';
 
-export const modelKeyScopes = {
+// Display names only. Lumen's issuance policy decides which scopes are offered.
+const modelKeyScopeLabels = {
 	'models:read': 'apiKeys.scope.models',
 	'compat:completions:write': 'apiKeys.scope.chat',
 	'embeddings:write': 'apiKeys.scope.embeddings',
@@ -15,7 +18,20 @@ export const modelKeyScopes = {
 	'compat:realtime:write': 'apiKeys.scope.realtime',
 	'decisions:write': 'apiKeys.scope.decisions'
 } as const;
-export type ModelKeyScope = keyof typeof modelKeyScopes;
+
+export function modelKeyScopeLabel(scope: string): string {
+	return Object.hasOwn(modelKeyScopeLabels, scope) ? t(modelKeyScopeLabels[scope as keyof typeof modelKeyScopeLabels]) : scope;
+}
+
+export async function readKeyIssuancePolicy(token: string, projectId: string): Promise<ApiKeyIssuancePolicy> {
+	const policy = await api.get<ApiKeyIssuancePolicy>(`${lumenBrowserPath}/api-keys/issuance-policy`, token, projectId, { refresh: true });
+	if (policy.monthly_credit_limit !== null && !isCreditInput(policy.monthly_credit_limit)) throw new Error('Invalid credit limit');
+	if (!Array.isArray(policy.allowed_scopes) || !policy.scope_capabilities
+		|| policy.allowed_scopes.some((scope) => typeof scope !== 'string' || !Array.isArray(policy.scope_capabilities[scope]))) {
+		throw new Error('Invalid scope policy');
+	}
+	return policy;
+}
 
 export interface ServiceKey extends ApiKey {
 	key_kind: 'service';
@@ -80,6 +96,7 @@ export function domainBillingCode(body: Record<string, unknown>): string | undef
 const billingErrors = {
 	domain_credit_insufficient: 'domainBilling.insufficient',
 	domain_credit_limit_exceeds_ceiling: 'domainBilling.overCeiling',
+	domain_credit_balance_overflow: 'domainBilling.balanceOverflow',
 	idempotency_key_reused_with_different_intent: 'domainBilling.topupConflict'
 } as const;
 
