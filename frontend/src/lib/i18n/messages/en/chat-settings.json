@@ -326,7 +326,7 @@
 	"apiKeys.sdk.title": "SDK examples",
 	"apiKeys.sdk.provider": "SDK provider",
 	"apiKeys.sdk.language": "Example language",
-	"apiKeys.sdk.help": "Set {apiKey} in your terminal to the full Lumen API key with {scope} permission, then list the models.",
+	"apiKeys.sdk.help": "Set {apiKey} in your terminal to the full Lumen API key. Model listing needs {models}, text generation {completions}, embeddings {embeddings} and image generation {images}. Issue the key with all four permissions to run every example.",
 	"apiKeys.sdk.copy": "Copy SDK example",
 	"apiKeys.sdk.tutorial": "SDK tutorial",
 	"apiKeys.guide.loading": "Loading Lumen connection information.",

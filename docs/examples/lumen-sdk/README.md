@@ -11,7 +11,7 @@ python -m pip install -r python/requirements.txt
 npm --prefix node install
 ```
 
-Issue the key in the dashboard under **Chat settings → API keys**. Personal keys bill the user; service keys bill the domain credit pool. Keys can call model APIs only.
+Issue the key in the dashboard under **Chat settings → API keys**. Personal keys bill the user; service keys bill the domain credit pool. Keys can call model APIs only. To run every example, issue the key with these scopes (or choose **All allowed**): `models:read`, `compat:completions:write`, `embeddings:write`, `compat:images:write`.
 
 Set the model variables you want to try. Pick IDs from `python python/openai_example.py list`, `python python/anthropic_example.py list` and `python python/gemini_example.py list`.
 
@@ -43,5 +43,12 @@ sh curl.sh gemini-generate
 | `python/anthropic_example.py`, `node/anthropic.mjs` | `list`, `message`, `stream` |
 | `python/gemini_example.py`, `node/gemini.mjs` | `list`, `generate`, `stream`, `embed` |
 | `curl.sh` | `openai-list`, `openai-chat`, `openai-provider`, `openai-embed`, `anthropic-list`, `anthropic-message`, `gemini-list`, `gemini-generate`, `gemini-stream`, `gemini-embed` |
+
+| Scope | Operations |
+| --- | --- |
+| `models:read` | every `list`, `curl.sh *-list` |
+| `compat:completions:write` | OpenAI `chat`, `responses`, `stream`, `providers`; Anthropic `message`, `stream`; Gemini `generate`, `stream`; `curl.sh openai-chat`, `openai-provider`, `anthropic-message`, `gemini-generate`, `gemini-stream` |
+| `embeddings:write` | OpenAI `embed`, Gemini `embed`, `curl.sh openai-embed`, `gemini-embed` |
+| `compat:images:write` | OpenAI `image` |
 
 The smoke runner skips examples whose model variables are unset and exits non-zero when any example fails. Model calls spend real credit. SDK retries are disabled so a failure is not silently re-billed.

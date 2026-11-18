@@ -326,7 +326,7 @@
 	"apiKeys.sdk.title": "Ví dụ SDK",
 	"apiKeys.sdk.provider": "Nhà cung cấp SDK",
 	"apiKeys.sdk.language": "Ngôn ngữ ví dụ",
-	"apiKeys.sdk.help": "Trong thiết bị đầu cuối, đặt {apiKey} thành khóa API Lumen đầy đủ có quyền {scope}, rồi lấy danh sách mô hình.",
+	"apiKeys.sdk.help": "Trong thiết bị đầu cuối, đặt {apiKey} thành khóa API Lumen đầy đủ. Liệt kê mô hình cần quyền {models}, tạo văn bản cần {completions}, embedding cần {embeddings} và tạo hình ảnh cần {images}. Để chạy mọi ví dụ, hãy cấp khóa với cả bốn quyền.",
 	"apiKeys.sdk.copy": "Sao chép ví dụ SDK",
 	"apiKeys.sdk.tutorial": "Hướng dẫn dùng SDK",
 	"apiKeys.guide.loading": "Đang tải thông tin kết nối Lumen.",
