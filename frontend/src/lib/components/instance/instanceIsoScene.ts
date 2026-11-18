@@ -86,7 +86,9 @@ export function buildInstanceIsoScene({ instance, ports, networks, floatingIps, 
 		const h = 1.2 + (members.length - 1) * 0.95;
 		const w = 1.25;
 		if (label) {
-			scene.platforms.push({ id, label, x, y, w, h, style: 'slab', tone });
+			const kind = network?.is_external ? 'external-network' : network?.is_shared ? 'shared-network'
+				: network?.is_external === false && network.is_shared === false ? 'internal-network' : undefined;
+			scene.platforms.push({ id, label, x, y, w, h, style: 'slab', tone, kind });
 			slabExtent = Math.max(slabExtent, (x + y + w + h) / 2);
 			details.set(id, { kind: 'network', label, ports: members });
 		}
@@ -99,7 +101,7 @@ export function buildInstanceIsoScene({ instance, ports, networks, floatingIps, 
 			scene.nodes.push({ id: portId, label: portLabel, sublabel: address || undefined,
 				ariaLabel: [portLabel, address, port.id].filter(Boolean).join(', '), kind: 'port', tone,
 				x: x + 0.57, y: y + 0.37 + index * 0.95, size: 'sm', platformId: label ? id : undefined, status,
-				badges: port.status ? [{ text: down ? port.status : getStatusLabel(port.status), tone: getStatusStyle(port.status).tone }] : undefined });
+				badges: port.status ? [{ text: getStatusLabel(port.status), tone: getStatusStyle(port.status).tone }] : undefined });
 			scene.edges.push({ id: `interface:${port.id}`, from: instanceId, to: portId, kind: 'link', tone, flow: true });
 			details.set(portId, { kind: 'port', label: portLabel, port, network: label });
 		}
