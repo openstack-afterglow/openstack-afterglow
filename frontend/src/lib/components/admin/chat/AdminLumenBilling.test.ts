@@ -7,12 +7,13 @@ import { ApiError } from '$lib/api/client';
 import AdminDomainPoolsPage from '../../../../routes/admin/chat/domain-pools/+page.svelte';
 import AdminServiceKeysPage from '../../../../routes/admin/chat/service-keys/+page.svelte';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn(), confirm: vi.fn() }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn(), confirm: vi.fn(), success: vi.fn(), error: vi.fn() }));
 vi.mock('$lib/api/client', () => ({
 	api: mocks,
 	ApiError: class extends Error { constructor(public status: number, message: string) { super(message); } }
 }));
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: mocks.confirm }));
+vi.mock('$lib/stores/toast', () => ({ toast: { success: mocks.success, error: mocks.error } }));
 
 const base = '/api/v1/chat/admin';
 const pool = {
@@ -38,15 +39,25 @@ function card(name: string): HTMLElement {
 function pendingKeys(): string[] {
 	return Object.keys(localStorage).filter((name) => name.startsWith('afterglow:lumen-topup:v1:'));
 }
+const lookupPath = `${base}/domain-pools/domain-a/topups/recorded-key`;
+let lookup: unknown;
+
+function seedPending() {
+	localStorage.setItem('afterglow:lumen-topup:v1:admin-fixture:domain-a', JSON.stringify({
+		v: 1, userId: 'admin-fixture', domainId: 'domain-a', key: 'recorded-key', amount_credits: '3', note: null, created_at: '2026-11-18T00:00:00Z',
+	}));
+}
 
 beforeEach(() => {
 	vi.resetAllMocks();
 	localStorage.clear();
 	initLocale('en');
 	login(true);
+	lookup = { found: false, entry: null };
 	mocks.get.mockImplementation(async (path: string) => {
 		if (path === '/api/v1/admin/domains') return { items: [domain, unfundedDomain] };
 		if (path === `${base}/domain-pools`) return { items: [pool] };
+		if (path === lookupPath) return lookup;
 		throw new Error(`Unexpected GET ${path}`);
 	});
 });
@@ -132,24 +143,76 @@ it('shows a pending top-up only to the same admin on the same domain', async () 
 	expect(mocks.post).toHaveBeenCalledTimes(1);
 });
 
-it('allows discarding a pending top-up only after an explicit re-check', async () => {
-	localStorage.setItem('afterglow:lumen-topup:v1:admin-fixture:domain-a', JSON.stringify({
-		v: 1, userId: 'admin-fixture', domainId: 'domain-a', key: 'recorded-key', amount_credits: '3', note: null, created_at: '2026-11-18T00:00:00Z',
-	}));
-	mocks.confirm.mockResolvedValue(true);
+it('keeps retry-only recovery after found:false and clears a late commit without a new key', async () => {
+	seedPending();
 	render(AdminDomainPoolsPage);
 	const row = (await screen.findByText(t('domainBilling.pendingTopupTitle'))).closest('.card') as HTMLElement;
-	const discard = within(row).getByRole('button', { name: t('domainBilling.discardPending') }) as HTMLButtonElement;
-	expect(discard.disabled).toBe(true);
-	const reads = mocks.get.mock.calls.length;
 	await fireEvent.click(within(row).getByRole('button', { name: t('domainBilling.recheck') }));
-	await within(card('Research lab')).findByText(t('domainBilling.recheckHint'));
-	expect(mocks.get.mock.calls.length).toBeGreaterThan(reads);
-	await fireEvent.click(within(card('Research lab')).getByRole('button', { name: t('domainBilling.discardPending') }));
+	await within(card('Research lab')).findByText(t('domainBilling.recheckNotFound'));
+	expect(mocks.get).toHaveBeenCalledWith(lookupPath, 'session-token', 'project-1', { cache: 'no-store', suppressAuthRedirect: true });
+	const current = card('Research lab');
+	expect((within(current).getByRole('button', { name: t('domainBilling.discardPending') }) as HTMLButtonElement).disabled).toBe(true);
+	expect((within(current).getByRole('button', { name: t('domainBilling.resumeTopup') }) as HTMLButtonElement).disabled).toBe(false);
+	expect((within(current).getByRole('button', { name: t('domainBilling.topup') }) as HTMLButtonElement).disabled).toBe(true);
+	expect(pendingKeys()).toHaveLength(1);
+
+	// The delayed original POST commits after the first lookup.
+	lookup = { found: true, entry: { kind: 'topup', amount_credits: '3.00000000', balance_after: '5.00000000', note: null, created_at: '2026-11-18T00:00:09+00:00', actor_user_id: null } };
+	await fireEvent.click(within(current).getByRole('button', { name: t('domainBilling.recheck') }));
 	await waitFor(() => expect(screen.queryByText(t('domainBilling.pendingTopupTitle'))).toBeNull());
-	expect(mocks.confirm).toHaveBeenCalledWith(t('domainBilling.discardConfirm'), { confirmLabel: t('domainBilling.discardPending') });
+	expect(mocks.get.mock.calls.filter(([path]) => path === lookupPath)).toHaveLength(2);
 	expect(mocks.post).not.toHaveBeenCalled();
 	expect(pendingKeys()).toEqual([]);
+});
+
+it('unlocks discard only after a definite same-key rejection, a later lookup, and typed risk acceptance', async () => {
+	seedPending();
+	mocks.confirm.mockResolvedValue(true);
+	mocks.post.mockRejectedValueOnce(new ApiError(422, 'invalid amount'));
+	render(AdminDomainPoolsPage);
+	const row = (await screen.findByText(t('domainBilling.pendingTopupTitle'))).closest('.card') as HTMLElement;
+	await fireEvent.click(within(row).getByRole('button', { name: t('domainBilling.resumeTopup') }));
+	await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
+	const discard = () => within(card('Research lab')).getByRole('button', { name: t('domainBilling.discardPending') }) as HTMLButtonElement;
+	await waitFor(() => expect((within(card('Research lab')).getByRole('button', { name: t('domainBilling.resumeTopup') }) as HTMLButtonElement).disabled).toBe(false));
+	expect(discard().disabled).toBe(true);
+	expect(pendingKeys()).toHaveLength(1);
+	await fireEvent.click(within(card('Research lab')).getByRole('button', { name: t('domainBilling.recheck') }));
+	await within(card('Research lab')).findByText(t('domainBilling.recheckNotFound'));
+	expect(discard().disabled).toBe(false);
+	await fireEvent.click(discard());
+	await waitFor(() => expect(screen.queryByText(t('domainBilling.pendingTopupTitle'))).toBeNull());
+	expect(mocks.confirm).toHaveBeenLastCalledWith(t('domainBilling.discardConfirm'), {
+		confirmLabel: t('domainBilling.discardPending'), requiredText: t('domainBilling.discardPhrase'),
+	});
+	expect(mocks.post).toHaveBeenCalledTimes(1);
+	expect(pendingKeys()).toEqual([]);
+});
+
+it('clears a pending top-up as confirmed when Lumen finds its ledger entry', async () => {
+	seedPending();
+	lookup = { found: true, entry: {
+		kind: 'topup', amount_credits: '3.00000000', balance_after: '5.00000000', note: null, created_at: '2026-11-18T00:00:01+00:00', actor_user_id: 'admin-fixture',
+	} };
+	render(AdminDomainPoolsPage);
+	const row = (await screen.findByText(t('domainBilling.pendingTopupTitle'))).closest('.card') as HTMLElement;
+	await fireEvent.click(within(row).getByRole('button', { name: t('domainBilling.recheck') }));
+	await waitFor(() => expect(screen.queryByText(t('domainBilling.pendingTopupTitle'))).toBeNull());
+	expect(mocks.success).toHaveBeenCalledWith(expect.stringMatching(/^Lumen confirmed the 3-credit top-up\. Balance after: 5 · /));
+	expect(mocks.post).not.toHaveBeenCalled();
+	expect(mocks.confirm).not.toHaveBeenCalled();
+	expect(pendingKeys()).toEqual([]);
+});
+
+it('keeps discard disabled when the ledger lookup fails', async () => {
+	seedPending();
+	lookup = { unexpected: true };
+	render(AdminDomainPoolsPage);
+	const row = (await screen.findByText(t('domainBilling.pendingTopupTitle'))).closest('.card') as HTMLElement;
+	await fireEvent.click(within(row).getByRole('button', { name: t('domainBilling.recheck') }));
+	await within(card('Research lab')).findByText(t('domainBilling.recheckFailed'));
+	expect((within(card('Research lab')).getByRole('button', { name: t('domainBilling.discardPending') }) as HTMLButtonElement).disabled).toBe(true);
+	expect(pendingKeys()).toHaveLength(1);
 });
 
 it.each([
@@ -174,9 +237,7 @@ it.each([
 });
 
 it('keeps an uncertain record when a resend is refused before reaching Lumen', async () => {
-	localStorage.setItem('afterglow:lumen-topup:v1:admin-fixture:domain-a', JSON.stringify({
-		v: 1, userId: 'admin-fixture', domainId: 'domain-a', key: 'recorded-key', amount_credits: '3', note: null, created_at: '2026-11-18T00:00:00Z',
-	}));
+	seedPending();
 	mocks.confirm.mockResolvedValue(true);
 	mocks.post.mockRejectedValueOnce(new ApiError(401, 'token rotated'));
 	render(AdminDomainPoolsPage);
@@ -186,6 +247,7 @@ it('keeps an uncertain record when a resend is refused before reaching Lumen', a
 	await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
 	await waitFor(() => expect(resume.disabled).toBe(false));
 	expect(mocks.post.mock.calls[0][4]).toMatchObject({ idempotencyKey: 'recorded-key' });
+	expect((within(card('Research lab')).getByRole('button', { name: t('domainBilling.discardPending') }) as HTMLButtonElement).disabled).toBe(true);
 	expect(within(card('Research lab')).getByText(t('domainBilling.pendingTopupTitle'))).toBeTruthy();
 	expect((within(card('Research lab')).getByRole('button', { name: t('domainBilling.topup') }) as HTMLButtonElement).disabled).toBe(true);
 	expect(pendingKeys()).toHaveLength(1);

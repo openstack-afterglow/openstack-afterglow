@@ -20,6 +20,8 @@ from app.services.service_proxy import get_policy_capabilities, proxy
 _PROXY_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
 _NO_STORE = {"Cache-Control": "no-store", "Pragma": "no-cache"}
 _DOMAIN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
+# Lumen accepts 1-120 header characters; Afterglow mints UUIDs, so only path-safe keys are looked up.
+_IDEMPOTENCY_KEY = re.compile(r"[A-Za-z0-9_-]{1,120}")
 _DECISIONS_MAX_BODY_BYTES = 20 * 1024 * 1024
 _VAULT_METHODS = {
     "notes": ("GET", "POST"),
@@ -54,6 +56,8 @@ def _credential_or_pool_route(parts: list[str]) -> tuple[str, ...] | None:
                 return ("PATCH",)
             if parts[3:] == ["topups"]:
                 return ("POST",)
+            if len(parts) == 5 and parts[3] == "topups" and _IDEMPOTENCY_KEY.fullmatch(parts[4]):
+                return ("GET",)
         return ()
     if parts[:2] == ["admin", "service-keys"]:
         return ("GET",) if len(parts) == 2 else ()
