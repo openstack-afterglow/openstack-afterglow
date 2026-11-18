@@ -57,8 +57,8 @@ describe('buildWaygateIsoScene', () => {
 			badges: [expect.anything(), { text: t('project.iso.reportedPeers', { count: 0 }) }] });
 		expect(scene.platforms).toEqual([
 			expect.objectContaining({ id: 'tunnel', sublabel: '10.70.0.0/24' }),
-			expect.objectContaining({ id: 'attachment:7', label: 'tenant', sublabel: '192.0.2.0/24' }),
-			expect.objectContaining({ id: 'attachment:12', label: 'catalog-missing', sublabel: undefined }),
+			expect.objectContaining({ id: 'attachment:7', label: 'tenant', sublabel: '192.0.2.0/24', kind: 'internal-network' }),
+			expect.objectContaining({ id: 'attachment:12', label: 'catalog-missing', sublabel: undefined, kind: undefined }),
 		]);
 		expect(scene.edges.map(edge => edge.label)).toEqual(['snat', 'none']);
 		expect(targets.get('attachment:12')).toEqual({ kind: 'attachment', id: 12 });
