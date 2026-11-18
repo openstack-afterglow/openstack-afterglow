@@ -248,7 +248,7 @@
 	"apiKeys.installer.windowsLabel": "Windows Lumen 설치 명령",
 	"apiKeys.installer.viewWindows": "Windows 스크립트 보기",
 	"apiKeys.installer.modelHelp": "프로바이더별 실제 모델·공개 ID·알려진 context/가격·프로토콜을 보고 번호로 Codex Sol·Luna와 Claude Fable·Opus·Sonnet·Haiku를 각각 선택합니다. 역할명은 모델 크기·품질 등급이 아니며 같은 모델을 여러 역할에 쓸 수 있습니다. 새 터미널의 codex는 Sol, <code>codex --profile lumen-luna</code>는 Luna, <code>claude --model opus</code> 등은 선택한 Claude 역할을 사용합니다. 변경 파일은 백업하고 데스크톱 기본 provider는 유지하며 기본 model 변경은 명시적 선택 때만 수행합니다. 직접 지정하려면 <code>{command}</code>과 <code>{modelOption}</code>을 사용하세요. 명시적 CLI·프로젝트·관리 설정은 계속 우선합니다. Claude Code의 비-Claude 모델 라우팅은 Anthropic 공식 지원 밖이며 안전 classifier·권한·sandbox는 재매핑하지 않습니다.",
-	"apiKeys.installer.unavailable": "자동 설정에는 HTTPS Lumen 주소와 HTTPS 대시보드가 필요합니다. 로컬 loopback HTTP 미리보기만 예외이며, 그 외 환경에서는 아래 수동 설정을 사용하세요.",
+	"apiKeys.installer.unavailable": "자동 설정에는 배포에 구성된 공개 Lumen 주소와 HTTPS 대시보드가 필요합니다. 로컬 루프백 대시보드만 HTTP로 사용할 수 있습니다. 자동 설정을 사용할 수 없으면 수동 연결 방법을 이용하세요.",
 	"apiKeys.codex.copyRun": "실행 명령 복사",
 	"apiKeys.codex.defaultModelHelp": "설치 중 기본 모델 변경을 선택했거나 사용자 설정의 최상위 <code>{model}</code>이 사용할 Lumen 모델의 공개 API ID이고, 프로필·프로젝트 설정이 이를 덮어쓰지 않는다면 아래처럼 실행할 수 있습니다. <code>{modelProvider}</code>만으로 모델이 선택되지는 않으므로, 다른 기본 모델이나 모델 override가 있을 때는 위의 <code>{modelOption}</code>을 사용하세요.",
 	"apiKeys.codex.copyDefaultRun": "기본 모델 실행 복사",

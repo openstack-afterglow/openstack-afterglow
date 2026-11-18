@@ -367,17 +367,17 @@ Lumen은 외부 프로그램을 위한 OpenAI/Anthropic 호환 API를 제공한�
 
 설정 **API 키 → 연결 방법 → Codex + Claude Code 자동 설정**에서 대시보드가 제공하는 스크립트를 확인하고 복사한다. Codex CLI 0.160.0+와 Claude Code 2.1.257+를 먼저 설치해야 한다. 설치기는 바이너리를 설치하거나 추론을 호출하지 않으며, 일반 Lumen API 키의 **전체 값**(`models:read` 권한)으로 Codex base의 `GET /cli/models`만 읽는다. 목록의 key prefix와 대시보드 로그인 토큰은 사용하지 않는다. `/cli/models`가 없는 이전 Lumen(404)이면 업그레이드 안내와 함께 아무 파일도 바꾸지 않고 중단하므로 Lumen을 Afterglow보다 먼저 배포한다.
 
-아래는 주소 형식 예시다. 실제 명령은 현재 대시보드 origin과 discovery의 Codex Responses/Anthropic SDK base를 사용하며 배포 subpath를 보존한다. 비밀 키는 URL·명령 인자·복사 명령에 넣지 않고 실행 뒤 로컬 private prompt로 입력한다.
+복사 명령에는 현재 대시보드의 다운로드 주소만 들어간다. Afterglow는 시작할 때 `[services] lumen_external_url`을 검증하고 두 설치기에 삽입한다. Codex는 공개 주소에 `/v1`을 붙이고 Claude Code는 공개 주소를 그대로 사용한다. 별도의 Lumen URL 인자나 환경 변수는 받지 않는다. 비밀 키는 실행 뒤 로컬의 숨김 프롬프트에만 입력한다.
 
 ```sh
-curl -fsSL 'https://dashboard.example/install/lumen.sh' | sh -s -- 'https://lumen.example/v1' 'https://lumen.example'
+curl -fsSL 'https://dashboard.example/install/lumen.sh' | sh
 ```
 
 ```powershell
-$env:LUMEN_CODEX_BASE_URL='https://lumen.example/v1'; $env:LUMEN_ANTHROPIC_BASE_URL='https://lumen.example'; irm 'https://dashboard.example/install/lumen.ps1' | iex
+irm 'https://dashboard.example/install/lumen.ps1' | iex
 ```
 
-- **다운로드 신뢰:** 실행 전에 주소와 스크립트 내용을 확인한다. Lumen bases는 HTTPS여야 하며 userinfo·query·fragment·control character를 허용하지 않는다. 대시보드 다운로드도 HTTPS이며 개발용 loopback HTTP preview만 예외다. 목록 조회는 검증된 TLS로 한 번 수행하고 redirect를 따르지 않는다. 인증 실패·빈 목록·형식 오류는 정적 목록이나 수동 ID로 대체하지 않고 변경 없이 중단한다. 목록의 사용 가능 표시는 서버 구성 증거이며 provider의 실제 추론 응답을 검증하지 않는다.
+- **다운로드 신뢰:** 실행 전에 주소와 스크립트 내용을 확인한다. 공개 Lumen 주소는 절대 HTTPS URL이어야 하며 자격 증명·쿼리·프래그먼트를 허용하지 않는다. 개발 환경의 루프백 Lumen과 루프백 대시보드만 HTTP를 허용한다. 공개 주소를 구성하지 않으면 UI에 명령이 표시되지 않고 다운로드한 스크립트는 안내 메시지와 함께 종료 코드 1로 끝난다. HTTPS 목록 조회는 TLS를 검증하고 리디렉션을 따르지 않는다. 인증 실패·빈 목록·형식 오류는 정적 목록이나 수동 ID로 대체하지 않고 변경 없이 중단한다. 목록의 사용 가능 표시는 서버 구성 증거이며 provider의 실제 추론 응답을 검증하지 않는다.
 - **역할 선택:** 실제 provider 그룹별로 번호, 표시 이름·공개 ID, `lumen/<provider>/<model>` route ID, 알려진 context·입출력 단가, 지원 프로토콜(`messages`/`responses`)을 보여 준다. Codex Sol·Luna(Responses)와 Claude Fable·Opus·Sonnet·Haiku(Messages)를 각각 번호로 고르고 Claude 시작 역할(기본 `sonnet`)을 정한다. 같은 모델을 여러 역할에 쓸 수 있고, 같은 공개 ID가 여러 provider에 있어도 route ID로 구분되어 선택한 provider에서 실행·정산된다. 구독 프로토콜 미지원처럼 사용할 수 없는 행은 사유를 표시하고 선택을 거부한다. Lumen 0.6.6부터 custom OpenAI 호환 base 행은 native Responses 지원을 증명하지 못해 `messages`만 광고하므로 Claude 역할에서만 고를 수 있다. 역할명은 위치일 뿐 모델 크기·품질 주장이 아니다. Lumen의 cross-protocol adapter가 비-Claude 모델도 Claude Code에 연결하지만 Anthropic 공식 지원 범위는 아니다.
 - **macOS/Linux:** POSIX `sh`, Python **3.11+**의 `tomllib`, controlling terminal이 필요하다. pipe stdin이 아닌 `/dev/tty`에서 키를 echo 없이 받는다. 키는 `${XDG_CONFIG_HOME:-$HOME/.config}/lumen/key.sh`(0600), 전용 디렉터리는 0700이며 TOML과 일반 셸 프로필에는 평문 키를 넣지 않는다. `~/.bashrc`, 첫 기존 `.bash_profile`/`.bash_login`/`.profile`(없으면 `.profile`), `${ZDOTDIR:-$HOME}/.zshrc`의 한 marker block을 갱신한다. 기존 profile mode와 unrelated 설정을 유지한다. 안전하지 않은 소유권·권한·symlink/hardlink·잘못된 TOML·불완전한 marker는 변경 없이 거부한다. 지원되지 않는 dotfile 구성을 삭제하거나 강제로 덮어쓰지 않는다.
 - **CA:** POSIX는 읽을 수 있는 검증 가능한 시스템 PEM 번들을 사용한다. `LUMEN_CA_BUNDLE` > 사용자 `CODEX_CA_CERTIFICATE` > platform default 순이며 사용자 지정 번들은 Claude Code의 `NODE_EXTRA_CA_CERTS`에도 적용한다. 선택 경로가 symlink여도 read-only 실제 PEM·소유권·권한을 검증하고 인증서에 chmod/write하지 않는다. 새 configured shell의 inherited CA와 기존 Node 공유 의도를 보존해 rerun 때 trust 설정·backup이 불필요하게 바뀌지 않는다. TLS 검증을 끄지 않는다. Windows도 명시적인 `LUMEN_CA_BUNDLE` > 기존 `CODEX_CA_CERTIFICATE`를 검증·선택하고 지정이 없으면 OS trust를 사용한다. Windows의 Claude trust 환경은 변경하지 않는다.

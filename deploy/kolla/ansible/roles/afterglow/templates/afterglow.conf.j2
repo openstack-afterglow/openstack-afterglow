@@ -94,6 +94,7 @@ waygate = {{ afterglow_service_waygate_enabled | bool | lower }}
 palimpsest = {{ afterglow_service_palimpsest_enabled | bool | lower }}
 chat = {{ afterglow_service_chat_enabled | bool | lower }}
 mcp = {{ afterglow_service_mcp_enabled | bool | lower }}
+lumen_external_url = {{ lumen_external_url | default('') | to_json }}
 {% if afterglow_service_palimpsest_enabled | bool and afterglow_service_palimpsest_internal_url %}
 palimpsest_internal_url = {{ afterglow_service_palimpsest_internal_url | to_json }}
 {% endif %}

@@ -459,6 +459,10 @@ waygate_internal_url = ""
 drover_internal_url = ""
 lumen_internal_url = ""
 palimpsest_internal_url = ""
+# CLI installers use this public Lumen base (without /v1), not catalog discovery.
+# SERVICE_LUMEN_EXTERNAL_URL overrides it. Empty disables automatic CLI setup.
+# Use HTTPS; HTTP is allowed only for development loopback.
+lumen_external_url = ""
 
 [cloud_shell]
 # 모든 컨테이너와 영구 홈 볼륨은 사용자 프로젝트가 아니라 이 전용 프로젝트에 생성됩니다

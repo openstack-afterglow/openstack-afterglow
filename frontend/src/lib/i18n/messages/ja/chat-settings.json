@@ -248,7 +248,7 @@
 	"apiKeys.installer.windowsLabel": "Windows Lumen設定コマンド",
 	"apiKeys.installer.viewWindows": "Windowsスクリプトを表示",
 	"apiKeys.installer.modelHelp": "プロバイダー別の実際のモデル・公開ID・既知のcontext/価格・プロトコルを確認し、Codex Sol/LunaとClaude Fable/Opus/Sonnet/Haikuを番号で個別に選択します。役割名はモデルのサイズ・品質の評価ではなく、同じモデルを複数の役割に選べます。新しいターミナルではcodexがSol、<code>codex --profile lumen-luna</code>がLuna、<code>claude --model opus</code>などが選択したClaudeの役割を使います。変更ファイルはバックアップし、デスクトップの既定providerは保持、既定modelの変更は明示的に選んだ場合のみ行います。明示指定には<code>{command}</code>と<code>{modelOption}</code>を使います。明示的なCLI・プロジェクト・管理設定の優先順位は変わりません。Claude Codeから非ClaudeモデルへのルーティングはAnthropicの公式サポート外です。安全classifier・権限・sandboxは再マッピングしません。",
-	"apiKeys.installer.unavailable": "自動設定にはHTTPSのLumenアドレスとHTTPSのダッシュボードが必要です。ローカルのループバックHTTPプレビューのみ例外です。それ以外の環境では以下の手動設定を使用してください。",
+	"apiKeys.installer.unavailable": "自動設定には、この環境で構成済みの公開 Lumen URL と HTTPS のダッシュボードが必要です。HTTP はローカルのループバック上のダッシュボードでのみ使えます。自動設定を利用できない場合は、手動接続の手順に従ってください。",
 	"apiKeys.codex.copyRun": "実行コマンドをコピー",
 	"apiKeys.codex.defaultModelHelp": "設定時にデフォルトモデルの変更を選択した場合、またはユーザー設定の最上位<code>{model}</code>が使用するLumenモデルの公開API IDで、プロファイルやプロジェクト設定が上書きしない場合は、以下のように実行できます。<code>{modelProvider}</code>だけではモデルは選択されないため、別のデフォルトモデルやモデルの上書きがある場合は上の<code>{modelOption}</code>を使用してください。",
 	"apiKeys.codex.copyDefaultRun": "デフォルトモデルの実行をコピー",

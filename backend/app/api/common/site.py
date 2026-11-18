@@ -44,6 +44,7 @@ class PublicSiteConfigResponse(BaseModel):
     services: SiteServicesResponse
     mcp_url: str = ""
     experience_enabled: bool = False
+    lumen_installer_configured: bool = False
 
 
 class BrandingSlotResponse(BaseModel):

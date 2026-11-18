@@ -390,6 +390,7 @@ data:
     zun = true
     cloud_shell = false
     k3s = true
+    lumen_external_url = ""
 
     [cloud_shell]
     service_project_id = ""

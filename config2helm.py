@@ -355,6 +355,8 @@ def convert(cfg: dict, include_secrets: bool) -> dict:
     ):
         if k in svc:
             svc_out[k] = svc[k]
+    if "lumen_external_url" in svc:
+        svc_out["lumenExternalUrl"] = svc["lumen_external_url"]
     if svc_out:
         out["services"] = svc_out
 

@@ -195,6 +195,7 @@ def _load_toml() -> dict:
     flat["service_waygate_internal_url"] = svc.get("waygate_internal_url", "")
     flat["service_drover_internal_url"] = svc.get("drover_internal_url", "")
     flat["service_lumen_internal_url"] = svc.get("lumen_internal_url", "")
+    flat["service_lumen_external_url"] = svc.get("lumen_external_url", "")
     flat["service_palimpsest_internal_url"] = svc.get("palimpsest_internal_url", "")
 
     cloud_shell = data.get("cloud_shell", {})
@@ -653,6 +654,8 @@ class Settings(BaseSettings):
     service_drover_internal_url: str = ""
     service_lumen_internal_url: str = ""
     service_palimpsest_internal_url: str = ""
+    # Public base for the CLI installers, not an internal BFF override.
+    service_lumen_external_url: str = ""
 
     # Global Cloud Shell resources live only in a dedicated service project.
     # User tokens are separately re-scoped to the selected logical project and
@@ -920,6 +923,44 @@ class Settings(BaseSettings):
         from app.services._endpoint import normalize_endpoint
 
         return normalize_endpoint(v)
+
+    @field_validator("service_lumen_external_url")
+    @classmethod
+    def _normalize_lumen_external_url(cls, value: str) -> str:
+        if not value:
+            return value
+        message = (
+            "[services] lumen_external_url must be an absolute HTTPS URL without credentials, query, "
+            "fragment or unsafe characters (HTTP is permitted on development loopback only)"
+        )
+        if len(value) > 2045 or not re.fullmatch(
+            r"https?://(?:[A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])(?::[0-9]+)?(?:/[A-Za-z0-9._~/-]*)?",
+            value,
+        ):
+            raise ValueError(message)
+        try:
+            parsed = urlsplit(value)
+            port = parsed.port
+        except ValueError:
+            raise ValueError(message) from None
+        host = parsed.hostname or ""
+        if (
+            not host
+            or (port is not None and port == 0)
+            or (
+                ":" not in host
+                and (
+                    len(host) > 253
+                    or any(
+                        not re.fullmatch(r"[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?", label)
+                        for label in host.removesuffix(".").split(".")
+                    )
+                )
+            )
+            or (parsed.scheme != "https" and not is_development_loopback_http_url(value))
+        ):
+            raise ValueError(message)
+        return value.rstrip("/")
 
     @property
     def ssl_verify(self) -> bool | str:

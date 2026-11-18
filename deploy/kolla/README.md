@@ -699,6 +699,12 @@ API path). Disabling the toggle removes the plugin-owned `.cfg` fragment and
 external-frontend-map entry on the next `reconfigure`. The Kolla external TLS
 certificate must cover each enabled hostname.
 
+Afterglow uses the existing `lumen_external_url` in Kolla globals to render the
+dashboard CLI installers at backend startup. Set it to the public HTTPS Lumen
+base without `/v1`, for example `https://lumen.dmslab.re.kr`. Operator TOML
+`[services] lumen_external_url` can override the Kolla default. An empty value
+disables automatic setup; the internal and Keystone endpoints are not fallbacks.
+
 ### Lumen PostgreSQL Mode
 
 `lumen_postgres_mode` is an explicit mutually exclusive choice for Lumen's LangGraph checkpointer:

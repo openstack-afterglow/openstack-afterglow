@@ -20,7 +20,10 @@ import {
 const impeccableLiveDev = dev ? ' http://localhost:8400' : '';
 
 // 인증 없이 접근 가능한 경로
-const PUBLIC_PATHS = ['/', '/login', '/logout', '/signup', '/recover', '/auth/callback', '/health', '/oauth/mcp/authorize'];
+const PUBLIC_PATHS = [
+	'/', '/login', '/logout', '/signup', '/recover', '/auth/callback', '/health', '/oauth/mcp/authorize',
+	'/install/lumen.sh', '/install/lumen.ps1',
+];
 // Token-bearing links; the token is the only authority and is checked by the API.
 const PUBLIC_PREFIXES = ['/invitations/', '/registrations/', '/recover/'];
 

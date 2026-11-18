@@ -854,6 +854,7 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
         "waygate_internal_url",
         "drover_internal_url",
         "lumen_internal_url",
+        "lumen_external_url",
         "palimpsest_internal_url",
     ):
         if endpoint_name in svc:

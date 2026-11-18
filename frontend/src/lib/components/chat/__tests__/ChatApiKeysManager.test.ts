@@ -4,6 +4,7 @@ import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { auth, projectSwitching } from '$lib/stores/auth';
+import { initSiteConfig } from '$lib/config/site';
 import { t } from '$lib/i18n/ns/chat-settings';
 import { initLocale, intlLocale } from '$lib/i18n/runtime.svelte';
 
@@ -564,6 +565,34 @@ describe('ChatApiKeysManager', () => {
 	afterEach(() => {
 		cleanup();
 		initLocale('ko');
+		initSiteConfig({ lumen_installer_configured: false });
+	});
+
+	it('shows download-only installer commands when configured even if SDK discovery fails', async () => {
+		initSiteConfig({ lumen_installer_configured: true });
+		mocks.get.mockImplementation(async (path: string) => {
+			if (path.endsWith('/compat')) throw new Error('offline');
+			return response(path);
+		});
+		render(ChatApiKeysManager);
+		await screen.findByRole('alert');
+		const { origin } = window.location;
+		const posix = screen.getByRole('region', { name: t('apiKeys.installer.posixLabel') });
+		const windows = screen.getByRole('region', { name: t('apiKeys.installer.windowsLabel') });
+		expect(posix.textContent).toBe(`curl -fsSL '${origin}/install/lumen.sh' | sh`);
+		expect(windows.textContent).toBe(`irm '${origin}/install/lumen.ps1' | iex`);
+		expect(screen.getByRole('link', { name: t('apiKeys.installer.viewPosix') }).getAttribute('href')).toBe(`${origin}/install/lumen.sh`);
+		expect(screen.getByRole('link', { name: t('apiKeys.installer.viewWindows') }).getAttribute('href')).toBe(`${origin}/install/lumen.ps1`);
+	});
+
+	it('hides installers when no public URL is configured, even with valid SDK discovery', async () => {
+		render(ChatApiKeysManager);
+		await screen.findByRole('tab', { name: t('apiKeys.guide.codexTab') });
+		expect(screen.getByText(t('apiKeys.installer.unavailable'))).toBeTruthy();
+		expect(screen.queryByRole('button', { name: t('apiKeys.installer.copyPosix') })).toBeNull();
+		expect(screen.queryByRole('button', { name: t('apiKeys.installer.copyWindows') })).toBeNull();
+		expect(screen.queryByRole('link', { name: t('apiKeys.installer.viewPosix') })).toBeNull();
+		expect(screen.queryByRole('link', { name: t('apiKeys.installer.viewWindows') })).toBeNull();
 	});
 
 	it('switches a single accessible guide without refetching discovery', async () => {

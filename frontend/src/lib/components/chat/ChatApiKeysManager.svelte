@@ -3,6 +3,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { auth, projectSwitching } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
+	import { siteConfig } from '$lib/config/site';
 	import { serviceCapabilities, serviceDenials, type ProjectPermissions } from '$lib/stores/servicePermissions';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -144,7 +145,7 @@
 
 	onMount(() => {
 		const { protocol, hostname, origin } = window.location;
-		if (protocol === 'https:' || (protocol === 'http:' && ['localhost', '127.0.0.1'].includes(hostname))) {
+		if (protocol === 'https:' || (protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(hostname))) {
 			installOrigin = origin;
 		}
 	});
@@ -243,11 +244,11 @@ export ANTHROPIC_DEFAULT_HAIKU_MODEL="$LUMEN_MODEL"
 # export LUMEN_PROVIDER="replace-with-provider-id"
 # export ANTHROPIC_CUSTOM_HEADERS="X-Lumen-Provider: $LUMEN_PROVIDER"
 claude` : '');
-	const installerReady = $derived(Boolean(sdkBases && installOrigin && sdkBases.codex.startsWith('https://') && sdkBases.anthropic.startsWith('https://')));
-	const posixInstallerCommand = $derived(installerReady && sdkBases ?
-		`curl -fsSL ${shellQuote(`${installOrigin}/install/lumen.sh`)} | sh -s -- ${shellQuote(sdkBases.codex)} ${shellQuote(sdkBases.anthropic)}` : '');
-	const windowsInstallerCommand = $derived(installerReady && sdkBases ?
-		`$env:LUMEN_CODEX_BASE_URL=${powershellQuote(sdkBases.codex)}; $env:LUMEN_ANTHROPIC_BASE_URL=${powershellQuote(sdkBases.anthropic)}; irm ${powershellQuote(`${installOrigin}/install/lumen.ps1`)} | iex` : '');
+	const installerReady = $derived($siteConfig.lumen_installer_configured === true && installOrigin !== '');
+	const posixInstallerCommand = $derived(installerReady ?
+		`curl -fsSL ${shellQuote(`${installOrigin}/install/lumen.sh`)} | sh` : '');
+	const windowsInstallerCommand = $derived(installerReady ?
+		`irm ${powershellQuote(`${installOrigin}/install/lumen.ps1`)} | iex` : '');
 
 	async function load() {
 		const generation = ++listGeneration;
@@ -677,33 +678,6 @@ claude` : '');
 				</ol>
 				<p class="mt-2">{t('apiKeys.guide.usageWarning')}</p>
 			</div>
-			<section class="mb-5 border-b border-[var(--color-line)] pb-5" aria-labelledby="lumen-installer-heading">
-				<h5 id="lumen-installer-heading" class="text-sm font-semibold text-[var(--color-ink-1)]">{t('apiKeys.installer.title')}</h5>
-				<p class="mt-1 text-sm leading-6 text-ink-2">
-					<RichText segments={t.rich('apiKeys.installer.introduction', { configPath: '~/.codex/config.toml', codexHome: 'CODEX_HOME' })} classes={{ code: inlineCodeCls }} />
-				</p>
-				{#if installerReady}
-					<div class="mt-3 flex flex-wrap items-center justify-between gap-2">
-						<p class="text-sm font-medium text-ink-1">{t('apiKeys.installer.posixTitle')}</p>
-						<Button variant="ghost" size="sm" onclick={() => copyText(posixInstallerCommand, t('apiKeys.toast.posixInstallerCopied'))}>{t('apiKeys.installer.copyPosix')}</Button>
-					</div>
-					<p class="mt-1 text-sm leading-6 text-ink-2">{t('apiKeys.installer.posixHelp')}</p>
-					<pre class="{codeCls} mt-2 max-w-full whitespace-pre" role="region" aria-label={t('apiKeys.installer.posixLabel')}><code>{posixInstallerCommand}</code></pre>
-					<Button href={`${installOrigin}/install/lumen.sh`} target="_blank" variant="link" size="sm">{t('apiKeys.installer.viewPosix')}</Button>
-					<div class="mt-4 flex flex-wrap items-center justify-between gap-2">
-						<p class="text-sm font-medium text-ink-1">{t('apiKeys.installer.windowsTitle')}</p>
-						<Button variant="ghost" size="sm" onclick={() => copyText(windowsInstallerCommand, t('apiKeys.toast.windowsInstallerCopied'))}>{t('apiKeys.installer.copyWindows')}</Button>
-					</div>
-					<p class="mt-1 text-sm leading-6 text-ink-2">{t('apiKeys.installer.windowsHelp')}</p>
-					<pre class="{codeCls} mt-2 max-w-full whitespace-pre" role="region" aria-label={t('apiKeys.installer.windowsLabel')}><code>{windowsInstallerCommand}</code></pre>
-					<Button href={`${installOrigin}/install/lumen.ps1`} target="_blank" variant="link" size="sm">{t('apiKeys.installer.viewWindows')}</Button>
-					<p class="mt-2 text-sm leading-6 text-ink-2">
-						<RichText segments={t.rich('apiKeys.installer.modelHelp', { command: codexShortCommand, modelOption: '-m' })} classes={{ code: inlineCodeCls }} />
-					</p>
-				{:else}
-					<p class="mt-2 text-sm leading-6 text-ink-2">{t('apiKeys.installer.unavailable')}</p>
-				{/if}
-			</section>
 			<Tabs
 				id="api-key-client-guides"
 				value={activeGuide}
@@ -817,6 +791,33 @@ claude` : '');
 		{:else}
 			<p class="text-xs text-ink-2">{t('apiKeys.guide.signIn')}</p>
 		{/if}
+		<section class="mt-5 border-t border-[var(--color-line)] pt-5" aria-labelledby="lumen-installer-heading">
+			<h5 id="lumen-installer-heading" class="text-sm font-semibold text-[var(--color-ink-1)]">{t('apiKeys.installer.title')}</h5>
+			{#if installerReady}
+				<p class="mt-1 text-sm leading-6 text-ink-2">
+					<RichText segments={t.rich('apiKeys.installer.introduction', { configPath: '~/.codex/config.toml', codexHome: 'CODEX_HOME' })} classes={{ code: inlineCodeCls }} />
+				</p>
+				<div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+					<p class="text-sm font-medium text-ink-1">{t('apiKeys.installer.posixTitle')}</p>
+					<Button variant="ghost" size="sm" onclick={() => copyText(posixInstallerCommand, t('apiKeys.toast.posixInstallerCopied'))}>{t('apiKeys.installer.copyPosix')}</Button>
+				</div>
+				<p class="mt-1 text-sm leading-6 text-ink-2">{t('apiKeys.installer.posixHelp')}</p>
+				<pre class="{codeCls} mt-2 max-w-full whitespace-pre" role="region" aria-label={t('apiKeys.installer.posixLabel')}><code>{posixInstallerCommand}</code></pre>
+				<Button href={`${installOrigin}/install/lumen.sh`} target="_blank" variant="link" size="sm">{t('apiKeys.installer.viewPosix')}</Button>
+				<div class="mt-4 flex flex-wrap items-center justify-between gap-2">
+					<p class="text-sm font-medium text-ink-1">{t('apiKeys.installer.windowsTitle')}</p>
+					<Button variant="ghost" size="sm" onclick={() => copyText(windowsInstallerCommand, t('apiKeys.toast.windowsInstallerCopied'))}>{t('apiKeys.installer.copyWindows')}</Button>
+				</div>
+				<p class="mt-1 text-sm leading-6 text-ink-2">{t('apiKeys.installer.windowsHelp')}</p>
+				<pre class="{codeCls} mt-2 max-w-full whitespace-pre" role="region" aria-label={t('apiKeys.installer.windowsLabel')}><code>{windowsInstallerCommand}</code></pre>
+				<Button href={`${installOrigin}/install/lumen.ps1`} target="_blank" variant="link" size="sm">{t('apiKeys.installer.viewWindows')}</Button>
+				<p class="mt-2 text-sm leading-6 text-ink-2">
+					<RichText segments={t.rich('apiKeys.installer.modelHelp', { command: codexShortCommand, modelOption: '-m' })} classes={{ code: inlineCodeCls }} />
+				</p>
+			{:else}
+				<p class="mt-2 text-sm leading-6 text-ink-2">{t('apiKeys.installer.unavailable')}</p>
+			{/if}
+		</section>
 	</div>
 </section>
 

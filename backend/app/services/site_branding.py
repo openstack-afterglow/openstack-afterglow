@@ -125,6 +125,7 @@ def configured_public_site_config(settings: Settings | None = None) -> dict[str,
         "favicon_path": s.favicon_path,
         "mcp_url": _mcp_url(s),
         "experience_enabled": s.experience_enabled,
+        "lumen_installer_configured": bool(s.service_lumen_external_url),
         "services": {
             "magnum": s.service_magnum_enabled,
             "manila": s.service_manila_enabled,

@@ -61,6 +61,7 @@ from app.api.common import (
 )
 from app.api.common.experience import router as experience_router
 from app.api.common.interactions import router as interactions_router
+from app.api.common.lumen_installers import build_lumen_installer_router
 from app.api.common.metrics import record_request as _record_request
 
 _mark("api.common")
@@ -947,6 +948,7 @@ app.include_router(libraries_router, prefix="/api/v1/libraries", tags=["librarie
 app.include_router(sd_targets_router, prefix="/api/v1/sd", tags=["sd-targets"])
 app.include_router(grafana_auth_router, prefix="/api/v1/grafana", tags=["grafana-auth"])
 app.include_router(site_router, prefix="/api/v1/site-config", tags=["site"])
+app.include_router(build_lumen_installer_router(_svc_cfg.service_lumen_external_url))
 app.include_router(user_dashboard_router, prefix="/api/v1/user-dashboard", tags=["user-dashboard"])
 
 

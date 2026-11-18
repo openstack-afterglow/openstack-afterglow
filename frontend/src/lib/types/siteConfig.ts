@@ -8,6 +8,7 @@ export interface PublicSiteConfig {
 	refresh_interval_ms: number;
 	mcp_url?: string;
 	experience_enabled?: boolean;
+	lumen_installer_configured?: boolean;
 	services: {
 		magnum: boolean;
 		manila: boolean;

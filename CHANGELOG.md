@@ -7,6 +7,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Lumen CLI 설치기는 Afterglow 시작 시 배포의 공개 Lumen 주소를 포함한다. Codex·Claude Code 자동 설정 명령에는 URL 옵션이 없으며, 공개 주소가 없으면 명령을 표시하지 않는다.
+- Lumen CLI installers embed the deployment's public Lumen URL at Afterglow startup. Codex and Claude Code setup commands take no URL options and stay hidden when no public URL is configured.
+
 ## [1.32.28] - 2026-11-18
 
 ### Added

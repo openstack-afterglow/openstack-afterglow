@@ -1,4 +1,4 @@
-# Lumen Windows setup: paste only public base URLs into the invoking command.
+# Lumen Windows setup: the dashboard embeds its configured Lumen endpoints.
 # The API key is prompted privately, sent only as the HTTPS Authorization header
 # of GET <Codex base>/cli/models (Windows certificate verification, no redirects),
 # encrypted with Windows DPAPI CurrentUser after every file is prepared, and
@@ -28,7 +28,8 @@
         if ([string]::IsNullOrWhiteSpace($Value) -or $Value -match '[\s\x00-\x1f\x7f\\]' -or
             $Value -match '(?i)%(?:0[0-9a-f]|1[0-9a-f]|7f)' -or
             -not [Uri]::TryCreate($Value, [UriKind]::Absolute, [ref] $uri) -or
-            $uri.Scheme -ne 'https' -or -not $uri.Host -or $uri.UserInfo -or
+            ($uri.Scheme -ne 'https' -and -not ($uri.Scheme -eq 'http' -and $uri.IsLoopback)) -or
+            -not $uri.Host -or $uri.UserInfo -or
             $Value.Contains('?') -or $Value.Contains('#')) {
             throw 'Enter an absolute HTTPS base URL without credentials, query, fragment, whitespace, or control characters.'
         }
@@ -1318,12 +1319,8 @@ X3BsYW5gIHRvIG1hcmsgYWxsIHN0ZXBzIGFzIGBjb21wbGV0ZWRgLgo=
 
     function Invoke-LumenInstall {
         Assert-LumenWindows
-        $codexUrl = $env:LUMEN_CODEX_BASE_URL
-        if (-not $codexUrl) { $codexUrl = Read-Host 'Public Lumen Codex Responses HTTPS base URL (include /v1 if advertised)' }
-        $codexUrl = ConvertTo-LumenBaseUrl $codexUrl
-        $anthropicUrl = $env:LUMEN_ANTHROPIC_BASE_URL
-        if (-not $anthropicUrl) { $anthropicUrl = Read-Host 'Public Lumen Anthropic HTTPS base URL (as advertised)' }
-        $anthropicUrl = ConvertTo-LumenBaseUrl $anthropicUrl
+        $codexUrl = __LUMEN_CODEX_URL_LITERAL__
+        $anthropicUrl = __LUMEN_ANTHROPIC_URL_LITERAL__
         $caBundle = Resolve-LumenCaBundle $env:LUMEN_CA_BUNDLE $env:CODEX_CA_CERTIFICATE
         $baseInstructions = Get-LumenCodexBaseInstructions
         $codexHome = $env:CODEX_HOME

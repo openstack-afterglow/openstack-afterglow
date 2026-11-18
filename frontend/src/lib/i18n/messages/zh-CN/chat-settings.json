@@ -248,7 +248,7 @@
 	"apiKeys.installer.windowsLabel": "Windows Lumen 配置命令",
 	"apiKeys.installer.viewWindows": "查看 Windows 脚本",
 	"apiKeys.installer.modelHelp": "查看按提供商分组的真实模型、公开 ID、已知 context/价格和协议，按编号分别选择 Codex Sol/Luna 与 Claude Fable/Opus/Sonnet/Haiku。角色名不是模型大小或质量等级，同一模型可以用于多个角色。在新终端中，codex 使用 Sol，<code>codex --profile lumen-luna</code> 使用 Luna，<code>claude --model opus</code> 等选择指定的 Claude 角色。修改的文件会备份；保留桌面默认 provider，只有明确选择时才修改默认 model。显式指定时使用 <code>{command}</code> 和 <code>{modelOption}</code>。显式 CLI、项目和托管设置仍具有优先权。Anthropic 不正式支持 Claude Code 路由到非 Claude 模型；不会重映射安全 classifier、权限或 sandbox 策略。",
-	"apiKeys.installer.unavailable": "自动配置需要 HTTPS Lumen 地址和 HTTPS 仪表盘。仅本地环回 HTTP 预览例外，其他环境请使用以下手动配置。",
+	"apiKeys.installer.unavailable": "自动配置需要为此部署配置公开的 Lumen URL，并使用 HTTPS 仪表盘。仅本地环回仪表盘可使用 HTTP。如果无法自动配置，请按照手动连接说明操作。",
 	"apiKeys.codex.copyRun": "复制执行命令",
 	"apiKeys.codex.defaultModelHelp": "如果安装时选择了更改默认模型，或用户配置的顶层 <code>{model}</code> 是要使用的 Lumen 模型公开 API ID，且配置文件和项目设置未覆盖它，则可按以下方式执行。仅 <code>{modelProvider}</code> 不会选择模型；如果默认模型不同或有模型覆盖设置，请使用上面的 <code>{modelOption}</code>。",
 	"apiKeys.codex.copyDefaultRun": "复制默认模型执行命令",
