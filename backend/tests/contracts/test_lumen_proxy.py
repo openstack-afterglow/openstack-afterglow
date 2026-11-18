@@ -1372,6 +1372,7 @@ async def test_lumen_key_billing_manager_routes_deny_stale_or_spoofed_authority(
         ("POST", "api-keys", 201, {"name": "CLI"}, {"key": "issued-once-fixture"}),
         ("DELETE", "api-keys/12", 204, None, None),
         ("GET", "service-keys", 200, None, []),
+        ("GET", "service-keys/issuance-policy", 200, None, {"allowed_scopes": ["models:read", "decisions:write"]}),
         ("POST", "service-keys", 201, {"name": "Job"}, {"key": "issued-once-fixture"}),
         ("DELETE", "service-keys/7", 204, None, None),
         ("GET", "domain-pool", 200, None, {"domain_id": "default", "balance_credits": "3"}),
@@ -1433,7 +1434,12 @@ async def test_lumen_key_billing_transport_preserves_scope_and_codes(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("method", "path", "status"),
-    [("GET", "service-keys/7", 405), ("POST", "admin/domain-pools/a/topup", 404), ("POST", "domain-pool", 405)],
+    [
+        ("GET", "service-keys/7", 405),
+        ("POST", "service-keys/issuance-policy", 405),
+        ("POST", "admin/domain-pools/a/topup", 404),
+        ("POST", "domain-pool", 405),
+    ],
 )
 async def test_lumen_key_billing_allowlist_denies_unknown_paths_and_methods(api_client, method, path, status):
     app.dependency_overrides[get_token_info] = _authenticated

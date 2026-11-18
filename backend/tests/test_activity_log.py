@@ -229,12 +229,11 @@ async def test_account_intent_feed_classifies_real_middleware_route_operations(c
         ("DELETE", "/api/v1/chat/conversations/{conversation_id}"),
         ("POST", "/api/v1/chat/runs"),
         ("POST", "/api/v1/chat/api-keys"),
-        ("POST", "/api/v1/chat/service-keys"),
-        ("PATCH", "/api/v1/chat/domain-pool"),
-        ("POST", "/api/v1/chat/admin/domain-pools/{domain_id}/topups"),
         ("DELETE", "/api/v1/chat/git-credentials/{credential_id}"),
     ):
         application.add_api_route(template, native_mutation_boundary, methods=[method])
+    # Service keys and domain pools reach Lumen only through the BFF catch-all route.
+    application.add_api_route("/api/v1/chat/{path:path}", native_mutation_boundary, methods=["POST", "PATCH"])
 
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=application), base_url="http://activity.test"
@@ -261,7 +260,7 @@ async def test_account_intent_feed_classifies_real_middleware_route_operations(c
     assert response.status_code == 200
     assert [(row["resource_type"], row["action"]) for row in response.json()] == [
         ("chat_git_credential", "chat_git_credential.delete"),
-        ("chat_domain_pool", "chat_domain_pool.topups"),
+        ("chat_domain_pool", "chat_domain_pool.create"),
         ("chat_domain_pool", "chat_domain_pool.update"),
         ("chat_service_key", "chat_service_key.create"),
         ("chat_api_key", "chat_api_key.create"),

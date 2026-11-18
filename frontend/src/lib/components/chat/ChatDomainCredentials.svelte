@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onDestroy, tick } from 'svelte';
 	import { api, ApiError } from '$lib/api/client';
-	import { currentBillingSession, domainBillingErrorMessage, exceedsDomainCeiling, lumenBrowserPath, modelKeyScopeLabel, readKeyIssuancePolicy, validDomainCredit, type DomainPool, type ServiceKey } from '$lib/api/chatDomainBilling';
+	import { currentBillingSession, domainBillingErrorMessage, exceedsDomainCeiling, lumenBrowserPath, modelKeyScopeLabel, readServiceKeyIssuanceScopes, validDomainCredit, type DomainPool, type ServiceKey } from '$lib/api/chatDomainBilling';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
@@ -101,9 +101,9 @@
 		createError = '';
 		formOpen = true;
 		try {
-			const policy = await readKeyIssuancePolicy(owner.token, owner.projectId);
+			const allowed = await readServiceKeyIssuanceScopes(owner.token, owner.projectId);
 			if (!session() || denied || request !== policyRequest || !formOpen) return;
-			scopes = policy.allowed_scopes;
+			scopes = allowed;
 			selected = ['models:read', 'compat:completions:write'].filter((scope) => scopes!.includes(scope));
 		} catch (cause) {
 			if (session() && request === policyRequest && !lostAccess(cause)) scopesError = t('apiKeys.policyFailed');

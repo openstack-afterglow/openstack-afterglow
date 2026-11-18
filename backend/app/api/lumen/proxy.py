@@ -36,7 +36,7 @@ def _credential_or_pool_route(parts: list[str]) -> tuple[str, ...] | None:
     if parts[:1] in (["api-keys"], ["service-keys"]):
         if len(parts) == 1:
             return ("GET", "POST")
-        if parts == ["api-keys", "issuance-policy"]:
+        if parts[1:] == ["issuance-policy"]:
             return ("GET",)
         if parts[1].isascii() and parts[1].isdecimal():
             if len(parts) == 2:

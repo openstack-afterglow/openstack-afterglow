@@ -33,6 +33,15 @@ export async function readKeyIssuancePolicy(token: string, projectId: string): P
 	return policy;
 }
 
+/** Manager-only: scopes service-key creation accepts, independent of the manager's own project role. */
+export async function readServiceKeyIssuanceScopes(token: string, projectId: string): Promise<string[]> {
+	const policy = await api.get<{ allowed_scopes: unknown }>(`${lumenBrowserPath}/service-keys/issuance-policy`, token, projectId, { refresh: true });
+	if (!Array.isArray(policy?.allowed_scopes) || policy.allowed_scopes.some((scope) => typeof scope !== 'string')) {
+		throw new Error('Invalid service key scope policy');
+	}
+	return policy.allowed_scopes;
+}
+
 export interface ServiceKey extends ApiKey {
 	key_kind: 'service';
 	owner_domain_id: string;
