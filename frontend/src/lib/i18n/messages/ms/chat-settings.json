@@ -265,6 +265,7 @@
 	"domainBilling.recheckHint": "Baki sahaja tidak dapat membuktikan sama ada tambah nilai ini telah digunakan. Mencuba semula tambah nilai yang sama adalah selamat: Lumen menggunakan kunci permintaannya sekali sahaja.",
 	"domainBilling.discardPending": "Buang rekod tertunda",
 	"domainBilling.discardConfirm": "Anda telah menyemak tambah nilai ini dan tidak akan mencubanya semula. Buang rekod tertunda?",
+	"domainBilling.recoveryUnavailable": "Pelayar ini tidak dapat menyimpan rekod tambah nilai, jadi tambah nilai tidak dihantar. Benarkan storan pelayar dan cuba lagi.",
 	"domainBilling.inventoryTitle": "Inventori kunci perkhidmatan",
 	"domainBilling.inventoryDescription": "Periksa kunci perkhidmatan milik domain. Rahsia lengkap tidak ditunjukkan.",
 	"domainBilling.domainId": "ID domain",

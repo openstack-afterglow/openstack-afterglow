@@ -265,6 +265,7 @@
 	"domainBilling.recheckHint": "Chỉ dựa vào số dư thì không thể xác nhận giao dịch nạp này đã được áp dụng hay chưa. Thử lại đúng giao dịch này là an toàn: Lumen chỉ áp dụng khóa yêu cầu tối đa một lần.",
 	"domainBilling.discardPending": "Bỏ bản ghi đang chờ",
 	"domainBilling.discardConfirm": "Bạn đã đối soát giao dịch nạp này và sẽ không thử lại. Bỏ bản ghi đang chờ?",
+	"domainBilling.recoveryUnavailable": "Trình duyệt này không lưu được bản ghi nạp nên giao dịch nạp chưa được gửi. Hãy cho phép lưu trữ trình duyệt rồi thử lại.",
 	"domainBilling.inventoryTitle": "Danh sách khóa dịch vụ",
 	"domainBilling.inventoryDescription": "Kiểm tra khóa dịch vụ do miền sở hữu. Khóa bí mật đầy đủ không được hiển thị.",
 	"domainBilling.domainId": "ID miền",

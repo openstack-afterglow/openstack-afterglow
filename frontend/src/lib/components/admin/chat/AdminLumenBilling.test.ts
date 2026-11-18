@@ -152,6 +152,45 @@ it('allows discarding a pending top-up only after an explicit re-check', async (
 	expect(pendingKeys()).toEqual([]);
 });
 
+it.each([
+	['throws', () => { throw new DOMException('Storage blocked', 'SecurityError'); }],
+	['silently drops the write', () => undefined],
+])('sends no top-up when browser storage %s', async (_case, setItem) => {
+	const storage = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(setItem);
+	try {
+		mocks.confirm.mockResolvedValue(true);
+		render(AdminDomainPoolsPage);
+		await screen.findByText('Research lab');
+		await fireEvent.click(within(card('Research lab')).getByRole('button', { name: t('domainBilling.topup') }));
+		const dialog = await screen.findByRole('dialog', { name: t('domainBilling.topup') });
+		await fireEvent.input(within(dialog).getByLabelText(t('domainBilling.amount')), { target: { value: '7' } });
+		await fireEvent.click(within(dialog).getByRole('button', { name: t('domainBilling.reviewTopup') }));
+		await within(dialog).findByText(t('domainBilling.recoveryUnavailable'));
+		expect(mocks.post).not.toHaveBeenCalled();
+		expect(screen.queryByText(t('domainBilling.pendingTopupTitle'))).toBeNull();
+	} finally {
+		storage.mockRestore();
+	}
+});
+
+it('keeps an uncertain record when a resend is refused before reaching Lumen', async () => {
+	localStorage.setItem('afterglow:lumen-topup:v1:admin-fixture:domain-a', JSON.stringify({
+		v: 1, userId: 'admin-fixture', domainId: 'domain-a', key: 'recorded-key', amount_credits: '3', note: null, created_at: '2026-11-18T00:00:00Z',
+	}));
+	mocks.confirm.mockResolvedValue(true);
+	mocks.post.mockRejectedValueOnce(new ApiError(401, 'token rotated'));
+	render(AdminDomainPoolsPage);
+	const row = (await screen.findByText(t('domainBilling.pendingTopupTitle'))).closest('.card') as HTMLElement;
+	await fireEvent.click(within(row).getByRole('button', { name: t('domainBilling.resumeTopup') }));
+	const resume = within(row).getByRole('button', { name: t('domainBilling.resumeTopup') }) as HTMLButtonElement;
+	await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
+	await waitFor(() => expect(resume.disabled).toBe(false));
+	expect(mocks.post.mock.calls[0][4]).toMatchObject({ idempotencyKey: 'recorded-key' });
+	expect(within(card('Research lab')).getByText(t('domainBilling.pendingTopupTitle'))).toBeTruthy();
+	expect((within(card('Research lab')).getByRole('button', { name: t('domainBilling.topup') }) as HTMLButtonElement).disabled).toBe(true);
+	expect(pendingKeys()).toHaveLength(1);
+});
+
 it('edits admin ceiling and active state on the exact domain', async () => {
 	mocks.patch.mockResolvedValue({ ...pool, admin_ceiling_credits: '12', is_active: false });
 	render(AdminDomainPoolsPage);

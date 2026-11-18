@@ -265,6 +265,7 @@
 	"domainBilling.recheckHint": "Salio pekee haliwezi kuthibitisha kama nyongeza hii imetumika. Ni salama kujaribu tena nyongeza ileile: Lumen hutumia ufunguo wa ombi mara moja tu.",
 	"domainBilling.discardPending": "Ondoa rekodi inayosubiri",
 	"domainBilling.discardConfirm": "Umekagua nyongeza hii na hutaijaribu tena. Ungependa kuondoa rekodi inayosubiri?",
+	"domainBilling.recoveryUnavailable": "Kivinjari hiki hakiwezi kuhifadhi rekodi ya nyongeza, kwa hivyo nyongeza haikutumwa. Ruhusu hifadhi ya kivinjari kisha ujaribu tena.",
 	"domainBilling.inventoryTitle": "Orodha ya funguo za huduma",
 	"domainBilling.inventoryDescription": "Kagua funguo za huduma zinazomilikiwa na vikoa. Funguo kamili za siri hazionyeshwi.",
 	"domainBilling.domainId": "Kitambulisho cha kikoa",

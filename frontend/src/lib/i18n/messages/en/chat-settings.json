@@ -265,6 +265,7 @@
 	"domainBilling.recheckHint": "The balance alone cannot prove whether this top-up was applied. Retrying the same top-up is safe: Lumen applies its request key at most once.",
 	"domainBilling.discardPending": "Discard pending top-up",
 	"domainBilling.discardConfirm": "You have reconciled this top-up and will not retry it. Discard the pending record?",
+	"domainBilling.recoveryUnavailable": "This browser cannot save the top-up record, so the top-up was not sent. Allow browser storage and try again.",
 	"domainBilling.inventoryTitle": "Service key inventory",
 	"domainBilling.inventoryDescription": "Inspect domain-owned service keys. Full secrets are not shown.",
 	"domainBilling.domainId": "Domain ID",

@@ -112,11 +112,16 @@
 	}
 
 	// Lumen applies one Idempotency-Key at most once, so resending this record cannot double-credit.
-	async function sendTopup(record: PendingTopup): Promise<'applied' | 'rejected' | 'unknown' | 'stale'> {
+	async function sendTopup(record: PendingTopup, resend = false): Promise<'applied' | 'rejected' | 'unsaved' | 'unknown' | 'stale'> {
 		const owner = session();
 		if (!owner || denied || owner.userId !== record.userId) return 'stale';
+		// Without a durable record a lost reply could be resent under a new key after reload.
+		if (!savePendingTopup(record)) {
+			saveError = t('domainBilling.recoveryUnavailable');
+			if (!open) toast.error(saveError);
+			return 'unsaved';
+		}
 		pending = { ...pending, [record.domainId]: record };
-		savePendingTopup(record);
 		try {
 			const next = await api.post<DomainPool>(`${path}/${encodeURIComponent(record.domainId)}/topups`,
 				{ amount_credits: record.amount_credits, note: record.note }, owner.token, owner.projectId, { ...mutation, idempotencyKey: record.key });
@@ -129,8 +134,11 @@
 			if (!session()) return 'stale';
 			const status = cause instanceof ApiError ? cause.status : 0;
 			if (status === 403) { denied = true; pools = null; open = false; }
-			// A definitive client rejection did not apply; timeouts and throttling stay unknown.
-			if (status >= 400 && status < 500 && status !== 408 && status !== 429) {
+			// A first send rejected by the client boundary never applied. A resend's rejection may
+			// never have reached Lumen's idempotency check, so it says nothing about the first send;
+			// only Lumen's own balance-overflow refusal proves the recorded key never committed.
+			const overflow = cause instanceof ApiError && (cause.code ?? cause.message) === 'domain_credit_balance_overflow';
+			if (resend ? overflow : status >= 400 && status < 500 && status !== 408 && status !== 429) {
 				forget(record);
 				saveError = domainBillingErrorMessage(cause) ?? t('domainBilling.saveFailed');
 				if (!open) toast.error(saveError);
@@ -152,7 +160,7 @@
 		if (!session() || busy || denied) return;
 		busy = true;
 		try {
-			if (await confirmTopup(record)) await sendTopup(record);
+			if (await confirmTopup(record)) await sendTopup(record, true);
 		} finally {
 			if (session()) busy = false;
 		}
@@ -196,7 +204,7 @@
 			if (isTopup) {
 				const outcome = await sendTopup({ v: 1, userId: owner.userId, domainId, key: crypto.randomUUID(), ...body, created_at: new Date().toISOString() });
 				// An unknown outcome is recovered from the domain row, never from a new draft.
-				if (outcome !== 'rejected') open = false;
+				if (outcome !== 'rejected' && outcome !== 'unsaved') open = false;
 				return;
 			}
 			const next = await api.patch<DomainPool>(resource, { admin_ceiling_credits: limit || null, is_active: active }, owner.token, owner.projectId, mutation);
