@@ -7,6 +7,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- 채팅 설정 API 키에 SDK 예제 패널을 추가했다. OpenAI·Anthropic·Gemini SDK의 Python·JavaScript·curl 예제는 배포에 설정된 공개 Lumen 주소로 채워지며 주소가 없으면 표시하지 않는다. 문서에 [Lumen API를 SDK로 사용하기](docs/lumen-sdk.md) 튜토리얼과 실행 가능한 `docs/examples/lumen-sdk` 예제·smoke runner를 추가했다.
+- Chat settings API keys add an SDK examples panel. Python, JavaScript and curl examples for the OpenAI, Anthropic and Gemini SDKs use the deployment's configured public Lumen URL and stay hidden when none is configured. The docs add the [Using the Lumen API with SDKs](docs/en/lumen-sdk.md) tutorial and runnable `docs/examples/lumen-sdk` examples with a smoke runner.
+
 ### Changed
 
 - Lumen CLI 설치기는 Afterglow 시작 시 배포의 공개 Lumen 주소를 포함한다. Codex·Claude Code 자동 설정 명령에는 URL 옵션이 없으며, 공개 주소가 없으면 명령을 표시하지 않는다.

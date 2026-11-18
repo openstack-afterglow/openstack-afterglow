@@ -38,6 +38,7 @@ The browser's SvelteKit application calls the configured FastAPI `/api/v1` API b
 
 | Document | Description |
 |---|---|
+| [Using the Lumen API with SDKs](lumen-sdk.md) | Call Lumen models from the OpenAI, Anthropic and Google GenAI SDKs and curl with personal or service keys |
 | [Getting started](deployment.md) | Docker Compose / Kubernetes deployment |
 | [k3s cluster](k3s.md) | k3s provisioning and node management |
 | [Drover behavior specification](drover-workflow.md) | Planned vs current Drover cluster creation behavior and provisioning workflow |

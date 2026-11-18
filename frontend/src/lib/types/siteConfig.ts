@@ -9,6 +9,7 @@ export interface PublicSiteConfig {
 	mcp_url?: string;
 	experience_enabled?: boolean;
 	lumen_installer_configured?: boolean;
+	lumen_external_url?: string;
 	services: {
 		magnum: boolean;
 		manila: boolean;
