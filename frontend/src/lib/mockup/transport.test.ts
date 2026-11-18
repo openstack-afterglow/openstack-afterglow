@@ -487,6 +487,7 @@ describe('mockup transport', () => {
 		sessionStorage.setItem(MOCKUP_SESSION_KEY, 'on');
 		window.history.replaceState({}, '', '/?tutorial=on');
 		expect(await maybeMockJson('GET', '/api/v1/chat/models?model_kind=text')).toEqual([expect.objectContaining({ id: 43, capabilities: expect.objectContaining({ decisions: true }) })]);
+		expect(await maybeMockJson('GET', '/api/v1/chat/models?model_kind=decision')).toEqual([]);
 		expect(await maybeMockJson('POST', '/api/v1/chat/decisions', { model: 'gpt-6-luna', input: 'Synthetic', questions: [{ type: 'predicate', name: 'safe', instructions: 'Is it safe?' }] })).toMatchObject({ model: 'gpt-6-luna', answers: [{ type: 'predicate', name: 'safe', probability: 0.92 }], cost_usd: 0.000012 });
 		await expect(maybeMockJson('GET', '/api/v1/chat/admin/models/native-catalog')).rejects.toMatchObject({ status: 403 });
 		expect(fetchMock).not.toHaveBeenCalled();

@@ -1,6 +1,9 @@
 {
 	"configuration.embedding": "Vector hóa văn bản",
 	"pricing.embeddingInputOnly": "Mô hình embedding chỉ tính phí token đầu vào; không tính phí token đầu ra.",
+	"configuration.decision": "Quyết định",
+	"pricing.decisionInputOnly": "Mô hình quyết định chỉ tính phí token đầu vào.",
+	"pricing.decisionProviderRequired": "Mô hình quyết định cần nhà cung cấp Gemini gốc.",
 	"accounts.currentConnection": "Cài đặt kết nối hiện tại",
 	"accounts.connectionIdentity": "Nhà cung cấp #{provider} · Tài khoản #{account} · Khóa #{credential}",
 	"accounts.currentEndpoint": "Điểm cuối hiện tại",

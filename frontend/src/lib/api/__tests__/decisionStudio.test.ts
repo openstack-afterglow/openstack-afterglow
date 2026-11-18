@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	decisionReadiness, decisionStudioApi, parseDecisionCapabilities, parseDecisionJson, parseDecisionModels, parseDecisionResult,
 	validateDecisionImage, validateDecisionRequest, MAX_DECISION_IMAGE_BYTES, MAX_DECISION_REQUEST_BYTES,
-	type DecisionCapabilities, type DecisionModel, type DecisionRequest, type DecisionResult
+	buildGeminiDecisionRequest, decisionFailure, parseGeminiDecisionResult, MAX_GEMINI_DECISION_BYTES,
+	type DecisionCapabilities, type DecisionModel, type DecisionRequest, type DecisionResult,
+	type GeminiDecisionDraft, type GeminiDecisionRequest, type GeminiQuestionDraft
 } from '../decisionStudio';
 import { ApiError } from '../client';
 import { t } from '$lib/i18n/ns/decision-studio';
@@ -139,10 +141,10 @@ describe('decision response validation', () => {
 
 describe('decision transport', () => {
 	it('reads text models and verifies exact-model capabilities', async () => {
-		calls.get.mockResolvedValueOnce([model]).mockResolvedValueOnce(verified);
-		await expect(decisionStudioApi.models(scope)).resolves.toEqual([model]);
+		calls.get.mockResolvedValueOnce([model]).mockResolvedValueOnce([geminiModel]).mockResolvedValueOnce(verified);
+		await expect(decisionStudioApi.models(scope)).resolves.toEqual([model, geminiModel]);
 		await expect(decisionStudioApi.capabilities(9, scope)).resolves.toEqual(verified);
-		expect(calls.get.mock.calls.map(([path]) => path)).toEqual(['/api/v1/chat/models?model_kind=text', '/api/v1/chat/capabilities?model_id=9&model_kind=text']);
+		expect(calls.get.mock.calls.map(([path]) => path)).toEqual(['/api/v1/chat/models?model_kind=text', '/api/v1/chat/models?model_kind=decision', '/api/v1/chat/capabilities?model_id=9&model_kind=text']);
 	});
 	it('posts the registered model name once with cancellation and no 401 replay', async () => {
 		const signal = new AbortController().signal;
@@ -194,5 +196,115 @@ describe('decision transport', () => {
 		await expect(decisionStudioApi.decide({ ...request, questions: [] }, scope)).rejects.toThrow(t('decisions.questionLimit'));
 		await expect(decisionStudioApi.decide(request, { ...scope, projectId: 'other' })).rejects.toBeInstanceOf(ApiError);
 		expect(calls.fetch).not.toHaveBeenCalled();
+	});
+});
+
+const geminiModel: DecisionModel = {
+	...model, id: 19, provider_id: 14, provider_type: 'gemini', model_kind: 'decision',
+	model_name: 'gemini/gemini-decision-1', display_name: 'Gemini Decision 1', effective_input_price_per_million: '0.10'
+};
+const noul: GeminiQuestionDraft = { id: 0, key: 'damaged', type: 'noul', instructions: 'Was it damaged?', yes: '', no: '', rows: [] };
+const geminiDraft = (): GeminiDecisionDraft => ({ text: 'Broken mug', json: '', images: [], questions: [{ ...noul }] });
+const signal = new AbortController().signal;
+const image = (contents: BlobPart = 'mug', type = 'image/heif') => new File([contents], 'mug.heif', { type });
+const geminiWire: GeminiDecisionRequest = {
+	model: 'lumen/14/19', input: [{ type: 'text', text: 'Broken mug' }], questions: { damaged: { type: 'noul', instructions: noul.instructions } }
+};
+const geminiResponse = () => ({
+	model: geminiModel.model_name, answers: { damaged: { type: 'noul', noul: 0.96, confidence: 0.94 } },
+	usage: { total_input_tokens: 57, input_tokens_by_modality: [{ modality: 'text', tokens: 57 }], total_output_tokens: 0, total_tokens: 57 }
+});
+
+describe('Gemini decisions contract', () => {
+	it('retains OpenAI models during a rolling upgrade and rejects a mismatched Gemini capability kind', async () => {
+		calls.get.mockResolvedValueOnce([model]).mockRejectedValueOnce(new ApiError(422, 'unsupported query kind'));
+		await expect(decisionStudioApi.models(scope)).resolves.toEqual([model]);
+		const cap = { ...verified, model_id: 19, model_kind: 'decision' };
+		calls.get.mockResolvedValueOnce(cap).mockResolvedValueOnce({ ...cap, model_kind: 'text' });
+		await expect(decisionStudioApi.capabilities(19, scope, signal, 'decision')).resolves.toEqual(cap);
+		expect(calls.get).toHaveBeenLastCalledWith('/api/v1/chat/capabilities?model_id=19&model_kind=decision', scope.token, scope.projectId, expect.objectContaining({ signal }));
+		await expect(decisionStudioApi.capabilities(19, scope, signal, 'decision')).rejects.toThrow(t('decisions.invalidResponse'));
+		expect(parseDecisionModels([{ ...geminiModel, provider_type: 'openai' }], 'decision')).toEqual([]);
+	});
+	it('validates question key syntax and duplicates without losing prototype-like keys', async () => {
+		for (const key of ['', 'a b', 'français', 'x'.repeat(65), 'has-newline\n']) {
+			await expect(buildGeminiDecisionRequest(geminiModel, { ...geminiDraft(), questions: [{ ...noul, key }] }, signal)).rejects.toThrow(t('gemini.questionKeyHelp'));
+		}
+		await expect(buildGeminiDecisionRequest(geminiModel, { ...geminiDraft(), questions: [noul, noul] }, signal)).rejects.toThrow(t('decisions.duplicateNames'));
+		await expect(buildGeminiDecisionRequest(geminiModel, { ...geminiDraft(), questions: [{ ...noul, key: '__proto__' }] }, signal))
+			.resolves.toMatchObject({ questions: JSON.parse('{"__proto__":{"type":"noul"}}') });
+	});
+	it('allows question limits and validates choice and score counts independently', async () => {
+		const questions = Array.from({ length: 1000 }, (_, id) => ({ ...noul, id, key: `q${id}` }));
+		await expect(buildGeminiDecisionRequest(geminiModel, { ...geminiDraft(), questions }, signal)).resolves.toBeDefined();
+		for (const invalid of [[], [...questions, noul]]) {
+			await expect(buildGeminiDecisionRequest(geminiModel, { ...geminiDraft(), questions: invalid }, signal)).rejects.toThrow(t('gemini.questionLimit'));
+		}
+		const rows = Array.from({ length: 255 }, (_, id) => ({ id, key: `option ${id}`, description: `Level ${id}` }));
+		for (const type of ['choice', 'score'] as const) {
+			const build = (criteria: typeof rows) => buildGeminiDecisionRequest(geminiModel, { ...geminiDraft(), questions: [{ ...noul, type, rows: criteria }] }, signal);
+			await expect(build(rows)).resolves.toBeDefined();
+			for (const invalid of [[], rows.slice(0, 1), [...rows, { id: 255, key: 'additional', description: 'Additional' }]]) {
+				await expect(build(invalid)).rejects.toThrow(t(type === 'choice' ? 'gemini.choiceLimit' : 'gemini.levelLimit'));
+			}
+		}
+	});
+	it('allows empty choice descriptions and rejects disallowed keys and whitespace-only score levels', async () => {
+		const valid = { key: 'café au lait', description: '', id: 0 };
+		const build = (key: string) => buildGeminiDecisionRequest(geminiModel, { ...geminiDraft(), questions: [
+			{ ...noul, type: 'choice', rows: [valid, { id: 1, key, description: '' }] }
+		] }, signal);
+		await expect(build('🤖'.repeat(128))).resolves.toBeDefined();
+		for (const key of [' leading', 'trailing ', 'zero\u0000byte', 'not\u00a0allowed', '🤖'.repeat(129), '']) await expect(build(key)).rejects.toThrow(t('gemini.choiceKey'));
+		await expect(build(valid.key)).rejects.toThrow(t('decisions.duplicateChoices'));
+		await expect(buildGeminiDecisionRequest(geminiModel, { ...geminiDraft(), questions: [
+			{ ...noul, type: 'score', rows: [valid, { ...valid, id: 1, description: 'Major' }] }
+		] }, signal)).rejects.toThrow(t('gemini.levelLimit'));
+	});
+	it('accepts depth 100 JSON as unmodified text and rejects empty input and invalid media', async () => {
+		const json = '['.repeat(100) + '9007199254740993' + ']'.repeat(100);
+		await expect(buildGeminiDecisionRequest(geminiModel, { ...geminiDraft(), text: '', json }, signal))
+			.resolves.toMatchObject({ input: [{ type: 'text', text: json }] });
+		await expect(buildGeminiDecisionRequest(geminiModel, { ...geminiDraft(), json: `[${json}]` }, signal)).rejects.toThrow(t('gemini.jsonDepth'));
+		await expect(buildGeminiDecisionRequest(geminiModel, { ...geminiDraft(), text: ' ' }, signal)).rejects.toThrow(t('gemini.emptyInput'));
+		await expect(buildGeminiDecisionRequest(geminiModel, { ...geminiDraft(), images: [{ id: 1, file: image('pdf', 'application/pdf'), resolution: '' }] }, signal)).rejects.toThrow(t('gemini.invalidImage'));
+	});
+	it('counts UTF-8 JSON plus base64 before file reads, accepting exactly 20 MiB', async () => {
+		const images: GeminiDecisionDraft['images'] = [{ id: 1, file: image(), resolution: '' }];
+		const draft = { ...geminiDraft(), images, text: 'x' };
+		const sample = await buildGeminiDecisionRequest(geminiModel, draft, signal);
+		const remainder = MAX_GEMINI_DECISION_BYTES - new TextEncoder().encode(JSON.stringify(sample)).length;
+		draft.text += '€'.repeat(Math.floor(remainder / 3)) + 'x'.repeat(remainder % 3);
+		const exact = await buildGeminiDecisionRequest(geminiModel, draft, signal);
+		expect(new TextEncoder().encode(JSON.stringify(exact)).length).toBe(MAX_GEMINI_DECISION_BYTES);
+		const reader = vi.spyOn(FileReader.prototype, 'readAsDataURL');
+		await expect(buildGeminiDecisionRequest(geminiModel, { ...draft, text: draft.text + 'x' }, signal)).rejects.toThrow(t('gemini.requestLimit'));
+		expect(reader).not.toHaveBeenCalled();
+	});
+	it('posts exact Gemini shape and validates the stored response model', async () => {
+		const success = geminiResponse();
+		calls.fetch.mockResolvedValueOnce(Response.json(success));
+		await expect(decisionStudioApi.decideGemini(geminiWire, geminiModel.model_name, scope, signal)).resolves.toEqual(success);
+		const [path, init, token, project, options] = calls.fetch.mock.calls[0];
+		expect(path).toBe('/api/v1/chat/decisions');
+		expect(JSON.parse(init.body)).toEqual(geminiWire);
+		expect([token, project, options.replayOnUnauthorized]).toEqual([scope.token, scope.projectId, false]);
+		expect(() => parseGeminiDecisionResult({ ...success, model: 'other' }, geminiWire, geminiModel.model_name)).toThrow(t('decisions.invalidResponse'));
+		expect(() => parseGeminiDecisionResult({ ...success, usage: { ...success.usage, total_input_tokens: 58, total_tokens: 58 } }, geminiWire, geminiModel.model_name)).toThrow(t('decisions.invalidResponse'));
+	});
+	it.each([
+		[422, 'decision_input_modality_unsupported', 'gemini.unsupportedModality'],
+		[400, 'safety', 'gemini.safetyBlocked'],
+		[400, 'prohibited_content', 'gemini.safetyBlocked'],
+		[400, 'blocklist', 'gemini.safetyBlocked'],
+		[400, 'image_safety', 'gemini.safetyBlocked'],
+		[400, 'content_blocked', 'gemini.safetyBlocked'],
+		[413, 'decision_request_too_large', 'gemini.requestLimit'],
+		[502, 'invalid decision answers; reported usage was billed', 'gemini.answersBilled']
+	] as const)('maps %s %s without reflecting provider input', async (status, detail, message) => {
+		calls.fetch.mockResolvedValueOnce(Response.json({ detail }, { status }));
+		const error = await decisionStudioApi.decideGemini(geminiWire, geminiModel.model_name, scope).catch((cause: unknown) => cause);
+		expect(error).toBeInstanceOf(ApiError);
+		expect(decisionFailure(error as ApiError, true)).toBe(t(message));
 	});
 });

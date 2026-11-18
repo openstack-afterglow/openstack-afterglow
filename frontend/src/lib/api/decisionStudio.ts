@@ -15,12 +15,13 @@ export const MAX_DECISION_JSON_BYTES = 256 * 1024;
 export const DECISION_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const;
 export interface DecisionScope { token: string; projectId: string; experience?: ExperienceContext }
 export interface DecisionModel extends AvailableModel {
-	model_kind: 'text';
+	model_kind: 'text' | 'decision';
+	effective_input_price_per_million?: string | null;
 	provider_api_key_configured: boolean;
 }
 export interface DecisionCapabilities {
 	model_id: number;
-	model_kind: 'text';
+	model_kind: DecisionModel['model_kind'];
 	model_capabilities: NonNullable<DecisionModel['capabilities']>;
 }
 export type DecisionPart = { type: 'input_text'; text: string }
@@ -69,19 +70,23 @@ const capabilities = (value: unknown): value is DecisionCapabilities['model_capa
 	&& ['native', 'none'].includes(String(value.feature_gates.decisions.mode))
 	&& typeof value.feature_gates.decisions.pricing_available === 'boolean';
 
-export function parseDecisionModels(value: unknown): DecisionModel[] {
+export function isGeminiDecisionModel(model: DecisionModel | undefined): boolean {
+	return model?.provider_type === 'gemini' && (model.model_kind === 'decision' || model.capabilities?.decisions === true);
+}
+
+export function parseDecisionModels(value: unknown, kind: DecisionModel['model_kind'] = 'text'): DecisionModel[] {
 	if (!Array.isArray(value)) fail('decisions.invalidResponse');
 	const ids = new Set<number>();
 	for (const model of value) {
-		if (!object(model) || !integer(model.id) || !model.id || ids.has(model.id) || model.model_kind !== 'text'
+		if (!object(model) || !integer(model.id) || !model.id || ids.has(model.id) || model.model_kind !== kind
 			|| !text(model.model_name) || !text(model.display_name)) fail('decisions.invalidResponse');
 		ids.add(model.id);
 	}
 	// The list is already access-filtered by Lumen. Do not infer support from model names.
-	return (value as DecisionModel[]).filter((model) => model.capabilities?.decisions === true);
+	return (value as DecisionModel[]).filter((model) => kind === 'decision' ? isGeminiDecisionModel(model) : model.capabilities?.decisions === true);
 }
-export function parseDecisionCapabilities(value: unknown, modelId: number): DecisionCapabilities {
-	if (!object(value) || value.model_id !== modelId || value.model_kind !== 'text' || !capabilities(value.model_capabilities)) fail('decisions.invalidResponse');
+export function parseDecisionCapabilities(value: unknown, modelId: number, kind: DecisionModel['model_kind'] = 'text'): DecisionCapabilities {
+	if (!object(value) || value.model_id !== modelId || value.model_kind !== kind || !capabilities(value.model_capabilities)) fail('decisions.invalidResponse');
 	return value as unknown as DecisionCapabilities;
 }
 export function decisionReadiness(model: DecisionModel | undefined, verified: DecisionCapabilities | null): string | null {
@@ -93,7 +98,7 @@ export function decisionReadiness(model: DecisionModel | undefined, verified: De
 		if (!gate || gate.available !== true || gate.mode !== 'native') return t('decisions.unavailable');
 		if (gate.pricing_available !== true) return t('decisions.pricingMissing');
 	}
-	if (verified?.model_id !== model.id || verified?.model_kind !== 'text') return t('decisions.unverified');
+	if (verified?.model_id !== model.id || verified?.model_kind !== model.model_kind) return t('decisions.unverified');
 	return null;
 }
 
@@ -206,48 +211,259 @@ export function parseDecisionResult(value: unknown, request: DecisionRequest): D
 	}
 	return result;
 }
+export const GEMINI_DECISION_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif', 'image/gif', 'image/bmp', 'image/tiff'] as const;
+export const GEMINI_DECISION_RESOLUTIONS = ['low', 'medium', 'high', 'ultra_high'] as const;
+export const MAX_GEMINI_DECISION_BYTES = 20 * 1024 * 1024;
+export const MAX_GEMINI_QUESTIONS = 1000;
+export const MAX_GEMINI_CRITERIA = 255;
+
+export type GeminiImageResolution = typeof GEMINI_DECISION_RESOLUTIONS[number];
+type GeminiImagePart = { type: 'image'; data: string; mime_type: string; resolution?: GeminiImageResolution };
+type GeminiDecisionPart = { type: 'text'; text: string } | GeminiImagePart;
+type GeminiQuestionType = 'noul' | 'choice' | 'score';
+type GeminiYesNo = { true_description?: string; false_description?: string };
+type GeminiQuestion = { instructions: string } & (
+	{ type: 'noul'; criteria?: GeminiYesNo }
+	| { type: 'choice'; criteria: Record<string, string> }
+	| { type: 'score'; criteria: string[] }
+);
+export interface GeminiDecisionRequest {
+	model: string;
+	input: GeminiDecisionPart[];
+	questions: Record<string, GeminiQuestion>;
+}
+export interface GeminiImageDraft { id: number; file: File; resolution: '' | GeminiImageResolution }
+export interface GeminiQuestionDraft {
+	id: number;
+	key: string;
+	type: GeminiQuestionType;
+	instructions: string;
+	yes: string;
+	no: string;
+	rows: { id: number; key: string; description: string }[];
+}
+export interface GeminiDecisionDraft {
+	text: string;
+	json: string;
+	images: GeminiImageDraft[];
+	questions: GeminiQuestionDraft[];
+}
+
+type GeminiAnswer = { confidence: number } & (
+	{ type: 'noul'; noul: number }
+	| { type: 'choice'; choice: string; probabilities: Record<string, number> }
+	| { type: 'score'; score: number; probabilities: Record<string, number>; legend: Record<string, string> }
+);
+export interface GeminiDecisionResult {
+	model: string;
+	answers: Record<string, GeminiAnswer>;
+	usage: {
+		total_input_tokens: number;
+		input_tokens_by_modality: { modality: 'text' | 'image'; tokens: number }[];
+		total_output_tokens: 0;
+		total_tokens: number;
+	};
+}
+
+export function geminiImageType(file: File): boolean {
+	return (GEMINI_DECISION_IMAGE_TYPES as readonly string[]).includes(file.type) && file.size > 0;
+}
+export function geminiBase64Length(file: File): number {
+	return Math.ceil(file.size / 3) * 4;
+}
+function validateGeminiJson(source: string): void {
+	let value: unknown;
+	try { value = JSON.parse(source); } catch { fail('gemini.invalidJson'); }
+	if (!object(value) && !Array.isArray(value)) fail('gemini.invalidJson');
+	function visit(entry: unknown, depth: number): void {
+		if (!object(entry) && !Array.isArray(entry)) return;
+		if (depth > 100) fail('gemini.jsonDepth');
+		for (const child of Object.values(entry)) visit(child, depth + 1);
+	}
+	visit(value, 1);
+}
+function validOptionKey(key: string): boolean {
+	return key === key.trim() && key.length > 0 && [...key].length <= 128
+		&& bytes(key) <= 512 && !/[\p{Cc}\p{Cs}\p{White_Space}]/u.test(key.replaceAll(' ', ''));
+}
+function readGeminiImage(file: File, signal: AbortSignal): Promise<string> {
+	signal.throwIfAborted();
+	const { promise, resolve, reject } = Promise.withResolvers<string>();
+	const reader = new FileReader();
+	const abort = () => reader.abort();
+	signal.addEventListener('abort', abort, { once: true });
+	reader.onloadend = () => {
+		signal.removeEventListener('abort', abort);
+		if (signal.aborted) return reject(signal.reason);
+		if (typeof reader.result !== 'string') return reject(new Error(t('gemini.invalidImage')));
+		const encoded = reader.result.slice(reader.result.indexOf(',') + 1);
+		if (encoded.length !== geminiBase64Length(file)) return reject(new Error(t('gemini.invalidImage')));
+		resolve(encoded);
+	};
+	reader.readAsDataURL(file);
+	return promise;
+}
+export async function buildGeminiDecisionRequest(model: DecisionModel, draft: GeminiDecisionDraft, signal: AbortSignal): Promise<GeminiDecisionRequest> {
+	const input: GeminiDecisionPart[] = [];
+	if (text(draft.text)) input.push({ type: 'text', text: draft.text });
+	if (text(draft.json)) {
+		if (bytes(draft.json) > MAX_GEMINI_DECISION_BYTES) fail('gemini.requestLimit');
+		validateGeminiJson(draft.json);
+		input.push({ type: 'text', text: input.length ? `\n${draft.json}` : draft.json });
+	}
+	const firstImage = input.length;
+	let encodedLength = 0;
+	for (const { file, resolution } of draft.images) {
+		if (!geminiImageType(file)) fail('gemini.invalidImage');
+		encodedLength += geminiBase64Length(file);
+		input.push({ type: 'image', data: '', mime_type: file.type, ...(resolution ? { resolution } : {}) });
+	}
+	if (!input.length) fail('gemini.emptyInput');
+	if (draft.questions.length < 1 || draft.questions.length > MAX_GEMINI_QUESTIONS) fail('gemini.questionLimit');
+	const questions: Record<string, GeminiQuestion> = Object.create(null);
+	for (const { key, type, instructions, rows, yes, no } of draft.questions) {
+		if (!key.length || key.length > 64 || /[^A-Za-z0-9_-]/.test(key)) fail('gemini.questionKeyHelp');
+		if (Object.hasOwn(questions, key)) fail('decisions.duplicateNames');
+		if (!text(instructions)) fail('decisions.invalidRequest');
+		if (type === 'choice') {
+			if (rows.length < 2 || rows.length > MAX_GEMINI_CRITERIA) fail('gemini.choiceLimit');
+			const criteria: Record<string, string> = Object.create(null);
+			for (const row of rows) {
+				if (!validOptionKey(row.key)) fail('gemini.choiceKey');
+				if (Object.hasOwn(criteria, row.key)) fail('decisions.duplicateChoices');
+				criteria[row.key] = row.description;
+			}
+			questions[key] = { type, instructions, criteria };
+		} else if (type === 'score') {
+			if (rows.length < 2 || rows.length > MAX_GEMINI_CRITERIA || rows.some((row) => !text(row.description))) fail('gemini.levelLimit');
+			questions[key] = { type, instructions, criteria: rows.map((row) => row.description) };
+		} else {
+			const criteria = { ...(text(yes) ? { true_description: yes } : {}), ...(text(no) ? { false_description: no } : {}) };
+			questions[key] = { type, instructions, ...(Object.keys(criteria).length ? { criteria } : {}) };
+		}
+	}
+	const request = { model: `lumen/${model.provider_id}/${model.id}`, input, questions };
+	// Each base64 character is one UTF-8 byte and needs no JSON escaping.
+	if (encodedLength + bytes(JSON.stringify(request)) > MAX_GEMINI_DECISION_BYTES) fail('gemini.requestLimit');
+	for (const [index, { file }] of draft.images.entries()) {
+		(input[firstImage + index] as GeminiImagePart).data = await readGeminiImage(file, signal);
+	}
+	return request;
+}
+
+export function parseGeminiDecisionResult(value: unknown, request: GeminiDecisionRequest, modelName: string): GeminiDecisionResult {
+	const invalid = () => fail('decisions.invalidResponse');
+	if (!object(value) || value.model !== modelName || !object(value.answers) || !object(value.usage)) return invalid();
+	const { answers, usage } = value;
+	const questions = Object.entries(request.questions);
+	if (Object.keys(answers).length !== questions.length || !integer(usage.total_input_tokens)
+		|| usage.total_output_tokens !== 0 || usage.total_tokens !== usage.total_input_tokens
+		|| !Array.isArray(usage.input_tokens_by_modality)) return invalid();
+	let counted = 0;
+	for (const entry of usage.input_tokens_by_modality) {
+		if (!object(entry) || (entry.modality !== 'text' && entry.modality !== 'image') || !integer(entry.tokens)) return invalid();
+		counted += entry.tokens;
+	}
+	if (counted !== usage.total_input_tokens) return invalid();
+	for (const [key, question] of questions) {
+		const answer = answers[key];
+		if (!Object.hasOwn(answers, key) || !object(answer) || answer.type !== question.type || !probability(answer.confidence)) return invalid();
+		if (question.type === 'noul') {
+			if (!probability(answer.noul) || answer.noul < 0.01 || answer.noul > 0.99) return invalid();
+			continue;
+		}
+		const keys = Object.keys(question.criteria);
+		const probabilities = answer.probabilities;
+		if (!object(probabilities) || Object.keys(probabilities).length !== keys.length
+			|| keys.some((name) => !Object.hasOwn(probabilities, name) || !probability(probabilities[name]))) return invalid();
+		if (question.type === 'choice') {
+			if (typeof answer.choice !== 'string' || !Object.hasOwn(question.criteria, answer.choice)) return invalid();
+		} else {
+			const legend = answer.legend;
+			if (!finite(answer.score) || answer.score > keys.length - 1 || !object(legend) || Object.keys(legend).length !== keys.length
+				|| question.criteria.some((description, index) => legend[index] !== description)) return invalid();
+		}
+	}
+	return value as unknown as GeminiDecisionResult;
+}
+
+const GEMINI_SAFETY_CODES = { safety: true, prohibited_content: true, blocklist: true, image_safety: true, content_blocked: true };
+export function decisionFailure(error: ApiError, gemini: boolean): string {
+	if (error.status === 401 || error.status === 403) return t('decisions.projectDenied');
+	if (error.status === 402) return t('decisions.quotaInsufficient');
+	if (gemini) {
+		if (error.status === 413) return t('gemini.requestLimit');
+		if (error.status === 422 && error.code === 'decision_input_modality_unsupported') return t('gemini.unsupportedModality');
+		if (error.status === 400 && error.code && Object.hasOwn(GEMINI_SAFETY_CODES, error.code)) return t('gemini.safetyBlocked');
+		if (error.status === 502 && error.code === 'invalid decision answers; reported usage was billed') return t('gemini.answersBilled');
+	}
+	return t('decisions.requestFailed', { status: error.status });
+}
+
+async function postDecision<T>(body: string, scope: DecisionScope, parse: (value: unknown) => T, signal?: AbortSignal): Promise<T> {
+	const owner = sessionScopeKey(get(auth));
+	const controller = new AbortController();
+	const requestSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+	const invalidate = () => controller.abort(new ApiError(403, t('decisions.projectDenied')));
+	const subscriptions = [
+		auth.subscribe((value) => { if (!value.token || sessionScopeKey(value) !== owner) invalidate(); }),
+		authReady.subscribe((ready) => { if (!ready) invalidate(); }),
+		projectSwitching.subscribe((switching) => { if (switching) invalidate(); }),
+		serviceCapabilities.subscribe((grants) => { if (!grants('lumen-chat_user')) invalidate(); })
+	];
+	try {
+		requestSignal.throwIfAborted();
+		const response = await fetchWithAuth('/api/v1/chat/decisions', {
+			method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: requestSignal
+		}, scope.token, scope.projectId, { replayOnUnauthorized: false, experience: scope.experience, beforeDispatch: () => {
+			requestSignal.throwIfAborted();
+			const current = get(auth);
+			requireLumenCapability('lumen-chat_user', current.token ?? undefined, scope.projectId);
+		} });
+		requestSignal.throwIfAborted();
+		if (!response.ok) {
+			const data: unknown = await response.json().catch(() => null);
+			requestSignal.throwIfAborted();
+			const detail = object(data) && typeof data.detail === 'string' ? data.detail : undefined;
+			throw new ApiError(response.status, detail ?? t('decisions.requestFailed', { status: response.status }), detail);
+		}
+		const data: unknown = await response.json();
+		requestSignal.throwIfAborted();
+		return parse(data);
+	} finally {
+		subscriptions.forEach((unsubscribe) => unsubscribe());
+	}
+}
+
 export const decisionStudioApi = {
 	async models(scope: DecisionScope, signal?: AbortSignal): Promise<DecisionModel[]> {
 		requireLumenCapability('lumen-chat_user', scope.token, scope.projectId);
-		return parseDecisionModels(await api.get<unknown>('/api/v1/chat/models?model_kind=text', scope.token, scope.projectId, { refresh: true, signal, experience: scope.experience }));
+		const list = (kind: DecisionModel['model_kind']) => api.get<unknown>(`/api/v1/chat/models?model_kind=${kind}`, scope.token, scope.projectId, { refresh: true, signal, experience: scope.experience });
+		const [textModels, decisionModels] = await Promise.all([
+			list('text'),
+			list('decision').catch((error: unknown) => {
+				// Lumen before decision-only models rejects the new query kind.
+				if (error instanceof ApiError && error.status === 422) return [];
+				throw error;
+			})
+		]);
+		const models = [...parseDecisionModels(textModels), ...parseDecisionModels(decisionModels, 'decision')];
+		if (new Set(models.map(({ id }) => id)).size !== models.length) fail('decisions.invalidResponse');
+		return models;
 	},
-	async capabilities(id: number, scope: DecisionScope, signal?: AbortSignal): Promise<DecisionCapabilities> {
+	async capabilities(id: number, scope: DecisionScope, signal?: AbortSignal, kind: DecisionModel['model_kind'] = 'text'): Promise<DecisionCapabilities> {
 		requireLumenCapability('lumen-chat_user', scope.token, scope.projectId);
-		return parseDecisionCapabilities(await api.get<unknown>(`/api/v1/chat/capabilities?model_id=${id}&model_kind=text`, scope.token, scope.projectId, { refresh: true, signal, experience: scope.experience }), id);
+		return parseDecisionCapabilities(await api.get<unknown>(`/api/v1/chat/capabilities?model_id=${id}&model_kind=${kind}`, scope.token, scope.projectId, { refresh: true, signal, experience: scope.experience }), id, kind);
 	},
 	async decide(request: DecisionRequest, scope: DecisionScope, signal?: AbortSignal): Promise<DecisionResult> {
 		requireLumenCapability('lumen-chat_user', scope.token, scope.projectId);
 		validateDecisionRequest(request);
-		const owner = sessionScopeKey(get(auth));
-		const controller = new AbortController();
-		const requestSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
-		const invalidate = () => controller.abort(new ApiError(403, t('decisions.projectDenied')));
-		const subscriptions = [
-			auth.subscribe((value) => { if (!value.token || sessionScopeKey(value) !== owner) invalidate(); }),
-			authReady.subscribe((ready) => { if (!ready) invalidate(); }),
-			projectSwitching.subscribe((switching) => { if (switching) invalidate(); }),
-			serviceCapabilities.subscribe((grants) => { if (!grants('lumen-chat_user')) invalidate(); })
-		];
-		try {
-			requestSignal.throwIfAborted();
-			const response = await fetchWithAuth('/api/v1/chat/decisions', {
-				method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request), signal: requestSignal
-			}, scope.token, scope.projectId, { replayOnUnauthorized: false, experience: scope.experience, beforeDispatch: () => {
-				requestSignal.throwIfAborted();
-				const current = get(auth);
-				requireLumenCapability('lumen-chat_user', current.token ?? undefined, scope.projectId);
-			} });
-			requestSignal.throwIfAborted();
-			if (!response.ok) {
-				const body: unknown = await response.json().catch(() => null);
-				requestSignal.throwIfAborted();
-				throw new ApiError(response.status, object(body) && typeof body.detail === 'string' ? body.detail : t('decisions.requestFailed', { status: response.status }));
-			}
-			const body: unknown = await response.json();
-			requestSignal.throwIfAborted();
-			return parseDecisionResult(body, request);
-		} finally {
-			subscriptions.forEach((unsubscribe) => unsubscribe());
-		}
+		return postDecision(JSON.stringify(request), scope, (value) => parseDecisionResult(value, request), signal);
+	},
+	async decideGemini(request: GeminiDecisionRequest, modelName: string, scope: DecisionScope, signal?: AbortSignal): Promise<GeminiDecisionResult> {
+		requireLumenCapability('lumen-chat_user', scope.token, scope.projectId);
+		const body = JSON.stringify(request);
+		if (bytes(body) > MAX_GEMINI_DECISION_BYTES) fail('gemini.requestLimit');
+		return postDecision(body, scope, (value) => parseGeminiDecisionResult(value, request, modelName), signal);
 	}
 };

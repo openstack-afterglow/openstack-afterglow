@@ -42,7 +42,7 @@ Afterglow 백엔드는 독자적인 AI 모델·에이전트 실행 엔진 및 �
 > **활성화 조건:** `afterglow.conf [services] chat = true` 및 `[services] lumen_internal_url` (또는 Keystone 서비스 카탈로그).
 > 비활성화 상태에서는 `/api/v1/chat` 라우터가 마운트되지 않습니다.
 
-대시보드 사이드바의 **AI 채팅**에는 `Lumen`(`/dashboard/chat`), `이미지 Studio`(`/dashboard/chat/images`), `오디오 Studio`(`/dashboard/chat/audio`), `임베딩 Studio`(`/dashboard/chat/embeddings`), `의사결정 Studio`(`/dashboard/chat/decisions`)가 있다. 모든 항목은 공개 site config의 `services.chat`이 true일 때 노출되며, Studio 경로에서 부모 Lumen 항목을 함께 활성 표시하지 않는다. 이미지 생성·편집, 유한 TTS/STT, 임베딩은 각각 `model_kind=image|tts|stt|embedding` 카탈로그를 조회한다. 의사결정은 접근 가능한 text 모델의 유효 `decisions` capability를 사용한다. 메뉴 노출이나 컨테이너 health는 provider 키·모델·정확한 가격·asset storage/scanner의 준비 또는 실제 생성 성공을 의미하지 않는다.
+대시보드 사이드바의 **AI 채팅**에는 `Lumen`(`/dashboard/chat`), `이미지 Studio`(`/dashboard/chat/images`), `오디오 Studio`(`/dashboard/chat/audio`), `임베딩 Studio`(`/dashboard/chat/embeddings`), `의사결정 Studio`(`/dashboard/chat/decisions`)가 있다. 모든 항목은 공개 site config의 `services.chat`이 true일 때 노출되며, Studio 경로에서 부모 Lumen 항목을 함께 활성 표시하지 않는다. 이미지 생성·편집, 유한 TTS/STT, 임베딩은 각각 `model_kind=image|tts|stt|embedding` 카탈로그를 조회한다. 의사결정은 `decisions` capability가 있는 접근 가능한 text 모델과 Gemini decision 모델을 조회한다. 메뉴 노출이나 컨테이너 health는 provider 키·모델·정확한 가격·asset storage/scanner의 준비 또는 실제 생성 성공을 의미하지 않는다.
 
 Lumen 텍스트 채팅 상단에는 모델·에이전트 선택과 기록·출처·임시 채팅 컨트롤만 둔다. 이미지 Studio·오디오 Studio·실시간 음성 바로가기는 상단에서 제거하며, 기존 Studio 사이드바·전체 메뉴·command palette 목적지와 `/dashboard/chat/realtime` 직접 route, 서비스 인가·API는 변경하지 않는다.
 
@@ -107,7 +107,9 @@ Afterglow 백엔드는 대부분의 `/api/v1/chat/{path}` 요청을 내부 Lumen
 | `GET /api/v1/chat/models?model_kind=embedding` | `/v1/chat/models?model_kind=embedding` | 사용자에게 허용된 embedding model과 `embeddings` readiness gate 조회 |
 | `GET /api/v1/chat/capabilities?model_id={id}&model_kind=embedding` | `/v1/chat/capabilities?...` | 선택 모델의 최대/기본 vector 차원·입력 제한·차원 축소 지원 조회 |
 | `POST /api/v1/chat/embeddings` | `/v1/chat/embeddings` | Keystone 세션으로 1–16개 텍스트를 임베딩; provider key는 브라우저에 전달하지 않으며 응답은 no-store |
-| `POST /api/v1/chat/decisions` | `/v1/chat/decisions` | 접근 가능한 등록 text 모델의 `decisions` capability로 구조화된 질문을 실행한다. 세션/현재 프로젝트를 전달하고 입력·응답을 저장하지 않으며 no-store를 적용한다. 다른 HTTP method는405 |
+| `GET /api/v1/chat/models?model_kind=decision` | `/v1/chat/models?model_kind=decision` | 접근 가능한 decision 전용 모델 목록 및 비용 추정용 유효 입력 토큰 단가(`effective_input_price_per_million`) 조회 |
+| `GET /api/v1/chat/capabilities?model_id={id}&model_kind=decision` | `/v1/chat/capabilities?...` | 등록된 decision 모델의 readiness 확인 |
+| `POST /api/v1/chat/decisions` | `/v1/chat/decisions` | 등록 text 모델의 `decisions` capability 또는 Gemini decision 모델로 구조화된 질문을 실행한다. 세션/현재 프로젝트를 전달하고 대화 내용을 저장하지 않으며 no-store를 적용한다. 다른 HTTP method는 405, 본문 20 MiB 초과는 413 |
 | `POST /api/v1/chat/realtime/sessions` | `/v1/chat/realtime/sessions` | 인증된 current user/project로 Lumen session을 접수하고 60초 one-use browser ticket만 반환 |
 | `WS /api/v1/chat/realtime/ws?ticket=<opaque>` | `WS /v1/chat/realtime/sessions/{session_id}/ws` | 동일 origin 정책과 한 번 쓰는 browser ticket 검사 후 Lumen connect token을 internal 헤더로 전달. Provider key는 브라우저에 미노출 |
 | `GET /api/v1/chat/conversations` | `/v1/conversations` | 대화 목록 조회 |
@@ -154,9 +156,31 @@ Afterglow 백엔드는 대부분의 `/api/v1/chat/{path}` 요청을 내부 Lumen
 
 Embedding Studio는 native capability의 `default_dimensions`, `supports_dimensions`, `min_dimensions`, `max_dimensions`, `allowed_dimensions`를 그대로 사용합니다. 공시 범위는 숫자 입력의 경계가 되고, 명시적인 유한 allowed 목록이 있을 때만 선택 목록으로 제한합니다. 권장 차원 몇 개를 임의의 전체 allowed 목록으로 추정하지 않으며, 입력을 비우면 공급자 기본값을 사용합니다. 차원 metadata가 없으면 사용자 지정 차원을 허용하지 않습니다.
 
-의사결정 요청은 등록 `model` 이름, shared `input`, 1–400개 `questions`를 전송한다. 질문 종류는 predicate, choice(고유 value·설명2–255개), score(label·설명 level2–10개)이며 선택한 name은 요청 안에서 고유해야 한다. Shared 입력은 text, JSON, http(s) 이미지 URL 또는 로컬 이미지 data URL이다. Studio는 로컬 이미지4MiB·직렬화 요청8MiB로 제한하며 JSON은 compact256KiB·깊이32·값10,000개까지 검사한다. Lumen의 raw body 상한은16MiB이며 URL 이미지를 Afterglow/Lumen이 직접 가져오지 않는다. 클라이언트 상한과 서버 검증은 별개이고 서버가 최종 인가·가격·quota를 확인한다.
+OpenAI 의사결정 요청은 등록 `model` 이름, shared `input`, 1–400개 `questions`를 전송한다. 질문 종류는 predicate, choice(고유 value·설명 2–255개), score(label·설명 level 2–10개)이며 선택한 name은 요청 안에서 고유해야 한다. Shared 입력은 text, JSON, http(s) 이미지 URL 또는 로컬 이미지 data URL이다. Studio는 로컬 이미지 4 MiB·직렬화 요청 8 MiB로 제한하며 JSON은 compact 256 KiB·깊이 32·값 10,000개까지 검사한다. OpenAI Lumen 경로의 raw body 상한은 16 MiB이며 URL 이미지를 Afterglow/Lumen이 직접 가져오지 않는다.
 
-응답은 predicate 확률, choice와 각 후보 확률·confidence, score와 level 확률 또는 refusal을 표시한다. 실제 `usage`, `cost_usd`와 usage-log identity를 표시하고 output 토큰을 임의 유료 계산하지 않는다. 브라우저는 입력·답을 저장하거나 mutation을 자동 재전송하지 않는다. 튜토리얼 응답·catalog는 합성이며 운영 provider 검증이 아니다.
+OpenAI 응답은 predicate 확률, choice와 각 후보 확률·confidence, score와 level 확률 또는 refusal, 실제 `usage`, `cost_usd`와 usage-log identity를 반환한다. 두 provider 모두 브라우저가 입력·답을 저장하거나 mutation을 자동 재전송하지 않는다. 최종 인가·가격·quota는 Lumen이 확인한다. 튜토리얼 응답·catalog는 합성이며 운영 provider 검증이 아니다.
+
+#### Gemini Decision 1
+
+Studio는 선택 모델의 `provider_type="gemini"`와 `model_kind="decision"` 또는 `capabilities.decisions=true`를 확인한 뒤 Gemini 편집기를 표시한다. 등록 모델을 `lumen/{provider_id}/{model_id}`로 정확히 선택하며, Lumen이 반환하는 `model`은 등록 이름이다. 예시:
+
+```json
+{
+  "model": "lumen/14/19",
+  "input": [
+    {"type": "text", "text": "The mug arrived cracked."}
+  ],
+  "questions": {
+    "damaged": {"type": "noul", "instructions": "Did the mug arrive damaged?"}
+  }
+}
+```
+
+- JSON 객체·배열은 최대 100단계로 검사하고 정밀도를 유지하도록 원문을 텍스트로 보낸다. 이미지 첨부는 `{"type":"image","data":"<base64>","mime_type":"image/png","resolution":"low"}` 형태다. PNG·JPEG·WebP·HEIC·HEIF·GIF·BMP·TIFF, `low|medium|high|ultra_high` 또는 생략(공급자 기본값)을 지원한다.
+- 질문 키는 `[A-Za-z0-9_-]{1,64}`에 맞는 고유 키를 1–1,000개 쓴다. `noul`은 선택적으로 `criteria.true_description`과 `criteria.false_description`을 보낸다. `choice`는 키→설명 맵(2–255개, 빈 설명 허용), `score`는 낮은 순서부터 비어 있지 않은 설명 배열(2–255개)을 보낸다.
+- Gemini 응답은 `{model, answers, usage}`이며 `answers`는 질문 키에 대응하는 `noul|choice|score` 결과와 confidence를 포함한다. Choice와 score는 확률 맵을, score는 수준별 설명 `legend`도 제공한다. 명세 예시는 [Google Decisions API](https://aistudio.google.com/docs/decisions-api)를 참고한다.
+- 브라우저와 BFF는 인코딩을 포함한 전체 JSON 본문을 20 MiB로 제한하며 BFF는 초과 시 Lumen에 보내지 않고 413을 반환한다. 현재 오디오·동영상·PDF는 422 `decision_input_modality_unsupported`다. 400 안전 차단은 허용된 코드만 전달하며 공급자의 원문은 표시하지 않는다.
+- Gemini 정산에는 입력 토큰만 사용한다. Studio는 `usage.total_input_tokens`와 모델 목록의 `effective_input_price_per_million`으로 USD 비용을 추정하며, 원장 청구로 표시하지 않는다. 레지스트리 `decision` 모델은 네이티브 Gemini에만 등록하며 출력·캐시·미디어 단가가 없다.
 
 ### 통계의 독립 도메인·프로젝트 조건
 
@@ -248,7 +272,7 @@ DeepSeek의 공식 `/user/balance`는 통화별 총 account balance, 구매 충�
 
 모든 화면 폭에서 채팅 영역 상단 **기록**과 **출처 N**을 사용할 수 있습니다. 모바일은 모델/에이전트와 기록/출처를 두 행으로 배치합니다. 1024px 미만의 기록은 bounded drawer, desktop은 inline sidebar이며 설정 메뉴의 기존 **채팅으로 돌아가기**와 project별 선택 복원을 유지합니다. 출처 패널은 mobile에서 full-screen modal, tablet/desktop에서 공통 비모달 panel 계약을 따릅니다. Escape/바깥 영역으로 닫으면 trigger로 focus가 복원됩니다.
 
-가격 admission과 실행은 Lumen 소유입니다. Native direct route의 유효 token/media 단가는 저장된 관리자 수동 단가 → source-tracked native catalog → 미설정 순서이며, catalog는 공식 출처와 검증일을 함께 제공합니다. 호환 custom-base route는 catalog의 모델·가격·기능을 상속하지 않고 필수 단가를 관리자가 입력합니다. 미확인 모델의 입력·출력 가격을0으로 추정하지 않습니다. Decisions는 input·cache-read·30분 cache-write만 청구하며 output/reasoning token은0이고, 보고된 cache usage의 유효 단가가 없으면 엄격히 거부합니다. 기존 정산 snapshot은 재작성하지 않습니다. Native Search의 별도 검색 요청/툴 부가요금은 기존 로컬 billing이 명시적으로 지원하는 항목만 포함하며 token 요금에서 추정하지 않습니다.
+가격 admission과 실행은 Lumen 소유입니다. Native direct route의 유효 token/media 단가는 저장된 관리자 수동 단가 → source-tracked native catalog → 미설정 순서이며, catalog는 공식 출처와 검증일을 함께 제공합니다. 호환 custom-base route는 catalog의 모델·가격·기능을 상속하지 않고 필수 단가를 관리자가 입력합니다. 미확인 모델의 입력·출력 가격을 0으로 추정하지 않습니다. OpenAI Decisions는 input·cache-read·30분 cache-write만 청구하며 output/reasoning token은 0이고, 보고된 cache usage의 유효 단가가 없으면 엄격히 거부합니다. Gemini Decisions는 입력 토큰만 청구합니다. 기존 정산 snapshot은 재작성하지 않습니다. Native Search의 별도 검색 요청/툴 부가요금은 기존 로컬 billing이 명시적으로 지원하는 항목만 포함하며 token 요금에서 추정하지 않습니다.
 
 ---
 

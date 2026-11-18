@@ -5,11 +5,12 @@
 	import Field from '$lib/components/ui/Field.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
-	import { effectiveBasis, MODEL_LABELS, TOKEN_FIELDS, type ModelKind, type PricingDraft } from './modelPricing';
+	import { effectiveBasis, inputTokenOnly, MODEL_LABELS, TOKEN_FIELDS, type ModelKind, type PricingDraft } from './modelPricing';
 	let { kind, draft = $bindable(), prefix, disabled = false, textPricing, hasStoredTextPrices = false }: { kind: ModelKind; draft: PricingDraft; prefix: string; disabled?: boolean; textPricing?: Snippet; hasStoredTextPrices?: boolean } = $props();
 	type Modality = 'text' | 'image' | 'audio';
 	const modalities: Modality[] = ['text', 'image', 'audio'];
-	const primary = $derived<Modality>(kind === 'image' ? 'image' : kind === 'text' || kind === 'embedding' ? 'text' : 'audio');
+	const inputOnly = $derived(inputTokenOnly(kind));
+	const primary = $derived<Modality>(kind === 'image' ? 'image' : kind === 'text' || inputOnly ? 'text' : 'audio');
 	const basis = $derived(effectiveBasis(kind, draft));
 	const orderedModalities = $derived<Modality[]>([primary, ...modalities.filter((modality) => modality !== primary)]);
 	// Visibility is not a pricing mutation. Keep drafts and stored/unknown leaves intact.
@@ -27,7 +28,7 @@
 </script>
 
 <div class="mt-4 space-y-4" data-testid="{prefix}-media-pricing">
-	{#if kind !== 'embedding'}
+	{#if !inputOnly}
 		<fieldset>
 			<legend class="text-xs leading-relaxed text-ink-2">{t('pricing.tokenRatesHelp')}</legend>
 			<div class="mt-2 flex flex-wrap gap-x-4 gap-y-2">
@@ -42,7 +43,7 @@
 			</div>
 		</fieldset>
 	{/if}
-	{#if kind !== 'text' && kind !== 'embedding'}
+	{#if kind !== 'text' && !inputOnly}
 		<Field label={t('pricing.billingBasis', { kind: MODEL_LABELS[kind] })} for="{prefix}-billing-basis">
 			<SelectInput id="{prefix}-billing-basis" bind:value={draft.basis} {disabled}>
 				<option value="">{t('pricing.defaultBasis', { basis: kind === 'image' ? t('pricing.imageUnit') : t('pricing.time') })}</option>
@@ -119,7 +120,7 @@
 		{/if}
 	{/if}
 	{#each orderedModalities as modality (modality)}
-		{#if kind === 'embedding' ? modality === 'text' : selected.includes(modality)}
+		{#if inputOnly ? modality === 'text' : selected.includes(modality)}
 			<div id="{prefix}-{modality}-pricing" class="border-t border-line pt-3" role="group" aria-labelledby="{prefix}-{modality}-tokens">
 				<p id="{prefix}-{modality}-tokens" class="mb-3 text-sm font-semibold text-ink-1">{modalityLabel(modality)}</p>
 				{#if modality === 'text'}

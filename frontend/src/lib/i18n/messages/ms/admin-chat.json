@@ -1,6 +1,9 @@
 {
 	"configuration.embedding": "Benaman teks",
 	"pricing.embeddingInputOnly": "Model benaman dikenakan harga berdasarkan token input sahaja; tiada harga token output.",
+	"configuration.decision": "Keputusan",
+	"pricing.decisionInputOnly": "Model keputusan dicaj berdasarkan token input sahaja.",
+	"pricing.decisionProviderRequired": "Model keputusan memerlukan penyedia Gemini asli.",
 	"accounts.currentConnection": "Tetapan sambungan semasa",
 	"accounts.connectionIdentity": "Penyedia #{provider} · Akaun #{account} · Kunci #{credential}",
 	"accounts.currentEndpoint": "Titik akhir semasa",

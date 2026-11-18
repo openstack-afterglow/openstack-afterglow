@@ -1,12 +1,14 @@
 """Authenticated proxy for browser-facing Lumen API routes."""
 
 from collections.abc import Callable
+from io import BytesIO
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from fastapi.routing import APIRoute
 from pydantic import BaseModel
+from starlette.types import Message
 
 from app.api.deps import get_token_info
 from app.api.identity.mcp_access import _require_browser_mutation
@@ -18,6 +20,27 @@ from app.services.service_proxy import get_policy_capabilities, proxy
 
 _PROXY_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
 _NO_STORE = {"Cache-Control": "no-store", "Pragma": "no-cache"}
+_DECISIONS_MAX_BODY_BYTES = 20 * 1024 * 1024
+
+
+async def _bounded_decisions_request(request: Request) -> Request:
+    """Admit the complete opaque body before opening the upstream request."""
+    body = BytesIO()
+    async for chunk in request.stream():
+        if body.tell() + len(chunk) > _DECISIONS_MAX_BODY_BYTES:
+            raise HTTPException(status_code=413, detail="decision_request_too_large")
+        body.write(chunk)
+
+    content: bytes | None = body.getvalue()
+
+    async def receive() -> Message:
+        nonlocal content
+        if content is None:
+            return await request.receive()
+        payload, content = content, None
+        return {"type": "http.request", "body": payload, "more_body": False}
+
+    return Request(request.scope, receive)
 
 
 def _noncanonical_path(parts: list[str]) -> bool:
@@ -200,4 +223,6 @@ async def proxy_lumen(path: str = "", *, request: Request) -> Response:
     if path in {"audio/speech", "audio/transcriptions"}:
         # Native audio waits for a durable run before its first response byte.
         return await proxy("lumen", request, upstream_path, read_timeout=310.0)
+    if path == "decisions":
+        request = await _bounded_decisions_request(request)
     return await proxy("lumen", request, upstream_path)

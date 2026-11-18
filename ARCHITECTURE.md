@@ -12,6 +12,8 @@ Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 �
 
 **네이티브 공급자·Decisions — source/local:** Afterglow는 Lumen에 내장된 네이티브 모델 카탈로그를 읽기 전용으로 보여 주며 출처 URL·확인일·카탈로그 버전과 실제 가격 출처(`price_origin`)를 함께 표시한다. 공급자 설정은 네 개 네이티브 family와 기존 구독 인증, 그리고 명시적인 OpenAI/Anthropic 호환 custom base로 제한한다. 호환 모델은 관리자 단가가 필수이며 카탈로그 메타데이터를 상속하지 않는다. "공시 가격 따르기"는 기존 모델 PATCH로 저장 단가만 비운다. endpoint family, 실제 단가·기능, 권한·활성화는 Lumen이 결정한다. Decision Studio는 대화 기록과 분리된 세션·프로젝트 범위 작업 공간이다. BFF는 `POST /api/v1/chat/decisions`를 Lumen `/v1/chat/decisions`로, 시스템 관리자 전용 `GET /api/v1/chat/admin/models/native-catalog`을 Lumen 카탈로그로 전달하며 private no-store 응답을 유지한다. 폐기된 models.dev BFF 경로는 upstream 호출 없이 404를 반환한다.
 
+**Gemini Decisions — source/local:** Decision Studio는 `text` 모델의 유효 `decisions` capability와 별도 `decision` 모델 목록을 결합하고 선택 모델의 kind로 Lumen readiness를 확인한다. Gemini에서는 exact 등록 모델 선택자(`lumen/{provider_id}/{model_id}`), 텍스트/JSON 텍스트·base64 이미지, 키 기반 질문을 보내고 `answers` 맵과 입력 사용량에서만 표시값을 만든다. 예상 비용은 목록에 노출된 유효 입력 단가 기준이며 정산 결과가 아니다. OpenAI 요청과 응답은 기존 형태를 유지한다. 같은 BFF는 20 MiB를 초과하는 실제 본문을 upstream 전송 전에 413으로 거부하고 no-store를 유지한다. 레지스트리의 `decision`은 native Gemini만 등록하며 입력 토큰 단가 외 미디어·출력·캐시 단가를 쓰지 않는다. 플랫폼 권한·채팅 이력·과금 원장은 변경하지 않는다.
+
 **MCP 카탈로그·관리형 도구 선택 — source/local:** `ChatExtensionsManager`가 기존 설정/도구 경로에 `ChatMcpGallery`를 넣는다. 브라우저 `/api/v1/chat/*`는 기존 caller-token BFF로 Lumen `/v1/*`에 전달하며, 조직 연결 관리 권한·구성원 여부는 매 요청 Lumen이 다시 판정한다. 인증 없는 실제 OAuth callback은 generic proxy보다 먼저 mount되고 no-store를 적용한다. 채팅의 관리형 도구 선택은 사용자·범위별 선호로 저장되고, 실행 요청에는 정확한 sandbox 도구 이름만 실어 원격 MCP ID와 섞지 않는다. 오래된 admission 응답은 generation fence로 버린다.
 
 **System administrator readback:** `keystone`의 직접 system user/group role endpoint가 권한의 근거다. Computed-assignment 목록은 후보 발견용이며, Afterglow grant의 Redis 후보 힌트(660초, 현재 native cache TTL 600초를 전제, Keystone URL·region·interface별 key)를 합쳐 직접 재검증한다. 힌트 자체는 권한이 아니고 실패 시 닫힌다. 직접 대상 ID는 안전한 opaque 문자만 허용하고 exact `users.get` ID 일치 뒤에만 guard·쓰기·힌트에 사용한다. 동일 reader를 권위·마지막 활성 human 관리자 보호·회수 확인에 사용한다. 마지막 관리자 보호는 발견 결과가 비어도 변경 대상이 아닌 검증된 enabled human 관리자가 남아야 통과하며, 그 관리자의 exact home domain도 live enabled여야 한다. 외부 native grant의 즉시 발견은 별도 문제로 남는다. 관리자 화면의 표와 배너는 같은 snapshot을 사용하고 token-only renewal은 성공 응답을 버리지 않지만 owner/project/session 교체는 차단한다.
@@ -2240,9 +2242,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "41cffe8f9a1ee48f860fd73cc6212546e5ab443076f038331503bce1673a5abb",
-  "reviewed_at": "2026-11-17T20:57:32Z",
-  "summary": "1.32.25 published and deployed with Lumen 0.6.17; rollout receipts, OpenSpec archive of completed UI changes"
+  "source_sha256": "3c9b722d881dcaa5b49688021d705ea88c3e904e76479cc21dcb1086862762ee",
+  "reviewed_at": "2026-11-18T05:52:47Z",
+  "summary": "Gemini Decisions uses the existing scoped no-store Lumen BFF with a 20 MiB pre-dispatch cap, provider-specific Studio forms/results and input-only native registry pricing; no schema or deployment topology changes."
 }
 ```
 <!-- architecture-review:end -->

@@ -110,6 +110,7 @@ export function mockNativeProviders(method: string, path: string, params: URLSea
 	if (method === 'GET' && path === '/api/v1/chat/models' && params.get('model_kind') === 'text') {
 		return [{ id: 43, provider_id: 7, provider_type: 'openai', provider_family: 'native', model_name: 'gpt-6-luna', api_model_name: 'gpt-6-luna', api_provider: 'openai', model_kind: 'text', display_name: 'GPT-6 Luna · Tutorial', provider: 'OpenAI', provider_api_key_configured: true, price_origin: 'native_catalog', catalog_version: version, capabilities: { ...catalogEntry.capabilities, feature_gates: { decisions: { available: true, mode: 'native', pricing_available: true, reason_code: null } } } }];
 	}
+	if (method === 'GET' && path === '/api/v1/chat/models' && params.get('model_kind') === 'decision') return [];
 	if (method === 'GET' && path === '/api/v1/chat/capabilities' && params.get('model_kind') === 'text') {
 		if (params.get('model_id') !== '43') throw new ApiError(404, 'Not found');
 		return { model_id: 43, model_kind: 'text', model_capabilities: { ...catalogEntry.capabilities, feature_gates: { decisions: { available: true, mode: 'native', pricing_available: true, reason_code: null } } } };

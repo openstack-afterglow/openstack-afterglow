@@ -247,6 +247,78 @@ async def test_decisions_proxy_preserves_wire_scope_and_private_response(api_cli
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("extra", "status"),
+    [(0, 200), (1, 413)],
+)
+async def test_decisions_proxy_bounds_streamed_body_without_content_length(api_client, current_access, extra, status):
+    app.dependency_overrides[get_token_info] = _authenticated
+    current_access["roles"].append("lumen-chat_user")
+    size = 20 * 1024 * 1024
+    block = b"x" * (1024 * 1024)
+    prefix = b'{"model":"lumen/14/7","input":"'
+    suffix = b'","questions":{}}'
+    remainder = size + extra - len(prefix) - len(suffix) - 19 * len(block)
+
+    async def input_chunks():
+        yield prefix
+        for _ in range(19):
+            yield block
+        yield block[:remainder]
+        yield suffix
+
+    async def handler(request):
+        body = await request.aread()
+        assert len(body) == size
+        assert body.startswith(prefix) and body.endswith(suffix)
+        return HttpxResponse(200, stream=httpx.ByteStream(b"{}"))
+
+    upstream = AsyncClient(transport=httpx.MockTransport(handler))
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1") as endpoint,
+        patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
+    ):
+        response = await api_client.post(
+            "/api/v1/chat/decisions", content=input_chunks(), headers={"content-type": "application/json"}
+        )
+    assert response.status_code == status
+    assert response.headers["cache-control"] == "no-store"
+    if extra:
+        endpoint.assert_not_called()
+        assert response.json() == {"detail": "decision_request_too_large"}
+    else:
+        endpoint.assert_called_once()
+    await upstream.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("status", "detail"), [(422, "decision_input_modality_unsupported"), (400, "image_safety")])
+async def test_gemini_decisions_preserves_upstream_error_code(api_client, current_access, status, detail):
+    app.dependency_overrides[get_token_info] = _authenticated
+    current_access["roles"].append("lumen-chat_user")
+    body = {"model": "lumen/14/7", "input": [{"type": "image", "data": "aGk=", "mime_type": "image/png"}]}
+
+    async def handler(request):
+        assert str(request.url) == "http://isolated.test/v1/chat/decisions"
+        assert json.loads(await request.aread()) == body
+        return HttpxResponse(
+            status,
+            headers={"content-type": "application/json"},
+            stream=httpx.ByteStream(json.dumps({"detail": detail}).encode()),
+        )
+
+    upstream = AsyncClient(transport=httpx.MockTransport(handler))
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1"),
+        patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
+    ):
+        response = await api_client.post("/api/v1/chat/decisions", json=body)
+    assert response.status_code == status
+    assert response.json() == {"detail": detail}
+    assert response.headers["cache-control"] == "no-store"
+
+
+@pytest.mark.asyncio
 async def test_native_catalog_requires_current_system_admin_and_preserves_filter(api_client, current_system_admin):
     app.dependency_overrides[get_token_info] = _authenticated_system_admin
     catalog = {"schema_version": 1, "catalog_version": "2026-11-17", "providers": []}
