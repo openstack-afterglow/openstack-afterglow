@@ -730,7 +730,15 @@ describe("admin chat model pricing", () => {
 
   it("isolates MCP, skills, and custom HTTP tools on the tool settings route", async () => {
     render(ToolPage);
-    expect(await screen.findByText("원격 MCP 서버")).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "MCP 연결" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "원격 MCP 서버" })).toBeNull();
+    await fireEvent.click(screen.getByRole("tab", { name: "관리" }));
+    expect(
+      within(screen.getByRole("tabpanel", { name: "관리" })).getByRole(
+        "heading",
+        { name: "원격 MCP 서버" },
+      ),
+    ).toBeTruthy();
     expect(screen.getByText("커스텀 HTTP 툴")).toBeTruthy();
     expect(screen.getByText("스킬")).toBeTruthy();
     expect(screen.queryByText("LLM 프로바이더")).toBeNull();
