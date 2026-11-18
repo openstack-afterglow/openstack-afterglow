@@ -19,7 +19,7 @@ CASES = [
     ("openai", "list", ()), ("openai", "chat", ("LUMEN_OPENAI_MODEL",)),
     ("openai", "responses", ("LUMEN_OPENAI_MODEL",)), ("openai", "stream", ("LUMEN_OPENAI_MODEL",)),
     ("openai", "embed", ("LUMEN_OPENAI_EMBED_MODEL",)), ("openai", "image", ("LUMEN_IMAGE_MODEL",)),
-    ("openai", "providers", tuple(f"LUMEN_{name}_{kind}" for name in ("CLAUDE", "GEMINI", "PERPLEXITY")
+    ("openai", "providers", tuple(f"LUMEN_{name}_{kind}" for name in ("CLAUDE", "GEMINI")
                                   for kind in ("MODEL", "PROVIDER"))),
     ("anthropic", "list", ()), ("anthropic", "message", ("LUMEN_CLAUDE_MODEL",)),
     ("anthropic", "stream", ("LUMEN_CLAUDE_MODEL",)),

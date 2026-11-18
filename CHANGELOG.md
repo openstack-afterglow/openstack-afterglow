@@ -11,6 +11,8 @@
 
 - 채팅 설정 API 키에 SDK 예제 패널을 추가했다. OpenAI·Anthropic·Gemini SDK의 Python·JavaScript·curl 예제는 배포에 설정된 공개 Lumen 주소로 채워지며 주소가 없으면 표시하지 않는다. 문서에 [Lumen API를 SDK로 사용하기](docs/lumen-sdk.md) 튜토리얼과 실행 가능한 `docs/examples/lumen-sdk` 예제·smoke runner를 추가했다.
 - Chat settings API keys add an SDK examples panel. Python, JavaScript and curl examples for the OpenAI, Anthropic and Gemini SDKs use the deployment's configured public Lumen URL and stay hidden when none is configured. The docs add the [Using the Lumen API with SDKs](docs/en/lumen-sdk.md) tutorial and runnable `docs/examples/lumen-sdk` examples with a smoke runner.
+- API 키는 웹 검색 도구 권한을 가질 수 없으므로 Perplexity Sonar 등 웹 검색 모델은 대시보드 채팅에서만 사용할 수 있다. SDK 튜토리얼과 예제에서 제외했다.
+- API keys cannot hold the web-search tool permission, so Perplexity Sonar and other web-search models are available only in dashboard chat. The SDK tutorial and examples exclude them.
 
 ### Changed
 

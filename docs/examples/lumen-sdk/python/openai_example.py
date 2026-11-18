@@ -41,7 +41,7 @@ def main() -> None:
                 output.write(base64.b64decode(image))
             print("Saved lumen-python-image.png")
         elif args.operation == "providers":
-            for family in ("CLAUDE", "GEMINI", "PERPLEXITY"):
+            for family in ("CLAUDE", "GEMINI"):
                 provider = os.environ[f"LUMEN_{family}_PROVIDER"]
                 result = client.chat.completions.create(
                     model=os.environ[f"LUMEN_{family}_MODEL"],

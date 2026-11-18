@@ -47,6 +47,8 @@ Lumen은 공식 OpenAI SDK, Anthropic SDK, Google GenAI SDK가 호출하는 HTTP
 
 두 키 모두 **모델 API 전용**이다. 모델 조회·채팅·임베딩·이미지·오디오·실시간·의사결정처럼 허용된 모델 호출만 할 수 있다. OpenStack 클라우드 도구, 서버 도구, 대화 기록, Agent Vault/메모리, 키 관리에는 사용할 수 없다. 대시보드 전용 가상 모델 `model=lumen`도 키로 호출할 수 없다.
 
+> **Perplexity Sonar 등 웹 검색 모델은 대시보드 채팅에서만 사용할 수 있다.** 이 모델은 Lumen의 웹 검색 도구 권한이 필요하며 모델 전용 API 키는 이 권한을 가질 수 없다. 키의 모델 목록에는 표시되지 않고, 키로 호출하면 `403`으로 거부된다.
+
 ## 환경 변수
 
 키는 셸 기록에 남지 않게 숨김 프롬프트로 입력한다.
@@ -65,7 +67,6 @@ export LUMEN_BASE_URL='https://lumen.dmslab.re.kr'
 | `LUMEN_IMAGE_MODEL` | 이미지 생성 모델 |
 | `LUMEN_CLAUDE_MODEL`, `LUMEN_CLAUDE_PROVIDER` | Claude 모델과 Lumen provider ID |
 | `LUMEN_GEMINI_MODEL`, `LUMEN_GEMINI_PROVIDER` | Gemini 텍스트 모델과 Lumen provider ID |
-| `LUMEN_PERPLEXITY_MODEL`, `LUMEN_PERPLEXITY_PROVIDER` | Perplexity 모델과 Lumen provider ID |
 | `LUMEN_GEMINI_EMBED_MODEL` | Gemini 임베딩 모델 |
 
 ## SDK 설치
@@ -79,7 +80,7 @@ npm install openai @anthropic-ai/sdk @google/genai
 
 ## OpenAI SDK
 
-OpenAI SDK는 `base_url`에 `/v1`을 포함한다. 같은 클라이언트로 OpenAI 모델뿐 아니라 Lumen에 등록된 Claude·Gemini·Perplexity 모델도 호출할 수 있다.
+OpenAI SDK는 `base_url`에 `/v1`을 포함한다. 같은 클라이언트로 OpenAI 모델뿐 아니라 Lumen에 등록된 Claude·Gemini 모델도 호출할 수 있다. Perplexity Sonar 같은 웹 검색 모델은 키로 호출할 수 없다.
 
 ### Python
 
@@ -146,7 +147,7 @@ await writeFile('lumen-image.png', Buffer.from(image.data[0].b64_json, 'base64')
 
 이미지 응답은 `b64_json`만 지원한다. `response_format="url"`은 거부된다.
 
-### Claude·Gemini·Perplexity 모델 선택
+### Claude·Gemini 모델 선택
 
 같은 공개 모델 ID가 여러 provider에 등록될 수 있다. 이때 `X-Lumen-Provider` 헤더에 관리자가 등록한 provider ID를 보낸다. 헤더를 생략한 요청이 여러 경로와 일치하면 Lumen은 `409 model_route_ambiguous`로 거부한다. Chat Completions는 요청 본문의 `provider` 필드도 받지만 헤더가 SDK 공통 방식이다.
 
@@ -174,8 +175,8 @@ curl --fail-with-body "$LUMEN_BASE_URL/v1/models" -H "Authorization: Bearer $LUM
 
 curl --fail-with-body "$LUMEN_BASE_URL/v1/chat/completions" \
   -H "Authorization: Bearer $LUMEN_API_KEY" -H 'Content-Type: application/json' \
-  -H "X-Lumen-Provider: $LUMEN_PERPLEXITY_PROVIDER" \
-  -d "{\"model\":\"$LUMEN_PERPLEXITY_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Hello\"}]}"
+  -H "X-Lumen-Provider: $LUMEN_CLAUDE_PROVIDER" \
+  -d "{\"model\":\"$LUMEN_CLAUDE_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Hello\"}]}"
 ```
 
 ## Anthropic SDK
@@ -316,7 +317,7 @@ curl --fail-with-body --no-buffer "$LUMEN_BASE_URL/v1beta/models/${LUMEN_GEMINI_
 Gemini 지원 범위와 제한:
 
 - 모델 목록·단일 모델 조회(`pageSize`, `pageToken`, `nextPageToken`), `generateContent`, `streamGenerateContent?alt=sse`(마지막 chunk에 `usageMetadata`), `embedContent`, `batchEmbedContents`를 지원한다.
-- 모델 목록에는 Gemini 모델뿐 아니라 OpenAI·Anthropic·Perplexity 텍스트 모델도 나온다. Gemini provider 모델은 그대로 실행하고 다른 텍스트 모델은 변환해 실행한다. 둘 다 텍스트, inline 이미지, `systemInstruction`, function 선언(`functionCall` 응답), `temperature`, `topP`, `maxOutputTokens`, `stopSequences`, JSON 모드(`responseMimeType: application/json`)를 지원한다.
+- 모델 목록에는 Gemini 모델뿐 아니라 OpenAI·Anthropic 등 다른 공급자의 텍스트 모델도 나온다(웹 검색 도구가 필요한 Perplexity Sonar 모델 제외). Gemini provider 모델은 그대로 실행하고 다른 텍스트 모델은 변환해 실행한다. 둘 다 텍스트, inline 이미지, `systemInstruction`, function 선언(`functionCall` 응답), `temperature`, `topP`, `maxOutputTokens`, `stopSequences`, JSON 모드(`responseMimeType: application/json`)를 지원한다.
 - inline 이미지 형식: Gemini 모델은 png/jpeg/webp/heic/heif, 변환 모델은 png/jpeg/webp/gif. 변환 모델에 `topK`, `safetySettings`, `thinkingConfig`, penalty, `seed`를 보내면 `400`이다.
 - 요청 필드는 닫혀 있어 알 수 없는 필드는 `400`이다. 모든 모델에서 거부: 서버 도구(`googleSearch` 등), `cachedContent`, `fileData`, 오디오·비디오·PDF 입력, `candidateCount` ≠ 1, `TEXT` 이외의 `responseModalities`, `functionCallingConfig` 이외의 `toolConfig`, 가상 모델 `lumen`.
 - `countTokens`는 `501 UNIMPLEMENTED`를 반환한다.
@@ -331,6 +332,7 @@ Gemini 지원 범위와 제한:
 | `401` | 키가 없거나 잘못됨, 폐기·만료됨 | 전체 키를 다시 확인하거나 새로 발급한다. |
 | `403` | 키 권한 부족 | 필요한 권한으로 새 키를 발급한다. |
 | `403 model_not_allowed_for_key` | 키로 쓸 수 없는 모델(예: `model=lumen`) | 모델 목록의 공개 모델 ID를 사용한다. |
+| `403` (웹 검색 모델) | Perplexity Sonar 등 웹 검색 도구가 필요한 모델 | 대시보드 채팅에서 사용한다. 키로는 호출할 수 없다. |
 | `409 model_route_ambiguous` | 같은 모델 ID가 여러 provider와 일치 | `X-Lumen-Provider` 헤더를 보낸다. |
 | `domain_credit_insufficient` | 서비스 키의 도메인 선불 잔액 또는 한도 부족. OpenAI 호환 응답은 `429` | 도메인 관리자 또는 시스템 관리자에게 충전·한도 조정을 요청한다. |
 | `429` (그 밖) | 사용자 한도 또는 provider 속도 제한 | 사용량을 확인하고 나중에 다시 시도한다. |
