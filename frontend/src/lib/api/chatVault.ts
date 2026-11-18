@@ -1,4 +1,5 @@
 import { api, ApiError } from './client';
+import type { Workspace } from './chatWorkspaces';
 
 export const vaultKinds = [
 	'user_note', 'profile', 'coding_standards', 'project', 'short_term', 'long_term',
@@ -28,6 +29,7 @@ export interface VaultNote {
 	hash: string;
 	scope: VaultScope;
 	project_key: string | null;
+	workspace_id: number | null;
 	role: VaultRole | null;
 	revision: number;
 }
@@ -47,6 +49,7 @@ interface NewVaultNote {
 	mode: 'create' | 'append';
 	scope: VaultScope;
 	project_key?: string;
+	workspace_id?: number;
 	role?: VaultRole;
 }
 
@@ -57,29 +60,36 @@ export interface VaultDocument {
 }
 
 type VaultSlotResult = { exists: false } | ({ exists: true } & VaultNote);
-export type VaultSelection = { id: number } | { slot: VaultSlot };
+export type VaultSelection = { id: number; workspaceId?: number } | { slot: VaultSlot };
 export const vaultPageSize = 25;
 export const vaultContentLimit = 100_000;
 const base = '/api/v1/chat/vault';
+
+function notePath(id: number, workspaceId?: number): string {
+	return `notes/${id}${workspaceId === undefined ? '' : `?workspace_id=${workspaceId}`}`;
+}
 
 export function vaultApi(token: string, projectId: string, signal: AbortSignal) {
 	const options = { signal, cache: 'no-store', replayOnUnauthorized: false } as const;
 	const read = <T>(path: string) => api.get<T>(`${base}/${path}`, token, projectId, options);
 	return {
-		list(kind: VaultKind | '', query: string, before?: number) {
+		workspaces: () => api.get<Workspace[]>('/api/v1/chat/workspaces', token, projectId, options),
+		list(kind: VaultKind | '', query: string, workspaceId?: number, before?: number) {
 			const params = new URLSearchParams({ limit: String(vaultPageSize) });
 			if (kind) params.set('kind', kind);
 			if (query) params.set('query', query);
+			if (workspaceId !== undefined) params.set('workspace_id', String(workspaceId));
 			if (before !== undefined) params.set('before', String(before));
 			return read<VaultNote[]>(`${query ? 'search' : 'notes'}?${params}`);
 		},
 		async note(selection: VaultSelection): Promise<VaultNote | null> {
-			if ('id' in selection) return read<VaultNote>(`notes/${selection.id}`);
+			if ('id' in selection) return read<VaultNote>(notePath(selection.id, selection.workspaceId));
 			const result = await read<VaultSlotResult>(vaultSlots[selection.slot]);
 			return result.exists ? result : null;
 		},
-		revisions(id: number, before?: number) {
+		revisions(id: number, workspaceId?: number, before?: number) {
 			const params = new URLSearchParams({ limit: String(vaultPageSize) });
+			if (workspaceId !== undefined) params.set('workspace_id', String(workspaceId));
 			if (before !== undefined) params.set('before', String(before));
 			return read<VaultRevision[]>(`notes/${id}/revisions?${params}`);
 		},
@@ -87,7 +97,7 @@ export function vaultApi(token: string, projectId: string, signal: AbortSignal) 
 		create: (body: NewVaultNote) => api.post<VaultNote>(`${base}/notes`, body, token, projectId, options),
 		replace(selection: VaultSelection, body: { content: string; title: string; expectedHash?: string }) {
 			return 'id' in selection
-				? api.patch<VaultNote>(`${base}/notes/${selection.id}`, body, token, projectId, options)
+				? api.patch<VaultNote>(`${base}/${notePath(selection.id, selection.workspaceId)}`, body, token, projectId, options)
 				: api.put<VaultNote>(`${base}/${vaultSlots[selection.slot]}`, {
 					content: body.content, expectedHash: body.expectedHash
 				}, token, projectId, options);

@@ -16,16 +16,25 @@ vi.mock('$lib/api/client', async () => ({
 const base = '/api/v1/chat/vault';
 const note: VaultNote = {
 	id: 1, kind: 'user_note', slug: 'preferences', title: 'Preferences', content: 'Keep it short.',
-	hash: 'a'.repeat(64), scope: 'domain', project_key: null, role: null, revision: 1
+	hash: 'a'.repeat(64), scope: 'domain', project_key: null, workspace_id: null, role: null, revision: 1
 };
 const log: VaultNote = {
 	...note, id: 2, kind: 'log', slug: 'investigation', title: 'Investigation',
 	content: 'Existing record.', scope: 'global'
 };
+const workspace = { id: 31, name: 'Research chat' };
+const workspaceNote: VaultNote = {
+	...note, id: 3, title: 'Imported memory', workspace_id: workspace.id, content: 'Private workspace memory.'
+};
 const memory = { filename: 'memory.md', content_type: 'text/markdown', content: '# Memory\n\n- Keep it short.\n' };
 const netOptions = expect.objectContaining({ cache: 'no-store', replayOnUnauthorized: false, signal: expect.any(AbortSignal) });
 const click = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
 const change = (label: string, value: string) => fireEvent.input(screen.getByLabelText(label), { target: { value } });
+
+async function selectChatProject() {
+	await fireEvent.click(await screen.findByText('도메인 및 전역 노트'));
+	await fireEvent.click(await screen.findByRole('option', { name: workspace.name }));
+}
 
 beforeEach(() => {
 	vi.resetAllMocks();
@@ -35,16 +44,20 @@ beforeEach(() => {
 	});
 	getJson.mockImplementation(async (path: string) => {
 		const url = new URL(path, 'http://test');
+		const inWorkspace = url.searchParams.get('workspace_id') === String(workspace.id);
 		switch (url.pathname) {
-			case `${base}/notes`: return url.searchParams.get('kind') === 'log' ? [log] : [note, log];
-			case `${base}/search`: return [log];
+			case '/api/v1/chat/workspaces': return [workspace];
+			case `${base}/notes`: return inWorkspace ? [workspaceNote] : url.searchParams.get('kind') === 'log' ? [log] : [note, log];
+			case `${base}/search`: return inWorkspace ? [workspaceNote] : [log];
 			case `${base}/document`: return memory;
 			case `${base}/notes/1`: return note;
 			case `${base}/notes/2`: return log;
 			case `${base}/notes/1/revisions`: return [{ revision: 1, title: note.title, content: 'Original text', created_at: '2026-11-19T00:00:00Z' }];
+			case `${base}/notes/3`: if (inWorkspace) return workspaceNote; break;
+			case `${base}/notes/3/revisions`: if (inWorkspace) return []; break;
 			case `${base}/profile`: return { exists: false };
-			default: throw new Error(`Unexpected path: ${path}`);
 		}
+		throw new Error(`Unexpected path: ${path}`);
 	});
 });
 afterEach(() => vi.restoreAllMocks());
@@ -62,6 +75,61 @@ describe('ChatVault', () => {
 		await click('Vault 검색');
 		expect(await screen.findByRole('button', { name: log.title })).toBeTruthy();
 		expect(getJson).toHaveBeenCalledWith(`${base}/search?limit=25&kind=log&query=incident+%26+proof`, 'token-a', 'project-a', netOptions);
+	});
+
+	it('lists, searches, reads, and edits workspace notes with the selected workspace ID', async () => {
+		render(ChatVault);
+		await selectChatProject();
+		expect(await screen.findByRole('button', { name: workspaceNote.title })).toBeTruthy();
+		expect(getJson).toHaveBeenCalledWith('/api/v1/chat/workspaces', 'token-a', 'project-a', netOptions);
+		expect(getJson).toHaveBeenCalledWith(`${base}/notes?limit=25&workspace_id=31`, 'token-a', 'project-a', netOptions);
+		expect(screen.queryByRole('button', { name: note.title })).toBeNull();
+		expect(screen.queryByRole('region', { name: 'memory.md 내용' })).toBeNull();
+		await change('Vault 검색', 'imported');
+		await click('Vault 검색');
+		expect(getJson).toHaveBeenCalledWith(`${base}/search?limit=25&query=imported&workspace_id=31`, 'token-a', 'project-a', netOptions);
+		await click(workspaceNote.title);
+		expect(await screen.findByText(workspaceNote.content)).toBeTruthy();
+		expect(getJson).toHaveBeenCalledWith(`${base}/notes/3?workspace_id=31`, 'token-a', 'project-a', netOptions);
+		await click('버전 기록');
+		expect(getJson).toHaveBeenCalledWith(`${base}/notes/3/revisions?limit=25&workspace_id=31`, 'token-a', 'project-a', netOptions);
+		await click('편집');
+		await change('노트 내용', 'Edited workspace memory.');
+		patch.mockResolvedValueOnce({ ...workspaceNote, content: 'Edited workspace memory.' });
+		await click('변경 저장');
+		expect(await screen.findByText('Edited workspace memory.')).toBeTruthy();
+		expect(patch).toHaveBeenCalledWith(`${base}/notes/3?workspace_id=31`, {
+			content: 'Edited workspace memory.', title: workspaceNote.title, expectedHash: workspaceNote.hash
+		}, 'token-a', 'project-a', netOptions);
+	});
+
+	it('creates a user note in the selected chat project, never globally', async () => {
+		render(ChatVault);
+		await selectChatProject();
+		await click('노트 만들기');
+		const dialog = within(screen.getByRole('dialog', { name: '노트 만들기' }));
+		expect(dialog.getByText(`이 노트는 채팅 프로젝트 ${workspace.name}에만 저장됩니다.`)).toBeTruthy();
+		expect(dialog.queryByRole('combobox')).toBeNull();
+		await fireEvent.input(dialog.getByLabelText('노트 내용'), { target: { value: 'New local note.' } });
+		post.mockResolvedValueOnce(workspaceNote);
+		await fireEvent.click(dialog.getByRole('button', { name: '노트 만들기' }));
+		expect(await screen.findByText(workspaceNote.content)).toBeTruthy();
+		expect(post).toHaveBeenCalledWith(`${base}/notes`, {
+			kind: 'user_note', mode: 'create', scope: 'domain', workspace_id: 31,
+			title: 'New local note.', content: 'New local note.', slug: expect.any(String)
+		}, 'token-a', 'project-a', netOptions);
+	});
+
+	it('clears the chat project filter when the working domain changes', async () => {
+		render(ChatVault);
+		await selectChatProject();
+		expect(await screen.findByRole('button', { name: workspaceNote.title })).toBeTruthy();
+		setVerifiedLumenActor({ ...get(auth), token: 'token-c', domainId: 'working-b', projectId: 'project-c' });
+		expect(await screen.findByText('도메인 및 전역 노트')).toBeTruthy();
+		expect(await screen.findByRole('button', { name: note.title })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: workspaceNote.title })).toBeNull();
+		expect(getJson).toHaveBeenCalledWith(`${base}/notes?limit=25`, 'token-c', 'project-c', netOptions);
+		expect(getJson).not.toHaveBeenCalledWith(expect.stringContaining('workspace_id='), 'token-c', 'project-c', netOptions);
 	});
 
 	it('loads revisions and protects the draft after a hash conflict until explicit reconciliation', async () => {

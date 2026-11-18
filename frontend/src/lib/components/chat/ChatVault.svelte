@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { get } from 'svelte/store';
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 	import { serviceCapabilities } from '$lib/stores/servicePermissions';
 	import { chatDomainScope } from '$lib/stores/chatDomainScope';
@@ -25,13 +24,11 @@
 	{/if}
 	{#if $chatDomainScope.key && $auth.token && $auth.projectId}
 		{#key $chatDomainScope.revision}
-			{@const owner = $chatDomainScope}
 			<ChatVaultBrowser
 				token={$auth.token}
 				projectId={$auth.projectId}
 				{canRead}
 				{canWrite}
-				isCurrent={() => owner === get(chatDomainScope)}
 			/>
 		{/key}
 	{/if}

@@ -70,6 +70,23 @@ def test_resource_for_path_keypairs():
     assert rtype == "keypair"
 
 
+@pytest.mark.parametrize(
+    ("suffix", "resource_id"),
+    [
+        ("", None),
+        ("/notes", None),
+        ("/notes/42", "42"),
+        ("/profile", "profile"),
+        ("/coding-standards", "coding-standards"),
+        ("/short-term", "short-term"),
+        ("/notes/untrusted-path", None),
+    ],
+)
+def test_vault_audit_records_only_known_resource_identifiers(suffix, resource_id):
+    assert _resource_for_path(f"/api/v1/chat/vault{suffix}") == ("chat_vault_note", resource_id)
+    assert _resource_for_path("/api/v1/chat/vaulted") is None
+
+
 def test_resource_for_path_admin_projects():
     rtype, rid = _resource_for_path("/api/v1/admin/projects/proj-abc")
     assert rtype == "project"
@@ -123,6 +140,32 @@ async def test_auto_log_created_when_no_manual_log():
     assert kw["project_id"] == "proj-test"
     assert kw["user_id"] == "user-test"
     assert kw["status"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_vault_mutation_audit_omits_note_body_and_query():
+    application = FastAPI()
+    application.middleware("http")(activity_audit_middleware)
+
+    @application.patch("/api/v1/chat/vault/notes/{note_id}")
+    async def replace(note_id: int, request: Request):
+        request.state.token_info = _DEFAULT_TOKEN_INFO.copy()
+        body = await request.json()
+        return JSONResponse({"id": note_id, **body})
+
+    with patch.object(_main_module, "_record_activity", new=AsyncMock()) as record:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=application), base_url="http://test") as client:
+            response = await client.patch(
+                "/api/v1/chat/vault/notes/42?workspace_id=91357", json={"content": "private fixture note text"}
+            )
+    assert response.status_code == 200
+    record.assert_awaited_once()
+    event = record.call_args.kwargs
+    assert (event["resource_type"], event["resource_id"], event["action"], event["status"]) == (
+        "chat_vault_note", "42", "chat_vault_note.update", "success"
+    )
+    assert "private fixture note text" not in repr(event)
+    assert "91357" not in repr(event)
 
 
 @pytest.fixture

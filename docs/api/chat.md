@@ -36,6 +36,9 @@ Afterglow 백엔드는 독자적인 AI 모델·에이전트 실행 엔진 및 �
 | `GET /vault/notes/{id}`, `GET /vault/notes/{id}/revisions` | 노트 또는 읽기 전용 버전 기록을 조회한다. |
 | `PATCH /vault/notes/{id}` | `expectedHash`가 최신일 때만 내용과 선택적 제목을 교체한다. |
 | `GET\|PUT /vault/profile`, `/vault/coding-standards`, `/vault/short-term` | 프로필·코딩 규칙·단기 메모리를 읽거나 쓴다. 기존 노트 수정에는 `expectedHash`가 필요하다. |
+| 채팅 프로젝트 노트 | 목록·검색·상세·수정·버전 조회에 `workspace_id` 쿼리를 추가한다. `POST /vault/notes`에서는 JSON 본문에 넣고 `kind=user_note`, `scope=domain`을 사용한다. |
+
+선택 가능한 채팅 프로젝트는 `GET /api/v1/chat/workspaces`에서 읽는다. Lumen이 현재 사용자와 도메인의 프로젝트임을 확인한다. 채팅 프로젝트를 선택하지 않으면 workspace-private 노트는 목록·검색·`memory.md`에 포함되지 않는다. 쓰기 요청은 `chat_vault_note` 감사 유형으로 기록한다. 노트 본문, 제목, 응답과 쿼리는 감사 데이터에 포함하지 않는다.
 
 `409 hash_mismatch`에서는 원본을 다시 읽고 초안을 비교한다. `422 secret_detected`에서는 비밀번호·토큰·키를 제거한 뒤 다시 저장한다. 실패한 쓰기는 자동 재전송하지 않는다.
 

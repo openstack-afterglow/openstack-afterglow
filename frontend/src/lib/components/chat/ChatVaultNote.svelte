@@ -18,10 +18,11 @@
 		canWrite: boolean;
 		isCurrent: () => boolean;
 		selection: VaultSelection;
+		workspaceName?: string;
 		onClose: () => void;
 		onSaved: () => void;
 	}
-	let { token, projectId, canRead, canWrite, isCurrent, selection, onClose, onSaved }: Props = $props();
+	let { token, projectId, canRead, canWrite, isCurrent, selection, workspaceName, onClose, onSaved }: Props = $props();
 	const uid = $props.id();
 	const lifetime = new AbortController();
 	const current = () => !lifetime.signal.aborted && isCurrent();
@@ -156,7 +157,7 @@
 		historyLoading = true;
 		historyError = false;
 		try {
-			const page = await client().revisions(note.id, before);
+			const page = await client().revisions(note.id, 'id' in selection ? selection.workspaceId : undefined, before);
 			if (!current() || !historyOpen) return;
 			revisions = before === undefined ? page : [...revisions, ...page];
 			historyMore = page.length === vaultPageSize;
@@ -179,7 +180,12 @@
 			<h3 id={`${uid}-title`} bind:this={heading} tabindex="-1" class="[overflow-wrap:anywhere] text-sm font-semibold">{title}</h3>
 			{#if note || 'slot' in selection}
 				<div class="flex flex-wrap items-center gap-2 text-xs text-[var(--color-ink-2)]">
-					<Pill size="xs">{t(`settings.vault.scopes.${scope}`)}</Pill>
+					{#if 'id' in selection && selection.workspaceId !== undefined}
+						<Pill size="xs">{t('settings.vault.workspace')}</Pill>
+						{#if workspaceName}<span class="[overflow-wrap:anywhere]">{workspaceName}</span>{/if}
+					{:else}
+						<Pill size="xs">{t(`settings.vault.scopes.${scope}`)}</Pill>
+					{/if}
 					{#if note?.project_key}<span class="[overflow-wrap:anywhere]">{note.project_key}</span>{/if}
 					{#if note?.role}<span>{t(`settings.vault.roles.${note.role}`)}</span>{/if}
 				</div>

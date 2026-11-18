@@ -17,6 +17,8 @@
 - Chat, agents, and Studios select a provider before a registered model. Same-name models from different providers stay distinct during selection and execution.
 - 채팅 설정의 메모리를 Agent Vault로 교체했다. 도메인·전역 노트 검색, 버전 확인, 충돌을 보호하는 편집, 추가 전용 기록과 `memory.md` 내보내기를 지원한다. 대시보드 로그인 세션과 Vault를 지원하는 Lumen이 필요하다.
 - Agent Vault replaces chat memory settings with scoped note search, revision history, conflict-safe editing, append-only records, and `memory.md` export. Requires a dashboard session and a Vault-capable Lumen deployment.
+- Agent Vault에서 채팅 프로젝트를 선택해 해당 프로젝트의 메모리를 검색·조회·수정하거나 새 노트를 만들 수 있다.
+- Agent Vault can search, read, edit, and create notes restricted to one chat project.
 
 ## [1.32.28] - 2026-11-18
 

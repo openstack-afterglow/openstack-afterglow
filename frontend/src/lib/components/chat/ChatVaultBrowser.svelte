@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { onDestroy, tick, untrack } from 'svelte';
+	import { get } from 'svelte/store';
+	import { chatDomainScope } from '$lib/stores/chatDomainScope';
+	import type { Workspace } from '$lib/api/chatWorkspaces';
 	import { isVaultSlot, vaultApi, vaultKinds, vaultPageSize, type VaultKind, type VaultNote, type VaultSelection } from '$lib/api/chatVault';
 	import { t } from '$lib/i18n/ns/chat-settings';
 	import { toast } from '$lib/stores/toast';
@@ -8,6 +11,7 @@
 	import Field from '$lib/components/ui/Field.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
+	import SearchSelect from '$lib/components/ui/SearchSelect.svelte';
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import ChatVaultCreate from './ChatVaultCreate.svelte';
@@ -19,11 +23,23 @@
 		projectId: string;
 		canRead: boolean;
 		canWrite: boolean;
-		isCurrent: () => boolean;
 	}
-	let { token, projectId, canRead, canWrite, isCurrent }: Props = $props();
+	let { token, projectId, canRead, canWrite }: Props = $props();
+	const owner = get(chatDomainScope);
+	const isCurrent = () => owner === get(chatDomainScope);
 	const uid = $props.id();
 	let notes = $state.raw<VaultNote[]>([]);
+	let workspaces = $state.raw<Workspace[]>([]);
+	let workspaceValue = $state('');
+	let workspaceLoading = $state(true);
+	let workspaceError = $state(false);
+	let workspaceStarted = false;
+	const workspace = $derived(workspaces.find((entry) => String(entry.id) === workspaceValue));
+	const workspaceOptions = $derived([
+		{ value: '', label: t('settings.vault.defaultWorkspace') },
+		...workspaces.map((entry) => ({ value: String(entry.id), label: entry.name }))
+	]);
+	const lifetime = new AbortController();
 	let refreshNeeded = $state(true);
 	let kind = $state<VaultKind | ''>('');
 	let searchText = $state('');
@@ -38,7 +54,40 @@
 	let docRevision = $state(0);
 	let noteRequest: AbortController | undefined;
 	const valid = () => isCurrent() && canRead;
-	onDestroy(() => noteRequest?.abort());
+	onDestroy(() => {
+		lifetime.abort();
+		noteRequest?.abort();
+	});
+
+	async function loadWorkspaces() {
+		if (!valid()) return;
+		workspaceLoading = true;
+		workspaceError = false;
+		const current = () => isCurrent() && !lifetime.signal.aborted;
+		try {
+			const result = await vaultApi(token, projectId, lifetime.signal).workspaces();
+			if (current()) workspaces = result;
+		} catch {
+			if (current()) workspaceError = true;
+		} finally {
+			if (current()) workspaceLoading = false;
+		}
+	}
+
+	$effect(() => {
+		if (!canRead || workspaceStarted) return;
+		workspaceStarted = true;
+		void untrack(loadWorkspaces);
+	});
+
+	function chooseWorkspace(value: string) {
+		if (!valid() || value === workspaceValue) return;
+		workspaceValue = value;
+		kind = '';
+		notes = [];
+		more = false;
+		void loadNotes();
+	}
 
 	async function loadNotes(before?: number) {
 		if (!valid()) return;
@@ -49,7 +98,7 @@
 		listError = false;
 		const current = () => isCurrent() && !request.signal.aborted;
 		try {
-			const page = await vaultApi(token, projectId, request.signal).list(kind, query, before);
+			const page = await vaultApi(token, projectId, request.signal).list(kind, query, workspace?.id, before);
 			if (!current()) return;
 			notes = before === undefined ? page : [...notes, ...page];
 			more = page.length === vaultPageSize;
@@ -94,7 +143,7 @@
 
 	function saved() {
 		if (!isCurrent()) return;
-		docRevision++;
+		if (!workspace) docRevision++;
 		refreshNeeded = true;
 		toast.success(t('settings.vault.saved'));
 	}
@@ -103,21 +152,23 @@
 		createKind = null;
 		saved();
 		trigger = undefined;
-		selected = { id: note.id };
+		selected = { id: note.id, workspaceId: workspace?.id };
 	}
 </script>
 
 <div hidden={!canRead} inert={!canRead} class="space-y-5">
-	{#key docRevision}
-		<ChatVaultDocument {token} {projectId} {canRead} {isCurrent} />
-	{/key}
+	<div hidden={!!workspace}>
+		{#key docRevision}
+			<ChatVaultDocument {token} {projectId} {canRead} {isCurrent} />
+		{/key}
+	</div>
 
 	<section class="space-y-3">
 		<div hidden={selected !== null}>
 			<header class="flex flex-wrap items-center justify-between gap-2">
 				<h3 bind:this={heading} tabindex="-1" class="text-sm font-semibold">{t('settings.vault.notes')}</h3>
 				{#if canWrite}
-					<Button size="sm" onclick={() => (createKind = kind && !isVaultSlot(kind) ? kind : 'user_note')}>
+					<Button size="sm" onclick={() => (createKind = !workspace && kind && !isVaultSlot(kind) ? kind : 'user_note')}>
 						{t('settings.vault.create')}
 					</Button>
 				{/if}
@@ -125,15 +176,32 @@
 			<search aria-label={t('settings.vault.notes')} class="mt-3">
 				<form method="get" class="flex flex-wrap items-end gap-2" onsubmit={search}>
 					<div class="min-w-0 basis-40 grow">
-						<Field for={`${uid}-filter`} label={t('settings.vault.kind')}>
-							<SelectInput id={`${uid}-filter`} value={kind} onchange={filter}>
-								<option value="">{t('settings.vault.allKinds')}</option>
-								{#each vaultKinds as option (option)}
-									<option value={option}>{t(`settings.vault.kinds.${option}`)}</option>
-								{/each}
-							</SelectInput>
+						<Field for={`${uid}-workspace`} label={t('settings.vault.workspace')}>
+							{#if canRead && !selected && createKind === null}
+								<SearchSelect
+									id={`${uid}-workspace`}
+									placeholder={t('settings.vault.workspace')}
+									value={workspaceValue}
+									options={workspaceOptions}
+									loading={workspaceLoading}
+									disabled={workspaceError}
+									onchange={chooseWorkspace}
+								/>
+							{/if}
 						</Field>
 					</div>
+					{#if !workspace}
+						<div class="min-w-0 basis-40 grow">
+							<Field for={`${uid}-filter`} label={t('settings.vault.kind')}>
+								<SelectInput id={`${uid}-filter`} value={kind} onchange={filter}>
+									<option value="">{t('settings.vault.allKinds')}</option>
+									{#each vaultKinds as option (option)}
+										<option value={option}>{t(`settings.vault.kinds.${option}`)}</option>
+									{/each}
+								</SelectInput>
+							</Field>
+						</div>
+					{/if}
 					<div class="min-w-0 basis-48 grow">
 						<Field for={`${uid}-search`} label={t('settings.vault.search')}>
 							<TextInput id={`${uid}-search`} type="search" bind:value={searchText} maxlength={200} />
@@ -142,7 +210,11 @@
 					<Button type="submit" variant="secondary">{t('settings.vault.search')}</Button>
 				</form>
 			</search>
-			{#if isVaultSlot(kind) && !query}
+			{#if workspaceError}
+				<Alert flat>{t('settings.vault.workspacesFailed')}</Alert>
+				<Button variant="secondary" size="sm" onclick={loadWorkspaces}>{t('settings.vault.retry')}</Button>
+			{/if}
+			{#if !workspace && isVaultSlot(kind) && !query}
 				{@const slot = kind}
 				<div class="mt-3">
 					<Button variant="secondary" size="sm" onclick={(event) => openNote({ slot }, event.currentTarget as HTMLButtonElement)}>
@@ -163,12 +235,12 @@
 						<ul class="divide-y divide-[var(--color-line)]">
 							{#each notes as note (note.id)}
 								<li class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2">
-									<Button variant="ghost" class="min-w-0 max-w-full text-left" onclick={(event) => openNote({ id: note.id }, event.currentTarget as HTMLButtonElement)}>
+									<Button variant="ghost" class="min-w-0 max-w-full text-left" onclick={(event) => openNote({ id: note.id, workspaceId: workspace?.id }, event.currentTarget as HTMLButtonElement)}>
 										<span class="whitespace-normal break-all">{note.title}</span>
 									</Button>
 									<div class="flex flex-wrap items-center gap-2 text-xs text-[var(--color-ink-2)]">
 										<span>{t(`settings.vault.kinds.${note.kind}`)}</span>
-										<Pill size="xs">{t(`settings.vault.scopes.${note.scope}`)}</Pill>
+										<Pill size="xs">{workspace ? t('settings.vault.workspace') : t(`settings.vault.scopes.${note.scope}`)}</Pill>
 									</div>
 								</li>
 							{/each}
@@ -184,11 +256,11 @@
 		</div>
 
 		{#if selected}
-			<ChatVaultNote {token} {projectId} {canRead} {canWrite} {isCurrent} selection={selected} onClose={closeNote} onSaved={saved} />
+			<ChatVaultNote {token} {projectId} {canRead} {canWrite} {isCurrent} workspaceName={workspace?.name} selection={selected} onClose={closeNote} onSaved={saved} />
 		{/if}
 	</section>
 </div>
 
 {#if createKind !== null}
-	<ChatVaultCreate {token} {projectId} {canWrite} {isCurrent} initialKind={createKind} onClose={() => (createKind = null)} onCreated={created} />
+	<ChatVaultCreate {token} {projectId} {canWrite} {isCurrent} {workspace} initialKind={createKind} onClose={() => (createKind = null)} onCreated={created} />
 {/if}
