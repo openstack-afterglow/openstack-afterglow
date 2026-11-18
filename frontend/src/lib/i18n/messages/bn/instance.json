@@ -1,4 +1,11 @@
 {
+	"network.iso.label": "ইনস্ট্যান্সের নেটওয়ার্ক মানচিত্র",
+	"network.iso.caption": "কনফিগার করা লিঙ্ক ও নিয়ম দিয়ে বাস্তব সংযোগ নিশ্চিত হয় না।",
+	"network.iso.managed": "Waygate দ্বারা পরিচালিত",
+	"network.iso.policyUnknown": "নিরাপত্তা গ্রুপের তথ্য অনুপলব্ধ",
+	"network.iso.port": "পোর্ট",
+	"network.iso.internet": "ইন্টারনেট",
+	"network.iso.rulesCount": "{count}টি নিয়ম",
 	"list.titleWithCount": "ইনস্ট্যান্স ({count})",
 	"list.summary": "মোট {total} · চলছে {active} · ত্রুটি {errors}",
 	"list.search": "নাম বা UUID অনুসন্ধান",

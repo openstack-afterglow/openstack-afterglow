@@ -1,4 +1,9 @@
 {
+	"project.iso.label": "VPN map",
+	"project.iso.caption": "Select a server, client, or attached network to view its details in the list.",
+	"project.iso.encrypted": "Encrypted tunnel",
+	"project.iso.reportedPeers": "{count, plural, one {# reported peer} other {# reported peers}}",
+	"project.iso.profileCount": "{count, plural, one {# client profile} other {# client profiles}}",
 	"project.permission.denied": "You do not have permission to perform this action in the current project.",
 	"project.client.owner": "Owner user ID",
 	"project.client.ownerHelp": "Enter a project member's user ID. Only unassigned clients can receive an owner; assigned ownership cannot be changed or cleared. Only the owner with connect permission can download an enabled client's profile.",

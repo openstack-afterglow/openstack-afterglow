@@ -1061,6 +1061,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		get interfaces() { return interfaces; },
 		get volumes() { return volumes; },
 		get allSecurityGroups() { return allSecurityGroups; },
+		get securityGroupPorts() { return securityGroupPorts; },
 		get securityGroupsLoading() { return securityGroupsLoading; },
 		get securityGroupsError() { return securityGroupsError; },
 		get availableVolumes() { return availableVolumes; },
@@ -1155,6 +1156,8 @@ export interface InstanceDetailController {
 	readonly interfaces: PortInfo[];
 	readonly volumes: VolumeAttachment[];
 	readonly allSecurityGroups: SecurityGroup[];
+	/** Exact port rows returned by the security-groups endpoint, without interface-cache fallbacks. */
+	readonly securityGroupPorts: readonly PortInfo[];
 	readonly securityGroupsLoading: boolean;
 	readonly securityGroupsError: string;
 	readonly availableVolumes: VolumeInfo[];

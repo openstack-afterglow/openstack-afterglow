@@ -62,7 +62,7 @@ const server = (project: string) => ({
 	created_at: '2026-09-20T00:00:00Z',
 });
 const client = {
-	id: 'client-a', name: 'laptop-a', enabled: true, online: false,
+	id: 'client-a', server_id: 'server-a', name: 'laptop-a', enabled: true, online: false,
 	owner_user_id: 'user-a',
 	tunnel_ip: '10.240.0.2', rx_bytes: 100, tx_bytes: 200,
 	last_reported_at: '2026-09-20T00:00:00Z',
@@ -94,6 +94,7 @@ async function settle() {
 
 const originalAnimate = Object.getOwnPropertyDescriptor(Element.prototype, 'animate');
 beforeEach(() => {
+	localStorage.setItem('waygate.view', 'list');
 	vi.resetAllMocks();
 	mocks.refresh.length = 0;
 	auth.update((value) => ({ ...value, token: 'token-a', projectId: 'project-a', userId: 'user-a', isSystemAdmin: false, roles: ['member'] }));
@@ -119,10 +120,31 @@ beforeEach(() => {
 });
 afterEach(() => {
 	cleanup();
+	localStorage.removeItem('waygate.view');
 	vi.unstubAllGlobals();
 	initLocale(originalLocale);
 	if (originalAnimate) Object.defineProperty(Element.prototype, 'animate', originalAnimate);
 	else Reflect.deleteProperty(Element.prototype, 'animate');
+});
+
+it('defaults to a read-only VPN map, opens a focused client row, and persists explicit list mode', async () => {
+	localStorage.removeItem('waygate.view');
+	const view = render(WaygateWorkspace);
+	await fireEvent.click(await screen.findByText('gateway-a'));
+	const panel = within(await screen.findByRole('dialog', { name: t('project.server.details') }));
+	await panel.findByRole('figure', { name: t('project.iso.label') });
+	expect(panel.queryByRole('button', { name: t('project.actions.issueClient') })).toBeNull();
+	await fireEvent.click(await panel.findByRole('button', { name: /^laptop-a/ }));
+	expect(document.activeElement).toBe(await panel.findByText('laptop-a'));
+	expect(panel.getByRole('button', { name: t('project.actions.issueClient') })).toBeTruthy();
+	expect(localStorage.getItem('waygate.view')).not.toBe('list');
+	await fireEvent.click(panel.getByRole('button', { name: '그리드' }));
+	await fireEvent.click(panel.getByRole('button', { name: '목록' }));
+	expect(localStorage.getItem('waygate.view')).toBe('list');
+	view.unmount();
+	render(WaygateWorkspace);
+	await openDetail();
+	expect(screen.queryByLabelText(t('project.iso.label'))).toBeNull();
 });
 
 	it('prunes hidden selections so bulk actions and visible selection share one set', async () => {

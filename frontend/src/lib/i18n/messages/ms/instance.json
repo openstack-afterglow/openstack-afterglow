@@ -1,4 +1,11 @@
 {
+	"network.iso.label": "Peta rangkaian instans",
+	"network.iso.caption": "Pautan dan peraturan yang dikonfigurasi tidak menjamin kebolehcapaian.",
+	"network.iso.managed": "Diurus oleh Waygate",
+	"network.iso.policyUnknown": "Data kumpulan keselamatan tidak tersedia",
+	"network.iso.port": "Port",
+	"network.iso.internet": "Internet",
+	"network.iso.rulesCount": "{count} peraturan",
 	"list.titleWithCount": "Instans ({count})",
 	"list.summary": "{total} jumlah · {active} berjalan · {errors} ralat",
 	"list.search": "Cari nama atau UUID",

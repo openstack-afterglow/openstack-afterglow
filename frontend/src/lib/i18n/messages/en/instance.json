@@ -1,4 +1,11 @@
 {
+	"network.iso.label": "Instance network map",
+	"network.iso.caption": "Configured links and rules do not confirm reachability.",
+	"network.iso.managed": "Managed by Waygate",
+	"network.iso.policyUnknown": "Security group data unavailable",
+	"network.iso.port": "Port",
+	"network.iso.internet": "Internet",
+	"network.iso.rulesCount": "{count, plural, one {# rule} other {# rules}}",
 	"list.titleWithCount": "Instances ({count})",
 	"list.summary": "{total} total · {active} running · {errors} errors",
 	"list.search": "Search name or UUID",

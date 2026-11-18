@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { writable } from 'svelte/store';
 import { tick } from 'svelte';
 import type { SecurityGroup, SecurityGroupRule } from '$lib/types/securityGroup';
 import type { PortInfo } from '$lib/types/networks';
+import type { InstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 
 interface SecurityGroupSnapshot {
 	ports: PortInfo[];
@@ -50,7 +51,12 @@ const ancillary = (path: string): unknown => {
 const snapshot = (ids: string[]): SecurityGroupSnapshot => ({ ports: [{ ...iface, security_group_ids: ids }], security_groups: groups });
 const policy = () => within(screen.getByRole('region', { name: '적용된 허용 규칙' }));
 
-beforeEach(() => { mockGet.mockReset(); mockPost.mockReset(); });
+beforeEach(() => {
+	mockGet.mockReset();
+	mockPost.mockReset();
+	localStorage.setItem('instance.network.view', 'list');
+});
+afterEach(() => localStorage.removeItem('instance.network.view'));
 
 describe('NetworkSection saved security policies', () => {
 	it('uses the security-group snapshot over cached interface IDs and changes allowances only after save', async () => {
@@ -139,5 +145,36 @@ describe('NetworkSection saved security policies', () => {
 		expect(within(regions[0]).getByRole('button', { name: '인바운드 허용 규칙 펼치기' }).getAttribute('aria-expanded')).toBe('false');
 		expect(within(regions[1]).getByRole('cell', { name: '22' })).toBeTruthy();
 		expect(within(regions[1]).queryByRole('cell', { name: '443' })).toBeNull();
+	});
+
+	it('defaults to a read-only grid, reveals a selected rule, and restores the explicit list preference', async () => {
+		localStorage.removeItem('instance.network.view');
+		mockGet.mockImplementation((path: string) => Promise.resolve(path.endsWith('/security-groups') ? snapshot(['default']) : ancillary(path)));
+		const view = render(Wrapper, { source });
+		await screen.findByRole('figure', { name: '인스턴스 네트워크 맵' });
+		expect(screen.queryByRole('button', { name: '+ 인터페이스 추가' })).toBeNull();
+		await fireEvent.click(await screen.findByRole('button', { name: /^인터넷/ }));
+		expect(within(screen.getByRole('region', { name: '인터넷' })).getByText(/TCP · 22/)).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: '목록' }));
+		expect(await screen.findByRole('button', { name: '+ 인터페이스 추가' })).toBeTruthy();
+		expect(localStorage.getItem('instance.network.view')).toBe('list');
+		view.unmount();
+		render(Wrapper, { source });
+		expect(await screen.findByRole('button', { name: '+ 인터페이스 추가' })).toBeTruthy();
+		expect(screen.queryByLabelText('인스턴스 네트워크 맵')).toBeNull();
+	});
+
+	it('publishes exact controller snapshot ports separately from the list fallback and suppresses incomplete grid policy', async () => {
+		localStorage.removeItem('instance.network.view');
+		const savedPort = { ...iface, id: 'snapshot-only-port', security_group_ids: ['web'] };
+		mockGet.mockImplementation((path: string) => Promise.resolve(path.endsWith('/security-groups')
+			? { ports: [savedPort], security_groups: groups } : ancillary(path)));
+		let controller: InstanceDetailController | undefined;
+		render(Wrapper, { source, onReady: (value) => { controller = value; } });
+		await waitFor(() => expect(controller?.securityGroupPorts).toEqual([savedPort]));
+		expect(controller?.interfaces).toEqual([iface]);
+		expect(controller?.securityGroupIdsForPort(iface)).toEqual(['cached']);
+		expect(await screen.findByRole('button', { name: /보안 그룹 정보 확인 불가/ })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: /^인터넷/ })).toBeNull();
 	});
 });

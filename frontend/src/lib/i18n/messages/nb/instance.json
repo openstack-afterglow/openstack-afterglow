@@ -1,4 +1,11 @@
 {
+	"network.iso.label": "Instansens nettverkskart",
+	"network.iso.caption": "Konfigurerte koblinger og regler bekrefter ikke at trafikken når frem.",
+	"network.iso.managed": "Administreres av Waygate",
+	"network.iso.policyUnknown": "Sikkerhetsgruppedata er utilgjengelig",
+	"network.iso.port": "Port",
+	"network.iso.internet": "Internett",
+	"network.iso.rulesCount": "{count, plural, one {# regel} other {# regler}}",
 	"list.titleWithCount": "Instanser ({count})",
 	"list.summary": "{total} totalt · {active} kjører · {errors} feil",
 	"list.search": "Søk etter navn eller UUID",

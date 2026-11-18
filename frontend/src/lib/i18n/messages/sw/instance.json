@@ -1,4 +1,11 @@
 {
+	"network.iso.label": "Ramani ya mtandao wa instansi",
+	"network.iso.caption": "Viungo na kanuni zilizosanidiwa hazithibitishi kuwa rasilimali inafikika.",
+	"network.iso.managed": "Inasimamiwa na Waygate",
+	"network.iso.policyUnknown": "Data ya kikundi cha usalama haipatikani",
+	"network.iso.port": "Lango",
+	"network.iso.internet": "Intaneti",
+	"network.iso.rulesCount": "Kanuni {count}",
 	"list.titleWithCount": "Instansi ({count})",
 	"list.summary": "Jumla {total} · Zinazoendeshwa {active} · Hitilafu {errors}",
 	"list.search": "Tafuta jina au UUID",
