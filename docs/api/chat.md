@@ -176,10 +176,11 @@ Studio는 선택 모델의 `provider_type="gemini"`와 `model_kind="decision"` �
 }
 ```
 
-- JSON 객체·배열은 최대 100단계로 검사하고 정밀도를 유지하도록 원문을 텍스트로 보낸다. 이미지 첨부는 `{"type":"image","data":"<base64>","mime_type":"image/png","resolution":"low"}` 형태다. PNG·JPEG·WebP·HEIC·HEIF·GIF·BMP·TIFF, `low|medium|high|ultra_high` 또는 생략(공급자 기본값)을 지원한다.
+- JSON 객체·배열은 최대 100단계로 검사하고 정밀도를 유지하도록 원문을 별도 텍스트 블록으로 그대로 보낸다. 이미지 첨부는 `{"type":"image","data":"<base64>","mime_type":"image/png","resolution":"low"}` 형태다. PNG·JPEG·WebP·HEIC·HEIF·GIF·BMP·TIFF, `low|medium|high|ultra_high` 또는 생략(공급자 기본값)을 지원한다. 브라우저가 MIME을 제공하지 않는 HEIC/HEIF 파일은 확장자를 사용한다.
 - 질문 키는 `[A-Za-z0-9_-]{1,64}`에 맞는 고유 키를 1–1,000개 쓴다. `noul`은 선택적으로 `criteria.true_description`과 `criteria.false_description`을 보낸다. `choice`는 키→설명 맵(2–255개, 빈 설명 허용), `score`는 낮은 순서부터 비어 있지 않은 설명 배열(2–255개)을 보낸다.
 - Gemini 응답은 `{model, answers, usage}`이며 `answers`는 질문 키에 대응하는 `noul|choice|score` 결과와 confidence를 포함한다. Choice와 score는 확률 맵을, score는 수준별 설명 `legend`도 제공한다. 명세 예시는 [Google Decisions API](https://aistudio.google.com/docs/decisions-api)를 참고한다.
 - 브라우저와 BFF는 인코딩을 포함한 전체 JSON 본문을 20 MiB로 제한하며 BFF는 초과 시 Lumen에 보내지 않고 413을 반환한다. 현재 오디오·동영상·PDF는 422 `decision_input_modality_unsupported`다. 400 안전 차단은 허용된 코드만 전달하며 공급자의 원문은 표시하지 않는다.
+- BFF는 `Content-Length`만으로 초과가 확정되면 본문을 읽지 않고 413을 반환한다. 그 외에는 Lumen의 `lumen-chat_user` 권한을 확인한 다음 스트림의 실제 바이트 수를 제한한다. 두 공급자 모두 BFF에서 125초의 upstream 읽기 타임아웃과 브라우저의 150초 요청 기한을 적용하며, 취소·기한 만료 후 자동 재전송하지 않는다. Gemini capability 조회가 422이면 Studio에서 Lumen 업데이트를 안내한다.
 - Gemini 정산에는 입력 토큰만 사용한다. Studio는 `usage.total_input_tokens`와 모델 목록의 `effective_input_price_per_million`으로 USD 비용을 추정하며, 원장 청구로 표시하지 않는다. 레지스트리 `decision` 모델은 네이티브 Gemini에만 등록하며 출력·캐시·미디어 단가가 없다.
 
 ### 통계의 독립 도메인·프로젝트 조건

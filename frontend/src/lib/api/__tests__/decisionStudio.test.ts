@@ -156,6 +156,30 @@ describe('decision transport', () => {
 		expect(JSON.parse(init.body)).toEqual(request); expect(JSON.parse(init.body).model_id).toBeUndefined();
 		expect(token).toBe(scope.token); expect(project).toBe(scope.projectId); expect(options.replayOnUnauthorized).toBe(false);
 	});
+	it('keeps a single Decisions dispatch alive past 30 seconds with a scoped 150-second deadline', async () => {
+		vi.useFakeTimers();
+		try {
+			const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => {
+				const controller = new AbortController();
+				setTimeout(() => controller.abort(new DOMException('Timed out', 'TimeoutError')), ms);
+				return controller.signal;
+			});
+			calls.fetch.mockImplementation(async (_path, init: RequestInit) => {
+				const delayed = Promise.withResolvers<void>();
+				setTimeout(delayed.resolve, 40_000);
+				await delayed.promise;
+				init.signal?.throwIfAborted();
+				return Response.json(response());
+			});
+			const sent = decisionStudioApi.decide(request, scope);
+			await vi.advanceTimersByTimeAsync(40_000);
+			await expect(sent).resolves.toEqual(response());
+			expect(timeout).toHaveBeenCalledWith(150_000);
+			expect(calls.fetch).toHaveBeenCalledOnce();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
 	it('blocks stale scope before dispatch and never retries service errors', async () => {
 		calls.fetch.mockImplementation(async (_path, _init, _token, _project, options) => {
 			setVerifiedLumenActor(actor('project-2'));
@@ -210,6 +234,7 @@ const image = (contents: BlobPart = 'mug', type = 'image/heif') => new File([con
 const geminiWire: GeminiDecisionRequest = {
 	model: 'lumen/14/19', input: [{ type: 'text', text: 'Broken mug' }], questions: { damaged: { type: 'noul', instructions: noul.instructions } }
 };
+const preparedGemini = { body: JSON.stringify(geminiWire), questions: geminiWire.questions };
 const geminiResponse = () => ({
 	model: geminiModel.model_name, answers: { damaged: { type: 'noul', noul: 0.96, confidence: 0.94 } },
 	usage: { total_input_tokens: 57, input_tokens_by_modality: [{ modality: 'text', tokens: 57 }], total_output_tokens: 0, total_tokens: 57 }
@@ -225,6 +250,13 @@ describe('Gemini decisions contract', () => {
 		expect(calls.get).toHaveBeenLastCalledWith('/api/v1/chat/capabilities?model_id=19&model_kind=decision', scope.token, scope.projectId, expect.objectContaining({ signal }));
 		await expect(decisionStudioApi.capabilities(19, scope, signal, 'decision')).rejects.toThrow(t('decisions.invalidResponse'));
 		expect(parseDecisionModels([{ ...geminiModel, provider_type: 'openai' }], 'decision')).toEqual([]);
+	});
+	it('preserves the OpenAI catalog on a decision-only failure but propagates aborts', async () => {
+		calls.get.mockResolvedValueOnce([model]).mockRejectedValueOnce(new ApiError(503, 'unavailable'));
+		await expect(decisionStudioApi.models(scope)).resolves.toEqual([model]);
+		const abort = new DOMException('Aborted', 'AbortError');
+		calls.get.mockResolvedValueOnce([model]).mockRejectedValueOnce(abort);
+		await expect(decisionStudioApi.models(scope)).rejects.toBe(abort);
 	});
 	it('validates question key syntax and duplicates without losing prototype-like keys', async () => {
 		for (const key of ['', 'a b', 'français', 'x'.repeat(65), 'has-newline\n']) {
@@ -259,24 +291,32 @@ describe('Gemini decisions contract', () => {
 		await expect(build(valid.key)).rejects.toThrow(t('decisions.duplicateChoices'));
 		await expect(buildGeminiDecisionRequest(geminiModel, { ...geminiDraft(), questions: [
 			{ ...noul, type: 'score', rows: [valid, { ...valid, id: 1, description: 'Major' }] }
-		] }, signal)).rejects.toThrow(t('gemini.levelLimit'));
+		] }, signal)).rejects.toThrow(t('gemini.requiredText'));
 	});
 	it('accepts depth 100 JSON as unmodified text and rejects empty input and invalid media', async () => {
 		const json = '['.repeat(100) + '9007199254740993' + ']'.repeat(100);
-		await expect(buildGeminiDecisionRequest(geminiModel, { ...geminiDraft(), text: '', json }, signal))
-			.resolves.toMatchObject({ input: [{ type: 'text', text: json }] });
+		const prepared = await buildGeminiDecisionRequest(geminiModel, { ...geminiDraft(), json }, signal);
+		expect(JSON.parse(prepared.body).input).toEqual([{ type: 'text', text: 'Broken mug' }, { type: 'text', text: json }]);
 		await expect(buildGeminiDecisionRequest(geminiModel, { ...geminiDraft(), json: `[${json}]` }, signal)).rejects.toThrow(t('gemini.jsonDepth'));
 		await expect(buildGeminiDecisionRequest(geminiModel, { ...geminiDraft(), text: ' ' }, signal)).rejects.toThrow(t('gemini.emptyInput'));
 		await expect(buildGeminiDecisionRequest(geminiModel, { ...geminiDraft(), images: [{ id: 1, file: image('pdf', 'application/pdf'), resolution: '' }] }, signal)).rejects.toThrow(t('gemini.invalidImage'));
+	});
+	it.each([['mug.HEIC', 'image/heic'], ['mug.heif', 'image/heif']])('infers MIME for an untyped %s file', async (name, mimeType) => {
+		const prepared = await buildGeminiDecisionRequest(geminiModel, {
+			...geminiDraft(), images: [{ id: 1, file: new File(['mug'], name), resolution: 'medium' }]
+		}, signal);
+		expect(JSON.parse(prepared.body).input[1]).toEqual({ type: 'image', data: 'bXVn', mime_type: mimeType, resolution: 'medium' });
+		const spoof = { id: 1, file: new File(['pdf'], name, { type: 'application/pdf' }), resolution: '' as const };
+		await expect(buildGeminiDecisionRequest(geminiModel, { ...geminiDraft(), images: [spoof] }, signal)).rejects.toThrow(t('gemini.invalidImage'));
 	});
 	it('counts UTF-8 JSON plus base64 before file reads, accepting exactly 20 MiB', async () => {
 		const images: GeminiDecisionDraft['images'] = [{ id: 1, file: image(), resolution: '' }];
 		const draft = { ...geminiDraft(), images, text: 'x' };
 		const sample = await buildGeminiDecisionRequest(geminiModel, draft, signal);
-		const remainder = MAX_GEMINI_DECISION_BYTES - new TextEncoder().encode(JSON.stringify(sample)).length;
+		const remainder = MAX_GEMINI_DECISION_BYTES - new TextEncoder().encode(sample.body).length;
 		draft.text += '€'.repeat(Math.floor(remainder / 3)) + 'x'.repeat(remainder % 3);
 		const exact = await buildGeminiDecisionRequest(geminiModel, draft, signal);
-		expect(new TextEncoder().encode(JSON.stringify(exact)).length).toBe(MAX_GEMINI_DECISION_BYTES);
+		expect(new TextEncoder().encode(exact.body).length).toBe(MAX_GEMINI_DECISION_BYTES);
 		const reader = vi.spyOn(FileReader.prototype, 'readAsDataURL');
 		await expect(buildGeminiDecisionRequest(geminiModel, { ...draft, text: draft.text + 'x' }, signal)).rejects.toThrow(t('gemini.requestLimit'));
 		expect(reader).not.toHaveBeenCalled();
@@ -284,13 +324,13 @@ describe('Gemini decisions contract', () => {
 	it('posts exact Gemini shape and validates the stored response model', async () => {
 		const success = geminiResponse();
 		calls.fetch.mockResolvedValueOnce(Response.json(success));
-		await expect(decisionStudioApi.decideGemini(geminiWire, geminiModel.model_name, scope, signal)).resolves.toEqual(success);
+		await expect(decisionStudioApi.decideGemini(preparedGemini, geminiModel.model_name, scope, signal)).resolves.toEqual(success);
 		const [path, init, token, project, options] = calls.fetch.mock.calls[0];
 		expect(path).toBe('/api/v1/chat/decisions');
 		expect(JSON.parse(init.body)).toEqual(geminiWire);
 		expect([token, project, options.replayOnUnauthorized]).toEqual([scope.token, scope.projectId, false]);
-		expect(() => parseGeminiDecisionResult({ ...success, model: 'other' }, geminiWire, geminiModel.model_name)).toThrow(t('decisions.invalidResponse'));
-		expect(() => parseGeminiDecisionResult({ ...success, usage: { ...success.usage, total_input_tokens: 58, total_tokens: 58 } }, geminiWire, geminiModel.model_name)).toThrow(t('decisions.invalidResponse'));
+		expect(() => parseGeminiDecisionResult({ ...success, model: 'other' }, geminiWire.questions, geminiModel.model_name)).toThrow(t('decisions.invalidResponse'));
+		expect(() => parseGeminiDecisionResult({ ...success, usage: { ...success.usage, total_input_tokens: 58, total_tokens: 58 } }, geminiWire.questions, geminiModel.model_name)).toThrow(t('decisions.invalidResponse'));
 	});
 	it.each([
 		[422, 'decision_input_modality_unsupported', 'gemini.unsupportedModality'],
@@ -303,7 +343,7 @@ describe('Gemini decisions contract', () => {
 		[502, 'invalid decision answers; reported usage was billed', 'gemini.answersBilled']
 	] as const)('maps %s %s without reflecting provider input', async (status, detail, message) => {
 		calls.fetch.mockResolvedValueOnce(Response.json({ detail }, { status }));
-		const error = await decisionStudioApi.decideGemini(geminiWire, geminiModel.model_name, scope).catch((cause: unknown) => cause);
+		const error = await decisionStudioApi.decideGemini(preparedGemini, geminiModel.model_name, scope).catch((cause: unknown) => cause);
 		expect(error).toBeInstanceOf(ApiError);
 		expect(decisionFailure(error as ApiError, true)).toBe(t(message));
 	});

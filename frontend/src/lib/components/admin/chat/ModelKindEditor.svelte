@@ -10,6 +10,7 @@
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
+	import type { NativeCatalogSummary } from '$lib/api/nativeCatalog';
 	import { inputTokenOnly, MODEL_LABELS, type ModelKind, type MediaPricing } from './modelPricing';
 
 	interface EditableModel {
@@ -17,6 +18,7 @@
 		model_name: string;
 		display_name: string | null;
 		model_kind?: ModelKind;
+		catalog_entry?: Pick<NativeCatalogSummary, 'kind'> | null;
 		is_title_model?: boolean;
 		is_memory_model?: boolean;
 		media_pricing?: MediaPricing | null;
@@ -41,7 +43,7 @@
 	const originalKind = $derived(model.model_kind ?? 'text');
 	const protectedText = $derived(model.is_title_model || model.is_memory_model);
 	function unselectable(value: string): boolean {
-		return value !== 'text' && Boolean(protectedText || (value === 'decision' ? !decisionSupported : !mediaSupported));
+		return value !== 'text' && Boolean(protectedText || (value === 'decision' ? !decisionSupported || model.catalog_entry?.kind !== 'decision' : !mediaSupported));
 	}
 	const unavailable = $derived(unselectable(kind));
 	const unsubscribe = auth.subscribe((state) => {
@@ -89,7 +91,9 @@
 	<Field label={t('configuration.modelType')} for="model-kind-edit">
 		<SelectInput id="model-kind-edit" bind:value={kind} disabled={busy}>
 			{#each Object.entries(MODEL_LABELS) as [value, label]}
-				<option {value} disabled={unselectable(value)}>{label}</option>
+				{#if value !== 'decision' || (decisionSupported && model.catalog_entry?.kind === 'decision')}
+					<option {value} disabled={unselectable(value)}>{label}</option>
+				{/if}
 			{/each}
 		</SelectInput>
 	</Field>

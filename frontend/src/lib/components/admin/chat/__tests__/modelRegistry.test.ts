@@ -61,10 +61,16 @@ describe('input-only model registry flow', () => {
 	});
 
 	it.each(['embedding', 'decision'] as const)('clears incompatible prices when switching existing rows to %s', async (kind) => {
-		render(ModelKindEditor, { model: { id: 7, model_name: 'existing', display_name: null, model_kind: 'text', media_pricing: { token_rates: { image: { output_per_million: '30' } } } }, mediaSupported: true, decisionSupported: true, token: 'token', projectId: 'project', onclose: vi.fn(), onsaved: vi.fn() });
+		render(ModelKindEditor, { model: { id: 7, model_name: 'existing', display_name: null, model_kind: 'text', catalog_entry: { kind }, media_pricing: { token_rates: { image: { output_per_million: '30' } } } }, mediaSupported: true, decisionSupported: true, token: 'token', projectId: 'project', onclose: vi.fn(), onsaved: vi.fn() });
 		await fireEvent.change(screen.getByLabelText(t('configuration.modelType')), { target: { value: kind } });
 		await fireEvent.click(screen.getByRole('button', { name: t('pricing.saveKind') }));
 		expect(calls.patch).toHaveBeenCalledWith('/api/v1/chat/admin/models/7', { model_kind: kind, is_active: false, media_pricing: null, output_price_per_million: null, cache_read_price_per_million: null, cache_write_price_per_million: null, cache_write_1h_price_per_million: null }, 'token', 'project');
+	});
+
+	it('hides the Decision kind editor option without a matching native catalog entry', () => {
+		render(ModelKindEditor, { model: { id: 7, model_name: 'existing', display_name: null, model_kind: 'text' }, mediaSupported: true, decisionSupported: true, token: 'token', projectId: 'project', onclose: vi.fn(), onsaved: vi.fn() });
+		expect(screen.queryByRole('option', { name: t('configuration.decision') })).toBeNull();
+		expect(screen.getByRole('option', { name: t('configuration.embedding') })).toBeTruthy();
 	});
 
 	it.each(['embedding', 'decision'] as const)('hides stored media prices in %s editor', (kind) => {
@@ -93,6 +99,15 @@ describe('input-only model registry flow', () => {
 		await waitFor(() => expect(calls.post).toHaveBeenCalledWith('/api/v1/chat/admin/models', {
 			provider_id: 1, model_name: geminiCandidate.id, model_kind: 'decision', display_name: null, input_price_per_million: '0.10'
 		}, 'token', 'project'));
+	});
+
+	it('disables manual Decision registration for an OpenAI provider', async () => {
+		render(ChatConfiguration, { section: 'models' });
+		await screen.findByText(t('configuration.noModelsRegistered'));
+		await fireEvent.click(screen.getByRole('button', { name: t('configuration.addModel') }));
+		await fireEvent.click(screen.getByRole('button', { name: t('configuration.manualModelMethod') }));
+		const select = screen.getByRole('combobox', { name: t('configuration.modelType') }) as HTMLSelectElement;
+		expect(Array.from(select.options).find(({ value }) => value === 'decision')?.disabled).toBe(true);
 	});
 
 	it.each(['ko', 'en', 'ja', 'zh-CN', 'bn', 'ms', 'nb', 'sw', 'vi'] as const)('interpolates billing kind in %s', (locale) => {

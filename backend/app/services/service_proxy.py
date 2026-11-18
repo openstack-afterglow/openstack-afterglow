@@ -6,6 +6,7 @@ import asyncio
 import logging
 import re
 import ssl
+from collections.abc import AsyncIterable, Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -182,6 +183,7 @@ async def _forward(
     endpoint: str | None,
     headers: dict[str, str],
     read_timeout: float | None = None,
+    content: AsyncIterable[bytes] | None = None,
 ) -> Response:
     if not endpoint:
         return JSONResponse(
@@ -199,7 +201,8 @@ async def _forward(
         )
     upstream_url = _append_query(upstream_url, request.url.query)
 
-    content = request.stream() if request.method in {"POST", "PUT", "PATCH", "DELETE"} else None
+    if content is None and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        content = request.stream()
     settings = get_settings()
     client = httpx.AsyncClient(
         timeout=httpx.Timeout(30.0, connect=5.0, read=read_timeout if read_timeout is not None else 30.0),
@@ -245,7 +248,12 @@ async def _forward(
 
 
 async def proxy(
-    service_type: str, request: Request, upstream_path: str, *, read_timeout: float | None = None
+    service_type: str,
+    request: Request,
+    upstream_path: str,
+    *,
+    read_timeout: float | None = None,
+    prepare_body: Callable[[Request], Awaitable[AsyncIterable[bytes]]] | None = None,
 ) -> Response:
     """Proxy a browser request using its validated caller-scoped Keystone token."""
     token_info = getattr(request.state, "token_info", None)
@@ -254,6 +262,7 @@ async def proxy(
     if not token or not logical_project_id:
         raise HTTPException(status_code=401, detail="인증이 필요합니다")
     await authorize_service_request(service_type, request, upstream_path)
+    content = await prepare_body(request) if prepare_body is not None else None
 
     connection_project_id = token_info.get("connection_project_id", logical_project_id)
 
@@ -264,7 +273,13 @@ async def proxy(
     if logical_project_id != connection_project_id:
         headers["x-target-project-id"] = logical_project_id
     return await _forward(
-        service_type, request, upstream_path, endpoint=endpoint, headers=headers, read_timeout=read_timeout
+        service_type,
+        request,
+        upstream_path,
+        endpoint=endpoint,
+        headers=headers,
+        read_timeout=read_timeout,
+        content=content,
     )
 
 

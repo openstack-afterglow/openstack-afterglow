@@ -265,19 +265,35 @@ export interface GeminiDecisionResult {
 	};
 }
 
-export function geminiImageType(file: File): boolean {
-	return (GEMINI_DECISION_IMAGE_TYPES as readonly string[]).includes(file.type) && file.size > 0;
+export function geminiImageType(file: File): string | undefined {
+	if (file.size === 0) return undefined;
+	if ((GEMINI_DECISION_IMAGE_TYPES as readonly string[]).includes(file.type)) return file.type;
+	if (!file.type) {
+		const extension = /\.(heic|heif)$/i.exec(file.name)?.[1].toLowerCase();
+		if (extension) return `image/${extension}`;
+	}
+	return undefined;
 }
 export function geminiBase64Length(file: File): number {
 	return Math.ceil(file.size / 3) * 4;
 }
+export class GeminiDecisionValidationError extends Error {
+	constructor(message: string, readonly fieldId: string, field: string, question?: number) {
+		const label = question === undefined ? field : t('gemini.questionField', { question, field });
+		super(t('gemini.validationSummary', { field: label, message }));
+	}
+}
+
 function validateGeminiJson(source: string): void {
+	const invalid = (key: 'gemini.invalidJson' | 'gemini.jsonDepth'): never => {
+		throw new GeminiDecisionValidationError(t(key), 'gemini-input-json', t('gemini.json'));
+	};
 	let value: unknown;
-	try { value = JSON.parse(source); } catch { fail('gemini.invalidJson'); }
-	if (!object(value) && !Array.isArray(value)) fail('gemini.invalidJson');
+	try { value = JSON.parse(source); } catch { invalid('gemini.invalidJson'); }
+	if (!object(value) && !Array.isArray(value)) invalid('gemini.invalidJson');
 	function visit(entry: unknown, depth: number): void {
 		if (!object(entry) && !Array.isArray(entry)) return;
-		if (depth > 100) fail('gemini.jsonDepth');
+		if (depth > 100) invalid('gemini.jsonDepth');
 		for (const child of Object.values(entry)) visit(child, depth + 1);
 	}
 	visit(value, 1);
@@ -295,67 +311,93 @@ function readGeminiImage(file: File, signal: AbortSignal): Promise<string> {
 	reader.onloadend = () => {
 		signal.removeEventListener('abort', abort);
 		if (signal.aborted) return reject(signal.reason);
-		if (typeof reader.result !== 'string') return reject(new Error(t('gemini.invalidImage')));
+		const invalid = () => new GeminiDecisionValidationError(t('gemini.invalidImage'), 'gemini-input-files', t('gemini.images'));
+		if (typeof reader.result !== 'string') return reject(invalid());
 		const encoded = reader.result.slice(reader.result.indexOf(',') + 1);
-		if (encoded.length !== geminiBase64Length(file)) return reject(new Error(t('gemini.invalidImage')));
+		if (encoded.length !== geminiBase64Length(file)) return reject(invalid());
 		resolve(encoded);
 	};
 	reader.readAsDataURL(file);
 	return promise;
 }
-export async function buildGeminiDecisionRequest(model: DecisionModel, draft: GeminiDecisionDraft, signal: AbortSignal): Promise<GeminiDecisionRequest> {
-	const input: GeminiDecisionPart[] = [];
-	if (text(draft.text)) input.push({ type: 'text', text: draft.text });
+export interface PreparedGeminiDecision {
+	body: string;
+	questions: GeminiDecisionRequest['questions'];
+}
+
+export async function buildGeminiDecisionRequest(model: DecisionModel, draft: GeminiDecisionDraft, signal: AbortSignal): Promise<PreparedGeminiDecision> {
+	const input: string[] = [];
+	if (text(draft.text)) input.push(JSON.stringify({ type: 'text', text: draft.text }));
 	if (text(draft.json)) {
-		if (bytes(draft.json) > MAX_GEMINI_DECISION_BYTES) fail('gemini.requestLimit');
 		validateGeminiJson(draft.json);
-		input.push({ type: 'text', text: input.length ? `\n${draft.json}` : draft.json });
+		input.push(JSON.stringify({ type: 'text', text: draft.json }));
 	}
 	const firstImage = input.length;
 	let encodedLength = 0;
 	for (const { file, resolution } of draft.images) {
-		if (!geminiImageType(file)) fail('gemini.invalidImage');
+		const mimeType = geminiImageType(file);
+		if (!mimeType) throw new GeminiDecisionValidationError(t('gemini.invalidImage'), 'gemini-input-files', t('gemini.images'));
 		encodedLength += geminiBase64Length(file);
-		input.push({ type: 'image', data: '', mime_type: file.type, ...(resolution ? { resolution } : {}) });
+		input.push(JSON.stringify({ type: 'image', mime_type: mimeType, ...(resolution ? { resolution } : {}) }).slice(0, -1) + ',"data":"');
 	}
-	if (!input.length) fail('gemini.emptyInput');
+	if (!input.length) throw new GeminiDecisionValidationError(t('gemini.emptyInput'), 'gemini-input-text', t('decisions.input'));
 	if (draft.questions.length < 1 || draft.questions.length > MAX_GEMINI_QUESTIONS) fail('gemini.questionLimit');
 	const questions: Record<string, GeminiQuestion> = Object.create(null);
-	for (const { key, type, instructions, rows, yes, no } of draft.questions) {
-		if (!key.length || key.length > 64 || /[^A-Za-z0-9_-]/.test(key)) fail('gemini.questionKeyHelp');
-		if (Object.hasOwn(questions, key)) fail('decisions.duplicateNames');
-		if (!text(instructions)) fail('decisions.invalidRequest');
+	for (const [index, { id, key, type, instructions, rows, yes, no }] of draft.questions.entries()) {
+		const number = index + 1;
+		if (!key.length || key.length > 64 || /[^A-Za-z0-9_-]/.test(key)) {
+			throw new GeminiDecisionValidationError(t('gemini.questionKeyHelp'), `gemini-key-${id}`, t('gemini.questionKey'), number);
+		}
+		if (Object.hasOwn(questions, key)) {
+			throw new GeminiDecisionValidationError(t('decisions.duplicateNames'), `gemini-key-${id}`, t('gemini.questionKey'), number);
+		}
+		if (!text(instructions)) {
+			throw new GeminiDecisionValidationError(t('gemini.requiredText'), `gemini-instructions-${id}`, t('decisions.instructions'), number);
+		}
 		if (type === 'choice') {
-			if (rows.length < 2 || rows.length > MAX_GEMINI_CRITERIA) fail('gemini.choiceLimit');
+			if (rows.length < 2 || rows.length > MAX_GEMINI_CRITERIA) {
+				throw new GeminiDecisionValidationError(t('gemini.choiceLimit'), `gemini-type-${id}`, t('decisions.choices'), number);
+			}
 			const criteria: Record<string, string> = Object.create(null);
-			for (const row of rows) {
-				if (!validOptionKey(row.key)) fail('gemini.choiceKey');
-				if (Object.hasOwn(criteria, row.key)) fail('decisions.duplicateChoices');
+			for (const [rowIndex, row] of rows.entries()) {
+				const label = t('gemini.optionKey', { number: rowIndex + 1 });
+				if (!validOptionKey(row.key)) throw new GeminiDecisionValidationError(t('gemini.choiceKey'), `gemini-option-${row.id}`, label, number);
+				if (Object.hasOwn(criteria, row.key)) throw new GeminiDecisionValidationError(t('decisions.duplicateChoices'), `gemini-option-${row.id}`, label, number);
 				criteria[row.key] = row.description;
 			}
 			questions[key] = { type, instructions, criteria };
 		} else if (type === 'score') {
-			if (rows.length < 2 || rows.length > MAX_GEMINI_CRITERIA || rows.some((row) => !text(row.description))) fail('gemini.levelLimit');
-			questions[key] = { type, instructions, criteria: rows.map((row) => row.description) };
+			if (rows.length < 2 || rows.length > MAX_GEMINI_CRITERIA) {
+				throw new GeminiDecisionValidationError(t('gemini.levelLimit'), `gemini-type-${id}`, t('gemini.levels'), number);
+			}
+			const criteria = rows.map((row, rowIndex) => {
+				if (!text(row.description)) throw new GeminiDecisionValidationError(
+					t('gemini.requiredText'), `gemini-description-${row.id}`, t('gemini.levelDescription', { number: rowIndex + 1 }), number
+				);
+				return row.description;
+			});
+			questions[key] = { type, instructions, criteria };
 		} else {
 			const criteria = { ...(text(yes) ? { true_description: yes } : {}), ...(text(no) ? { false_description: no } : {}) };
 			questions[key] = { type, instructions, ...(Object.keys(criteria).length ? { criteria } : {}) };
 		}
 	}
-	const request = { model: `lumen/${model.provider_id}/${model.id}`, input, questions };
-	// Each base64 character is one UTF-8 byte and needs no JSON escaping.
-	if (encodedLength + bytes(JSON.stringify(request)) > MAX_GEMINI_DECISION_BYTES) fail('gemini.requestLimit');
+	const prefix = `{"model":${JSON.stringify(`lumen/${model.provider_id}/${model.id}`)},"input":[`;
+	const suffix = `],"questions":${JSON.stringify(questions)}}`;
+	// Count encoded fragments, separators and the image quote/brace before reading any image.
+	const envelopeBytes = bytes(prefix) + bytes(suffix) + input.length - 1 + 2 * draft.images.length;
+	if (envelopeBytes + encodedLength + input.reduce((sum, part) => sum + bytes(part), 0) > MAX_GEMINI_DECISION_BYTES) fail('gemini.requestLimit');
 	for (const [index, { file }] of draft.images.entries()) {
-		(input[firstImage + index] as GeminiImagePart).data = await readGeminiImage(file, signal);
+		input[firstImage + index] += `${await readGeminiImage(file, signal)}"}`;
 	}
-	return request;
+	return { body: prefix + input.join(',') + suffix, questions };
 }
 
-export function parseGeminiDecisionResult(value: unknown, request: GeminiDecisionRequest, modelName: string): GeminiDecisionResult {
+export function parseGeminiDecisionResult(value: unknown, questionsByKey: GeminiDecisionRequest['questions'], modelName: string): GeminiDecisionResult {
 	const invalid = () => fail('decisions.invalidResponse');
 	if (!object(value) || value.model !== modelName || !object(value.answers) || !object(value.usage)) return invalid();
 	const { answers, usage } = value;
-	const questions = Object.entries(request.questions);
+	const questions = Object.entries(questionsByKey);
 	if (Object.keys(answers).length !== questions.length || !integer(usage.total_input_tokens)
 		|| usage.total_output_tokens !== 0 || usage.total_tokens !== usage.total_input_tokens
 		|| !Array.isArray(usage.input_tokens_by_modality)) return invalid();
@@ -403,7 +445,9 @@ export function decisionFailure(error: ApiError, gemini: boolean): string {
 async function postDecision<T>(body: string, scope: DecisionScope, parse: (value: unknown) => T, signal?: AbortSignal): Promise<T> {
 	const owner = sessionScopeKey(get(auth));
 	const controller = new AbortController();
-	const requestSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+	// The BFF waits up to 125 seconds for Lumen. Leave room for upload and response transfer.
+	const timeout = AbortSignal.timeout(150_000);
+	const requestSignal = AbortSignal.any(signal ? [signal, controller.signal, timeout] : [controller.signal, timeout]);
 	const invalidate = () => controller.abort(new ApiError(403, t('decisions.projectDenied')));
 	const subscriptions = [
 		auth.subscribe((value) => { if (!value.token || sessionScopeKey(value) !== owner) invalidate(); }),
@@ -441,15 +485,15 @@ export const decisionStudioApi = {
 		const list = (kind: DecisionModel['model_kind']) => api.get<unknown>(`/api/v1/chat/models?model_kind=${kind}`, scope.token, scope.projectId, { refresh: true, signal, experience: scope.experience });
 		const [textModels, decisionModels] = await Promise.all([
 			list('text'),
-			list('decision').catch((error: unknown) => {
-				// Lumen before decision-only models rejects the new query kind.
-				if (error instanceof ApiError && error.status === 422) return [];
-				throw error;
+			list('decision').then((value) => parseDecisionModels(value, 'decision')).catch((error: unknown) => {
+				signal?.throwIfAborted();
+				if (object(error) && error.name === 'AbortError') throw error;
+				return [];
 			})
 		]);
-		const models = [...parseDecisionModels(textModels), ...parseDecisionModels(decisionModels, 'decision')];
-		if (new Set(models.map(({ id }) => id)).size !== models.length) fail('decisions.invalidResponse');
-		return models;
+		const text = parseDecisionModels(textModels);
+		const ids = new Set(text.map(({ id }) => id));
+		return [...text, ...decisionModels.filter(({ id }) => !ids.has(id))];
 	},
 	async capabilities(id: number, scope: DecisionScope, signal?: AbortSignal, kind: DecisionModel['model_kind'] = 'text'): Promise<DecisionCapabilities> {
 		requireLumenCapability('lumen-chat_user', scope.token, scope.projectId);
@@ -460,10 +504,8 @@ export const decisionStudioApi = {
 		validateDecisionRequest(request);
 		return postDecision(JSON.stringify(request), scope, (value) => parseDecisionResult(value, request), signal);
 	},
-	async decideGemini(request: GeminiDecisionRequest, modelName: string, scope: DecisionScope, signal?: AbortSignal): Promise<GeminiDecisionResult> {
+	async decideGemini(request: PreparedGeminiDecision, modelName: string, scope: DecisionScope, signal?: AbortSignal): Promise<GeminiDecisionResult> {
 		requireLumenCapability('lumen-chat_user', scope.token, scope.projectId);
-		const body = JSON.stringify(request);
-		if (bytes(body) > MAX_GEMINI_DECISION_BYTES) fail('gemini.requestLimit');
-		return postDecision(body, scope, (value) => parseGeminiDecisionResult(value, request, modelName), signal);
+		return postDecision(request.body, scope, (value) => parseGeminiDecisionResult(value, request.questions, modelName), signal);
 	}
 };

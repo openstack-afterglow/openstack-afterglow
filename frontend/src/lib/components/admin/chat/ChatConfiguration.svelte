@@ -1225,7 +1225,7 @@
 		return !!allowed && (provider.api_base === null || allowed.includes(provider.api_base.replace(/\/+$/, '')));
 	}
 	function decisionProviderSupported(providerId: number | ''): boolean {
-		return mediaProviderSupported(providerId) && providers.some((provider) => provider.id === providerId && provider.provider_type === 'gemini');
+		return providers.some((provider) => provider.id === providerId && provider.provider_type === 'gemini') && mediaProviderSupported(providerId);
 	}
 	const manualProviderError = $derived(
 		!mProviderId || mKind === 'text' ? undefined
@@ -2428,7 +2428,7 @@
 			<div class="grid grid-cols-1 gap-3 md:grid-cols-3">
 				<select class={inputCls} aria-label={t('configuration.modelType')} bind:value={mKind} disabled={addingModel}>
 					{#each Object.entries(MEDIA_LABELS) as [kind, label]}
-						<option value={kind}>{label}</option>
+						<option value={kind} disabled={kind === 'decision' && !decisionProviderSupported(mProviderId)}>{label}</option>
 					{/each}
 				</select>
 				<input class={inputCls} placeholder={t('configuration.modelNameEGGpt4o')} bind:value={mName} disabled={addingModel} />

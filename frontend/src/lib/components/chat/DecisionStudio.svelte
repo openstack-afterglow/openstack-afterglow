@@ -6,7 +6,7 @@
 	import { ApiError } from '$lib/api/client';
 	import {
 		decisionStudioApi, decisionReadiness, validateDecisionRequest, parseDecisionJson, validateDecisionImage,
-		buildGeminiDecisionRequest, decisionFailure, isGeminiDecisionModel,
+		buildGeminiDecisionRequest, decisionFailure, GeminiDecisionValidationError, isGeminiDecisionModel,
 		MAX_DECISION_IMAGE_BYTES, DECISION_IMAGE_TYPES,
 		type DecisionModel, type DecisionCapabilities, type DecisionResult, type DecisionRequest, type DecisionQuestion,
 		type GeminiDecisionDraft, type GeminiDecisionRequest, type GeminiDecisionResult
@@ -48,6 +48,7 @@
 	let busy = $state(false);
 	let loadError = $state('');
 	let failure = $state('');
+	let invalidField = $state<string>();
 	let status = $state('');
 	let result = $state<DecisionResult | null>(null);
 	let resultQuestions = $state<DecisionQuestion[]>([]);
@@ -71,6 +72,9 @@
 	function message(cause: unknown, geminiRequest = false): string {
 		if (cause instanceof ApiError) return decisionFailure(cause, geminiRequest);
 		return cause instanceof Error ? cause.message : t('decisions.connectionFailed');
+	}
+	function clearValidation() {
+		if (invalidField) { invalidField = undefined; failure = ''; }
 	}
 	function clearResults() {
 		result = null; resultQuestions = []; geminiResult = null;
@@ -97,6 +101,7 @@
 		models = []; selected = ''; verified = null; questions = [newQuestion()];
 		content = ''; inputType = 'text'; imageDetail = 'auto'; fileData = ''; fileName = '';
 		geminiDraft = newGeminiDraft();
+		invalidField = undefined;
 		loading = false; checking = false; loadError = ''; failure = ''; status = ''; clearResults();
 	}
 	// Synchronous subscriptions invalidate A→B→A ownership and authority before promise callbacks.
@@ -138,7 +143,9 @@
 			if (request.signal.aborted || capabilityRequest !== request || epoch !== generation || owner !== activeOwner || !allowed || selected !== String(id)) return;
 			verified = value;
 		} catch (cause) {
-			if (!request.signal.aborted && capabilityRequest === request && epoch === generation && owner === activeOwner && allowed && selected === String(id)) loadError = message(cause);
+			if (!request.signal.aborted && capabilityRequest === request && epoch === generation && owner === activeOwner && allowed && selected === String(id)) {
+				loadError = kind === 'decision' && cause instanceof ApiError && cause.status === 422 ? t('gemini.lumenUpdate') : message(cause);
+			}
 		} finally {
 			if (capabilityRequest === request) { capabilityRequest = null; checking = false; }
 		}
@@ -155,6 +162,7 @@
 		if (!allowed || busy) return;
 		capabilityRequest?.abort(); capabilityRequest = null; checking = false; verified = null;
 		stopFileRead(); selected = (event.currentTarget as HTMLSelectElement).value;
+		invalidField = undefined;
 		loadError = ''; failure = ''; status = ''; clearResults();
 	}
 	function selectInputType(event: Event) {
@@ -238,7 +246,8 @@
 		const request = new AbortController(); decisionRequest = request;
 		const epoch = generation, owner = activeOwner, requestScope = scope;
 		const current = () => !request.signal.aborted && decisionRequest === request && epoch === generation && owner === activeOwner && allowed;
-		busy = true; failure = ''; status = ''; clearResults();
+		busy = true; failure = ''; invalidField = undefined; status = ''; clearResults();
+		let focusError = false;
 		try {
 			if (payload) {
 				const value = await decisionStudioApi.decide(payload, requestScope, request.signal);
@@ -252,10 +261,17 @@
 		} catch (cause) {
 			if (current()) {
 				failure = message(cause, useGemini);
-				if (useGemini) { await tick(); if (current()) errorSummary?.focus(); }
+				if (cause instanceof GeminiDecisionValidationError) invalidField = cause.fieldId;
+				focusError = useGemini;
 			}
 		} finally {
 			if (decisionRequest === request) { decisionRequest = null; busy = false; }
+		}
+		if (focusError) {
+			await tick();
+			if (epoch === generation && owner === activeOwner && allowed && model?.id === selectedModel.id && !busy) {
+				((invalidField ? document.getElementById(invalidField) : null) ?? errorSummary)?.focus();
+			}
 		}
 	}
 	onDestroy(() => { unsubscribers.forEach((unsubscribe) => unsubscribe()); reset(); });
@@ -269,7 +285,7 @@
 			<div><h1 id="decision-title">{t('decisions.title')}</h1><p class="muted">{t('decisions.description')}</p></div>
 			<Button href="/dashboard/chat" variant="secondary">{t('decisions.textChat')}</Button>
 		</header>
-		<form class="workspace" aria-labelledby="decision-title" method="post" novalidate={gemini} onsubmit={(event) => { event.preventDefault(); void decide(); }}>
+		<form class="workspace" aria-labelledby="decision-title" method="post" novalidate={gemini} oninput={clearValidation} onsubmit={(event) => { event.preventDefault(); void decide(); }}>
 			<section class="settings" aria-label={t('decisions.model')}>
 				<Field label={t('decisions.model')} for="decision-model"><SelectInput id="decision-model" value={selected} onchange={selectModel} disabled={!allowed || loading || busy}><option value="">{t('decisions.selectModel')}</option>{#each models as item (item.id)}<option value={String(item.id)}>{item.display_name}</option>{/each}</SelectInput></Field>
 				{#if allowed}
@@ -281,7 +297,7 @@
 				{/if}
 			</section>
 			{#if gemini}
-				<GeminiDecisionEditor bind:draft={geminiDraft} disabled={!allowed || busy} allocateId={() => nextId++} />
+				<GeminiDecisionEditor bind:draft={geminiDraft} disabled={!allowed || busy} {invalidField} {clearValidation} allocateId={() => nextId++} />
 			{:else}
 			<fieldset disabled={!allowed || busy} class="input-section">
 				<legend>{t('decisions.input')}</legend>
@@ -332,7 +348,7 @@
 				<div class="actions">{#if busy}<Button variant="secondary" onclick={() => cancel()}>{t('decisions.cancel')}</Button>{/if}<Button type="submit" disabled={!canRun}>{#if busy}<LoadingState variant="control" label={t('decisions.running')} />{:else}{t('decisions.run')}{/if}</Button></div>
 			</div>
 		</form>
-		{#if allowed && failure}<div bind:this={errorSummary} tabindex="-1" class="error-summary"><Alert tone="danger">{failure}</Alert></div>{/if}
+		{#if allowed && failure}<div id="decision-error-summary" bind:this={errorSummary} tabindex="-1" class="error-summary"><Alert tone="danger">{failure}</Alert></div>{/if}
 		{#if status}<p role="status" class="muted">{status}</p>{/if}
 		{#if allowed && gemini && geminiResult}
 			<GeminiDecisionResults result={geminiResult.value} questions={geminiResult.questions} inputPrice={geminiResult.price} />
