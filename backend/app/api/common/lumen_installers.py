@@ -11,7 +11,7 @@ def _render_installer(filename: str, base_url: str) -> bytes:
     if not base_url:
         if filename == "lumen.sh":
             return f"#!/bin/sh\nprintf '%s\\n' '{_UNCONFIGURED}' >&2\nexit 1\n".encode()
-        return f"[Console]::Error.WriteLine('{_UNCONFIGURED}')\nexit 1\n".encode()
+        return f"throw '{_UNCONFIGURED}'\n".encode()
 
     def literal(value: str) -> str:
         if filename == "lumen.sh":

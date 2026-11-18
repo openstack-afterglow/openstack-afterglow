@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import sys
 from hashlib import sha256
@@ -115,12 +116,39 @@ def test_unconfigured_scripts_fail_without_using_inputs(tmp_path):
         assert response.status_code == 200
         assert response.headers["cache-control"] == "no-cache"
         assert "this deployment has no public Lumen URL" in response.text
-        assert "exit 1" in response.text
         assert "https://" not in response.text
+    assert "exit 1" in posix.text
+    assert windows.text.startswith("throw ")
     run = subprocess.run(["sh"], input=posix.content, capture_output=True, env={"HOME": str(tmp_path)}, timeout=5)
     assert run.returncode == 1
     assert b"no public Lumen URL" in run.stderr
     assert not any(tmp_path.iterdir())
+
+
+def test_unconfigured_powershell_fails_without_closing_the_session(tmp_path):
+    pwsh = shutil.which("pwsh")
+    if not pwsh:
+        pytest.skip("PowerShell runtime unavailable")
+    script = tmp_path / "lumen.ps1"
+    script.write_bytes(_client("").get("/install/lumen.ps1").content)
+    command = [pwsh, "-NoLogo", "-NoProfile", "-NonInteractive"]
+    run = subprocess.run([*command, "-File", str(script)], capture_output=True, timeout=10)
+    assert run.returncode == 1
+    assert b"no public Lumen URL" in run.stderr
+    caught = subprocess.run(
+        [
+            *command,
+            "-Command",
+            "try { Get-Content -Raw -LiteralPath $env:INSTALLER | Invoke-Expression } "
+            "catch { [Console]::WriteLine($_.Exception.Message) }; [Console]::WriteLine('session-alive')",
+        ],
+        env={**os.environ, "INSTALLER": str(script)},
+        capture_output=True,
+        timeout=10,
+    )
+    assert caught.returncode == 0
+    assert b"no public Lumen URL" in caught.stdout
+    assert b"session-alive" in caught.stdout
 
 
 def test_public_site_config_reports_installer_availability_without_url():
