@@ -23,7 +23,7 @@ Decisions BFF는 Lumen 서비스 권한을 확인한 뒤에만 본문을 읽는�
 **세 번째 시각 정리 (2026-11-16, source/local):** 기존 layout.css semantic text token과 shared embedded/flat/table/card/form 경계를 재사용해 consumer/admin 상세·계정·Lumen 설정의 중첩 외곽선, 제목 단계, 작업 대비와 좁은 상세 header를 수정한다. AuthStudioShell은 기존 resolvedTheme를 SVG color-scheme에 전달하고 보조 글자 크기만 기존 type role로 올린다. 포트 생성창은 기존 localized heading을 dialog 이름으로 연결한다. 자원·credential·권위·API·scope·polling·tutorial 가용성·DB/schema·배포 경계는 바꾸지 않는 presentation-only 변경이다. 실제 렌더·native 조작과 synthetic/redirect 한계는 docs/testing.md에 구분하며 운영 수용으로 승격하지 않는다.
 
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 root/backend/frontend 버전 `1.32.25`는 불변 tag `1.32.25`(`e8eefc30`)로 발행되어 2026-11-17 UTC에 DMS Lab 컨트롤 plane에 배포됐다(Lumen 0.6.17 동시 반영, 수신증은 [`docs/testing.md`](docs/testing.md)). Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock 버전은 `8.2.2`다. Source·합성 검증과 실제 OpenStack 배포 증거를 구분한다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 root/backend/frontend와 Helm 버전은 `1.32.26`(Gemini Decisions 릴리스 준비)이다. 현재 운영 버전은 불변 tag `1.32.25`(`e8eefc30`)이며, 2026-11-17 UTC DMS Lab 컨트롤 plane 배포 수신증은 [`docs/testing.md`](docs/testing.md)에 있다. Gemini Decision Studio는 Lumen `0.6.19` 이상이 필요하며, Lumen을 먼저 배포한다. Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock 버전은 `8.2.2`다. Source·합성 검증과 실제 OpenStack 배포 증거를 구분한다.
 
 **1.32.11 준비 (2026-11-08, source/local):** `1.32.10` 이후 dev의 도메인 IAM 그룹 관리(`/api/v1/iam/groups*`), 도메인 manager 프로젝트 수정(`PATCH /api/v1/iam/projects/{id}`, 이름·설명만), 프로젝트 표·슬라이드인 화면, manager 전용 프로젝트 생성(`project_creator` 위임 폐기)과 manager 투영의 native `manager` 부여(v1 `reader` 투영 migration, 투영 파생 row의 manager 계산 제외)를 포함한다. 사용자 페이지의 `/api/v1/{chat,k3s,waygate,palimpsest}/*`에서 시스템 관리자 승격을 제거하고 `/admin/*` 하위에만 남긴다. 스키마·SQL 변경과 새 설정 키는 없다. 시스템 관리자 승격을 제거한 `deps._resolve_jwt_session` 경계는 `test_auth_domain_boundaries`로 검증했다. 브라우저 실화면과 실제 Keystone의 reader→manager 투영 migration은 확인하지 않았다. 이 항목은 source/local 준비이며 발행·운영 배포는 별도 기록한다.
 
@@ -2244,9 +2244,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "4230b71d7d0445e523ca9aed6f2d0a61db58c1f4108820c1ab6e550cbb711c4b",
-  "reviewed_at": "2026-11-18T06:20:42Z",
-  "summary": "Review hardens Decisions with native permission before buffering, declared and streamed 20 MiB limits, aligned 125/150 second deadlines, exact Gemini serialization, field-focused validation, and registry/capability safeguards."
+  "source_sha256": "b078c7460fcb70d62af1ab3fc0e805a0d089f85318003c25b90ba617f38d1f9f",
+  "reviewed_at": "2026-11-18T06:39:47Z",
+  "summary": "Prepare Afterglow 1.32.26 with Gemini Decision Studio; synchronize package and Helm versions. Deploy Lumen 0.6.19 first. No schema or deployment topology changes."
 }
 ```
 <!-- architecture-review:end -->
