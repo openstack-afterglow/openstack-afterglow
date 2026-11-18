@@ -217,7 +217,7 @@
 {/snippet}
 
 <!-- 최초 로딩은 패널 남은 높이 전체를 잔광 장면으로 채운다. SlidePanel 안에서는 흐름 배치된 닫기 버튼(mt-3 + size-9 = 3rem)을 뺀다. -->
-<div class="{onClose && !(s.loading && !s.instance) ? 'p-8' : ''} {s.loading && !s.instance ? `flex flex-col ${onClose ? 'min-h-[calc(100%-3rem)]' : 'min-h-full'}` : 'min-h-full'} motion-fade" aria-busy={s.loading && !s.instance}>
+<div class="{onClose && !(s.loading && !s.instance) ? 'p-4 @md/panel:p-8' : ''} {s.loading && !s.instance ? `flex flex-col ${onClose ? 'min-h-[calc(100%-3rem)]' : 'min-h-full'}` : 'min-h-full'} motion-fade" aria-busy={s.loading && !s.instance}>
 	{#if !(headerOwnsRefresh && onClose)}
 	<div class="mb-6 flex items-center justify-between {onClose && s.loading && !s.instance ? 'px-8' : ''}">
 		<!-- SlidePanel 안(onClose 전달)에서는 닫기를 SlidePanel 이 그린다(`[data-slide-panel-close]`).

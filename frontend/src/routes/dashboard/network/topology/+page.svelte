@@ -15,6 +15,10 @@
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
 	import TopologyCanvas from '$lib/components/topology/canvas/TopologyCanvas.svelte';
+	import IsoGridView from '$lib/components/iso/IsoGridView.svelte';
+	import { topologyIsoScene, topologyPlatformId } from '$lib/components/topology/topologyIsoScene';
+	import type { IsoScene } from '$lib/components/iso/types';
+	import { t as isoText } from '$lib/i18n/ns/iso-view';
 	import NetworkDetailPanel from '$lib/components/NetworkDetailPanel.svelte';
 	import NetworkCreateModal from '$lib/components/dashboard/network/networks/NetworkCreateModal.svelte';
 	import RouterCreateModal from '$lib/components/network/routers/RouterCreateModal.svelte';
@@ -26,7 +30,7 @@
 	import type { CreateKind } from '$lib/components/topology/canvas/CanvasToolbar.svelte';
 	import { type TopologyLinkRequest } from '$lib/components/topology/canvas/link-types';
 	import type { SubnetDetail, TopologyNetwork } from '$lib/types/topology';
-	import { DEFAULT_TOPOLOGY_VIEW, isTopologyView, readTopologyView, writeTopologyView, type TopologyView } from '$lib/utils/topologyViewPreference';
+	import { isTopologyView, readTopologyView, writeTopologyView, type UserTopologyView } from '$lib/utils/topologyViewPreference';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import TopologyLegend from '$lib/components/dashboard/network/topology/TopologyLegend.svelte';
 	import TopologySummary from '$lib/components/dashboard/network/topology/TopologySummary.svelte';
@@ -70,15 +74,15 @@
 			is_shared: network.is_shared,
 		})),
 	);
-	// 뷰 선택(레인 | 캔버스)은 localStorage 'topology.view' 에 저장한다. 기본은 캔버스.
-	let view = $state<TopologyView>(DEFAULT_TOPOLOGY_VIEW);
-	onMount(() => { view = readTopologyView(); });
+	let view = $state<UserTopologyView>('grid');
+	onMount(() => { view = readTopologyView('grid'); });
 	const viewOptions = $derived([
+		{ value: 'grid', label: isoText('view.grid') },
 		{ value: 'lane', label: t('topology.lane') },
 		{ value: 'canvas', label: t('topology.canvas') },
 	]);
 	function onViewChange(value: string) {
-		if (!isTopologyView(value)) return;
+		if (value !== 'grid' && !isTopologyView(value)) return;
 		view = value;
 		writeTopologyView(value);
 	}
@@ -89,6 +93,47 @@
 	const topologySelectedId = $derived(
 		selectedInstanceId ?? selectedRouterId ?? selectedLB?.id ?? selectedNetworkId ?? null
 	);
+	const gridSelectedId = $derived(selectedNetworkId ? topologyPlatformId(selectedNetworkId) : topologySelectedId);
+	const gridScene = $derived.by<IsoScene | null>(() => {
+		if (view !== 'grid' || !data) return null;
+		const scene = topologyIsoScene(data, $auth.projectId, {
+			unresolvedAddress: (address) => t('grid.unresolvedAddress', { address }),
+		});
+		return {
+			...scene,
+			legend: [
+				{ label: t('network.external'), kind: 'platform', tone: 'gateway' },
+				{ label: t('network.shared'), kind: 'platform', tone: 'shared' },
+				{ label: t('network.internal'), kind: 'platform', tone: 'internal' },
+				{ label: t('grid.router'), kind: 'node', tone: 'router' },
+				{ label: isoText('kind.database'), kind: 'node', tone: 'internal-2' },
+				{ label: t('laneLegend.lbMember'), kind: 'edge', tone: 'accent' },
+				{ label: t('legend.floatingIp'), kind: 'edge', tone: 'external' },
+			],
+		};
+	});
+
+	function onSelectGrid(id: string) {
+		if (id.startsWith('network:')) onSelectNetwork(id.slice('network:'.length));
+		else if (data?.instances.some((item) => item.id === id)) onSelectInstance(id);
+		else if (data?.routers.some((item) => item.id === id)) onSelectRouter(id);
+		else {
+			const lb = data?.load_balancers?.find((item) => item.id === id);
+			if (lb) onSelectLoadBalancer(lb);
+		}
+	}
+
+	function onIntentGrid(id: string) {
+		if (data?.instances.some((item) => item.id === id)) onIntentInstance(id);
+		else if (data?.routers.some((item) => item.id === id)) onIntentRouter(id);
+		else cancelIntent();
+	}
+
+	function clearGridSelection() {
+		if (selectedInstanceId) invalidateInstanceDetailSelection();
+		selectedInstanceId = selectedRouterId = selectedNetworkId = null;
+		selectedLB = null;
+	}
 
 	function onSelectInstance(id: string) {
 		invalidateInstanceDetailSelection();
@@ -410,7 +455,19 @@
 		{@const _projectFips = data.floating_ips.filter(f => !f.project_id || f.project_id === $auth.projectId)}
 		{@const _projectLbs = (data.load_balancers ?? []).filter(lb => !lb.project_id || lb.project_id === $auth.projectId)}
 		<div class="rounded-lg border border-line bg-surface-base p-3 md:p-6 mb-4">
-			{#if view === 'canvas'}
+			{#if view === 'grid' && gridScene}
+				<IsoGridView
+					scene={gridScene}
+					selectedId={gridSelectedId}
+					onselect={onSelectGrid}
+					onclear={clearGridSelection}
+					onintent={onIntentGrid}
+					oncancelintent={cancelIntent}
+					label={t('grid.label')}
+					emptyText={t('grid.empty')}
+					fitKey={$auth.projectId ?? undefined}
+				/>
+			{:else if view === 'canvas'}
 				<TopologyCanvas
 					{data}
 					{traffic}
@@ -458,7 +515,7 @@
 		<TopologySummary
 			visibleNetworkCount={_visibleNets.length}
 			projectRouterCount={_projectRouters.length}
-			instanceCount={data.instances.length}
+			instanceCount={gridScene ? gridScene.nodes.filter(({ kind }) => kind === 'instance' || kind === 'database').length : data.instances.length}
 			projectFipCount={_projectFips.length}
 			projectLbCount={_projectLbs.length}
 		/>

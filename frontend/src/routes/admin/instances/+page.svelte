@@ -419,6 +419,6 @@
 		serverId={recoveryInst.id}
 		serverName={recoveryInst.name || recoveryInst.id.slice(0, 8)}
 		onClose={closeRecovery}
-		onRecovered={() => { closeRecovery(); markerStack = []; nextMarker = null; void load(undefined, { clearSelection: true }); }}
+		onRefresh={() => { void load(markerStack[markerStack.length - 1], { refresh: true }); }}
 	/>
 {/if}

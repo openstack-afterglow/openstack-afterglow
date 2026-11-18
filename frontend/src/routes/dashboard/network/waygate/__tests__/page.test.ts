@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { writable } from 'svelte/store';
 
@@ -189,6 +189,7 @@ function settingMode(field: 'DNS' | 'PersistentKeepalive') {
 }
 
 beforeEach(() => {
+	localStorage.setItem('waygate.view', 'list');
 	Element.prototype.animate = vi.fn().mockReturnValue({
 		finished: Promise.resolve(),
 		cancel: vi.fn(),
@@ -207,6 +208,7 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	installApiResponses();
 });
+afterEach(() => localStorage.removeItem('waygate.view'));
 
 describe('Waygate dashboard', () => {
 	it('opens a server and attaches an explicit subnet without routing unless requested', async () => {

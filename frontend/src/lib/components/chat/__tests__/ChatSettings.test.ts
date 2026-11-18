@@ -69,7 +69,7 @@ describe('ChatSettings', () => {
 			noScroll: true
 		});
 		expect(screen.getByRole('button', { name: 'MCP 서버' }).classList.contains('active')).toBe(true);
-		expect(screen.getByRole('heading', { level: 2, name: 'MCP 서버' })).toBeTruthy();
+		expect(screen.getByRole('heading', { level: 2, name: 'MCP 연결' })).toBeTruthy();
 		expect(sectionButtons[0].hasAttribute('aria-current')).toBe(false);
 		expect(screen.getByRole('button', { name: 'MCP 서버' }).getAttribute('aria-current')).toBe('page');
 	});

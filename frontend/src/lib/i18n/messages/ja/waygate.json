@@ -1,4 +1,9 @@
 {
+	"project.iso.label": "VPN マップ",
+	"project.iso.caption": "サーバー、クライアント、接続済みネットワークを選択すると、一覧で詳細を確認できます。",
+	"project.iso.encrypted": "暗号化トンネル",
+	"project.iso.reportedPeers": "報告されたピア {count} 件",
+	"project.iso.profileCount": "クライアントプロファイル {count} 件",
 	"project.permission.denied": "現在のプロジェクトでこの操作を行う権限がありません。",
 	"project.client.owner": "所有者ユーザー ID",
 	"project.client.ownerHelp": "プロジェクトメンバーのユーザー ID を入力してください。未割り当てのクライアントにのみ所有者を設定できます。設定後の変更や解除はできません。接続権限を持つ所有者のみ、有効なクライアントの設定をダウンロードできます。",

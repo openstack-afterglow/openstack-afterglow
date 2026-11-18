@@ -1,4 +1,9 @@
 {
+	"project.iso.label": "Sơ đồ VPN",
+	"project.iso.caption": "Chọn máy chủ, máy khách hoặc mạng đã gắn để xem chi tiết trong danh sách.",
+	"project.iso.encrypted": "Đường hầm mã hóa",
+	"project.iso.reportedPeers": "{count} thiết bị ngang hàng được báo cáo",
+	"project.iso.profileCount": "{count} hồ sơ máy khách",
 	"project.permission.denied": "Bạn không có quyền thực hiện thao tác này trong dự án hiện tại.",
 	"project.client.owner": "ID người dùng của chủ sở hữu",
 	"project.client.ownerHelp": "Nhập ID người dùng của một thành viên dự án. Chỉ có thể chỉ định chủ sở hữu cho máy khách chưa được chỉ định; sau khi chỉ định, không thể thay đổi hoặc xóa chủ sở hữu. Chỉ chủ sở hữu có quyền kết nối mới có thể tải xuống hồ sơ của máy khách đã bật.",

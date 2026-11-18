@@ -1,4 +1,9 @@
 {
+	"project.iso.label": "VPN-kart",
+	"project.iso.caption": "Velg en server, klient eller et tilknyttet nettverk for å se detaljene i listen.",
+	"project.iso.encrypted": "Kryptert tunnel",
+	"project.iso.reportedPeers": "{count, plural, one {# rapportert motpart} other {# rapporterte motparter}}",
+	"project.iso.profileCount": "{count, plural, one {# klientprofil} other {# klientprofiler}}",
 	"project.permission.denied": "Du har ikke tillatelse til å utføre denne handlingen i det gjeldende prosjektet.",
 	"project.client.owner": "Eierens bruker-ID",
 	"project.client.ownerHelp": "Angi bruker-ID-en til et prosjektmedlem. Bare klienter uten eier kan tildeles en eier. Tildelt eierskap kan ikke endres eller fjernes. Bare eieren med tilkoblingstillatelse kan laste ned profilen til en aktivert klient.",

@@ -597,19 +597,53 @@ Manila의 `/v2/{project}` URL prefix도 논리 Personal이 아닌 실제 인증 
 | `POST` | `/api/v1/admin/instances/{server_id}/live-migrate/force-complete` | 라이브 마이그레이션 강제 완료 | - |
 | `POST` | `/api/v1/admin/instances/{server_id}/cold-migrate` | 콜드 마이그레이션 (`host` 지정 시 해당 호스트로) | `host` (선택) |
 | `POST` | `/api/v1/admin/instances/{server_id}/evacuate` | 다운된 호스트에서 인스턴스 대피 | `host` (선택) |
-| `GET` | `/api/v1/admin/instances/{server_id}/migration-status` | 마이그레이션 진행 상태 조회 | - |
+| `GET` | `/api/v1/admin/instances/{server_id}/migration-status` | 진행 중 마이그레이션 또는 최신 실패 레코드 조회 | - |
 | `PUT` | `/api/v1/admin/instances/{server_id}/name` | 전원 상태와 무관한 표시 이름 변경; caller 연결·fresh admin·실제 target owner 확인 | `name` (1–63자 정규화) |
 | `POST` | `/api/v1/admin/instances/{server_id}/resize` | 인스턴스 리사이즈 시작 (`VERIFY_RESIZE`로 전이) | `new_flavor` |
 | `POST` | `/api/v1/admin/instances/{server_id}/confirm-resize` | 리사이즈 확정 | - |
 | `POST` | `/api/v1/admin/instances/{server_id}/revert-resize` | 리사이즈 되돌리기 | - |
-| `GET` | `/api/v1/admin/instances/{server_id}/recovery-analysis` | 오류/멈춤 인스턴스 복구 분석 | - |
-| `POST` | `/api/v1/admin/instances/{server_id}/recover` | 분석 결과 기반 인스턴스 복구 수행 | - |
+| `GET` | `/api/v1/admin/instances/{server_id}/recovery-analysis` | ERROR 인스턴스의 복구 안전 점검 및 계획 | - |
+| `POST` | `/api/v1/admin/instances/{server_id}/recover` | 재진단 후 복구 실행 및 Nova 상태 관찰 | `plan_fingerprint` (필수, 소문자 16진수 64자) |
+| `GET` | `/api/v1/admin/instances/{server_id}/recovery-status` | 재실행 없이 Nova 상태 한 번 관찰 | 쿼리 `requested_at` (필수, timezone 있는 ISO 8601), `unconfirmed_action`, `observation_may_recover` (필요시) |
 | `GET` | `/api/v1/admin/instances/health` | 전체 인스턴스 헬스 스냅샷 | - |
 | `POST` | `/api/v1/admin/instances/bulk-action` | 다수 인스턴스 일괄 제어 | `instance_ids[]`, `action`, `snapshot_name` (선택) |
 
 **bulk-action 제한**: `action`은 시작/정지/재부팅/스냅샷 등 허용된 값이어야 하며, 각 인스턴스별 결과가 개별 집계됩니다. 일부 실패해도 나머지는 계속 진행됩니다.
 
 이름 변경은 [공용 인스턴스 이름 변경 계약](instances.md#put-apiv1instancesinstance_idname)을 따릅니다. Native name-only update 뒤 ID·이름·소유 프로젝트를 재조회하여 일치한 경우만 성공하며 guest hostname·전원 상태는 바꾸지 않습니다. 사용자 경로의 관리자 소유권 우회를 허용하는 대신 이 명시적 관리자 경로를 사용합니다. 기존 관리자·사용자 크기 변경 화면은 `SHUTOFF`에서만 노출되며 이 작업으로 변경하지 않습니다.
+
+### ERROR 인스턴스 복구
+
+복구 경로는 관리자 전용입니다. `recovery-analysis`는 서버가 ERROR가 아니거나 필요한 OpenStack 조회가 실패해도 진단 결과(`auto_executable: false`)를 반환합니다.
+
+| 진단 응답 필드 | 의미 |
+|----------------|------|
+| `server.power_state` | Nova 전원 상태 코드. 미확인은 `null`. |
+| `server.hypervisor_hostname` | Nova compute 노드 이름. 미확인은 `null`. |
+| `server.fault` | 최신 Nova fault(`message`, `code`, `created`) 또는 `null`. 실패한 마이그레이션의 원인을 뜻하지 않습니다. |
+| `last_error_migration` | 실패 레코드(`id`, `status`, `migration_type`, `source_compute`, `source_node`, `dest_compute`, `created_at`, `updated_at`) 또는 `null`. |
+| `volumes`, `ports` | Nova/Cinder 연결 및 Neutron 바인딩 정보. 조회 실패는 `null`, 읽어서 없음을 확인한 경우는 `[]`. |
+| `checks[]` | 안정적인 `key`와 표시용 `label`, `passed`, `detail`. |
+| `scenario`, `scenario_description`, `steps[]` | 진단 및 순서가 있는 계획. 각 단계는 `action`, `params`, `description`을 포함합니다. `auto_executable`이 `true`일 때만 실행할 수 있습니다. |
+| `plan_fingerprint` | 자동 실행이 가능할 때 대상, 안전 증거, 시나리오와 순서 있는 `action`·`params`에 대한 SHA-256. 수동 점검만 가능한 경우 `null`. |
+| `placement_note` | 레거시 마이그레이션에 대해 수동 할당 확인이 필요할 수 있다는 참고 정보 또는 `null`. |
+
+라이브 롤백은 소스 호스트, 실패 시각과 연결된 대상 호스트 롤백 성공 이벤트, 소스에만 남은 포트·볼륨 연결, 단일 Placement 공급자, 진행 중 작업 없음이 모두 확인되어야 합니다. 라이브 이력의 `error`, `failed`, `cancelled`는 같은 안전 검사로 처리합니다. Cinder 전체 연결 상세에서 미완료 예약도 확인하고, Nova BDM `attachment_id`와 정확히 일치하는 유일한 소스 연결만 허용합니다.
+
+`live_migration_rolled_back`에서 실행 중(`power_state=1`)이면 `reset_server_state(active)`만 수행합니다. `SHUTDOWN`(`4`) 또는 `CRASHED`(`6`)이면 `ERROR`에서 직접 `hard_reboot`만 요청합니다. 재설정을 먼저 하지 않으므로 재시작이 거부되어도 종료된 VM을 `ACTIVE`로 바꾸지 않습니다. `NOSTATE`(`0`), 미확인, 그 밖의 전원 상태는 차단합니다.
+Nova 서버의 `hypervisor_hostname`과 실패 레코드의 `source_node`가 일치해야 합니다. 단일 Placement 할당은 서비스 호스트명이 아닌 이 소스 노드 이름의 유일한 루트 공급자 UUID와 비교합니다. 대상·다른 호스트·중첩 공급자만 할당된 경우와 소스 공급자를 정확히 확인할 수 없는 경우도 차단합니다.
+
+`recover`는 서버별 공유 Redis 잠금을 획득한 뒤 재진단합니다. `409`의 `detail.code`는 `RECOVERY_IN_PROGRESS`, `RECOVERY_LOCK_LOST`, `RECOVERY_BLOCKED`, `RECOVERY_PLAN_CHANGED`로 원인을 구분합니다. 잠금 저장소에 접근할 수 없으면 `503` (`RECOVERY_UNAVAILABLE`)이며 잠금 없이 실행하지 않습니다. 쓰기 직전에 잠금을 갱신하고 Nova 상태·명시적으로 비어 있는 작업·호스트·노드·전원 상태를 다시 비교합니다. 변경이 발견되면 해당 단계를 실패로 기록하고 이후 쓰기를 중단합니다. 요청 취소 후에도 worker와 활동 기록 시도가 끝난 뒤 소유 토큰이 일치하는 잠금만 해제합니다.
+
+`recover`는 `recovery-analysis`에서 받은 `plan_fingerprint`만 받습니다. 누락·잘못된 형식은 `422`입니다. Redis 잠금 아래 관리자 연결로 안전 조건과 계획을 다시 계산합니다. 안전 조건이 미충족이거나 최신 fingerprint가 전달값과 다르면 쓰기 없이 `409`를 반환하므로 다시 진단하고 계획을 확인해야 합니다. 요청에 클라이언트 단계를 전달할 수 없습니다.
+
+`executed`와 `steps[].status=success`는 단계 요청 응답 수락을 뜻합니다. POST의 native 실행 예산은 105초이며 각 호출은 최대 5초, 최종 관찰은 남은 예산 내 최대 55초입니다. `observed_status`는 마지막 Nova 상태 원문(`ACTIVE`, `HARD_REBOOT`, `ERROR` 등) 또는 `UNKNOWN`입니다. `observed_task_state`는 마지막 Nova 작업이며 `observation_timed_out`은 감시 시간 소진을, `observation_terminal`은 실행 중·idle `ACTIVE` 또는 idle `ERROR`의 확인을 구분합니다. Nova가 하드 리부트 작업을 보고하는 동안에는 `ERROR`도 중간 상태입니다. 최근 fault가 해당 요청 이후에 생성된 경우에만 최종 오류의 `observed_fault`(`message`, `created`, `code`)를 반환합니다.
+
+응답 유실이나 일부 `5xx`로 쓰기 수락을 알 수 없으면 단계 상태를 `unconfirmed`로 반환하고 재전송하지 않습니다. `unconfirmed_action`과 `requested_at`이 후속 읽기 범위를 정하며 `observed_acceptance`는 응답 또는 새로운 Nova 작업/이력에서 수락이 확인됐음을 뜻합니다. 최신 조회에서 실행 중·idle `ACTIVE`가 보이고 다른 계획 단계가 누락되지 않았을 때만 `recovered=true`입니다(`observation_may_recover=false`면 이후 조회도 성공으로 보지 않습니다). `recovery-status`는 POST의 시간과 불확실성 조건을 사용해 단건 읽기만 수행합니다. Nova 성공은 게스트 앱 헬스 증명이 아닙니다. 활동 기록에는 fingerprint, 단계, 불확실성 및 관찰 상태가 남습니다.
+
+`migration-status`의 `migration.status=error`는 실패 레코드이며 `type`, `source`, `dest`, `created_at`, `updated_at`을 포함합니다. 기존 `error` 필드는 Nova fault 메시지일 뿐 실패 원인과 연결하지 않습니다. 예를 들어 콘솔이 없는 게스트에 대한 최근 `404` fault는 이전 마이그레이션 실패와 별개입니다.
+
+**운영 예시:** `dms-compute12 → dms-compute6` 라이브 마이그레이션은 Nova API가 아닌 `nova-compute` 로그에서 대상 CPU의 `pdcm`, `hle`, `rtm` 누락을 확인했습니다. 재발을 방지하려면 대상 컴퓨트들이 지원하는 공통 CPU 모델을 검증해 Nova/libvirt에 적용하세요. 이 복구 기능은 하이퍼바이저 CPU 설정을 바꾸지 않습니다.
 
 ### 관리자 인스턴스 생성 (대리 프로비저닝)
 

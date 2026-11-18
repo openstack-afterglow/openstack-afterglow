@@ -23,7 +23,7 @@ Decisions BFF는 Lumen 서비스 권한을 확인한 뒤에만 본문을 읽는�
 **세 번째 시각 정리 (2026-11-16, source/local):** 기존 layout.css semantic text token과 shared embedded/flat/table/card/form 경계를 재사용해 consumer/admin 상세·계정·Lumen 설정의 중첩 외곽선, 제목 단계, 작업 대비와 좁은 상세 header를 수정한다. AuthStudioShell은 기존 resolvedTheme를 SVG color-scheme에 전달하고 보조 글자 크기만 기존 type role로 올린다. 포트 생성창은 기존 localized heading을 dialog 이름으로 연결한다. 자원·credential·권위·API·scope·polling·tutorial 가용성·DB/schema·배포 경계는 바꾸지 않는 presentation-only 변경이다. 실제 렌더·native 조작과 synthetic/redirect 한계는 docs/testing.md에 구분하며 운영 수용으로 승격하지 않는다.
 
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 root/backend/frontend와 Helm 버전은 `1.32.27`이며, 불변 tag `1.32.27`(`5ba53a98`)을 DMS Lab 컨트롤 plane에 배포했다. OpenAI Image/Realtime Studio 확장은 먼저 배포한 Lumen `0.6.20` 이상이 필요하다. 발행·배포 수신증과 운영 브라우저 검증 범위는 [`docs/testing.md`](docs/testing.md)에 있다. Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock 버전은 `8.2.2`다. Source·합성 검증과 실제 OpenStack 배포 증거를 구분한다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 root/backend/frontend와 Helm 버전은 `1.32.28`(MCP·도구 연결 화면, 등각 그리드 보기, 라이브 마이그레이션 롤백 인스턴스 복구 릴리스 준비)이다. 현재 운영 버전은 불변 tag `1.32.27`(`5ba53a98`)이며 OpenAI Image/Realtime Studio 확장은 먼저 배포한 Lumen `0.6.20` 이상이 필요하다. `1.32.28`은 Lumen 요구 버전·DB schema·설정 키를 바꾸지 않는다. 발행·배포 수신증과 운영 브라우저 검증 범위는 [`docs/testing.md`](docs/testing.md)에 있다. Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock 버전은 `8.2.2`다. Source·합성 검증과 실제 OpenStack 배포 증거를 구분한다.
 
 **1.32.11 준비 (2026-11-08, source/local):** `1.32.10` 이후 dev의 도메인 IAM 그룹 관리(`/api/v1/iam/groups*`), 도메인 manager 프로젝트 수정(`PATCH /api/v1/iam/projects/{id}`, 이름·설명만), 프로젝트 표·슬라이드인 화면, manager 전용 프로젝트 생성(`project_creator` 위임 폐기)과 manager 투영의 native `manager` 부여(v1 `reader` 투영 migration, 투영 파생 row의 manager 계산 제외)를 포함한다. 사용자 페이지의 `/api/v1/{chat,k3s,waygate,palimpsest}/*`에서 시스템 관리자 승격을 제거하고 `/admin/*` 하위에만 남긴다. 스키마·SQL 변경과 새 설정 키는 없다. 시스템 관리자 승격을 제거한 `deps._resolve_jwt_session` 경계는 `test_auth_domain_boundaries`로 검증했다. 브라우저 실화면과 실제 Keystone의 reader→manager 투영 migration은 확인하지 않았다. 이 항목은 source/local 준비이며 발행·운영 배포는 별도 기록한다.
 
@@ -859,6 +859,8 @@ Application credential 생성은 browser 표시 역할이 아니라 대상 scope
 
 Lumen 설정의 `ChatMcpCatalogue.svelte`는 Afterglow MCP를 항상 표시하고 기본 비활성으로 시작한다. `GET /api/v1/chat/cloud-tools`와 chat admission은 위임을 생성하지 않는다. Same-site browser POST의 명시적 `read`/`manage` 승인이 현재 caller/project의 restricted credential을 만들며 `lumen-tools_user`와 실제 관리 역할 ceiling을 검사한다. `defaults.approve_lumen_grant`는 외부 준비 전 generation을 캡처하고 pending reservation·activation lock에서 다시 검사한다. DELETE/clear/다른 개인 토큰 선택이 이후에 발생하면 늦은 approval이 이를 덮어쓰지 못한다. `source="lumen"`은 현재 singleton 프로젝트와 `consented_at`를 선택·dispatch에서 검사하고 GET/chat은 명시적으로 선택된 개인 토큰의 권한·프로젝트를 교체하지 않는다.
 
+Lumen 채팅 설정에서 `ChatExtensionsManager`가 기존 API와 HTTP 도구·레거시 서버 작업을 유지하고, `ChatMcpGallery`가 `?connections=browse|connected|manage`의 내부 탭을 소유한다. Browse는 `/mcp-settings`의 `q`·`access`·`next_offset`을 사용한다. Connected는 서버·조직 페이지·사용자 설정 결과를 정확한 서버 ID로 합치고 현재 소유권만 표시한다. Connected의 범위 필터는 이 인벤토리에만 적용하며, 비활성 또는 인증이 필요한 연결도 남기기 위해 카탈로그의 `state`는 보내지 않는다. 조직 조회 실패는 독립적으로 반환된 사용 권한을 숨기지 않지만 관리 권한을 부여하지 않는다. 관리자는 기존 관리자 레지스트리와 서버 인벤토리를 같은 레이아웃으로 사용한다. `ChatMcpCatalogue`가 클라우드 승인 상태와 원격 동의 컨트롤을 제공하며 구성 버전 바인딩·명시 동의·쓰기 전용 자격 증명·scope 전환 시 stale 응답 폐기는 기존 경계를 따른다. Built-in 도구 선택은 기존 `ManagedSandboxToolsPicker`와 채팅 선호 저장소를 그대로 사용한다. API·스키마 변경은 없다.
+
 Lumen 내장 MCP의 credential 상태는 권위와 별도인 관측이다. `consumer_connection`의 application-credential 인증 요청에서만 Keystone401/404(참조 role 부재 포함)를 `McpCredentialInvalidError`로 구분하고 public message·cause를 보존한다. 실제 `/mcp/lumen/execute` 실패만 `mcp_credential_invalid` WARNING을 grant/project/user 앞8자리로 기록하고, full grant ID를 키로7일 Redis 관측을 best effort 저장한다. Forbidden·native resource404·network·timeout·5xx는 무효 credential로 단정하지 않는다. Execute의 기존 HTTP status/body와 grant 권위는 바꾸지 않는다.
 
 `GET /chat/cloud-tools`는 Keystone probe 없이 선택 grant의 Redis 관측만 `credential_state: invalid|ok`로 추가하며 기존 `enabled`와 모든 필드를 유지한다. Redis 장애/관측 부재의 `ok`는 실제 native 인증 성공을 뜻하지 않는다. 내장 row는 기존 warning Pill과9locale 복구 안내로 비활성화 후 재활성화를 설명하고 원래 명시 동의·버튼·owner fence를 유지한다. Disable은 관측을 best effort 제거하며 자동 폐기·재발급은 없다. 새 grant의 다른 ID와7일TTL로 관측 수명을 한정한다. Schema·migration·configuration·service topology에는 구조 영향이 없는 오류 분류/표시 수정이며 운영 credential 복구·배포를 수행하지 않는다.
@@ -1090,6 +1092,8 @@ DELETE는 이전 GET 성공을 재사용하지 않고 새 검사에서 uncertain
 
 서버 `list_instance_security_groups`는 refresh query를 받지 않고 기존 `cached_call`을 사용한다. 후속 공통 cache 수정으로 POST가 호출하는 invalidate는 같은 프로세스·event loop의 이전 load를 분리하고 재저장을 차단한다. 이미 시작한 호출자는 이전 snapshot을 받을 수 있고 다른 worker의 load는 fence하지 않는다. 규칙 CRUD의 인스턴스별 SG cache 무효화도 기존 한계다. 따라서 독립 브라우저 GET만으로 실제 Neutron의 즉시 최신성을 보장하지 않으며 실제 Neutron 저장·조회 acceptance는 별도다.
 
+`NetworkSection` defaults to the `IsoGridView` and stores only the grid/list choice in `instance.network.view`. `buildInstanceIsoScene` takes observed ports, catalog names and port-associated floating IPs. The controller exposes the security-group endpoint's exact port rows separately from the list's compatibility fallback. The grid withholds all rule edges until observed port membership and applied group definitions are complete; no groups, unknown policy and ingress/egress rule edges are distinct. `buildSecurityGroupUnion` combines saved rules across ports for the visualization only, not an authorization or reachability decision. Selection opens a local read-only inspector. Interface, FIP and security-group writes and the Waygate lock retain their original list paths.
+
 ### 프로젝트 보안 그룹 규칙 편집
 
 Neutron 규칙 필드는 직접 수정할 수 없으므로 사용자 보안 그룹 화면의 `수정`은 선택한 규칙 행 바로 아래에 `저장`/`취소` 폼을 연다. 저장은 기존 project-scoped `POST/DELETE /api/v1/security-groups/{sg_id}/rules` 조합이다. 포트·원격 그룹·CIDR 형식/IP 버전·원격 대상 동시 지정을 쓰기 전에 검증하고 값이 같으면 요청하지 않는다. 규칙 쿼터 여유가 있으면 새 규칙을 먼저 만든 뒤 기존 규칙을 제거하므로 생성 실패는 기존 정책과 초안을 보존한다. 쿼터가 가득 찬 경우에만 경고를 표시하고 기존 규칙을 먼저 제거하며 생성 실패 시 원래 필드로 복원을 시도한다. 복원 실패와 기존 규칙 제거 실패는 성공으로 표시하지 않고 별도 오류와 새로 조회한 목록으로 알린다. 저장 중 화면이 바뀌면 같은 오류를 toast로 보고한다. 새 규칙 폼은 표 아래에 열리며 열린 동안 상단 `+ 규칙 추가`를 숨긴다. 원자적 교체가 아니므로 생성 우선 경로는 두 규칙이 잠시 함께 존재하고 제거 우선 경로는 접근 정책이 잠시 달라진다. 새 API·DB·권한·설정·배포 구조는 없다.
@@ -1109,6 +1113,19 @@ Nova2.47+ embedded flavor의 `original_name`을 SDK가 가상ID로 노출하는 
 사용자·관리자 공용 상세의 `RenameModal`과 controller가 non-replay `PUT /api/v1/{admin/}instances/{id}/name`을 사용한다. 사용자 경로는 `require_project_write`와 실제 Nova 서버의 effective-project 소유권을 검사하며 systemadmin도 foreign project를 우회하지 않는다. 관리자 경로는 fresh `require_admin`·caller connection과 대상 소유 metadata를 요구한다. 기존 이름 정규화(공백→하이픈, ASCII 영숫자로 시작하는 영숫자/`_`/`-`, 최대63자)를 재사용하되 빈 이름은 자동 생성하지 않는다. SDK name-only update 뒤 fresh ID/이름/소유 프로젝트가 일치해야 성공하고 불확실한 쓰기에서도 상세·목록·admin topology cache를 무효화한다. 전원/guest hostname은 변경하지 않는다.
 
 일반 polling은 rename draft를 보존한다. 실제 selection 변경 경계의 동기 revision과 auth/permission subscription, mode/target/session/project fence가 same-tick ABA·close/unmount 뒤의 응답을 폐기하며, 현재 문맥의 성공만 공용 상세와 열린 사용자/관리자 목록을 갱신한다. 기존 resize·confirm/revert·SHUTOFF-only UI는 그대로다. 새 endpoint 외 DB/schema·서비스 소유권·배포 topology 변화는 없다.
+
+### 실패한 라이브 마이그레이션 인스턴스 복구
+
+관리자 인스턴스 목록과 공용 상세는 `RecoveryModal`을 공유하고, 상세 `InstanceHeader`는 별도 시각을 가진 Nova fault와 마이그레이션 실패 레코드를 서로 다른 배너로 표시한다. 최근 콘솔 요청 fault를 마이그레이션 원인으로 표시하지 않는다. 실패의 상세 원인은 컴퓨트 로그에서 확인한다.
+
+`instance_recovery`는 관리자 연결로 Nova 서버·task·진행 및 이력, Neutron 포트, Nova/Cinder 볼륨을 읽는다. 실패한 읽기는 관찰된 빈 결과와 구분해 모든 복구 시나리오에서 차단한다. 최신 실패가 라이브 마이그레이션이면 서버가 기록의 소스에 있고, 생성 시각 60초 이내의 유일한 최신 라이브 요청에서 `compute_rollback_live_migration_at_destination: Success`가 관찰되어야 한다. 모든 Neutron 포트는 소스 활성 바인딩만 보유하고 `migrating_to`가 없어야 하며, 모든 Cinder 연결은 소스에 있어야 한다. 인스턴스 consumer에 Placement 공급자가 하나뿐이어야 한다. Placement가 불가하면 대상 중복 할당을 배제할 수 없어 복구를 차단한다.
+Nova 서버의 `hypervisor_hostname`과 마이그레이션 `source_node`가 일치해야 하며, Placement compute 공급자 이름은 Nova 서비스 host가 아닌 이 노드 이름을 사용한다. 단일 할당은 그 이름으로 고유하게 식별된 소스 루트 공급자의 UUID와 정확히 일치해야 한다. 다른 호스트나 중첩 공급자 또는 확인할 수 없는 소스는 차단한다.
+
+복구 POST는 서버별 공유 Redis lease 아래에서 재진단·쓰기·최종 Nova 관찰을 직렬화한다. 동일 서버의 중복 요청은 409, 잠금 획득 불가는 503이다. 각 쓰기 직전에 현재 owner만 TTL을 갱신하고 Nova 호스트·노드·전원·idle 상태를 다시 확인한다. 요청이 취소되어도 worker와 활동 기록 시도가 끝난 뒤 원자적으로 자신의 lease만 해제한다.
+
+모든 검사를 통과한 `live_migration_rolled_back`은 실행 중인 게스트(`power_state=1`)를 재시작하지 않고 Nova 상태만 `active`로 재설정한다. `SHUTDOWN`·`CRASHED`는 `ERROR` 상태에서 직접 하드 리부트만 요청해 Nova가 쓰기 조건을 원자적으로 확인하게 한다. 먼저 상태를 재설정하지 않아 실패한 요청이 종료된 VM을 `ACTIVE`로 남기지 않는다. `NOSTATE`는 정지 증거가 아니므로 자동 실행을 차단한다. Cold/resize와 일반 볼륨 복구는 기존 단계 순서를 유지한다. Cinder 전체 연결 상세의 유일한 소스 연결을 Nova BDM과 대조하여 예약 또는 연결 중인 잔여 연결도 차단한다.
+
+관리자는 확인한 대상·안전 증거·시나리오·순서 있는 단계의 `plan_fingerprint`를 제출한다. 잠금 아래 다시 분석한 fingerprint와 다르면 쓰기 없이 거부한다. Native 작업 예산은 105초이고 Nova 상태 관찰은 남은 예산에서 최대 55초다. 하드 리부트 작업이 진행 중인 `ERROR`는 실패가 아니다. 응답 유실로 쓰기 수락이 불확실하면 재전송하지 않고 새 작업 또는 action 증거를 읽으며, UI는 읽기 전용 상태 조회를 한시적으로 지속한다. 활동 기록은 fingerprint, 단계, 불확실성 및 관찰 상태를 보존한다. Nova `ACTIVE`는 게스트 애플리케이션 헬스 증명이 아니다. 새 DB schema나 컴퓨트 설정 변경은 없다. [응답 계약·CPU 모델 운영 예시](docs/api/admin.md#error-인스턴스-복구).
 
 ### GPU·고성능 인스턴스 사용 일정
 
@@ -1596,6 +1613,8 @@ The archived client dashboard capability contract is [`openspec/specs/waygate-vp
 
 Waygate 목록 조회는 최초 로딩에만 skeleton을 쓰고 이후 서버·클라이언트·첨부 네트워크·프로젝트 네트워크 갱신 동안 기존 내용을 유지한다. 응답은 ID와 값으로 비교하여 변경되지 않은 배열·행의 참조를 유지하고 변경된 항목만 교체한다. 피어 보고 시각이 전진한 경우에만 트래픽 샘플을 추가하지만, 동일 보고의 재조회 중에도 현재 시각을 갱신해 지연 판정을 유지한다. 발급 시 상속하는 DNS·keepalive는 필드를 생략하고 명시 override만 body에 담아, 상속 플래그를 거부하는 기존 Waygate 생성 API와 새 API에 동일하게 요청한다. 기존 Waygate가 서버 기본값의 동적 상속까지 제공하는지는 별도 배포 확인이 필요하며 클라이언트 PATCH의 상속 플래그는 변경하지 않는다.
 
+The selected Waygate server has a read-only `IsoGridView` next to the existing list mode. Admin (`admin-waygate.view`) and project (`waygate.view`) preferences are independent. `buildWaygateIsoScene` uses the already-scoped server, client and attachment responses: network inventory resolves labels only, and unattached networks are not drawn. Peer status uses the same report freshness classifier as the list. Offline, disabled, delayed, unreported or handshake-less peers have muted tunnel edges, and profile aggregation is distinct from the server-reported peer count. Polling updates scene data without changing server fit identity. Explicit selection reveals and focuses the matching existing row or server heading without overwriting the saved view preference. Mutations stay in the list and use existing permission gates and endpoints.
+
 네트워크 연결 모달은 `/api/v1/networks`에서 project가 볼 수 있는 tenant·shared·external(provider) network를 모두 표시하고(external·타 프로젝트 shared에는 라벨과 Neutron 정책 안내) , 선택 즉시 `/api/v1/networks/{id}`의 subnet detail을 새로 읽어 이전 subnet 선택을 폐기한다. network와 subnet은 공통 `SearchSelect`로 고르고 단일 subnet은 자동 선택하며 0개면 submit을 비활성화한다. 첨부 네트워크 이름은 현재 프로젝트 카탈로그에서 별도로 해석하되 UUID가 정본·fallback이다; 조회 실패나 동명이 네트워크도 기존 연결을 숨기거나 잘못된 attachment ID로 해제하지 않는다. 해제 확인에는 사람이 읽는 이름과 원래 UUID를 함께 표시한다. 제출 body는 `{network_id, subnet_id, nat_mode: "snat"}`로 명시적이다. Waygate는 해당 subnet으로 제한한 Neutron port를 만들고 그 `port_id`를 Nova에 attach하며 실패 시 port/attachment를 rollback한다. 활성 CIDR은 agent SNAT와 새 client `.conf`의 `AllowedIPs`에 반영된다.
 
 새 gateway cloud-init callback은 operator가 제공한 `WAYGATE_PUBLIC_BASE_URL`을 컨테이너의 `WAYGATE_CALLBACK_BASE_URL`로 전달해 만든 direct Waygate `/v1/servers/{id}/agent/...` URL만 사용한다. route substring으로 BFF/direct 경로를 추론하지 않는다. API/worker는 빈 값, localhost, loopback/unspecified URL을 startup과 provisioning 전에 fail-closed 거부한다. Afterglow agent passthrough는 기존 baked VM 호환 경계다.
@@ -1800,7 +1819,17 @@ openstacksdk `Proxy.request`의 raw `get/put/delete` 기본값은 `raise_exc=Fal
 
 상세 패널의 닫기 버튼은 [`SlidePanel.svelte`](frontend/src/lib/components/SlidePanel.svelte)가 `[data-slide-panel-close]` 하나로만 그린다. 자식 패널이 자기 × 를 또 그리면 헤더에 닫기가 두 개 보이므로 금지하며, [`panelChrome.test.ts`](frontend/src/lib/design/__tests__/panelChrome.test.ts)가 SlidePanel 아래 컴포넌트 트리를 정적으로 스캔해 이를 고정한다(자체 크롬을 소유하는 `ui/` 프리미티브와 전면 오버레이는 제외). 튜토리얼 투어도 이 정본 셀렉터를 쓴다.
 
-프론트엔드는 두 라우트(`/dashboard/network/topology`, `/admin/topology`)에서 `topology.view` 선택(기본 캔버스)에 따라 [`TopologyCanvas.svelte`](frontend/src/lib/components/topology/canvas/TopologyCanvas.svelte) 또는 기존 레인 뷰 [`GlobalTopology.svelte`](frontend/src/lib/components/GlobalTopology.svelte)를 렌더한다. `buildGraph`는 네트워크당 가상 L2 스위치와 실제 per-NIC 케이블을 만들며 external 네트워크에만 별도 `internet:${netId}` 구름 노드와 스위치로 향하는 `uplink`를 추가한다. Internet은 외부 gateway의 논리적 표시일 뿐 실측 접속 가능성·ACTIVE·별도 traffic을 주장하지 않는다. Shared-only 네트워크에는 Internet을 만들지 않는다. FIP는 기존 외부망 스위치로 연결된다. `autoLayout`은 Internet → provider 스위치 → 하위 노드, 그리고 provider로부터 라우터 홉 깊이별 router → tenant 스위치 → 하위 노드로 배치한다. 가시성 밖 경유 네트워크도 도달성 계산에는 유지하며 독립 망은 마지막 행이다. 네트워크 zone은 하위 LB·인스턴스·DB만 둘러싸고 upstream router·switch·Internet은 제외한다. 비어 있는 망은 스위치 아래 빈 영역으로 남긴다. 관리자 domain은 실제 소유 upstream 노드와 하위 zone을 함께 pack하여 ownership을 유지한다. LB는 멤버 인스턴스의 왼쪽 변에 맞추고 카드 폭 차이는 콘텐츠 폭에 반영한다. 멀티 NIC는 같은 행 두 home zone의 경계에, 다른 행을 잇는 경우 얕은 home 한 곳에 배치하고 나머지는 실제 케이블로 잇는다.
+사용자 `/dashboard/network/topology`에서는 저장된 `topology.view`가 없을 때 등각 그리드를 표시한다. 레인 [`GlobalTopology.svelte`](frontend/src/lib/components/GlobalTopology.svelte)와 편집 [`TopologyCanvas.svelte`](frontend/src/lib/components/topology/canvas/TopologyCanvas.svelte)는 기존 선택·편집 동작을 유지하며, `/admin/topology`는 캔버스를 기본으로 `grid` 값을 지원하지 않는다. 그리드의 리소스 버튼은 기존 상세 `SlidePanel`과 인텐트 prefetch를 호출한다.
+
+[`topologyIsoScene.ts`](frontend/src/lib/components/topology/topologyIsoScene.ts)는 같은 `TopologyData`를 사용자 프로젝트의 등각 `IsoScene`으로 변환한다. 외부망 slab 뒤에서 라우터·연결된 서브넷의 망으로 이어진다. 인스턴스/DB/LB는 기본 네트워크에 배치하고 추가 연결, LB 멤버, 할당 Floating IP 경로를 그린다. 명시적 `network_id`가 없으면 유일한 이름이나 고정 IP의 유일한 CIDR 일치만 허용한다. 모호한 주소는 연결선을 그리지 않고 배지에 남긴다. 공유망은 원 소유권을 바꾸지 않고 표현한다.
+
+공유 [`IsoGridView.svelte`](frontend/src/lib/components/iso/IsoGridView.svelte)는 토폴로지·인스턴스 네트워크·Waygate의 순수 scene 계약을 렌더한다. `layout.ts`의 cell packing·투영·장애물 점수 기반 routing은 scene 변경 시에만 계산하며 pan/zoom은 별도 카메라 상태다. 초기 fit은 데이터 변화에 따라 맞추고 수동 이동 후 일반 refresh로는 바꾸지 않는다. `fitKey`로 scope 변경을 알린다. 경로의 점은 구성 경로를 나타내며 실측 사용량이나 도달성 검증이 아니다. 접근성 경로 목록에도 동일한 의미를 제공하며 일시 정지·reduced motion·문서 비가시성·viewport 교차 상태·96개 packet 한도를 적용한다. 기존 topology/traffic API·정책·mutation은 그대로다.
+
+`captionLayout.ts`는 투영된 node silhouette와 caption footprint를 기준으로 확대 수준별 pill 위치를 계산한다. 이동만 하면 위치를 다시 계산하지 않는다. 표시 공간이 부족한 경우 보조 문구·겹치는 edge label은 생략하고 접근성 목록에서 원문을 제공한다. 좁은 컨테이너의 작은 scene은 상세 배율에서 시작하지만 전체 맞춤 동작은 계속 전체 scene을 포함한다.
+
+`packets.ts`는 카메라 viewport를 교차하는 구성 경로만 애니메이션한다. 한 번에 최대96개를 그리고 초과 시3.6초 단위로 순환하여 모든 가시 경로에 차례가 돌아온다. 정지·reduced motion·비가시 상태에는 순환 타이머도 없다. 그리드 리소스의 접근성 이름은 지역화한 종류와 이름을 모두 포함한다.
+
+기존 캔버스 `buildGraph`는 네트워크당 가상 L2 스위치와 실제 per-NIC 케이블을 만들며 external 네트워크에만 별도 `internet:${netId}` 구름 노드와 스위치로 향하는 `uplink`를 추가한다. Internet은 외부 gateway의 논리적 표시일 뿐 실측 접속 가능성·ACTIVE·별도 traffic을 주장하지 않는다. Shared-only 네트워크에는 Internet을 만들지 않는다. FIP는 기존 외부망 스위치로 연결된다. `autoLayout`은 Internet → provider 스위치 → 하위 노드, 그리고 provider로부터 라우터 홉 깊이별 router → tenant 스위치 → 하위 노드로 배치한다. 가시성 밖 경유 네트워크도 도달성 계산에는 유지하며 독립 망은 마지막 행이다. 네트워크 zone은 하위 LB·인스턴스·DB만 둘러싸고 upstream router·switch·Internet은 제외한다. 비어 있는 망은 스위치 아래 빈 영역으로 남긴다. 관리자 domain은 실제 소유 upstream 노드와 하위 zone을 함께 pack하여 ownership을 유지한다. LB는 멤버 인스턴스의 왼쪽 변에 맞추고 카드 폭 차이는 콘텐츠 폭에 반영한다. 멀티 NIC는 같은 행 두 home zone의 경계에, 다른 행을 잇는 경우 얕은 home 한 곳에 배치하고 나머지는 실제 케이블로 잇는다.
 
 `computeGeometry`는 직각 routing과 독립 NIC endpoint를 유지하며 switch upstream/top·downstream/bottom을 분리한다. 자동 switch–하위 노드 여백은100px를 기본으로 incident fanout에 따라6px씩 늘어나고, 6px lane은 endpoint 양쪽이 같은 band를 공유한다. Switch BOTTOM의 왼쪽으로 향하는 선은 실제 NIC target x와 slot x를 기준으로 반대 순서로 배정해 교차를 피한다. 접점 정렬도 VM 중심이 아닌 실제 NIC 위치를 사용한다. 장애물이 없는 facing 경로는 HUD 위 단일 수평 shelf로 연결해 stub 역전의 불필요한 우회를 제거한다. 수평 bend는 network label 행을 피하며 manual drag·fit·저장 복원 때 다시 계산한다. Native per-NIC/네트워크 값과 router exporter 부재는 유지한다. Tenant trunk는 해당 망 값, provider trunk는 직접 연결한 tenant 망 합산이며 `trunkNetIds`2개 이상만 `하위망 합산` badge를 표시한다. Internet uplink는 미측정이다. `edgeIntensity`는1kbps–1Gbps 로그축에서1.8–4.5굵기, unknown1.5/0.40, measured0하한을 구분하며 cable은rx+tx, trunk는망별max+min/2추정 합이다. `flowStreams`는 모든 cable의 유한한 양수TX(VM→switch)와RX(역방향)를 독립 표시한다.0/미측정 및 trunk/FIP/LB/Internet의 미관측 packet은 애니메이션하지 않는다. Native 값은2분 평균·15초poll이지 개별 packet/peer 경로가 아니다. `allocateFlowDots`는전역60예산에서스트림을통째로배정한다. 기존 scope/project별localStorage·노드비겹침·수동의도복원·zoom/pan·SlidePanel은 유지하며 API/schema/서비스·배포 구조 영향은 없다.
 
@@ -2260,9 +2289,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "31ae8cd99b0314ab552d176758bc38c2d8e2efd40e10244fe5cde9d3cc7fdad4",
-  "reviewed_at": "2026-11-18T11:35:45Z",
-  "summary": "Record Afterglow 1.32.27 publication and DMS Lab rollout after Lumen 0.6.20; docs only."
+  "source_sha256": "f83d4c6070a8e6af0bd49cf6f18d44ca4a562adc9038b5b2216204954a29473e",
+  "reviewed_at": "2026-11-18T14:32:17Z",
+  "summary": "Prepare Afterglow 1.32.28 with the MCP and tools connections workspace, read-only isometric grid views for topology, instance networking and Waygate, and verified live-migration rollback instance recovery. No schema, configuration or Lumen requirement changes."
 }
 ```
 <!-- architecture-review:end -->

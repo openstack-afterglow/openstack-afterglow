@@ -6,8 +6,17 @@
 	import { api, ApiError } from '$lib/api/client';
 	import { serviceCapabilities } from '$lib/stores/servicePermissions';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
-	import ChatMcpCatalogue, { type ApprovedMcpServer } from './ChatMcpCatalogue.svelte';
+	import ChatMcpCatalogue, { type ApprovedMcpWorkspace } from './ChatMcpCatalogue.svelte';
 	import ChatMcpGallery from './ChatMcpGallery.svelte';
+	import type { McpConnection } from '$lib/api/mcpCatalog';
+	import ConnectionStatus from './connections/ConnectionStatus.svelte';
+	import ConnectionName from './connections/ConnectionName.svelte';
+	import ConnectionsTable from './connections/ConnectionsTable.svelte';
+	import Field from '$lib/components/ui/Field.svelte';
+	import FormModal from '$lib/components/ui/FormModal.svelte';
+	import TextInput from '$lib/components/ui/TextInput.svelte';
+	import SelectInput from '$lib/components/ui/SelectInput.svelte';
+	import { t as galleryT } from '$lib/i18n/ns/mcp-gallery';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -19,14 +28,12 @@
 	// only: 특정 섹션만 렌더('mcp' | 'tools' | 'skills'). 미지정 시 전부.
 	let { base, only }: { base: string; only?: 'mcp' | 'tools' | 'skills' } = $props();
 
-	interface McpServer extends ApprovedMcpServer {
-		scope: string;
-		transport: string;
-		has_headers?: boolean;
+	interface McpServer extends McpConnection {
+		oauth_scopes?: string[];
 		has_oauth_client?: boolean;
 		has_oauth_client_secret?: boolean;
 		load_policy?: 'preloaded' | 'on_demand';
-		template_key?: string | null;
+		activation_config_version?: number | null;
 	}
 	interface McpOAuthStatus {
 		required: boolean;
@@ -62,6 +69,8 @@
 	let catalogLoaded = $state(false);
 	let loadGeneration = 0;
 	let gallery: { refresh: () => void } | undefined = $state();
+	const id = $props.id();
+	const approvedServers = $derived(mcps.filter((mcp) => mcp.scope === 'global' && !mcp.template_key));
 
 	const isAdmin = $derived(base.includes('/admin'));
 	const canMcp = $derived(isAdmin ? $auth.isSystemAdmin === true : $serviceCapabilities('lumen-mcp_editor'));
@@ -101,6 +110,24 @@
 	let tUrl = $state('');
 	let tLoadPolicy = $state<'preloaded' | 'on_demand'>('on_demand');
 	let addingTool = $state(false);
+	let toolDialog = $state(false);
+	let toolForm = $state<HTMLFormElement>();
+	let toolQuery = $state('');
+	let ownerGeneration = 0;
+	const filteredTools = $derived.by(() => {
+		const needle = toolQuery.trim().toLocaleLowerCase();
+		return tools.filter((tool) => [tool.name, tool.method, tool.description, tool.url].some((value) => value?.toLocaleLowerCase().includes(needle)));
+	});
+
+	function closeToolDialog() {
+		toolDialog = false;
+		tName = ''; tDesc = ''; tMethod = 'GET'; tUrl = ''; tLoadPolicy = 'on_demand';
+	}
+
+	function clearRemoteSecrets() {
+		mHeaders = '';
+		mOAuthClientSecret = '';
+	}
 
 	let sName = $state('');
 	let sDesc = $state('');
@@ -224,6 +251,7 @@
 			mOAuthClientSecret = '';
 			mLoadPolicy = 'on_demand';
 			await load();
+			if (request.signal.aborted || mcpRequest !== request) return;
 			gallery?.refresh();
 			toast.success(t('extensions.mcp.added'));
 		} catch (e) {
@@ -234,12 +262,13 @@
 	}
 
 	async function addTool() {
-		if (!canAssets) return;
+		if (!canAssets || addingTool) return;
 		if (!tName.trim() || !tUrl.trim()) {
 			toast.error(t('extensions.tools.nameUrlRequired'));
 			return;
 		}
 		addingTool = true;
+		const owner = ownerGeneration;
 		try {
 			await api.post(
 				`${base}/custom-tools`,
@@ -253,16 +282,14 @@
 				token,
 				projectId
 			);
-			tName = '';
-			tDesc = '';
-			tUrl = '';
+			if (owner !== ownerGeneration) return;
+			closeToolDialog();
 			await load();
-			tLoadPolicy = 'on_demand';
-			toast.success(t('extensions.tools.added'));
+			if (owner === ownerGeneration) toast.success(t('extensions.tools.added'));
 		} catch (e) {
-			toast.error(e instanceof ApiError ? e.message : t('extensions.addFailed'));
+			if (owner === ownerGeneration) toast.error(e instanceof ApiError ? e.message : t('extensions.addFailed'));
 		} finally {
-			addingTool = false;
+			if (owner === ownerGeneration) addingTool = false;
 		}
 	}
 
@@ -271,27 +298,28 @@
 		id: number,
 		name: string
 	) {
+		const owner = ownerGeneration;
 		const ok = await confirmDialog(
 			t('extensions.deleteConfirm', { kind, name }),
 			{ confirmLabel: t('extensions.actions.delete') }
 		);
-		if (!ok) return;
-		if (!canDelete) return;
+		if (!ok || !canDelete || owner !== ownerGeneration) return;
 		try {
 			await api.delete(`${base}/${kind}/${id}`, token, projectId);
-			await load();
+			if (owner === ownerGeneration) await load();
 		} catch {
-			toast.error(t('extensions.deleteFailed', { kind, name }));
+			if (owner === ownerGeneration) toast.error(t('extensions.deleteFailed', { kind, name }));
 		}
 	}
 
 	async function toggle(kind: 'mcp-servers' | 'custom-tools' | 'skills', id: number, isActive: boolean) {
 		if (!(kind === 'mcp-servers' ? canMcp : canAssets)) return;
+		const owner = ownerGeneration;
 		try {
 			await api.patch(`${base}/${kind}/${id}`, { is_active: !isActive }, token, projectId);
-			await load();
+			if (owner === ownerGeneration) await load();
 		} catch {
-			toast.error(t('extensions.changeFailed'));
+			if (owner === ownerGeneration) toast.error(t('extensions.changeFailed'));
 		}
 	}
 
@@ -301,11 +329,12 @@
 		loadPolicy: 'preloaded' | 'on_demand'
 	) {
 		if (!(kind === 'mcp-servers' ? canMcp : canAssets)) return;
+		const owner = ownerGeneration;
 		try {
 			await api.patch(`${base}/${kind}/${id}`, { load_policy: loadPolicy }, token, projectId);
-			await load();
+			if (owner === ownerGeneration) await load();
 		} catch {
-			toast.error(t('extensions.loadPolicy.changeFailed'));
+			if (owner === ownerGeneration) toast.error(t('extensions.loadPolicy.changeFailed'));
 		}
 	}
 
@@ -315,19 +344,21 @@
 				? `${actor.token}\u0000${actor.userId}\u0000${actor.projectId}\u0000${actor.domainId}` : null
 		).subscribe(() => {
 			++loadGeneration;
+			++ownerGeneration;
+			closeToolDialog(); addingTool = false; toolQuery = '';
 			mcpRequest?.abort();
 			mcpRequest = null;
 			addingMcp = false;
 			mHeaders = '';
 			mOAuthClientSecret = '';
-			mName = ''; mUrl = ''; mOAuthClientId = ''; mOAuthScopes = '';
+			mName = ''; mUrl = ''; mOAuthClientId = ''; mOAuthScopes = ''; mAuthMode = 'none'; mLoadPolicy = 'on_demand';
 			mcps = [];
 			tools = [];
 			skills = [];
 			oauthStatus = {};
 			catalogLoaded = false;
 		});
-		return () => { unsubscribe(); mcpRequest?.abort(); mHeaders = ''; mOAuthClientSecret = ''; };
+		return () => { unsubscribe(); ++ownerGeneration; mcpRequest?.abort(); clearRemoteSecrets(); };
 	});
 	$effect(() => {
 		void [token, projectId, $auth.userId, $auth.domainId, canAssets];
@@ -350,21 +381,31 @@
 
 <!-- MCP 서버 -->
 {#if !only || only === 'mcp'}
-<section class="mb-8">
-	<h2 class="sr-only">{t('settings.sections.mcp')}</h2>
-	<ChatMcpGallery bind:this={gallery} admin={isAdmin} onChanged={load} />
-	{#if !isAdmin}
-		<ChatMcpCatalogue servers={mcps.filter((mcp) => mcp.scope === 'global' && !mcp.template_key)} loading={loading && !catalogLoaded} {oauthStatus} onChanged={load} />
+	{#if isAdmin}
+		{@render mcpWorkspace()}
+	{:else}
+		<ChatMcpCatalogue servers={approvedServers} loading={loading && !catalogLoaded} {oauthStatus} onChanged={async () => { await load(); gallery?.refresh(); }}>
+			{#snippet children(workspace)}{@render mcpWorkspace(workspace)}{/snippet}
+		</ChatMcpCatalogue>
 	{/if}
+{/if}
+
+{#snippet mcpWorkspace(workspace?: ApprovedMcpWorkspace)}
+	<ChatMcpGallery bind:this={gallery} admin={isAdmin} onChanged={load} {remoteForm} onRemoteClose={clearRemoteSecrets}
+		approved={workspace?.approval} cloud={workspace?.cloud} approvedActions={workspace?.remoteActions}
+		adminRows={isAdmin ? mcps : []} approvedRows={approvedServers} {adminActions} {oauthStatus} inventoryLoading={loading && !catalogLoaded} />
+{/snippet}
+
+{#snippet remoteForm()}
 	<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('extensions.mcp.title')}</h3>
-	<p class="mb-3 text-xs text-[var(--color-ink-2)]">{t('extensions.mcp.description', { scope: isAdmin ? t('extensions.scope.global') : t('extensions.scope.personal') })}</p>
-	<div class="mb-4 border-b border-[var(--color-line)] pb-4">
-		<div class="grid grid-cols-1 gap-3 md:grid-cols-3">
-			<input class={inputCls} placeholder={t('extensions.mcp.namePlaceholder')} bind:value={mName} />
-			<select class={inputCls} bind:value={mTransport}>
-				<option value="http">{t('extensions.mcp.transport.http')}</option>
-			</select>
-			<input class={inputCls} placeholder={t('extensions.mcp.urlPlaceholder')} bind:value={mUrl} />
+	<form class="extension-form" method="post" aria-label={t('extensions.mcp.title')} onsubmit={(event) => { event.preventDefault(); void addMcp(); }}>
+		<p class="section-copy">{t('extensions.mcp.description', { scope: isAdmin ? t('extensions.scope.global') : t('extensions.scope.personal') })}</p>
+		<div class="extension-fields">
+			<Field label={t('extensions.mcp.namePlaceholder')} for={`${id}-mcp-name`}><TextInput id={`${id}-mcp-name`} placeholder={t('extensions.mcp.namePlaceholder')} bind:value={mName} required /></Field>
+			<Field label="URL" for={`${id}-mcp-url`}><TextInput id={`${id}-mcp-url`} placeholder={t('extensions.mcp.urlPlaceholder')} bind:value={mUrl} required /></Field>
+			<Field label={t('extensions.workspace.transport')} for={`${id}-mcp-transport`}>
+				<SelectInput id={`${id}-mcp-transport`} bind:value={mTransport}><option value="http">{t('extensions.mcp.transport.http')}</option></SelectInput>
+			</Field>
 		</div>
 		{#if isAdmin}
 			<div class="mt-3">
@@ -407,132 +448,100 @@
 			<p class="mt-3 text-xs text-[var(--color-ink-2)]">{t('extensions.mcp.authHelp')}</p>
 		{/if}
 		<div class="mt-3 flex justify-end">
-			<Button onclick={addMcp} disabled={addingMcp || !canMcp}>{#if addingMcp}<LoadingState variant="control" label={t('extensions.actions.adding')} />{:else}{t('extensions.mcp.add')}{/if}</Button>
+			<Button type="submit" disabled={addingMcp || !canMcp}>{#if addingMcp}<LoadingState variant="control" label={t('extensions.actions.adding')} />{:else}{t('extensions.mcp.add')}{/if}</Button>
 		</div>
+	</form>
+{/snippet}
+
+{#snippet adminActions(m: McpConnection)}
+	{#if m.auth_mode === 'oauth'}
+		<span title={t('extensions.mcp.oauthRequired')}><Pill tone="neutral" size="xs">OAuth</Pill></span>
+	{/if}
+	<div class="tool-actions">
+		{@render loadPolicy('mcp-servers', m.id, m.name, mcps.find((server) => server.id === m.id)?.load_policy, canMcp)}
+		<Button variant="outline" size="sm" disabled={!canMcp} onclick={() => toggle('mcp-servers', m.id, m.is_active)}>{m.is_active ? t('extensions.actions.deactivate') : t('extensions.actions.activate')}</Button>
+		<Button variant="danger-outline" size="sm" disabled={!canDelete} onclick={() => removeItem('mcp-servers', m.id, m.name)}>{t('extensions.actions.delete')}</Button>
 	</div>
-	{#if isAdmin}
-	{#if loading && catalogLoaded}<LoadingState variant="inline" label={t('extensions.mcp.loading')} />{/if}
-	{#if loading && !catalogLoaded}
-		<LoadingState label={t('extensions.mcp.loading')} />
-	{:else if mcps.length === 0}
-		<p class="px-1 text-sm text-[var(--color-ink-2)]">{t('extensions.mcp.empty')}</p>
-	{:else}
-		<div class="divide-y divide-[var(--color-line)]">
-			{#each mcps as m (m.id)}
-				<div>
-					<div class="flex flex-wrap items-center justify-between gap-3 py-3">
-						<div class="min-w-0">
-							<div class="flex items-center gap-2">
-								<span class="truncate text-sm font-medium text-[var(--color-ink-1)]">{m.name}</span>
-								<span class={badge(m.is_active)}>{m.is_active ? t('extensions.state.active') : t('extensions.state.inactive')}</span>
-								<span class="text-xs text-[var(--color-ink-2)]">{m.transport}</span>
-								{#if m.has_headers}<span class="text-xs text-[var(--color-ink-2)]" title={t('extensions.mcp.sharedHeaders')}>🔒</span>{/if}
-								{#if m.auth_mode === 'oauth'}
-									<span title={t('extensions.mcp.oauthRequired')}><Pill tone="neutral" size="xs">OAuth</Pill></span>
-								{/if}
-							</div>
-							{#if m.url}<div class="mt-0.5 truncate text-xs text-[var(--color-ink-2)]">{m.url}</div>{/if}
-						</div>
-						<div class="flex shrink-0 items-center gap-3 text-xs">
-							{#if isAdmin}
-								<select
-									class="rounded border border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-1 py-0.5 text-xs text-[var(--color-ink-2)]"
-									aria-label={t('extensions.loadPolicy.ariaLabel', { name: m.name })}
-									value={m.load_policy ?? 'on_demand'}
-									onchange={(event) =>
-										void setLoadPolicy(
-											'mcp-servers',
-											m.id,
-											(event.currentTarget as HTMLSelectElement).value as 'preloaded' | 'on_demand'
-										)}
-								>
-									<option value="on_demand">{t('extensions.loadPolicy.onDemandShort')}</option>
-									<option value="preloaded">{t('extensions.loadPolicy.preloadedShort')}</option>
-								</select>
-							{/if}
-							<button disabled={!canMcp} class="text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)]" onclick={() => toggle('mcp-servers', m.id, m.is_active)}>{m.is_active ? t('extensions.actions.deactivate') : t('extensions.actions.activate')}</button>
-							<button disabled={!canDelete} class="text-[var(--color-state-danger)] hover:opacity-80" onclick={() => removeItem('mcp-servers', m.id, m.name)}>{t('extensions.actions.delete')}</button>
-						</div>
-					</div>
-				</div>
-			{/each}
-		</div>
-	{/if}
-	{/if}
-</section>
-{/if}
+{/snippet}
 
 <!-- 커스텀 HTTP 툴 -->
 {#if !only || only === 'tools'}
-<section>
-	<h2 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('extensions.tools.title')}</h2>
-	<p class="mb-3 text-xs text-[var(--color-ink-2)]">{t('extensions.tools.description', { scope: isAdmin ? t('extensions.scope.global') : t('extensions.scope.personal') })}</p>
-	<div class="mb-4 border-b border-[var(--color-line)] pb-4">
-		<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-			<input class={inputCls} placeholder={t('extensions.tools.namePlaceholder')} bind:value={tName} />
-			<input class={inputCls} placeholder={t('extensions.tools.descriptionPlaceholder')} bind:value={tDesc} />
-			<select class={inputCls} bind:value={tMethod}>
-				<option value="GET">GET</option>
-				<option value="POST">POST</option>
-			</select>
-			<input class={inputCls} placeholder="URL" bind:value={tUrl} />
-		</div>
-		{#if isAdmin}
-			<div class="mt-3">
-				<label class="mb-1 block text-xs text-[var(--color-ink-2)]" for="tool-load-policy">{t('extensions.loadPolicy.label')}</label>
-				<select id="tool-load-policy" class={inputCls} bind:value={tLoadPolicy}>
-					<option value="on_demand">{t('extensions.loadPolicy.onDemand')}</option>
-					<option value="preloaded">{t('extensions.loadPolicy.preloaded')}</option>
-				</select>
-			</div>
-		{/if}
-		<div class="mt-3 flex justify-end">
-			<Button onclick={addTool} disabled={addingTool || !canAssets}>{#if addingTool}<LoadingState variant="control" label={t('extensions.actions.adding')} />{:else}{t('extensions.tools.add')}{/if}</Button>
-		</div>
+<section class="tools-workspace" aria-labelledby={`${id}-tools-title`}>
+	<header>
+		<h2 id={`${id}-tools-title`}>{t('extensions.tools.title')}</h2>
+		<p class="section-copy">{t('extensions.tools.description', { scope: isAdmin ? t('extensions.scope.global') : t('extensions.scope.personal') })}</p>
+	</header>
+	<div class="tools-toolbar">
+		<search><TextInput type="search" ariaLabel={t('extensions.workspace.searchTools')} placeholder={t('extensions.workspace.searchTools')} bind:value={toolQuery} /></search>
+		<Button size="sm" disabled={!canAssets} onclick={() => toolDialog = true}>
+			<svg aria-hidden="true" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3v10M3 8h10"/></svg>
+			{t('extensions.workspace.addTool')}
+		</Button>
 	</div>
 	{#if loading && catalogLoaded}<LoadingState variant="inline" label={t('extensions.tools.loading')} />{/if}
 	{#if loading && !catalogLoaded}
 		<LoadingState label={t('extensions.tools.loading')} />
-	{:else if tools.length === 0}
-		<p class="px-1 text-sm text-[var(--color-ink-2)]">{t('extensions.tools.empty')}</p>
+	{:else if !filteredTools.length}
+		<p class="tool-empty section-copy">{tools.length ? galleryT('emptySearch') : t('extensions.tools.empty')}</p>
 	{:else}
-		<div class="divide-y divide-[var(--color-line)]">
-			{#each tools as tool (tool.id)}
-				<div class="flex flex-wrap items-center justify-between gap-3 py-3">
-					<div class="min-w-0">
-						<div class="flex items-center gap-2">
-							<span class="truncate text-sm font-medium text-[var(--color-ink-1)]">{tool.name}</span>
-							<span class={badge(tool.is_active)}>{tool.is_active ? t('extensions.state.active') : t('extensions.state.inactive')}</span>
-							<span class="text-xs text-[var(--color-ink-2)]">{tool.method}</span>
-						</div>
-						<div class="mt-0.5 truncate text-xs text-[var(--color-ink-2)]">{tool.description} · {tool.url}</div>
-					</div>
-					<div class="flex shrink-0 items-center gap-3 text-xs">
-						{#if isAdmin}
-							<select
-								class="rounded border border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-1 py-0.5 text-xs text-[var(--color-ink-2)]"
-								aria-label={t('extensions.loadPolicy.ariaLabel', { name: tool.name })}
-								value={tool.load_policy ?? 'on_demand'}
-								onchange={(event) =>
-									void setLoadPolicy(
-										'custom-tools',
-										tool.id,
-										(event.currentTarget as HTMLSelectElement).value as 'preloaded' | 'on_demand'
-									)}
-							>
-								<option value="on_demand">{t('extensions.loadPolicy.onDemandShort')}</option>
-								<option value="preloaded">{t('extensions.loadPolicy.preloadedShort')}</option>
-							</select>
-						{/if}
-						<button disabled={!canAssets} class="text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)]" onclick={() => toggle('custom-tools', tool.id, tool.is_active)}>{tool.is_active ? t('extensions.actions.deactivate') : t('extensions.actions.activate')}</button>
-						<button disabled={!canDelete} class="text-[var(--color-state-danger)] hover:opacity-80" onclick={() => removeItem('custom-tools', tool.id, tool.name)}>{t('extensions.actions.delete')}</button>
-					</div>
-				</div>
-			{/each}
-		</div>
+		<ConnectionsTable label={t('extensions.tools.title')} rows={filteredTools} keyOf={(tool) => tool.id}
+			columns={[
+				{ key: 'status', label: galleryT('workspace.status'), cell: toolStatus },
+				{ key: 'method', label: t('extensions.workspace.method'), cell: toolMethod },
+				{ key: 'name', label: galleryT('workspace.name'), cell: toolName },
+				{ key: 'description', label: galleryT('workspace.details'), cell: toolDetails },
+				...(isAdmin ? [{ key: 'policy', label: t('extensions.loadPolicy.label'), cell: toolPolicy }] : [])
+			]} name={toolName} actionsLabel={t('extensions.workspace.actions')} actions={toolActions} />
 	{/if}
 </section>
+
+<FormModal bind:open={toolDialog} title={t('extensions.workspace.addTool')} submitting={addingTool}
+	onClose={closeToolDialog} onSubmit={() => toolForm?.requestSubmit()} submitLabel={t('extensions.workspace.addTool')}>
+	<form class="extension-form" aria-label={t('extensions.workspace.addTool')} method="post" bind:this={toolForm} onsubmit={(event) => { event.preventDefault(); void addTool(); }}>
+		<Field label={t('extensions.tools.namePlaceholder')} for={`${id}-tool-name`}><TextInput id={`${id}-tool-name`} bind:value={tName} required /></Field>
+		<Field label={t('extensions.tools.descriptionPlaceholder')} for={`${id}-tool-description`}><TextInput id={`${id}-tool-description`} bind:value={tDesc} /></Field>
+		<Field label={t('extensions.workspace.method')} for={`${id}-tool-method`}>
+			<SelectInput id={`${id}-tool-method`} bind:value={tMethod}><option value="GET">GET</option><option value="POST">POST</option></SelectInput>
+		</Field>
+		<Field label="URL" for={`${id}-tool-url`}><TextInput id={`${id}-tool-url`} bind:value={tUrl} required /></Field>
+		{#if isAdmin}
+			<Field label={t('extensions.loadPolicy.label')} for={`${id}-tool-policy`}>
+				<SelectInput id={`${id}-tool-policy`} bind:value={tLoadPolicy}>
+					<option value="on_demand">{t('extensions.loadPolicy.onDemand')}</option>
+					<option value="preloaded">{t('extensions.loadPolicy.preloaded')}</option>
+				</SelectInput>
+			</Field>
+		{/if}
+		<button type="submit" hidden>{t('extensions.workspace.addTool')}</button>
+	</form>
+</FormModal>
 {/if}
+
+{#snippet toolStatus(tool: CustomTool)}
+	<ConnectionStatus state={tool.is_active ? 'active' : 'inactive'} label={t(tool.is_active ? 'extensions.state.active' : 'extensions.state.inactive')} />
+{/snippet}
+{#snippet toolMethod(tool: CustomTool)}<Pill tone="neutral" size="xs">{tool.method}</Pill>{/snippet}
+{#snippet toolName(tool: CustomTool)}<ConnectionName name={tool.name} />{/snippet}
+{#snippet toolDetails(tool: CustomTool)}
+	<div class="tool-details">
+		{#if tool.description}<span>{tool.description}</span>{/if}
+		<span>{tool.url}</span>
+	</div>
+{/snippet}
+{#snippet toolPolicy(tool: CustomTool)}{@render loadPolicy('custom-tools', tool.id, tool.name, tool.load_policy, canAssets)}{/snippet}
+{#snippet toolActions(tool: CustomTool)}
+	<div class="tool-actions">
+		<Button variant="outline" size="sm" disabled={!canAssets} onclick={() => toggle('custom-tools', tool.id, tool.is_active)}>{tool.is_active ? t('extensions.actions.deactivate') : t('extensions.actions.activate')}</Button>
+		<Button variant="danger-outline" size="sm" disabled={!canDelete} onclick={() => removeItem('custom-tools', tool.id, tool.name)}>{t('extensions.actions.delete')}</Button>
+	</div>
+{/snippet}
+{#snippet loadPolicy(kind: 'mcp-servers' | 'custom-tools', targetId: number, name: string, policy: 'preloaded' | 'on_demand' | undefined, allowed: boolean)}
+	<SelectInput ariaLabel={t('extensions.loadPolicy.ariaLabel', { name })} value={policy ?? 'on_demand'} disabled={!allowed}
+		onchange={(event) => void setLoadPolicy(kind, targetId, (event.currentTarget as HTMLSelectElement).value as 'preloaded' | 'on_demand')}>
+		<option value="on_demand">{t('extensions.loadPolicy.onDemandShort')}</option>
+		<option value="preloaded">{t('extensions.loadPolicy.preloadedShort')}</option>
+	</SelectInput>
+{/snippet}
 
 <!-- 스킬 (선택 시 채팅 지침으로 주입) -->
 {#if !only || only === 'skills'}
@@ -586,3 +595,16 @@
 	{/if}
 </section>
 {/if}
+
+<style>
+	.tools-workspace { display: grid; gap: 1rem; min-width: 0; }
+	.tools-workspace h2 { margin: 0; font-size: 1.25rem; font-weight: 600; color: var(--color-ink-0); }
+	.section-copy { margin: 0.25rem 0 0; font-size: var(--type-support); color: var(--color-ink-2); }
+	.tools-toolbar, .tool-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.5rem; }
+	.tools-toolbar search { flex: 1 1 12rem; }
+	.tool-actions :global(.select-input) { inline-size: auto; max-inline-size: 100%; }
+	.tool-details { display: grid; color: var(--color-ink-2); font-size: var(--type-support); overflow-wrap: anywhere; }
+	.tool-empty { border-block: 1px solid var(--color-line); padding-block: 0.875rem; }
+	.extension-form { display: grid; gap: 0.75rem; }
+	.extension-fields { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); }
+</style>

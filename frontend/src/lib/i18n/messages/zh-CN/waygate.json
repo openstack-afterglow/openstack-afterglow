@@ -1,4 +1,9 @@
 {
+	"project.iso.label": "VPN 拓扑图",
+	"project.iso.caption": "选择服务器、客户端或已连接网络，在列表中查看详情。",
+	"project.iso.encrypted": "加密隧道",
+	"project.iso.reportedPeers": "已报告 {count} 个对等端",
+	"project.iso.profileCount": "{count} 个客户端配置",
 	"project.permission.denied": "您无权在当前项目中执行此操作。",
 	"project.client.owner": "所有者用户 ID",
 	"project.client.ownerHelp": "输入项目成员的用户 ID。只能为未分配的客户端指定所有者，指定后无法更改或清除。只有具有连接权限的所有者才能下载已启用客户端的配置。",

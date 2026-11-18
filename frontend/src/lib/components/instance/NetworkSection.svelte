@@ -6,9 +6,31 @@
 	import { buildSecurityGroupUnion } from '$lib/utils/securityGroupUnion';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { StatusChip } from '$lib/components/ui';
+	import Alert from '$lib/components/ui/Alert.svelte';
+	import IsoGridView from '$lib/components/iso/IsoGridView.svelte';
+	import IsoViewToggle from '$lib/components/iso/IsoViewToggle.svelte';
+	import type { IsoViewMode } from '$lib/components/iso/types';
+	import { buildInstanceIsoScene } from './instanceIsoScene';
 
 	const s = useInstanceDetailController();
 	const lockTitle = $derived(s.waygateLocked ? t('waygate.managedNote') : undefined);
+	const inspectorHeading = $props.id();
+	let viewMode = $state<IsoViewMode>('grid');
+	let selection = $state<{ instanceId: string; id: string } | null>(null);
+	const grid = $derived.by(() => {
+		if (viewMode !== 'grid' || !s.instance) return null;
+		const savedByPort = new Map(s.securityGroupPorts.map(port => [port.id, port.security_group_ids]));
+		const policy = !s.securityGroupsLoading && !s.securityGroupsError && savedByPort.size === s.interfaces.length
+			&& s.interfaces.every(port => savedByPort.get(port.id) != null)
+			? { groups: s.allSecurityGroups, groupIds: s.interfaces.flatMap(port => savedByPort.get(port.id)!) }
+			: null;
+		return buildInstanceIsoScene({
+			instance: s.instance, ports: s.interfaces, networks: s.availableNetworks,
+			floatingIps: s.floatingIps, policy, waygateLocked: s.waygateLocked,
+		});
+	});
+	const selectedId = $derived(selection?.instanceId === s.instance?.id ? selection?.id ?? null : null);
+	const detail = $derived(selectedId ? grid?.details.get(selectedId) : undefined);
 
 	let showAddInterface = $state(false);
 	let selectedNetId = $state('');
@@ -50,18 +72,90 @@
 	}
 </script>
 
-<div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
-	<div class="flex items-center justify-between mb-4">
+<div class="min-w-0 bg-surface-base border border-line rounded-lg p-6 mb-4">
+	<div class="mb-4 flex flex-wrap items-center justify-between gap-2">
 		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide">{t('network.title')}</h2>
-		<button
-			onclick={() => { showAddInterface = !showAddInterface; selectedNetId = ''; }}
-			disabled={s.waygateLocked}
-			title={lockTitle}
-			class="text-xs text-warm-text hover:text-warm-text-hover transition-colors disabled:text-ink-3"
-		>
-			{showAddInterface ? t('network.close') : t('network.addInterface')}
-		</button>
+		<IsoViewToggle value={viewMode} onchange={mode => { viewMode = mode; }} storageKey="instance.network.view" />
 	</div>
+
+	{#if grid && s.instance}
+		<div class="min-w-0 @max-md/panel:-mx-2">
+			<IsoGridView scene={grid.scene} label={t('network.iso.label')} caption={t('network.iso.caption')}
+				height="clamp(17rem, 51dvh, 26.5rem)" fitKey={s.instance.id}
+				selectedId={detail ? selectedId : null}
+				onselect={id => { if (s.instance) selection = { instanceId: s.instance.id, id }; }}
+				onclear={() => { selection = null; }} />
+		</div>
+		{#if s.interfaces.length === 0}
+			<p class="mt-3 text-sm text-ink-2">{t('network.empty')}</p>
+		{:else if s.securityGroupsLoading}
+			<LoadingState variant="section" label={t('securityGroupUnion.loading')} />
+		{:else if s.securityGroupsError}
+			<Alert flat tone="danger" class="mt-3">
+				{t('securityGroupUnion.error', { error: s.securityGroupsError })}
+			</Alert>
+		{:else if grid.missingGroupIds.length}
+			<Alert flat tone="warning" class="mt-3">
+				<p>{t('securityGroupUnion.missingGroups')}</p>
+				<ul class="font-mono break-all">
+					{#each grid.missingGroupIds as id (id)}<li>{id}</li>{/each}
+				</ul>
+			</Alert>
+		{:else if !grid.policyKnown}
+			<Alert flat tone="warning" class="mt-3">{t('network.iso.policyUnknown')}</Alert>
+		{/if}
+		{#if detail}
+			<section aria-labelledby={inspectorHeading} class="mt-4 min-w-0 space-y-2 border-t border-line pt-3">
+				<h3 id={inspectorHeading} class="break-words text-sm font-semibold text-ink-1">{detail.label}</h3>
+				{#if detail.kind === 'port'}
+					<dl class="space-y-2 text-xs text-ink-2">
+						<div><dt>{t('network.portId')}</dt><dd class="break-all font-mono">{detail.port.id}</dd></div>
+						{#if detail.network}<div><dt>{t('network.network')}</dt><dd class="break-words">{detail.network}</dd></div>{/if}
+						{#if detail.port.mac_address}<div><dt>{t('network.macAddress')}</dt><dd class="font-mono">{detail.port.mac_address}</dd></div>{/if}
+						<div><dt>{t('network.status')}</dt><dd><StatusChip status={detail.port.status} /></dd></div>
+						{#if detail.port.fixed_ips.length}
+							<div><dt>{t('network.ipAddress')}</dt><dd class="break-words font-mono">{detail.port.fixed_ips.map(ip => ip.ip_address).join(', ')}</dd></div>
+						{/if}
+					</dl>
+				{:else if detail.kind === 'network'}
+					<ul class="space-y-2 text-xs text-ink-2">
+						{#each detail.ports as port (port.id)}
+							<li class="flex flex-wrap items-center gap-2">
+								<span class="break-all font-mono">{port.id}</span><StatusChip status={port.status} />
+								{#each port.fixed_ips as ip}<span class="break-all font-mono">{ip.ip_address}</span>{/each}
+							</li>
+						{/each}
+					</ul>
+				{:else if detail.kind === 'rules'}
+					<ul class="space-y-1 text-xs text-ink-2">
+						{#each detail.rules as rule (rule.key)}
+							<li class="break-words">{t(rule.direction === 'ingress' ? 'securityGroupUnion.direction.ingress' : 'securityGroupUnion.direction.egress')} · {rule.ethertype} · {rule.protocolLabel} · {rule.portLabel} · {rule.remoteLabel}</li>
+						{/each}
+					</ul>
+				{:else if detail.kind === 'floating'}
+					<ul class="space-y-1 text-xs text-ink-2">
+						{#each detail.addresses as ip (ip.id)}
+							<li class="flex flex-wrap items-center gap-2"><span class="break-all font-mono">{ip.floating_ip_address}</span><StatusChip status={ip.status} /></li>
+						{/each}
+					</ul>
+				{:else}
+					<p class="break-words text-xs text-ink-2">
+						{[detail.groups.join(', '), !grid.policyKnown ? t('network.iso.policyUnknown') : !detail.groups.length ? t('network.none') : ''].filter(Boolean).join(' · ')}
+					</p>
+				{/if}
+			</section>
+		{/if}
+	{:else if viewMode === 'list'}
+		<div class="mb-3 flex justify-end">
+			<button
+				onclick={() => { showAddInterface = !showAddInterface; selectedNetId = ''; }}
+				disabled={s.waygateLocked}
+				title={lockTitle}
+				class="text-xs text-warm-text hover:text-warm-text-hover transition-colors disabled:text-ink-3"
+			>
+				{showAddInterface ? t('network.close') : t('network.addInterface')}
+			</button>
+		</div>
 
 	{#if showAddInterface && !s.waygateLocked}
 		<div class="motion-enter mb-4 border-y border-line py-4">
@@ -244,5 +338,6 @@
 				</div>
 			{/each}
 		</div>
+	{/if}
 	{/if}
 </div>

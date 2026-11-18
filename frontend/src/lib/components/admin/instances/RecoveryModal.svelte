@@ -1,251 +1,416 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+	import { ApiError } from '$lib/api/client';
+	import { instanceRecoveryApi } from '$lib/api/instanceRecovery';
+	import Alert from '$lib/components/ui/Alert.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
+	import Card from '$lib/components/ui/Card.svelte';
+	import Field from '$lib/components/ui/Field.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import Modal from '$lib/components/ui/Modal.svelte';
+	import Pill from '$lib/components/ui/Pill.svelte';
+	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import { t } from '$lib/i18n/ns/admin-compute';
 	import RichText from '$lib/i18n/RichText.svelte';
-	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { auth } from '$lib/stores/auth';
-	import { api } from '$lib/api/client';
-	import type { RecoveryAnalysis, RecoveryResult } from '$lib/types/adminInstance';
-	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import type { RecoveryAnalysis, RecoveryObservation, RecoveryResult, RecoveryStep } from '$lib/types/adminInstance';
 
 	interface Props {
 		serverId: string;
 		serverName: string;
 		onClose: () => void;
+		onRefresh?: () => void;
 		onRecovered?: () => void;
 	}
 
-	let { serverId, serverName, onClose, onRecovered }: Props = $props();
-
-	const token = $derived($auth.token ?? undefined);
+	let { serverId, serverName, onClose, onRefresh, onRecovered }: Props = $props();
+	const uid = $props.id();
+	const token = $derived($auth.token);
+	const hasToken = $derived(Boolean(token));
 	const projectId = $derived($auth.projectId ?? undefined);
+	const userId = $derived($auth.userId);
 
 	type Phase = 'loading' | 'analyzed' | 'executing' | 'done' | 'error';
+	type Failure = 'analysis' | 'blocked' | 'inProgress' | 'planChanged' | 'serviceUnavailable' | 'unknown';
+	const POLL_INTERVAL_MS = 4_000;
+	const POLL_WINDOW_MS = 60_000;
+	let open = $state(true);
 	let phase = $state<Phase>('loading');
-	let analysis = $state<RecoveryAnalysis | null>(null);
-	let result = $state<RecoveryResult | null>(null);
-	let errorMsg = $state('');
-	let confirmed = $state(false);
+	let analysis = $state.raw<RecoveryAnalysis | null>(null);
+	const targetName = $derived(analysis?.server.name || serverName || serverId);
+	let result = $state.raw<RecoveryResult | null>(null);
+	let observation = $state.raw<RecoveryObservation | null>(null);
+	const latest = $derived(observation ?? result);
+	const recovered = $derived(result?.observation_may_recover && latest?.recovered);
+	let observing = $state(false);
+	let failure = $state<Failure | null>(null);
+	let failureDetail = $state('');
+	let confirmation = $state('');
+	let operation = $state.raw<AbortController | null>(null);
 
+	const guestRestart = $derived(analysis?.steps.some(step => step.action === 'hard_reboot') ?? false);
+	const dateFormat = $derived(new Intl.DateTimeFormat(intlLocale(), { dateStyle: 'medium', timeStyle: 'long' }));
+	const failureLabels = $derived<Record<Failure, string>>({
+		analysis: t('instances.recovery.analysisFailed'),
+		blocked: t('instances.recovery.blocked'),
+		inProgress: t('instances.recovery.inProgress'),
+		planChanged: t('instances.recovery.planChanged'),
+		serviceUnavailable: t('instances.recovery.serviceUnavailable'),
+		unknown: t('instances.recovery.executeFailed'),
+	});
 	const scenarioLabels = $derived<Record<string, string>>({
 		migration_failed_volume_stuck: t('instances.recovery.scenario.migrationVolume'),
 		volume_stuck: t('instances.recovery.scenario.volume'),
 		generic_error: t('instances.recovery.scenario.error'),
+		live_migration_rolled_back: t('instances.recovery.scenario.liveRollback'),
 		manual_review: t('instances.recovery.scenario.manual'),
 	});
+	const checkLabels = $derived<Record<string, string>>({
+		is_error_state: t('instances.recovery.check.errorState'),
+		volume_backed: t('instances.recovery.check.volumeBacked'),
+		ports_healthy: t('instances.recovery.check.portsHealthy'),
+		migrations_known: t('instances.recovery.check.migrationsKnown'),
+		volumes_known: t('instances.recovery.check.volumesKnown'),
+		no_task_in_progress: t('instances.recovery.check.noTask'),
+		live_migration_source: t('instances.recovery.check.liveSource'),
+		live_migration_rollback: t('instances.recovery.check.liveRollback'),
+		live_migration_ports: t('instances.recovery.check.livePorts'),
+		live_migration_volumes: t('instances.recovery.check.liveVolumes'),
+		live_migration_placement: t('instances.recovery.check.livePlacement'),
+		live_migration_power_state: t('instances.recovery.check.livePower'),
+	});
 
-	async function load() {
-		phase = 'loading';
-		try {
-			analysis = await api.get<RecoveryAnalysis>(
-				`/api/v1/admin/instances/${serverId}/recovery-analysis`,
-				token,
-				projectId
-			);
-			phase = 'analyzed';
-		} catch (e: unknown) {
-			errorMsg = e instanceof Error ? e.message : t('instances.recovery.analysisFailed');
-			phase = 'error';
+	function stepLabel(step: RecoveryStep): string {
+		switch (step.action) {
+			case 'reset_volume_state':
+				return step.params?.volume_id
+					? t('instances.recovery.step.resetNamedVolume', { volume: step.params.volume_id })
+					: t('instances.recovery.step.resetVolume');
+			case 'reset_server_state': return t('instances.recovery.step.resetServer');
+			case 'hard_reboot': return t('instances.recovery.step.hardRestart');
+			default: return step.description;
 		}
 	}
 
-	async function execute() {
-		if (!confirmed || !analysis?.auto_executable) return;
+	function novaTimestamp(value: string | null): string | null {
+		if (!value?.includes('T')) return null;
+		const timestamp = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : `${value}Z`;
+		return Number.isFinite(Date.parse(timestamp)) ? timestamp : null;
+	}
+
+	function fail(kind: Failure, error?: unknown) {
+		failure = kind;
+		failureDetail = error instanceof ApiError ? error.message : '';
+		phase = 'error';
+	}
+
+	async function load(id: string, requestToken: string, project: string | undefined, signal: AbortSignal) {
+		try {
+			const evidence = await instanceRecoveryApi.analyze(id, { token: requestToken, projectId: project, signal });
+			if (signal.aborted) return;
+			if (evidence.server.id !== id || (evidence.auto_executable && !evidence.plan_fingerprint)) {
+				fail('analysis');
+				return;
+			}
+			analysis = evidence;
+			phase = 'analyzed';
+		} catch (error) {
+			if (!signal.aborted) fail('analysis', error);
+		}
+	}
+
+	async function execute(event: SubmitEvent) {
+		event.preventDefault();
+		const signal = operation?.signal;
+		if (phase !== 'analyzed' || analysis?.server.id !== serverId || !analysis.auto_executable || !analysis.plan_fingerprint
+			|| confirmation !== targetName || !token || !signal || signal.aborted) return;
 		phase = 'executing';
 		try {
-			result = await api.post<RecoveryResult>(
-				`/api/v1/admin/instances/${serverId}/recover`,
-				{},
-				token,
-				projectId
-			);
+			const outcome = await instanceRecoveryApi.execute(serverId, { plan_fingerprint: analysis.plan_fingerprint }, { token, projectId, signal });
+			if (signal.aborted) return;
+			result = outcome;
 			phase = 'done';
-			if (result?.executed && onRecovered) onRecovered();
-		} catch (e: unknown) {
-			errorMsg = e instanceof Error ? e.message : t('instances.recovery.executeFailed');
-			phase = 'error';
+		} catch (error) {
+			if (signal.aborted) return;
+			if (error instanceof ApiError && error.status === 409) {
+				fail(error.code === 'RECOVERY_IN_PROGRESS' ? 'inProgress'
+					: error.code === 'RECOVERY_PLAN_CHANGED' ? 'planChanged' : 'blocked');
+			} else if (error instanceof ApiError && error.status === 503) {
+				fail('serviceUnavailable');
+			} else {
+				fail('unknown', error);
+			}
 		}
 	}
 
-	$effect(() => { load(); });
+	function close() {
+		if (phase === 'executing') return;
+		open = false;
+		operation?.abort();
+		onClose();
+		// Refresh after closing so the result remains readable even if the parent re-renders.
+		if (failure === 'unknown' || result?.executed || result?.steps.some(step => step.status && step.status !== 'skipped')) onRefresh?.();
+		if (recovered) onRecovered?.();
+	}
+
+	$effect(() => {
+		const id = serverId;
+		const project = projectId;
+		// Restart on ownership changes, not routine bearer rotation.
+		userId;
+		const requestToken = hasToken ? untrack(() => token) : null;
+		const active = new AbortController();
+		operation = active;
+		analysis = null;
+		result = null;
+		observation = null;
+		confirmation = '';
+		failure = null;
+		failureDetail = '';
+		if (requestToken) {
+			phase = 'loading';
+			void load(id, requestToken, project, active.signal);
+		} else {
+			fail('analysis');
+		}
+		return () => active.abort();
+	});
+
+	$effect(() => {
+		const outcome = result;
+		if (!open || !operation || !outcome || outcome.observation_terminal
+			|| !(outcome.unconfirmed_action || (outcome.executed && outcome.observation_timed_out))) return;
+
+		const id = serverId;
+		const project = projectId;
+		const requestedAt = outcome.requested_at;
+		const { unconfirmed_action: unconfirmedAction, observation_may_recover: mayRecover } = outcome;
+		let accepted = outcome.observed_acceptance;
+		const pollController = new AbortController();
+		const signal = AbortSignal.any([pollController.signal, operation.signal]);
+		let next: ReturnType<typeof setTimeout>;
+		const deadline = setTimeout(stop, POLL_WINDOW_MS);
+		observing = true;
+		next = setTimeout(poll, POLL_INTERVAL_MS);
+		return stop;
+
+		function stop() {
+			clearTimeout(next);
+			clearTimeout(deadline);
+			pollController.abort();
+			observing = false;
+		}
+
+		async function poll() {
+			const requestToken = token;
+			if (signal.aborted || !requestToken) return;
+			try {
+				const observed = await instanceRecoveryApi.status(id, requestedAt, {
+					token: requestToken, projectId: project, signal,
+				}, { unconfirmedAction: accepted ? null : unconfirmedAction, mayRecover });
+				if (signal.aborted) return;
+				accepted ||= observed.observed_acceptance;
+				if (observed.observed_status !== 'UNKNOWN') observation = observed;
+				if (observed.observation_terminal) {
+					stop();
+					return;
+				}
+			} catch {
+				// A failed read does not replace the last Nova observation.
+			}
+			if (!signal.aborted) next = setTimeout(poll, POLL_INTERVAL_MS);
+		}
+	});
 </script>
 
-<!-- 모달 오버레이 -->
-<div
-	use:dialogFocus={{ enabled: true, onEscape: () => { if (phase !== 'executing') onClose(); } }}
-	class="material-scrim fixed inset-0 z-50 flex items-center justify-center bg-surface-scrim/60 p-4"
-	role="dialog"
-	aria-modal="true"
-	aria-label={t('instances.recovery.label')}
-	tabindex="-1"
->
-	<div class="bg-surface-base border border-line-2 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-[var(--shadow-restraint)]">
-		<!-- 헤더 -->
-		<div class="flex items-center justify-between px-6 py-4 border-b border-line">
-			<div>
-				<h2 class="text-ink-0 font-semibold text-base">{t('instances.recovery.title')}</h2>
-				<p class="text-ink-2 text-xs mt-0.5 font-mono">{serverName} · {serverId.slice(0, 8)}</p>
-			</div>
-			<button onclick={onClose} aria-label={t('instances.closeDialog')} class="text-ink-2 hover:text-ink-1 transition-colors text-lg leading-none">✕</button>
-		</div>
+{#snippet timestamp(value: string | null)}
+	{@const time = novaTimestamp(value)}
+	{#if time}
+		<time datetime={time}>{dateFormat.format(Date.parse(time))}</time>
+	{:else}
+		{t('instances.recovery.unavailable')}
+	{/if}
+{/snippet}
 
-		<div class="px-6 py-5 space-y-5">
+<Modal bind:open onClose={close} dismissible={phase !== 'executing'} labelledBy={`${uid}-title`}>
+	<Card surface="modal" padding="none" class="w-[40rem] max-w-full">
+		<header class="border-b border-line px-4 py-4 sm:px-6">
+			<h2 id={`${uid}-title`} class="text-base font-semibold">{t('instances.recovery.title')}</h2>
+			<p class="mt-1 break-all text-sm font-medium"><bdi>{targetName}</bdi></p>
+			<p class="break-all font-mono text-xs text-ink-2">{serverId}</p>
+		</header>
 
-			<!-- 로딩 -->
-			{#if phase === 'loading'}
-				<div class="flex items-center gap-3 text-ink-2 text-sm py-8 justify-center">
+		<form onsubmit={execute}>
+			<div class="max-h-[60dvh] space-y-5 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
+				{#if phase === 'loading'}
 					<LoadingState variant="section" label={t('instances.recovery.analyzing')} />
-				</div>
-
-			<!-- 오류 -->
-			{:else if phase === 'error'}
-				<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">
-					{errorMsg}
-				</div>
-
-			<!-- 분석 완료 / 실행 중 / 실행 완료 -->
-			{:else if analysis}
-
-				<!-- fault 메시지 -->
-				{#if analysis.server.fault?.message}
-					<div class="bg-surface-sunken border border-line-2 rounded-lg px-4 py-3">
-						<div class="text-xs text-ink-2 mb-1 font-medium">{t('instances.recovery.faultMessage')}</div>
-						<div class="text-red-300 text-xs font-mono break-all leading-relaxed">{analysis.server.fault.message}</div>
-					</div>
+				{/if}
+				{#if failure}
+					<Alert tone={failure === 'analysis' || failure === 'unknown' ? 'danger' : 'warning'}>
+						<p>{failureLabels[failure]}</p>
+						{#if failureDetail}<p class="mt-1 break-words">{failureDetail}</p>{/if}
+					</Alert>
 				{/if}
 
-				<!-- 안전 검사 체크리스트 -->
-				<div>
-					<div class="text-xs font-medium text-ink-2 uppercase tracking-wide mb-2">{t('instances.recovery.safetyChecks')}</div>
-					<div class="space-y-1.5">
-						{#each analysis.checks as check (check.key)}
-							<div class="flex items-start gap-2.5 text-sm">
-								{#if check.passed}
-									<span class="mt-0.5 text-green-400 shrink-0 text-base leading-none">✓</span>
-								{:else}
-									<span class="mt-0.5 text-red-400 shrink-0 text-base leading-none">✗</span>
-								{/if}
-								<div>
-									<span class={check.passed ? 'text-ink-1' : 'text-red-300 font-medium'}>{check.label}</span>
-									{#if check.detail}
-										<div class="text-ink-2 text-xs mt-0.5">{check.detail}</div>
-									{/if}
-								</div>
-							</div>
-						{/each}
-					</div>
-				</div>
-
-				<!-- 시나리오 -->
-				<div class="bg-surface-sunken border border-line-2 rounded-lg px-4 py-3">
-					<div class="flex items-center gap-2 mb-1">
-						<span class="text-xs text-ink-2 uppercase tracking-wide font-medium">{t('instances.recovery.scenarioLabel')}</span>
-						<span class="text-xs px-1.5 py-0.5 rounded bg-surface-selected text-ink-2 font-mono">{scenarioLabels[analysis.scenario] ?? analysis.scenario}</span>
-					</div>
-					<p class="text-ink-2 text-sm leading-relaxed">{analysis.scenario_description}</p>
-				</div>
-
-				<!-- 권장 단계 (실행 전) -->
-				{#if phase === 'analyzed' || phase === 'executing'}
-					<div>
-						<div class="text-xs font-medium text-ink-2 uppercase tracking-wide mb-2">{t('instances.recovery.recommendedSteps')}</div>
-						<div class="space-y-1.5">
-							{#each analysis.steps as step, i (i)}
-								{#if step.action !== 'manual'}
-									<div class="flex items-start gap-2.5 text-sm">
-										<span class="shrink-0 w-5 h-5 rounded-full bg-surface-selected text-ink-2 text-xs flex items-center justify-center font-medium">{i + 1}</span>
-										<span class="text-ink-2">{step.description}</span>
-									</div>
-								{:else}
-									<div class="text-warm-text text-sm">{step.description}</div>
-								{/if}
-							{/each}
-						</div>
-					</div>
-				{/if}
-
-				<!-- 실행 결과 -->
-				{#if phase === 'done' && result}
-					<div>
-						<div class="text-xs font-medium text-ink-2 uppercase tracking-wide mb-2">{t('instances.recovery.results')}</div>
-						<div class="space-y-1.5">
+				{#if analysis}
+					{@const fault = latest ? latest.observed_fault : analysis.server.fault}
+					{@const migration = analysis.last_error_migration}
+					{#if phase === 'done' && result && latest}
+						{@const terminalError = latest.observation_terminal && latest.observed_status === 'ERROR'}
+						{@const stillRebooting = latest.observed_status === 'ERROR' && latest.observed_task_state?.startsWith('reboot')
+							&& (result.observation_timed_out || result.unconfirmed_action)}
+						<Alert tone={recovered ? 'success' : terminalError || (!result.executed && !result.unconfirmed_action) ? 'danger' : 'warning'}>
+							<p>{recovered ? t('instances.recovery.complete')
+								: terminalError && (result.executed || result.unconfirmed_action) ? t('instances.recovery.endedInError')
+								: result.unconfirmed_action ? t('instances.recovery.unconfirmedRequest')
+								: !result.executed ? t('instances.recovery.failed')
+								: stillRebooting ? t('instances.recovery.stillRebooting')
+								: t('instances.recovery.acceptedUnconfirmed')}</p>
+							{#if stillRebooting && result.unconfirmed_action}<p>{t('instances.recovery.stillRebooting')}</p>{/if}
+							<p>{t('instances.recovery.observedStatus', { status: latest.observed_status })}</p>
+							{#if latest.observed_task_state}
+								<p class="break-words">{t('instances.recovery.observedTask', { task: latest.observed_task_state })}</p>
+							{/if}
+							{#if observing}<p>{t('instances.recovery.checkingStatus')}</p>{/if}
+						</Alert>
+						<h3 class="section-title">{t('instances.recovery.results')}</h3>
+						<ol class="space-y-1">
 							{#each result.steps as step, i (i)}
-								<div class="flex items-start gap-2.5 text-sm">
-									{#if step.status === 'success'}
-										<span class="mt-0.5 text-green-400 shrink-0 text-base leading-none">✓</span>
-									{:else if step.status === 'failed'}
-										<span class="mt-0.5 text-red-400 shrink-0 text-base leading-none">✗</span>
-									{:else}
-										<span class="mt-0.5 text-ink-2 shrink-0 text-base leading-none">—</span>
+								<li class="flex flex-wrap items-baseline gap-x-2 text-sm">
+									<span>{stepLabel(step)}</span>
+									{#if step.status}
+										<Pill tone={step.status === 'success' ? 'success' : step.status === 'failed' ? 'danger' : step.status === 'unconfirmed' ? 'warning' : 'neutral'} size="xs">
+											{step.status === 'success' ? t('instances.recovery.step.accepted')
+												: step.status === 'failed' ? t('instances.recovery.step.failed')
+												: step.status === 'unconfirmed' ? t('instances.recovery.step.unconfirmed')
+												: t('instances.recovery.step.skipped')}
+										</Pill>
 									{/if}
-									<div>
-										<span class={step.status === 'failed' ? 'text-red-300' : step.status === 'skipped' ? 'text-ink-2' : 'text-ink-1'}>
-											{step.description}
-										</span>
-										{#if step.detail}
-											<div class="text-ink-2 text-xs mt-0.5">{step.detail}</div>
-										{/if}
-									</div>
-								</div>
+									{#if step.detail && (step.status === 'failed' || step.action === 'reset_volume_state')}
+										<p class="w-full break-words text-xs text-ink-2">{step.detail}</p>
+									{/if}
+								</li>
 							{/each}
-						</div>
-						{#if result.executed}
-							<div class="mt-3 bg-green-900/30 border border-green-700/50 text-green-300 rounded-lg px-4 py-2.5 text-sm">
-								{t('instances.recovery.complete')}
-							</div>
+						</ol>
+					{:else if phase === 'analyzed' || phase === 'executing'}
+						{#if analysis.auto_executable}
+							<Alert tone={guestRestart ? 'warning' : 'info'} title={t('instances.recovery.executableTitle')}>
+								{guestRestart ? t('instances.recovery.hardRestart') : t('instances.recovery.noRestart')}
+							</Alert>
 						{:else}
-							<div class="mt-3 bg-red-900/30 border border-red-700/50 text-red-300 rounded-lg px-4 py-2.5 text-sm">
-								{t('instances.recovery.failed')}
-							</div>
+							<Alert tone="warning" title={t('instances.recovery.manualTitle')}>{t('instances.recovery.manualHelp')}</Alert>
 						{/if}
+					{/if}
+
+					<div class="flex flex-wrap items-baseline gap-x-2 text-sm">
+						<h3 class="section-title">{t('instances.recovery.scenarioLabel')}</h3>
+						<p>{scenarioLabels[analysis.scenario] ?? analysis.scenario}</p>
 					</div>
-				{/if}
 
-				<!-- placement 안내 -->
-				{#if analysis.placement_note}
-					<div class="bg-surface-selected/20 border border-action-warm/40 text-warm-text rounded-lg px-4 py-3 text-xs leading-relaxed">
-						{#snippet placementWarning(text: string)}<span class="font-medium">{text}</span>{/snippet}
-						<RichText segments={t.rich('instances.recovery.placementNote', { note: analysis.placement_note })} tags={{ warning: placementWarning }} />
+					<div class="grid gap-4 sm:grid-cols-2">
+						<section class="evidence" aria-labelledby={`${uid}-fault`}>
+							<h3 id={`${uid}-fault`} class="section-title">{t('instances.recovery.faultMessage')}</h3>
+							{#if fault}
+								<p class="break-words font-mono text-xs">{fault.message ?? t('instances.recovery.unavailable')}</p>
+								<dl class="facts">
+									{#if fault.code != null}
+										<dt>{t('instances.recovery.faultCode')}</dt><dd>{fault.code}</dd>
+									{/if}
+									<dt>{t('instances.recovery.recordedAt')}</dt><dd>{@render timestamp(fault.created)}</dd>
+								</dl>
+							{:else}
+								<p>{(latest?.observed_status ?? analysis.server.status) === 'UNKNOWN' ? t('instances.recovery.unavailable')
+									: latest ? t('instances.recovery.noObservedFault') : t('instances.recovery.noFault')}</p>
+							{/if}
+						</section>
+						<section class="evidence" aria-labelledby={`${uid}-migration`}>
+							<h3 id={`${uid}-migration`} class="section-title">{t('instances.recovery.lastMigration')}</h3>
+							{#if migration}
+								<dl class="facts">
+									<dt>{t('instances.recovery.migrationType')}</dt><dd>{migration.migration_type}</dd>
+									<dt>{t('instances.recovery.source')}</dt><dd>{migration.source_compute ?? t('instances.recovery.unavailable')}</dd>
+									<dt>{t('instances.recovery.destination')}</dt><dd>{migration.dest_compute ?? t('instances.recovery.unavailable')}</dd>
+									<dt>{t('instances.recovery.startedAt')}</dt><dd>{@render timestamp(migration.created_at)}</dd>
+									<dt>{t('instances.recovery.updatedAt')}</dt><dd>{@render timestamp(migration.updated_at)}</dd>
+								</dl>
+							{:else if analysis.checks.some(check => check.key === 'migrations_known' && !check.passed)}
+								<p>{t('instances.recovery.unavailable')}</p>
+							{:else}
+								<p>{t('instances.recovery.noMigration')}</p>
+							{/if}
+						</section>
 					</div>
+
+					<section>
+						<h3 class="section-title mb-2">{t('instances.recovery.safetyChecks')}</h3>
+						<ul class="space-y-2">
+							{#each analysis.checks as check (check.key)}
+								<li class="flex flex-wrap items-baseline gap-x-2 text-sm">
+									<span>{checkLabels[check.key] ?? check.label}</span>
+									<Pill tone={check.passed ? 'success' : 'danger'} size="xs">
+										{check.passed ? t('instances.recovery.check.passed') : t('instances.recovery.check.notPassed')}
+									</Pill>
+									{#if check.detail}<p class="w-full break-words text-xs text-ink-2">{check.detail}</p>{/if}
+								</li>
+							{/each}
+						</ul>
+					</section>
+
+					{#if analysis.placement_note}
+						{#snippet placementWarning(text: string)}<strong>{text}</strong>{/snippet}
+						<Alert tone="warning">
+							<RichText segments={t.rich('instances.recovery.placementNote', { note: analysis.placement_note })} tags={{ warning: placementWarning }} />
+						</Alert>
+					{/if}
+
+					{#if analysis.auto_executable && analysis.plan_fingerprint && (phase === 'analyzed' || phase === 'executing')}
+						<section>
+							<h3 class="section-title mb-2">{t('instances.recovery.recommendedSteps')}</h3>
+							<ol class="list-decimal space-y-1 pl-5 text-sm">
+								{#each analysis.steps as step, i (i)}
+									<li class="break-words">{stepLabel(step)}</li>
+								{/each}
+							</ol>
+						</section>
+						<Field for={`${uid}-confirmation`} label={t('instances.recovery.confirmLabel')} help={t('instances.recovery.confirm', { name: targetName })} required>
+							<TextInput id={`${uid}-confirmation`} bind:value={confirmation} autocomplete="off" disabled={phase === 'executing'} required />
+						</Field>
+					{/if}
 				{/if}
+			</div>
 
-				<!-- 수동 점검 안내 -->
-				{#if !analysis.auto_executable && phase === 'analyzed'}
-					<div class="bg-surface-sunken border border-action-warm/40 text-warm-text rounded-lg px-4 py-3 text-sm">
-						<div class="font-medium mb-1">{t('instances.recovery.manualTitle')}</div>
-						<div class="text-xs text-warm-text/70">
-							{t('instances.recovery.manualHelp')}
-						</div>
-					</div>
+			<footer class="flex flex-wrap items-center justify-end gap-2 border-t border-line px-4 py-3 sm:px-6">
+				{#if phase === 'executing'}
+					<LoadingState variant="inline" label={t('instances.recovery.executing')} />
 				{/if}
+				<Button variant="secondary" onclick={close} disabled={phase === 'executing'}>{t('instances.close')}</Button>
+				{#if phase === 'analyzed' && analysis?.auto_executable && analysis.plan_fingerprint}
+					<Button type="submit" variant="danger" disabled={confirmation !== targetName}>{t('instances.recovery.execute')}</Button>
+				{/if}
+			</footer>
+		</form>
+	</Card>
+</Modal>
 
-			{/if}
-		</div>
-
-		<!-- 푸터 버튼 -->
-		<div class="flex items-center justify-between px-6 py-4 border-t border-line gap-4">
-			{#if phase === 'analyzed' && analysis?.auto_executable}
-				<label class="flex items-center gap-2 text-sm text-ink-2 cursor-pointer select-none">
-					<input type="checkbox" bind:checked={confirmed} class="rounded border-line-2 bg-surface-sunken text-red-500 focus:ring-red-500 focus:ring-1" />
-					<span>{t('instances.recovery.confirm')}</span>
-				</label>
-				<button
-					onclick={execute}
-					disabled={!confirmed}
-					class="shrink-0 px-4 py-2 bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-ink-0 text-sm font-medium rounded-lg transition-colors"
-				>
-					{t('instances.recovery.execute')}
-				</button>
-			{:else if phase === 'executing'}
-				<div class="flex items-center gap-2 text-ink-2 text-sm">
-					<LoadingState variant="section" label={t('instances.recovery.executing')} />
-				</div>
-				<div></div>
-			{:else}
-				<div></div>
-				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg transition-colors">
-					{t('instances.close')}
-				</button>
-			{/if}
-		</div>
-	</div>
-</div>
+<style>
+	.section-title { font-size: var(--type-support); font-weight: 600; }
+	.evidence {
+		display: grid;
+		align-content: start;
+		gap: 0.375rem;
+		min-width: 0;
+		border: 1px solid var(--color-line);
+		border-radius: var(--radius-md);
+		background: var(--color-surface-sunken);
+		padding: 0.75rem;
+		font-size: var(--type-support);
+	}
+	.facts {
+		display: grid;
+		grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+		gap: 0.25rem 0.5rem;
+		overflow-wrap: anywhere;
+	}
+	.facts dt { color: var(--color-ink-2); }
+</style>
