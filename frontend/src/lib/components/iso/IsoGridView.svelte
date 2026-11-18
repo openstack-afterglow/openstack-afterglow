@@ -7,7 +7,18 @@
 	import { CELL_X, CELL_Y, layoutScene, type Point } from './layout';
 	import IsoNodeBlock from './IsoNodeBlock.svelte';
 	import IsoPlatform from './IsoPlatform.svelte';
-	import type { IsoScene } from './types';
+	import { packetCohort, PACKET_COHORT_MS, PACKET_LIMIT, visiblePacketEdges } from './packets';
+	import type { IsoNodeKind, IsoScene } from './types';
+
+	const nodeKinds = {
+		instance: 'instance', router: 'router', loadbalancer: 'loadbalancer', database: 'database',
+		gateway: 'gateway', 'vpn-server': 'vpnServer', peer: 'peer', 'peer-group': 'peerGroup',
+		internet: 'internet', cidr: 'cidr', 'floating-ip': 'floatingIp', port: 'port',
+		'security-group': 'securityGroup',
+	} as const satisfies Record<IsoNodeKind, string>;
+	const networkKinds = {
+		'external-network': 'externalNetwork', 'shared-network': 'sharedNetwork', 'internal-network': 'internalNetwork',
+	} as const;
 
 	interface Props {
 		scene: IsoScene;
@@ -23,7 +34,6 @@
 		emptyText?: string;
 	}
 	interface Camera extends Point { k: number }
-	const PACKET_LIMIT = 96;
 	const MAX_ZOOM = 3;
 	const uid = $props.id();
 	let { scene, selectedId = null, onselect, onclear, onintent, oncancelintent, label, caption, height, fitKey, emptyText }: Props = $props();
@@ -38,6 +48,7 @@
 	let inView = $state(false);
 	let paused = $state(false);
 	let dragging = $state(false);
+	let packetTurn = $state(0);
 	let dragged = false;
 	let origin: Point | undefined;
 	const pointers = new Map<number, Point>();
@@ -81,8 +92,15 @@
 		}
 		return related;
 	});
-	const packetIds = $derived(new Set(layout.edges.filter(({ edge }) => edge.flow !== false).slice(0, PACKET_LIMIT).map(({ edge }) => edge.id)));
+	const canAnimate = $derived(layout.edges.some(({ edge }) => edge.flow !== false));
+	const hasInactivePaths = $derived(layout.edges.some(({ edge }) => edge.inactive));
 	const moving = $derived(visible && inView && !reduced && !paused && !dragging);
+	const visibleRoutes = $derived(moving && width > 0 && viewHeight > 0 ? visiblePacketEdges(layout.edges, {
+		x: (-translateX - 6) / camera.k, y: (-translateY - 6) / camera.k,
+		w: (width + 12) / camera.k, h: (viewHeight + 12) / camera.k,
+	}) : []);
+	const rotating = $derived(visibleRoutes.length > PACKET_LIMIT);
+	const packetIds = $derived(packetCohort(visibleRoutes, packetTurn));
 	const itemLabels = $derived(new Map(layout.items.map((item) => [item.id, item.label])));
 	const interactive = $derived(onselect ? layout.items.filter(({ id }) => (layout.nodesById.get(id) ?? layout.platformsById.get(id))?.interactive !== false) : []);
 
@@ -92,6 +110,12 @@
 			fittedKey = fitKey;
 			pose = undefined;
 		}
+	});
+
+	$effect(() => {
+		if (!rotating) return;
+		const timer = setInterval(() => { packetTurn++; }, PACKET_COHORT_MS);
+		return () => clearInterval(timer);
 	});
 
 	$effect(() => {
@@ -114,7 +138,7 @@
 		const canvas = viewport;
 		inView = !('IntersectionObserver' in window);
 		const observer = 'IntersectionObserver' in window
-			? new IntersectionObserver(([entry]) => { inView = entry.isIntersecting; }) : null;
+			? new IntersectionObserver((entries) => { inView = entries.at(-1)?.isIntersecting ?? false; }) : null;
 		observer?.observe(canvas);
 		canvas.addEventListener('wheel', wheel, { passive: false });
 		return () => {
@@ -185,6 +209,12 @@
 		if (pointers.size === 0) dragging = false;
 	}
 
+	function pointerCaptureLost(event: PointerEvent) {
+		// Implicit touch capture moves from a target button to the viewport when dragging starts.
+		// The button's bubbling lostpointercapture is not the end of that pointer.
+		if (event.target === viewport) pointerEnd(event);
+	}
+
 	function keys(event: KeyboardEvent) {
 		if (event.altKey || event.metaKey || event.ctrlKey) return;
 		switch (event.key) {
@@ -218,9 +248,14 @@
 
 	function itemName(id: string) {
 		const node = layout.nodesById.get(id);
-		if (node) return [node.ariaLabel ?? [node.label, node.sublabel].filter(Boolean).join(', '), node.status && t(`status.${node.status}`), ...(node.badges ?? []).map(({ text }) => text)].filter(Boolean).join(', ');
+		if (node) return [
+			t(`kind.${nodeKinds[node.kind]}`), node.ariaLabel ?? [node.label, node.sublabel].filter(Boolean).join(', '),
+			node.status && t(`status.${node.status}`), ...(node.badges ?? []).map(({ text }) => text),
+		].filter(Boolean).join(', ');
 		const platform = layout.platformsById.get(id);
-		return [platform?.label, platform?.sublabel].filter(Boolean).join(', ');
+		if (!platform) return '';
+		const kind = platform.kind ? networkKinds[platform.kind] : platform.style === 'zone' ? 'zone' : 'platform';
+		return [t(`kind.${kind}`), platform.label, platform.sublabel].filter(Boolean).join(', ');
 	}
 </script>
 
@@ -239,7 +274,7 @@
 			<Button variant="outline" size="icon" ariaLabel={t('controls.fit')} title={t('controls.fit')} onclick={() => { pose = fitPose; }}>
 				<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 4H4v3m9-3h3v3m0 6v3h-3m-6 0H4v-3M8 8h4v4H8z" /></svg>
 			</Button>
-			{#if packetIds.size && !reduced}
+			{#if canAnimate && !reduced}
 				{@const motionLabel = paused ? t('controls.play') : t('controls.pause')}
 				<Button variant="outline" size="icon" ariaLabel={motionLabel} title={motionLabel} onclick={() => { paused = !paused; }}>
 					<svg viewBox="0 0 20 20" aria-hidden="true"><path d={paused ? 'M7 4l8 6-8 6z' : 'M7 5v10m6-10v10'} /></svg>
@@ -251,7 +286,7 @@
 		<div class="viewport" class:dragging style:--diagram-height={height} role="group" aria-label={label}
 			tabindex="0" bind:this={viewport} bind:clientWidth={width} bind:clientHeight={viewHeight}
 			onkeydown={keys} onpointerdown={pointerDown} onpointermove={pointerMove} onpointerup={pointerEnd}
-			onpointercancel={pointerEnd} onlostpointercapture={pointerEnd} onpointerleave={pointerEnd}>
+			onpointercancel={pointerEnd} onlostpointercapture={pointerCaptureLost} onpointerleave={pointerEnd}>
 			<svg class="world" aria-hidden="true" focusable="false">
 				<defs>
 					<pattern id="{uid}-minor" width=".25" height=".25" patternUnits="userSpaceOnUse"
@@ -279,9 +314,10 @@
 							<path class="route" class:dashed={edge.dashed || edge.inactive || edge.kind === 'denied' || edge.kind === 'tunnel'}
 								d={path} marker-start={edge.bidirectional ? `url(#${uid}-arrow)` : undefined}
 								marker-end={edge.directed || edge.bidirectional ? `url(#${uid}-arrow)` : undefined} />
-							{#if moving && packetIds.has(edge.id)}
+							{#if packetIds.has(edge.id)}
 								<circle class="packet" r="3">
-									<animateMotion {path} begin="{-((index % 11) * 0.21)}s" dur="{Math.max(2.4, Math.min(14, length / 62))}s" repeatCount="indefinite" />
+									<animateMotion {path} begin="{-((index % 11) * 0.21)}s"
+										dur="{Math.max(2.4, Math.min(rotating ? PACKET_COHORT_MS / 1000 : 14, length / 62))}s" repeatCount="indefinite" />
 								</circle>
 							{/if}
 							{#if edgeLabel}
@@ -340,13 +376,16 @@
 		{#if !empty}
 			<div class="legend" role="group" aria-label={t('diagram.legend')}>
 				<p class="packet-note"><span class="swatch packet-key" aria-hidden="true"></span>{t('diagram.packet')}</p>
-				{#if scene.legend?.some(({ kind }) => kind !== 'packet')}
+				{#if hasInactivePaths || scene.legend?.some(({ kind }) => kind !== 'packet')}
 					<details open>
 						<summary>{t('diagram.legend')}</summary>
 						<ul role="list" class="legend-items">
-							{#each scene.legend.filter(({ kind }) => kind !== 'packet') as item}
+							{#each (scene.legend ?? []).filter(({ kind }) => kind !== 'packet') as item}
 								<li><span class="swatch {item.kind}" style:--tone={toneVars[item.tone]} aria-hidden="true"></span>{item.label}</li>
 							{/each}
+							{#if hasInactivePaths}
+								<li><span class="swatch edge inactive-key" aria-hidden="true"></span>{t('diagram.inactivePath')}</li>
+							{/if}
 						</ul>
 					</details>
 				{/if}
@@ -393,6 +432,7 @@
 	.swatch { display: inline-block; flex: none; inline-size: .6rem; block-size: .6rem; background: var(--tone); border-radius: .15rem; }
 	.swatch.platform { inline-size: .75rem; block-size: .5rem; transform: skewY(-16deg); }
 	.swatch.edge { inline-size: .8rem; block-size: 2px; align-self: center; }
+	.swatch.inactive-key { block-size: 0; background: none; border-block-start: 2px dashed var(--color-ink-2); border-radius: 0; }
 	.packet-key { inline-size: .45rem; block-size: .45rem; border-radius: 50%; background: var(--color-ink-2); }
 	@media (prefers-reduced-motion: reduce) { .packet { display: none; } }
 </style>

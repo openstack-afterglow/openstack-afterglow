@@ -81,6 +81,8 @@ export interface IsoPlatform {
 	h: number;
 	/** `slab`: raised plate (networks, peer groups). `zone`: dashed boundary (security group, project). */
 	style: 'slab' | 'zone';
+	/** Optional resource kind for the accessible name; generic slabs and zones use their shape. */
+	kind?: 'external-network' | 'shared-network' | 'internal-network';
 	interactive?: boolean;
 }
 

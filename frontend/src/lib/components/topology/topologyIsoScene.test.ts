@@ -6,6 +6,19 @@ import type { TopologyData } from '$lib/types/topology';
 const empty: TopologyData = { networks: [], routers: [], instances: [], floating_ips: [] };
 
 describe('topology isometric adapter', () => {
+	it.each([
+		['HARD_REBOOT', 'pending'], ['RESIZE', 'pending'], ['REVERT_RESIZE', 'pending'], ['MIGRATING', 'pending'], ['PASSWORD', 'pending'],
+		['VERIFY_RESIZE', 'warning'], ['RESCUE', 'warning'],
+		['SHELVED', 'off'], ['SHELVED_OFFLOADED', 'off'], ['SOFT_DELETED', 'off'],
+	])('keeps reported Nova state %s distinct from unknown', (status, expected) => {
+		const data = makeFixture();
+		const instance = data.instances.find(({ id }) => id === 'vm-app-01')!;
+		instance.status = status;
+		const { nodes, edges } = topologyIsoScene(data, P);
+		expect(nodes.find(({ id }) => id === instance.id)?.status).toBe(expected);
+		expect(edges.find(({ id }) => id === 'nic:vm-app-01:net-mgmt')?.inactive).toBe(expected === 'off');
+	});
+
 	it('packs a multi-homed workload onto one slab and connects all extra networks', () => {
 		const data = makeFixture();
 		data.instances.find(({ id }) => id === 'vm-db-01')!.is_database = true;
