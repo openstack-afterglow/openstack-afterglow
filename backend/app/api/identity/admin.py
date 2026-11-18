@@ -6,14 +6,13 @@ import math
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
-from functools import partial
 from typing import TYPE_CHECKING, Literal
 from uuid import uuid4
 
 import httpx
 from anyio import CancelScope
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 from redis.exceptions import LockNotOwnedError
 
 from app.api.common.activity_recorder import rec
@@ -2713,12 +2712,14 @@ async def revert_resize_instance(
 @router.get("/instances/{server_id}/recovery-analysis", dependencies=[Depends(require_admin)])
 async def get_recovery_analysis(
     server_id: str,
+    response: Response,
     conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """ERROR 인스턴스 진단 — 안전 증거, 시나리오 및 복구 계획 반환.
 
     ERROR 상태가 아닌 경우에도 200을 반환하며 checks의 is_error_state 항목에 반영된다.
     """
+    response.headers["Cache-Control"] = "no-store"
     try:
         return await asyncio.to_thread(instance_recovery.analyze_error_instance, conn, server_id)
     except Exception as e:
@@ -2726,21 +2727,47 @@ async def get_recovery_analysis(
         raise HTTPException(status_code=500, detail="복구 분석 중 오류가 발생했습니다")
 
 
+@router.get("/instances/{server_id}/recovery-status", dependencies=[Depends(require_admin)])
+async def get_instance_recovery_status(
+    server_id: str,
+    requested_at: AwareDatetime,
+    response: Response,
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
+    unconfirmed_action: Literal["hard_reboot", "reset_server_state"] | None = None,
+    observation_may_recover: bool = True,
+):
+    """Read a single fresh Nova state without repeating any recovery action."""
+    response.headers["Cache-Control"] = "no-store"
+    return await asyncio.to_thread(
+        instance_recovery.get_recovery_status,
+        conn,
+        server_id,
+        requested_at,
+        unconfirmed_action,
+        observation_may_recover,
+    )
+
+
 class RecoverInstanceRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    expected_guest_restart: bool | None = None
+    plan_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
 _INSTANCE_RECOVERY_LOCK_SECONDS = 600
+_INSTANCE_RECOVERY_LOCK_IO_SECONDS = 3
+
+
+def _recovery_http_error(status: int, code: str, message: str) -> HTTPException:
+    return HTTPException(status_code=status, detail={"code": code, "message": message})
 
 
 @router.post("/instances/{server_id}/recover", dependencies=[Depends(require_admin)])
 async def recover_instance(
     server_id: str,
+    request: RecoverInstanceRequest,
     conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     token_info: dict = Depends(get_token_info),
-    request: RecoverInstanceRequest | None = None,
 ):
     """ERROR 인스턴스 복구 실행.
 
@@ -2750,21 +2777,25 @@ async def recover_instance(
     """
     lock_key = f"afterglow:instance-recovery:lock:{server_id.lower()}"
     try:
-        redis = await _get_redis()
-        lock = redis.lock(lock_key, timeout=_INSTANCE_RECOVERY_LOCK_SECONDS, blocking=False)
-        acquired = await lock.acquire(token=uuid4().hex)
+        async with asyncio.timeout(_INSTANCE_RECOVERY_LOCK_IO_SECONDS):
+            redis = await _get_redis()
+            lock = redis.lock(lock_key, timeout=_INSTANCE_RECOVERY_LOCK_SECONDS, blocking=False)
+            acquired = await lock.acquire(token=uuid4().hex)
     except Exception:
-        raise HTTPException(status_code=503, detail="인스턴스 복구 잠금을 확보할 수 없습니다") from None
+        raise _recovery_http_error(503, "RECOVERY_UNAVAILABLE", "인스턴스 복구 잠금을 확보할 수 없습니다") from None
     if not acquired:
-        raise HTTPException(status_code=409, detail="인스턴스 복구가 이미 진행 중입니다")
+        raise _recovery_http_error(409, "RECOVERY_IN_PROGRESS", "인스턴스 복구가 이미 진행 중입니다")
 
     async def renew_lock() -> None:
         try:
-            await lock.reacquire()
+            async with asyncio.timeout(_INSTANCE_RECOVERY_LOCK_IO_SECONDS):
+                await lock.reacquire()
         except LockNotOwnedError:
-            raise HTTPException(status_code=409, detail="인스턴스 복구 잠금이 만료되었습니다. 다시 점검하세요") from None
+            raise _recovery_http_error(
+                409, "RECOVERY_LOCK_LOST", "인스턴스 복구 잠금이 만료되었습니다. 다시 점검하세요"
+            ) from None
         except Exception:
-            raise HTTPException(status_code=503, detail="인스턴스 복구 잠금을 확인할 수 없습니다") from None
+            raise _recovery_http_error(503, "RECOVERY_UNAVAILABLE", "인스턴스 복구 잠금을 확인할 수 없습니다") from None
 
     loop = asyncio.get_running_loop()
 
@@ -2772,57 +2803,68 @@ async def recover_instance(
         # The SDK work runs in a thread; Redis stays on the request event loop.
         asyncio.run_coroutine_threadsafe(renew_lock(), loop).result()
 
-    try:
-        # Keep the lease until the SDK thread finishes, even on client cancellation.
-        result = await hypervisor_review.host_work(
-            partial(
+    async def run_and_record():
+        try:
+            result = await asyncio.to_thread(
                 instance_recovery.execute_recovery,
                 conn,
                 server_id,
-                expected_guest_restart=request.expected_guest_restart if request else None,
+                plan_fingerprint=request.plan_fingerprint,
                 before_write=before_write,
             )
-        )
-    except HTTPException:
-        raise
-    except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    except Exception as e:
-        _logger.warning("복구 실행 실패: %s", e)
-        raise HTTPException(status_code=500, detail="복구 실행 중 오류가 발생했습니다")
-    finally:
-        with CancelScope(shield=True):
+            if result["recovered"]:
+                status = "success"
+            elif (not result["executed"] and not result["unconfirmed_action"]) or (
+                result["observation_terminal"] and result["observed_status"] == "ERROR"
+            ):
+                status = "failed"
+            else:
+                status = "observed"
             try:
-                # Redis Lock releases atomically only if this owner still holds it.
-                await lock.release()
+                async with asyncio.timeout(5):
+                    await rec(
+                        token_info,
+                        conn,
+                        resource_type="instance",
+                        action="recover",
+                        status=status,
+                        resource_id=server_id,
+                        extra={**result, "plan_fingerprint": request.plan_fingerprint},
+                    )
+            except Exception:
+                _logger.warning("인스턴스 복구 활동 기록 실패: %s", server_id)
+            return result
+        except HTTPException:
+            raise
+        except instance_recovery.RecoveryConflict as exc:
+            raise _recovery_http_error(409, exc.code, str(exc)) from None
+        except Exception as exc:
+            _logger.warning("복구 실행 실패: %s", exc)
+            raise HTTPException(status_code=500, detail="복구 실행 중 오류가 발생했습니다") from None
+        finally:
+            try:
+                # Redis releases atomically only if this token still owns the lock.
+                async with asyncio.timeout(_INSTANCE_RECOVERY_LOCK_IO_SECONDS):
+                    await lock.release()
             except Exception:
                 _logger.warning("인스턴스 복구 잠금 해제 실패: %s", server_id)
 
-    if result["recovered"]:
-        status = "success"
-    elif not result["executed"] or result["observed_status"] == "ERROR":
-        status = "failed"
-    else:
-        status = "observed"
+    work = asyncio.create_task(run_and_record())
     try:
-        await rec(
-            token_info,
-            conn,
-            resource_type="instance",
-            action="recover",
-            status=status,
-            resource_id=server_id,
-            extra={
-                "scenario": result["scenario"],
-                "steps": result["steps"],
-                "observed_status": result["observed_status"],
-                "recovered": result["recovered"],
-            },
-        )
-    except Exception:
-        pass  # 활동 기록 실패는 복구 결과에 영향을 주지 않는다
-
-    return result
+        return await asyncio.shield(work)
+    except asyncio.CancelledError:
+        # Complete upstream writes, observations and the audit before releasing the lease.
+        with CancelScope(shield=True):
+            while not work.done():
+                try:
+                    await asyncio.shield(work)
+                except asyncio.CancelledError:
+                    continue
+                except Exception:
+                    break
+            if not work.cancelled():
+                work.exception()
+        raise
 
 
 _volume_transfer_router = APIRouter(route_class=VolumeTransferRoute)

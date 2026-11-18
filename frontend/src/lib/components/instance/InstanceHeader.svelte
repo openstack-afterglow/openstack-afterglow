@@ -367,6 +367,6 @@
 		serverId={recoveryTarget.id}
 		serverName={recoveryTarget.name}
 		onClose={() => { recoveryTarget = null; }}
-		onRecovered={s.manualRefresh}
+		onRefresh={s.manualRefresh}
 	/>
 {/if}

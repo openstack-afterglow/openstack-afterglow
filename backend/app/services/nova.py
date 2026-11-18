@@ -843,11 +843,14 @@ def get_server_migration_status(conn: openstack.connection.Connection, server_id
         pass
 
     try:
-        # os-migrations에서 최근 error 항목 확인
+        # os-migrations에서 최근 실패 레코드 확인
         migs = list(conn.compute.migrations(server_id=server_id))
         migs.sort(key=lambda x: getattr(x, "created_at", "") or "", reverse=True)
         for mg in migs:
-            if (getattr(mg, "status", "") or "").lower() == "error":
+            status = (getattr(mg, "status", "") or "").lower()
+            if status == "error" or (
+                mg.migration_type == "live-migration" and status in {"failed", "cancelled", "canceled"}
+            ):
                 result["migration"] = {
                     "id": mg.id,
                     "source": mg.source_compute,
