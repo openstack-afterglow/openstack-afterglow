@@ -589,6 +589,8 @@ Round connector bends along the two grid axes. Arrowheads describe relationship 
 
 Give the figure a local pan/zoom viewport with explicit zoom, fit, and pause controls. Draw with SVG and overlay native keyboard-selectable buttons in reading order. Provide a text inventory of resources and paths. Keep the legend disclosure and caption outside the panning viewport, wrapping long locale strings without horizontal page overflow. Fit the initial camera to the available container and keep a user's camera across ordinary data refreshes.
 
+In narrow containers, compact scenes start at a readable detail scale and can be panned. Fit always returns to the whole scene. Captions counter-scale within a bounded range, keep reported status on the same row as the resource name, and try nearby anchors before dropping secondary text. At overview scale, focus or selection reveals the corresponding caption. Full names, metadata, and path labels remain in the accessible inventory even when the drawing omits secondary text.
+
 ## Dashboard chart standard
 
 Use actual Bklit UI registry components through `charts/BklitChart.svelte` for every Afterglow-owned numerical chart, distribution, gauge, ring and country choropleth. Reuse existing domain components (`UsageBar`/`QuotaBar`/`CapacityBar`, `UsageRing`/`Donut`/`QuotaDonut`, `Spark`, `TimeSeriesChart`, `TrafficArea`/`TrafficSparkline`) before composing a new typed `ChartSpec`. These components own presentation/ARIA; native Bklit owns plotting, axes and tooltips. Do not restore bespoke SVG/CSS geometry or LayerChart POCs. See `frontend/README.md` for the surface inventory and upstream procedure.

@@ -142,11 +142,11 @@ export function pillWidth(value: string, padding = 16): number {
 	return width;
 }
 
-export type PlacedEdge = { edge: IsoEdge; path: string; label: Point; length: number };
+export type PlacedEdge = { edge: IsoEdge; path: string; label: Point; length: number; points: Point[] };
 export type PlacedNode = { node: IsoNode; point: Point };
 export type PlacedPlatform = { platform: IsoPlatform; corners: readonly [Point, Point, Point, Point]; label: Point };
 
-function labelAnchor(points: Point[], width: number, footprints: GridRect[]): Point {
+export function labelAnchor(points: Point[], width: number, footprints: GridRect[], height = 20): Point {
 	const segments = points.slice(1).map((end, i) => ({ start: points[i], end, length: length(points[i], end) }))
 		.sort((a, b) => b.length - a.length);
 	let best = points[0];
@@ -157,7 +157,7 @@ function labelAnchor(points: Point[], width: number, footprints: GridRect[]): Po
 			const x = start.x + (end.x - start.x) * ratio;
 			const y = start.y + (end.y - start.y) * ratio;
 			const left = x - width / 2 - 3, right = x + width / 2 + 3;
-			const top = y - 13, bottom = y + 13;
+			const top = y - height / 2 - 3, bottom = y + height / 2 + 3;
 			let overlap = 0;
 			for (const { x, y, w, h } of footprints) {
 				if (left >= x + w || x >= right || top >= y + h || y >= bottom) continue;
@@ -245,7 +245,7 @@ export function layoutScene(scene: IsoScene) {
 			footprints.push({ x: label.x - width / 2, y: label.y - 10, w: width, h: 20 });
 			include(label, width / 2, 10);
 		}
-		edges.push({ edge, path: roundedPath(points), label, length: total });
+		edges.push({ edge, path: roundedPath(points), label, length: total, points });
 	}
 	const bounds = Number.isFinite(minX)
 		? { x: minX - 30, y: minY - 30, w: maxX - minX + 60, h: maxY - minY + 60 }

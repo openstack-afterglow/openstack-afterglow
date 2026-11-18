@@ -2,7 +2,9 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import { t } from '$lib/i18n/ns/iso-view';
 	import { toneVars } from './appearance';
-	import { CELL_X, CELL_Y, isoLabel, layoutScene, pillWidth, type Point } from './layout';
+	import { placeCaptions } from './captionLayout';
+	import IsoCaption from './IsoCaption.svelte';
+	import { CELL_X, CELL_Y, layoutScene, type Point } from './layout';
 	import IsoNodeBlock from './IsoNodeBlock.svelte';
 	import IsoPlatform from './IsoPlatform.svelte';
 	import type { IsoScene } from './types';
@@ -45,8 +47,14 @@
 	const bounds = $derived(layout.bounds);
 	const rawFit = $derived(Math.min(1.2, (width - 20) / bounds.w, (viewHeight - 20) / bounds.h));
 	const fitScale = $derived(Math.max(0.02, rawFit));
-	const fitPose = $derived({ k: fitScale, x: -(bounds.x + bounds.w / 2) * fitScale, y: -(bounds.y + bounds.h / 2) * fitScale });
-	const camera = $derived(pose ?? fitPose);
+	function centeredCamera(k: number): Camera {
+		return { k, x: -(bounds.x + bounds.w / 2) * k, y: -(bounds.y + bounds.h / 2) * k };
+	}
+	const fitPose = $derived(centeredCamera(fitScale));
+	const readableScale = $derived(width < 768 && layout.items.length <= 48 ? Math.max(fitScale, 0.62) : fitScale);
+	const camera = $derived(pose ?? centeredCamera(readableScale));
+	const captionZoom = $derived(Math.min(0.8, Math.round(camera.k * 20) / 20));
+	const captions = $derived(placeCaptions(layout.nodes, layout.platforms, layout.edges, captionZoom, (status) => t(`status.${status}`)));
 	const translateX = $derived(width / 2 + camera.x);
 	const translateY = $derived(viewHeight / 2 + camera.y);
 	const stageTransform = $derived(`translate(${translateX}px, ${translateY}px) scale(${camera.k})`);
@@ -186,7 +194,7 @@
 				break;
 			case '+': case '=': zoom(1.25); break;
 			case '-': zoom(0.8); break;
-			case '0': pose = undefined; break;
+			case '0': pose = fitPose; break;
 			case 'ArrowLeft': pose = { ...camera, x: camera.x + 40 }; break;
 			case 'ArrowRight': pose = { ...camera, x: camera.x - 40 }; break;
 			case 'ArrowUp': pose = { ...camera, y: camera.y + 40 }; break;
@@ -228,7 +236,7 @@
 			<Button variant="outline" size="icon" ariaLabel={t('controls.zoomIn')} title={t('controls.zoomIn')} disabled={camera.k >= MAX_ZOOM} onclick={() => zoom(1.25)}>
 				<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 10h10m-5-5v10" /></svg>
 			</Button>
-			<Button variant="outline" size="icon" ariaLabel={t('controls.fit')} title={t('controls.fit')} onclick={() => { pose = undefined; }}>
+			<Button variant="outline" size="icon" ariaLabel={t('controls.fit')} title={t('controls.fit')} onclick={() => { pose = fitPose; }}>
 				<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 4H4v3m9-3h3v3m0 6v3h-3m-6 0H4v-3M8 8h4v4H8z" /></svg>
 			</Button>
 			{#if packetIds.size && !reduced}
@@ -264,8 +272,9 @@
 					{#each layout.platforms as placed (placed.platform.id)}
 						<IsoPlatform {placed} active={relatedPlatforms.has(placed.platform.id)} />
 					{/each}
-					{#each layout.edges as { edge, path, label: anchor, length }, index (edge.id)}
+					{#each layout.edges as { edge, path, length }, index (edge.id)}
 						{@const active = activeIds.has(edge.from) || activeIds.has(edge.to)}
+						{@const edgeLabel = captions.edgeLabels.get(edge.id)}
 						<g class="edge" class:active class:inactive={edge.inactive} class:muted={!!activeIds.size && !active} style:--tone={toneVars[edge.tone]}>
 							<path class="route" class:dashed={edge.dashed || edge.inactive || edge.kind === 'denied' || edge.kind === 'tunnel'}
 								d={path} marker-start={edge.bidirectional ? `url(#${uid}-arrow)` : undefined}
@@ -275,34 +284,36 @@
 									<animateMotion {path} begin="{-((index % 11) * 0.21)}s" dur="{Math.max(2.4, Math.min(14, length / 62))}s" repeatCount="indefinite" />
 								</circle>
 							{/if}
-							{#if edge.label}
-								{@const text = isoLabel(edge.label, 25)}
-								{@const pill = pillWidth(text)}
-								<g class="edge-label" transform="translate({anchor.x} {anchor.y})">
+							{#if edgeLabel}
+								<g class="edge-label" transform="translate({edgeLabel.point.x} {edgeLabel.point.y}) scale({edgeLabel.scale})">
 									<title>{edge.label}</title>
-									<rect x={-pill / 2} y="-10" width={pill} height="20" rx="5" />
-									<text y="4">{text}</text>
+									<rect x={-edgeLabel.width / 2} y="-10.5" width={edgeLabel.width} height="21" rx="5" />
+									<text y="4">{edgeLabel.text}</text>
 								</g>
 							{/if}
 						</g>
 					{/each}
-					{#each layout.platforms as placed (placed.platform.id)}
-						<IsoPlatform {placed} active={relatedPlatforms.has(placed.platform.id)} labels />
-					{/each}
 					{#each layout.nodes as placed (placed.node.id)}
 						<IsoNodeBlock {placed} active={activeIds.has(placed.node.id)} dimmed={!!activeIds.size && !relatedIds.has(placed.node.id)} />
+					{/each}
+					{#each layout.items as { id } (id)}
+						{@const caption = captions.items.get(id)}
+						{#if caption && (camera.k >= 0.38 || activeIds.has(id))}
+							<IsoCaption {caption} active={relatedPlatforms.has(id)} status={layout.nodesById.get(id)?.status} />
+						{/if}
 					{/each}
 				</g>
 			</svg>
 			<div class="targets" style:transform={stageTransform} style:--zoom={camera.k}>
 				{#each interactive as { id, point } (id)}
 					{@const node = layout.nodesById.get(id)}
-					{@const slab = layout.platformsById.get(id)}
-					{@const lift = node ? -10 : slab?.style === 'zone' ? 0 : 15}
+					{@const caption = captions.items.get(id)}
+					{@const at = !node && caption && camera.k >= 0.38 ? caption.position : point}
+					{@const lift = node ? -10 : caption && camera.k >= 0.38 ? caption.height * caption.scale / 2 : 0}
 					<button type="button" class="target" class:node={!!node} aria-label={itemName(id)} title={itemName(id)}
-						aria-pressed={selectedId === id} style:left="{point.x}px" style:top="{point.y + lift}px"
-						style:--hit-width="{node ? 96 : Math.max(80, pillWidth(isoLabel(slab?.label ?? '', 26)))}px"
-						onfocus={(event) => focusItem(event, id, point, lift)} onblur={() => { focusedId = undefined; oncancelintent?.(); }}
+						aria-pressed={selectedId === id} style:left="{at.x}px" style:top="{at.y + lift}px"
+						style:--hit-width="{node ? 96 : Math.max(80, (caption?.width ?? 80) * (caption?.scale ?? 1))}px"
+						onfocus={(event) => focusItem(event, id, at, lift)} onblur={() => { focusedId = undefined; oncancelintent?.(); }}
 						onpointerenter={() => { if (!dragging) { hoveredId = id; onintent?.(id); } }}
 						onpointerleave={() => { hoveredId = undefined; oncancelintent?.(); }}
 						onclick={(event) => { if (!dragged || event.detail === 0) onselect?.(id); }}></button>
