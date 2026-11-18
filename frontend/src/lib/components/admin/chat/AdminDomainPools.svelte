@@ -3,6 +3,8 @@
 	import { api, ApiError } from '$lib/api/client';
 	import { currentBillingSession, displayDomainCredit, domainBillingErrorMessage, lumenBrowserPath, validDomainCredit, type DomainPool } from '$lib/api/chatDomainBilling';
 	import { domainsApi, type AdminDomain } from '$lib/api/domains';
+	import { clearPendingTopup, pendingTopups, savePendingTopup, type PendingTopup } from '$lib/api/topupRecovery';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
 	import { t } from '$lib/i18n/ns/chat-settings';
@@ -31,11 +33,10 @@
 	const rows = $derived.by(() => {
 		const poolById = new Map(pools?.map((pool) => [pool.domain_id, pool]));
 		const domainById = new Map(domains.map((domain) => [domain.id, domain]));
-		const ids = new Set([...(poolById.keys()), ...domains.filter((domain) => domain.enabled && domain.kind !== 'account').map((domain) => domain.id)]);
+		const ids = new Set([...(poolById.keys()), ...Object.keys(pending), ...domains.filter((domain) => domain.enabled && domain.kind !== 'account').map((domain) => domain.id)]);
 		return [...ids].map((domainId) => ({ domainId, name: domainById.get(domainId)?.name || domainId, pool: poolById.get(domainId) }));
 	});
 	type Row = (typeof rows)[number];
-	type Topup = { amount_credits: string; note: string | null };
 	let target = $state<{ domainId: string; name: string } | null>(null);
 	let mode = $state<'topup' | 'edit'>('topup');
 	let open = $state(false);
@@ -48,8 +49,10 @@
 	let ceilingInput = $state<HTMLInputElement | null>(null);
 	let fieldError = $state('');
 	let saveError = $state('');
-	// An unconfirmed response is retried only with this exact operation and header.
-	let attempt = $state<{ key: string; body: Topup } | null>(null);
+	// Persisted per admin and domain; a retry reuses the exact recorded key and body.
+	let pending = $state<Record<string, PendingTopup>>({});
+	let rechecked = $state<Record<string, boolean>>({});
+	let pendingError = $state<Record<string, string>>({});
 
 	const session = () => alive ? currentBillingSession(scopeKey, 'admin') : null;
 	function requireCurrent() {
@@ -76,10 +79,14 @@
 		else { directoryError = true; domains = []; }
 	}
 
-	onMount(() => { void load(); });
+	onMount(() => {
+		const owner = session();
+		if (owner) pending = Object.fromEntries(pendingTopups(owner.userId).map((record) => [record.domainId, record]));
+		void load();
+	});
 
 	function start(row: Row, nextMode: typeof mode) {
-		if (!session() || busy || denied || !pools || attempt) return;
+		if (!session() || busy || denied || !pools || (nextMode === 'topup' && pending[row.domainId])) return;
 		target = { domainId: row.domainId, name: row.name };
 		mode = nextMode;
 		amount = '';
@@ -96,6 +103,72 @@
 		pools = [...(pools ?? []).filter((pool) => pool.domain_id !== domainId), next];
 	}
 
+	function forget(record: PendingTopup) {
+		const { [record.domainId]: _removed, ...rest } = pending;
+		pending = rest;
+		rechecked = { ...rechecked, [record.domainId]: false };
+		pendingError = { ...pendingError, [record.domainId]: '' };
+		clearPendingTopup(record);
+	}
+
+	// Lumen applies one Idempotency-Key at most once, so resending this record cannot double-credit.
+	async function sendTopup(record: PendingTopup): Promise<'applied' | 'rejected' | 'unknown' | 'stale'> {
+		const owner = session();
+		if (!owner || denied || owner.userId !== record.userId) return 'stale';
+		pending = { ...pending, [record.domainId]: record };
+		savePendingTopup(record);
+		try {
+			const next = await api.post<DomainPool>(`${path}/${encodeURIComponent(record.domainId)}/topups`,
+				{ amount_credits: record.amount_credits, note: record.note }, owner.token, owner.projectId, { ...mutation, idempotencyKey: record.key });
+			if (!session() || denied) return 'stale';
+			apply(next, record.domainId);
+			forget(record);
+			toast.success(t('domainBilling.saved'));
+			return 'applied';
+		} catch (cause) {
+			if (!session()) return 'stale';
+			const status = cause instanceof ApiError ? cause.status : 0;
+			if (status === 403) { denied = true; pools = null; open = false; }
+			// A definitive client rejection did not apply; timeouts and throttling stay unknown.
+			if (status >= 400 && status < 500 && status !== 408 && status !== 429) {
+				forget(record);
+				saveError = domainBillingErrorMessage(cause) ?? t('domainBilling.saveFailed');
+				if (!open) toast.error(saveError);
+				return 'rejected';
+			}
+			pendingError = { ...pendingError, [record.domainId]: domainBillingErrorMessage(cause) ?? t('domainBilling.topupUnconfirmed') };
+			return 'unknown';
+		}
+	}
+
+	function confirmTopup(record: Pick<PendingTopup, 'domainId' | 'amount_credits' | 'note'>) {
+		return confirmDialog(
+			t('domainBilling.confirmTopup', { domain: record.domainId, amount: displayDomainCredit(record.amount_credits), note: record.note ?? t('domainBilling.noNote') }),
+			{ confirmLabel: t('domainBilling.topup'), confirmVariant: 'accent' },
+		);
+	}
+
+	async function retryPending(record: PendingTopup) {
+		if (!session() || busy || denied) return;
+		busy = true;
+		try {
+			if (await confirmTopup(record)) await sendTopup(record);
+		} finally {
+			if (session()) busy = false;
+		}
+	}
+
+	async function recheck(domainId: string) {
+		if (busy || loading) return;
+		await load();
+		if (session() && !poolError) rechecked = { ...rechecked, [domainId]: true };
+	}
+
+	async function discardPending(record: PendingTopup) {
+		if (!session() || busy || !rechecked[record.domainId]) return;
+		if (await confirmDialog(t('domainBilling.discardConfirm'), { confirmLabel: t('domainBilling.discardPending') }) && session()) forget(record);
+	}
+
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
 		const selection = target;
@@ -104,7 +177,7 @@
 		const resource = `${path}/${encodeURIComponent(domainId)}`;
 		const isTopup = mode === 'topup';
 		const limit = ceiling.trim();
-		const body = attempt?.body ?? { amount_credits: amount.trim(), note: note.trim() || null };
+		const body = { amount_credits: amount.trim(), note: note.trim() || null };
 		fieldError = '';
 		saveError = '';
 		if (isTopup ? !validDomainCredit(body.amount_credits, true) : !!limit && !validDomainCredit(limit)) {
@@ -116,25 +189,25 @@
 		busy = true;
 		try {
 			if (isTopup) {
-				const message = t('domainBilling.confirmTopup', { domain: domainId, amount: displayDomainCredit(body.amount_credits), note: body.note ?? t('domainBilling.noNote') });
-				if (!(await confirmDialog(message, { confirmLabel: t('domainBilling.topup'), confirmVariant: 'accent' }))) return;
+				if (!(await confirmTopup({ domainId, ...body }))) return;
 			}
 			const owner = session();
 			if (!owner || denied) return;
-			if (isTopup) attempt ??= { key: crypto.randomUUID(), body };
-			const next = isTopup
-				? await api.post<DomainPool>(`${resource}/topups`, body, owner.token, owner.projectId, { ...mutation, idempotencyKey: attempt!.key })
-				: await api.patch<DomainPool>(resource, { admin_ceiling_credits: limit || null, is_active: active }, owner.token, owner.projectId, mutation);
+			if (isTopup) {
+				const outcome = await sendTopup({ v: 1, userId: owner.userId, domainId, key: crypto.randomUUID(), ...body, created_at: new Date().toISOString() });
+				// An unknown outcome is recovered from the domain row, never from a new draft.
+				if (outcome !== 'rejected') open = false;
+				return;
+			}
+			const next = await api.patch<DomainPool>(resource, { admin_ceiling_credits: limit || null, is_active: active }, owner.token, owner.projectId, mutation);
 			if (!session() || denied) return;
 			apply(next, domainId);
-			attempt = null;
 			open = false;
 			toast.success(t('domainBilling.saved'));
 		} catch (cause) {
 			if (!session()) return;
-			if (cause instanceof ApiError && cause.status === 403) { denied = true; pools = null; attempt = null; open = false; return; }
-			if (isTopup && cause instanceof ApiError && cause.status >= 400 && cause.status < 500 && cause.status !== 408) attempt = null;
-			saveError = domainBillingErrorMessage(cause) ?? t(isTopup && attempt ? 'domainBilling.topupUnconfirmed' : 'domainBilling.saveFailed');
+			if (cause instanceof ApiError && cause.status === 403) { denied = true; pools = null; open = false; return; }
+			saveError = domainBillingErrorMessage(cause) ?? t('domainBilling.saveFailed');
 		} finally {
 			if (session()) busy = false;
 		}
@@ -147,9 +220,8 @@
 	{#if poolError || directoryError}
 		<Alert class="mb-3" flat tone="danger">{t(poolError ? 'domainBilling.loadFailed' : 'domainBilling.directoryFailed')}</Alert>
 	{/if}
-	{#if attempt && !open}
-		<Alert class="mb-2" flat tone="warning">{t('domainBilling.topupUnconfirmed')}</Alert>
-		<Button class="mb-3" variant="secondary" size="sm" onclick={() => { open = true; }}>{t('domainBilling.resumeTopup')}</Button>
+	{#if Object.keys(pending).length}
+		<Alert class="mb-3" flat tone="warning">{t('domainBilling.topupUnconfirmed')}</Alert>
 	{/if}
 	<Button class="mb-3" variant="secondary" size="sm" disabled={loading || busy} onclick={load}>{t('apiKeys.guide.reload')}</Button>
 	{#if !pools && !poolError}
@@ -166,10 +238,23 @@
 						</div>
 						<div class="flex flex-wrap items-center gap-2">
 							{#if row.pool}<Pill>{t(row.pool.is_active ? 'domainBilling.active' : 'domainBilling.inactiveLabel')}</Pill>{/if}
-							<Button size="sm" variant="secondary" disabled={busy || !!attempt} onclick={() => start(row, 'topup')}>{t('domainBilling.topup')}</Button>
-							<Button size="sm" variant="ghost" disabled={busy || !!attempt} onclick={() => start(row, 'edit')}>{t('domainBilling.editPool')}</Button>
+							<Button size="sm" variant="secondary" disabled={busy || !!pending[row.domainId]} onclick={() => start(row, 'topup')}>{t('domainBilling.topup')}</Button>
+							<Button size="sm" variant="ghost" disabled={busy} onclick={() => start(row, 'edit')}>{t('domainBilling.editPool')}</Button>
 						</div>
 					</div>
+					{#if pending[row.domainId]}
+						{@const record = pending[row.domainId]}
+						<Alert class="mb-3" flat tone="warning" title={t('domainBilling.pendingTopupTitle')}>
+							<p>{t('domainBilling.pendingTopup', { amount: displayDomainCredit(record.amount_credits), note: record.note ?? t('domainBilling.noNote'), time: new Date(record.created_at).toLocaleString(intlLocale()) })}</p>
+							{#if pendingError[row.domainId]}<p>{pendingError[row.domainId]}</p>{/if}
+							{#if rechecked[row.domainId]}<p>{t('domainBilling.recheckHint')}</p>{/if}
+						</Alert>
+						<div class="mb-3 flex flex-wrap gap-2">
+							<Button size="sm" variant="secondary" disabled={busy || loading} onclick={() => recheck(row.domainId)}>{t('domainBilling.recheck')}</Button>
+							<Button size="sm" disabled={busy} onclick={() => retryPending(record)}>{t('domainBilling.resumeTopup')}</Button>
+							<Button size="sm" variant="ghost" disabled={busy || !rechecked[row.domainId]} onclick={() => discardPending(record)}>{t('domainBilling.discardPending')}</Button>
+						</div>
+					{/if}
 					{#if row.pool}<DomainPoolMetrics pool={row.pool} />
 					{:else}<p class="text-sm text-ink-2">{t('domainBilling.notConfigured')}</p>{/if}
 				</Card>
@@ -183,10 +268,10 @@
 			<form id={`${id}-submit`} class="space-y-3" method="post" aria-label={t(mode === 'topup' ? 'domainBilling.topup' : 'domainBilling.editPool')} onsubmit={submit}>
 				{#if mode === 'topup'}
 					<Field for={`${id}-amount`} label={t('domainBilling.amount')} error={fieldError || undefined}>
-						<TextInput id={`${id}-amount`} bind:element={amountInput} bind:value={amount} inputmode="decimal" ariaInvalid={!!fieldError} disabled={busy || !!attempt} oninput={() => { fieldError = ''; }} />
+						<TextInput id={`${id}-amount`} bind:element={amountInput} bind:value={amount} inputmode="decimal" ariaInvalid={!!fieldError} disabled={busy} oninput={() => { fieldError = ''; }} />
 					</Field>
 					<Field for={`${id}-note`} label={t('domainBilling.note')}>
-						<TextareaInput id={`${id}-note`} bind:value={note} maxlength={1000} disabled={busy || !!attempt} rows={3} />
+						<TextareaInput id={`${id}-note`} bind:value={note} maxlength={1000} disabled={busy} rows={3} />
 					</Field>
 				{:else}
 					<Field for={`${id}-ceiling`} label={t('domainBilling.adminCeiling')} help={t('domainBilling.limitHelp')} error={fieldError || undefined}>
@@ -200,7 +285,7 @@
 			</form>
 			{#snippet actions()}
 				<Button variant="secondary" onclick={() => { open = false; }} disabled={busy}>{t('apiKeys.cancel')}</Button>
-				<Button type="submit" form={`${id}-submit`} disabled={busy} ariaBusy={busy}>{t(mode === 'edit' ? 'apiKeys.save' : attempt ? 'domainBilling.resumeTopup' : 'domainBilling.reviewTopup')}</Button>
+				<Button type="submit" form={`${id}-submit`} disabled={busy} ariaBusy={busy}>{t(mode === 'edit' ? 'apiKeys.save' : 'domainBilling.reviewTopup')}</Button>
 			{/snippet}
 		</FormModal>
 	{/if}

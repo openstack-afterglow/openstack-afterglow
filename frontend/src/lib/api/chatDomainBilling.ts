@@ -68,9 +68,9 @@ export const lumenBrowserPath = '/api/v1/chat';
 export function currentBillingSession(key: string, role: 'manager' | 'admin') {
 	const scope = get(authDisplayContext);
 	const state = get(auth);
-	if (!scope.ready || scope.key !== key || get(logoutInProgress) || !state.token || !state.projectId || !state.domainId) return null;
+	if (!scope.ready || scope.key !== key || get(logoutInProgress) || !state.token || !state.projectId || !state.domainId || !state.userId) return null;
 	if (!(role === 'manager' ? state.isDomainManager : state.isSystemAdmin)) return null;
-	return { token: state.token, projectId: state.projectId, domainId: state.domainId };
+	return { token: state.token, projectId: state.projectId, domainId: state.domainId, userId: state.userId };
 }
 
 const creditInput = /^\d{1,10}(\.\d{1,8})?$/;
