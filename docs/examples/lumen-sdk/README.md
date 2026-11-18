@@ -13,7 +13,7 @@ npm --prefix node install
 
 Issue the key in the dashboard under **Chat settings → API keys**. Personal keys bill the user; service keys bill the domain credit pool. Keys can call model APIs only. To run every example, issue the key with these scopes (or choose **All allowed**): `models:read`, `compat:completions:write`, `embeddings:write`, `compat:images:write`.
 
-Perplexity Sonar and other web-search models are available only in dashboard chat. They need Lumen's web-search tool permission, which model-only keys cannot hold, so they are hidden from key model lists and key requests to them are rejected with `403`. The examples therefore cover OpenAI, Claude and Gemini models only.
+Perplexity Sonar and other web-search models are available only in dashboard chat. They need Lumen's web-search tool permission, which model-only keys cannot hold, so they are hidden from key model lists and key requests to them return `403 model_requires_server_tools`. The examples therefore cover OpenAI, Claude and Gemini models only.
 
 Set the model variables you want to try. Pick IDs from `python python/openai_example.py list`, `python python/anthropic_example.py list` and `python python/gemini_example.py list`.
 
