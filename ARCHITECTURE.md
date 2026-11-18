@@ -2302,9 +2302,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "4a50a23f5d33387afd0ca6045751672fbf45bc3b56c211a03ea54f18c607562d",
-  "reviewed_at": "2026-11-18T16:22:30Z",
-  "summary": "Kolla ingress initialization preserves private YAML bytes and publishes only the new key under the original file ownership and mode."
+  "source_sha256": "019f258416bbf1c096888afaaaec14a16a55a2bf1887df90dac73f84bdd428bb",
+  "reviewed_at": "2026-11-18T16:57:14Z",
+  "summary": "Pre-release review of provider model picker, domain-scoped history/tools, personal and service keys with domain credit pools, Agent Vault UI with signed Lumen ingress, startup-rendered installers, SDK tutorials and image token pricing; requires Lumen 0.6.21."
 }
 ```
 <!-- architecture-review:end -->
