@@ -40,9 +40,11 @@ export function estimateImageOutputTokens(model: string, size: string, quality: 
 	const grid = (family === '2' ? [16, 48, 96] : [16, 24, 48, 64, 96])[qualityIndex];
 	if (grid === undefined) return null;
 	const [width, height] = dimensions;
-	const shorterGrid = grid / (Math.max(width, height) / Math.min(width, height));
-	const floor = Math.floor(shorterGrid);
-	const rounded = shorterGrid - floor === 0.5 ? floor + floor % 2 : Math.round(shorterGrid);
+	const longer = Math.max(width, height);
+	const numerator = grid * Math.min(width, height);
+	const quotient = Math.floor(numerator / longer);
+	const doubledRemainder = 2 * (numerator % longer);
+	const rounded = quotient + Number(doubledRemainder > longer || (doubledRemainder === longer && quotient % 2 === 1));
 	const base = Math.ceil(grid * rounded * (2_000_000 + width * height) / 4_000_000);
-	return count * (family === '2.6' ? Math.round(base * [4.2, 3.3, 1, 1, 1][qualityIndex]) : base);
+	return count * (family === '2.6' ? Math.floor((base * [42, 33, 10, 10, 10][qualityIndex] + 5) / 10) : base);
 }

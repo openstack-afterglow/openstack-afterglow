@@ -108,7 +108,7 @@ describe('native catalog registry', () => {
 
 	it('reports ready catalog-priced token images without creating manual rates', async () => {
 		serve([model({
-			model_name: 'gpt-image-2.6-sunburst', model_kind: 'image', price_origin: 'catalog', media_pricing: null,
+			model_name: 'gpt-image-2.6-sunburst', model_kind: 'image', price_origin: 'native_catalog', media_pricing: null,
 			effective_media_pricing: { billing_basis: 'tokens', reservation_usd: '0.8', token_rates: { image: { input_per_million: '8', output_per_million: '30' } } },
 			effective_capabilities: { feature_gates: { image_output: { available: true, mode: 'native', pricing_available: true } } }
 		})]);

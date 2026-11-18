@@ -680,8 +680,10 @@
 					<fieldset class="advanced-options" disabled={!imagesAllowed || busy || capabilitiesLoading}>
 						<legend class="muted">{t('imageStudio.options.title')}</legend>
 						{#if custom}
+							{@const limits = { multiple: customLimits!.dimension_multiple, edge: customLimits!.max_edge, ratio: customLimits!.max_aspect_ratio, min: customLimits!.min_pixels, max: customLimits!.max_pixels }}
+							{@const help = t('imageStudio.options.sizeHelp', limits)}
 							<div class="custom-size" onfocusout={() => { if (customSize) customSizeChecked = true; }}>
-								<Field label={t('imageStudio.options.custom')} for="studio-custom-size" help={t('imageStudio.options.sizeHelp')} error={customSizeChecked && !customSizeValid ? t('imageStudio.options.badSize') : undefined}>
+								<Field label={t('imageStudio.options.custom')} for="studio-custom-size" help={help} error={customSizeChecked && !customSizeValid ? t('imageStudio.options.badSize', { limits: help }) : undefined}>
 									<TextInput id="studio-custom-size" bind:value={customSize} bind:element={customSizeField} placeholder="1024x1024" maxlength={9} ariaInvalid={customSizeChecked && !customSizeValid} />
 								</Field>
 							</div>

@@ -530,7 +530,7 @@
 			</div>
 			{#if imageError && audioAllowed}<Alert tone="warning">{imageError}</Alert>{/if}
 			{#if sentImages === REALTIME_IMAGES_PER_SESSION && audioAllowed}<p class="muted" role="status">{t('realtimeImage.limit')}</p>{/if}
-			{#if ending}<p role="status" class="muted">{t('realtimeTranscription.ending')}</p>
+			{#if ending}<p role="status" class="muted">{activeMode === 'transcription' ? t('realtimeTranscription.ending') : t('realtimeModes.ending')}</p>
 			{:else if ended && audioAllowed}<p role="status" class="muted">{t('realtimeTranscription.ended')}</p>
 			{:else if connected}<p role="status" class="muted">{muted || !audioAllowed ? t('realtimeVoice.connectedMuted') : t('realtimeVoice.connectedMicrophoneOn')}</p>{/if}
 		</div></Card>

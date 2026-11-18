@@ -86,6 +86,8 @@ describe('Image Studio', () => {
 		expect(estimateImageOutputTokens('gpt-image-2.6-sunburst', '1024x1024', 'max', 2)).toBe(14048);
 		expect(estimateImageOutputTokens('gpt-image-2.6-flare', '1024x1024', 'low', 1)).toBe(823);
 		expect(estimateImageOutputTokens('gpt-image-2.5-flare', '1024x1536', 'xhigh', 1)).toBe(2459);
+		expect(estimateImageOutputTokens('gpt-image-2.6-sunburst', '944x1536', 'high', 1)).toBe(1242);
+		expect(estimateImageOutputTokens('gpt-image-2.6-sunburst', '784x2048', 'xhigh', 1)).toBe(1385);
 		expect(estimateImageOutputTokens('gpt-image-2', '1024x1024', 'xhigh', 1)).toBeNull();
 		expect(estimateImageOutputTokens('gpt-image-2', 'auto', 'high', 1)).toBeNull();
 	});
@@ -102,7 +104,8 @@ describe('Image Studio', () => {
 		await fireEvent.input(custom, { target: { value: '1025x1024' } });
 		const create = screen.getByRole('button', { name: t('imageStudio.createImage') });
 		await fireEvent.click(create);
-		expect(await screen.findByText(t('imageStudio.options.badSize'))).toBeTruthy();
+		const help = t('imageStudio.options.sizeHelp', { multiple: 16, edge: 3840, ratio: 3, min: 655360, max: 8294400 });
+		expect(await screen.findByText(t('imageStudio.options.badSize', { limits: help }))).toBeTruthy();
 		expect(api.submit).not.toHaveBeenCalled();
 		await fireEvent.input(custom, { target: { value: '1024X1024' } });
 		await fireEvent.change(screen.getByLabelText(t('imageStudio.qualityLabel')), { target: { value: 'max' } });

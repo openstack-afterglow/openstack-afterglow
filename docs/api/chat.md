@@ -205,7 +205,7 @@ Lumen migration `021-provider-identity-catalog-order`를 먼저 적용한 API/wo
 
 수동 등록은 `model_kind=text|image|tts|stt|realtime|embedding`를 항상 명시합니다. 후보·등록 목록의 종류 필터는 저장된 종류를 사용하며 이름·이미지 입력 단가로 재분류하지 않습니다. Embedding은 직접 OpenAI/Gemini API-key route만 등록할 수 있고 input-token 가격만 사용합니다(출력 토큰 단가와 media reservation 불필요). 등록 카드의 **모델 종류 수정**은 기존 `PATCH /api/v1/chat/admin/models/{model_id}`에 종류와 `is_active=false`를 함께 보냅니다. 모델 ID, 텍스트·공유 token 단가는 보존하고 이전 종류 전용 media 단가와 미디어에서 지원하지 않는 cache-write는 명시적으로 제거합니다. 새 종류의 가격과 실행 경로 검토 뒤 재활성화는 별도입니다. 제목 요약·메모리 지정 모델은 먼저 지정을 해제해야 미디어로 변경할 수 있으며 active-run mutation fence도 유지됩니다. 운영 데이터의 자동 일괄 재분류는 하지 않습니다.
 
-Image model inventory uses Lumen's effective `media_pricing` and `price_origin` (`native_catalog` or `catalog` for catalog defaults). Catalog rates never prefill administrator overrides. Availability and credential/pricing/asset gates remain separate from the price source. Chat uses the declared `reasoning_options` and explicit `reasoning_none_supported` flag, so GPT‑6.2 Sol/Astra do not offer an explicit `none` effort.
+Image model inventory uses Lumen's effective `media_pricing` and `price_origin` (`native_catalog` for catalog defaults). Catalog rates never prefill administrator overrides. Availability and credential/pricing/asset gates remain separate from the price source. Chat uses the declared `reasoning_options` and explicit `reasoning_none_supported` flag, so GPT‑6.2 Sol/Astra do not offer an explicit `none` effort.
 
 ### 여러 provider 키와 명시적 연결 검사
 

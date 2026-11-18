@@ -2168,7 +2168,7 @@
 				{#each visibleModels as m (m.id)}
 					{@const siblings = modelSiblings(m)}
 					{@const siblingIndex = siblings.findIndex((row) => row.id === m.id)}
-					{@const catalogPriced = m.price_origin === 'native_catalog' || m.price_origin === 'catalog'}
+					{@const catalogPriced = m.price_origin === 'native_catalog'}
 					<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 					<li
 						class="{cardCls} model-card flex flex-col items-stretch gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
