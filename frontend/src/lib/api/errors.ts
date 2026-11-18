@@ -35,12 +35,27 @@ export function decodeProviderCallbackError(body: unknown): {
 	return { code };
 }
 
+/** Lumen's 409 `image_pricing_not_ready` rejection: the write was refused atomically. */
+export interface ImagePricingNotReady {
+	reason: string | null;
+	unsupported_variants: string[];
+}
+
+export function decodeImagePricingNotReady(body: unknown): ImagePricingNotReady | undefined {
+	if (!body || typeof body !== 'object' || !('detail' in body)) return undefined;
+	const detail = body.detail;
+	if (!detail || typeof detail !== 'object' || !('code' in detail) || detail.code !== 'image_pricing_not_ready') return undefined;
+	const reason = 'reason' in detail && typeof detail.reason === 'string' ? detail.reason : null;
+	const variants = 'unsupported_variants' in detail && Array.isArray(detail.unsupported_variants) ? detail.unsupported_variants : [];
+	return { reason, unsupported_variants: variants.filter((value): value is string => typeof value === 'string') };
+}
+
 export class ApiError extends Error {
 	status: number;
 	/** Stable JSON `code`, including known signup-approval codes returned as HTTP 403 `detail`. */
 	code?: string;
 
-	constructor(status: number, message: string, code?: string, public linkTicket?: { link_token: string; domain_id: string }, public entryTicket?: ProviderEntryTicket) {
+	constructor(status: number, message: string, code?: string, public linkTicket?: { link_token: string; domain_id: string }, public entryTicket?: ProviderEntryTicket, public imagePricingNotReady?: ImagePricingNotReady) {
 		super(message);
 		this.status = status;
 		this.code = code;

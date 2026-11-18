@@ -153,6 +153,15 @@ describe('api client', () => {
     expect(mockFetch).toHaveBeenCalledOnce();
   });
 
+  it('decodes Lumen image_pricing_not_ready rejections into structured metadata', async () => {
+    const detail = { code: 'image_pricing_not_ready', reason: 'unsupported_image_variants', unsupported_variants: ['1024x1024:high', 7], message: 'Image pricing is not ready' };
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ detail }), { status: 409, headers: { 'Content-Type': 'application/json' } }));
+    await expect(api.patch('/api/v1/chat/admin/models/4', { is_active: true }, undefined, undefined, { suppressAuthRedirect: true, replayOnUnauthorized: false })).rejects.toMatchObject({
+      status: 409, code: 'image_pricing_not_ready', message: 'Image pricing is not ready',
+      imagePricingNotReady: { reason: 'unsupported_image_variants', unsupported_variants: ['1024x1024:high'] },
+    });
+  });
+
   it.each([false, true])('decodes connect and create entry metadata without exposing the ticket (nested=%s)', async nested => {
     for (const action of ['connect', 'create'] as const) {
       const entryTicket = { entry_token: 'private-entry-ticket', domain_id: 'origin-domain', action, email: 'alice@example.com', ...(action === 'connect' ? { username: 'canonical-alice' } : {}) };

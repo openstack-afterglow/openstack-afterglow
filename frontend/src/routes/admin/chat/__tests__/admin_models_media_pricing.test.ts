@@ -586,4 +586,59 @@ describe('image official-price provenance', () => {
 			media_pricing: { override_mode: 'leaf', token_rates: { image: { output_per_million: null } } }
 		}, 'token', 'project'));
 	});
+	async function manualImage(name: string, variant: string) {
+		render(ModelPage);
+		const dialog = await openDiscovery();
+		await fireEvent.click(within(dialog).getByRole('button', { name: '직접 입력' }));
+		await fireEvent.change(within(dialog).getByLabelText('모델 종류'), { target: { value: 'image' } });
+		await fireEvent.input(within(dialog).getByPlaceholderText('모델명 (예: gpt-4o)'), { target: { value: name } });
+		await addVariant(dialog, variant, '0.08');
+		await fireEvent.click(within(dialog).getByRole('button', { name: '+ 모델 추가' }));
+		return dialog;
+	}
+	const notReady = () => Object.assign(new mocks.ApiError('not ready', 409), {
+		imagePricingNotReady: { reason: 'unsupported_image_variants', unsupported_variants: ['1024x1024:high'] }
+	});
+	const heldText = `${t('pricing.imageReadinessVariants')} ${t('pricing.imageUnsupportedVariantList', { variants: '1024x1024:high' })}`;
+	it('saves a manual image with only an unsupported variant inactive', async () => {
+		mocks.post.mockResolvedValue({ id: 21, image_pricing_readiness: readiness({ reason: 'unsupported_image_variants', unsupported_variants: ['1024x1024:high'] }) });
+		await manualImage('gemini-image', '1024x1024:high');
+		await waitFor(() => expect(mocks.error).toHaveBeenCalledWith(`${t('pricing.imageSavedInactive')} ${heldText}`));
+		expect(mocks.post.mock.calls[0][1]).toMatchObject({ model_name: 'gemini-image', model_kind: 'image', is_active: false });
+		expect(mocks.patch).not.toHaveBeenCalled();
+		expect(mocks.success).not.toHaveBeenCalled();
+	});
+	it('activates a manual image with a supported variant', async () => {
+		mocks.post.mockResolvedValue({ id: 22, image_pricing_readiness: readiness({ ready: true, executable_variants: ['auto:auto'] }) });
+		await manualImage('gemini-image', 'auto:auto');
+		await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith('/api/v1/chat/admin/models/22', { is_active: true }, 'token', 'project'));
+		expect(mocks.post.mock.calls[0][1]).toMatchObject({ is_active: false });
+		await waitFor(() => expect(mocks.success).toHaveBeenCalledWith(t('configuration.modelAdded')));
+		expect(mocks.error).not.toHaveBeenCalled();
+	});
+	it('keeps a manual image inactive when Lumen rejects activation with image_pricing_not_ready', async () => {
+		mocks.post.mockResolvedValue({ id: 23, image_pricing_readiness: readiness({ ready: true }) });
+		mocks.patch.mockRejectedValueOnce(notReady());
+		await manualImage('gemini-image', '1024x1024:high');
+		await waitFor(() => expect(mocks.error).toHaveBeenCalledWith(`${t('pricing.imageSavedInactive')} ${heldText}`));
+		expect(mocks.patch).toHaveBeenCalledTimes(1);
+	});
+	it('shows the server reason when list activation is rejected', async () => {
+		rows = [model('image', { override_mode: 'leaf', billing_basis: 'unit', image_variants: { '1024x1024:high': '0.08' } })];
+		mocks.patch.mockRejectedValueOnce(notReady());
+		render(ModelPage);
+		await fireEvent.click(await screen.findByRole('button', { name: '활성화' }));
+		await waitFor(() => expect(mocks.error).toHaveBeenCalledWith(heldText));
+		expect(rows[0].is_active).toBe(false);
+	});
+	it('keeps the price editor open with the server reason when a save is rejected', async () => {
+		rows = [{ ...model('image', { override_mode: 'leaf', billing_basis: 'unit', image_variants: { 'auto:auto': '0.08' } }), is_active: true }];
+		mocks.patch.mockRejectedValueOnce(notReady());
+		render(ModelPage);
+		const modal = await openEditor();
+		await fireEvent.input(within(modal).getByLabelText('이미지 variant 이름'), { target: { value: '1024x1024:high' } });
+		await fireEvent.click(within(modal).getByRole('button', { name: '저장' }));
+		await waitFor(() => expect(mocks.error).toHaveBeenCalledWith(heldText));
+		expect(screen.getByRole('dialog', { name: '모델 가격 수정' })).toBeTruthy();
+	});
 });
