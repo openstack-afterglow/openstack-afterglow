@@ -29,13 +29,13 @@
 	const hasToken = $derived(Boolean(token));
 	const projectId = $derived($auth.projectId ?? undefined);
 	const userId = $derived($auth.userId);
-	const targetName = $derived(serverName || serverId);
 
 	type Phase = 'loading' | 'analyzed' | 'executing' | 'done' | 'error';
 	type Failure = 'analysis' | 'blocked' | 'unknown';
 	let open = $state(true);
 	let phase = $state<Phase>('loading');
 	let analysis = $state.raw<RecoveryAnalysis | null>(null);
+	const targetName = $derived(analysis?.server.name || serverName || serverId);
 	let result = $state.raw<RecoveryResult | null>(null);
 	let failure = $state<Failure | null>(null);
 	let failureDetail = $state('');
@@ -94,7 +94,7 @@
 		try {
 			const evidence = await instanceRecoveryApi.analyze(id, { token: requestToken, projectId: project, signal });
 			if (signal.aborted) return;
-			if (evidence.server.id !== id) {
+			if (evidence.server.id !== id || (evidence.auto_executable && !evidence.plan_fingerprint)) {
 				fail('analysis');
 				return;
 			}
@@ -108,11 +108,11 @@
 	async function execute(event: SubmitEvent) {
 		event.preventDefault();
 		const signal = operation?.signal;
-		if (phase !== 'analyzed' || analysis?.server.id !== serverId || !analysis.auto_executable
+		if (phase !== 'analyzed' || analysis?.server.id !== serverId || !analysis.auto_executable || !analysis.plan_fingerprint
 			|| confirmation !== targetName || !token || !signal || signal.aborted) return;
 		phase = 'executing';
 		try {
-			const outcome = await instanceRecoveryApi.execute(serverId, { expected_guest_restart: guestRestart }, { token, projectId, signal });
+			const outcome = await instanceRecoveryApi.execute(serverId, { plan_fingerprint: analysis.plan_fingerprint }, { token, projectId, signal });
 			if (signal.aborted) return;
 			result = outcome;
 			phase = 'done';
@@ -287,7 +287,7 @@
 						</Alert>
 					{/if}
 
-					{#if analysis.auto_executable && (phase === 'analyzed' || phase === 'executing')}
+					{#if analysis.auto_executable && analysis.plan_fingerprint && (phase === 'analyzed' || phase === 'executing')}
 						<section>
 							<h3 class="section-title mb-2">{t('instances.recovery.recommendedSteps')}</h3>
 							<ol class="list-decimal space-y-1 pl-5 text-sm">
@@ -308,7 +308,7 @@
 					<LoadingState variant="inline" label={t('instances.recovery.executing')} />
 				{/if}
 				<Button variant="secondary" onclick={close} disabled={phase === 'executing'}>{t('instances.close')}</Button>
-				{#if phase === 'analyzed' && analysis?.auto_executable}
+				{#if phase === 'analyzed' && analysis?.auto_executable && analysis.plan_fingerprint}
 					<Button type="submit" variant="danger" disabled={confirmation !== targetName}>{t('instances.recovery.execute')}</Button>
 				{/if}
 			</footer>

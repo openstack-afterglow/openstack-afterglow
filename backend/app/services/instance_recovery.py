@@ -10,8 +10,10 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import UTC, datetime
+from hashlib import sha256
 from time import monotonic, sleep
 from typing import TYPE_CHECKING
 from urllib.parse import quote
@@ -593,6 +595,25 @@ def _determine_scenario(
 # ---------------------------------------------------------------------------
 
 
+def _plan_fingerprint(analysis: dict) -> str:
+    """Bind confirmation to ordered actions and their safety evidence, not the latest fault."""
+    server = analysis["server"]
+    plan = {
+        "server": {
+            key: server[key] for key in ("id", "name", "status", "compute_host", "hypervisor_hostname", "power_state")
+        },
+        "migration": analysis["last_error_migration"],
+        "ports": sorted((port["id"], port["binding_host_id"], port["binding_vif_type"]) for port in analysis["ports"]),
+        "volumes": sorted(
+            (volume["volume_id"], volume["status"], volume["bootable"]) for volume in analysis["volumes"]
+        ),
+        "checks": [(check["key"], check["detail"]) for check in analysis["checks"]],
+        "scenario": analysis["scenario"],
+        "steps": [{"action": step["action"], "params": step["params"]} for step in analysis["steps"]],
+    }
+    return sha256(json.dumps(plan, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
 def analyze_error_instance(
     conn: openstack.connection.Connection,
     server_id: str,
@@ -699,12 +720,13 @@ def analyze_error_instance(
             "중복 항목이 있으면 수동 정리를 권장합니다."
         )
 
-    return {
+    analysis = {
         "server": {
             "id": server_id,
             "name": srv["name"] if srv else "",
             "status": srv["status"] if srv else "UNKNOWN",
             "compute_host": srv["compute_host"] if srv else None,
+            "hypervisor_hostname": srv["hypervisor_hostname"] if srv else None,
             "power_state": srv.get("power_state") if srv else None,
             "fault": srv["fault"] if srv else None,
         },
@@ -718,6 +740,8 @@ def analyze_error_instance(
         "auto_executable": auto_executable,
         "placement_note": placement_note,
     }
+    analysis["plan_fingerprint"] = _plan_fingerprint(analysis) if auto_executable else None
+    return analysis
 
 
 def _observe_recovery(
@@ -768,7 +792,7 @@ def execute_recovery(
     conn: openstack.connection.Connection,
     server_id: str,
     *,
-    expected_guest_restart: bool | None = None,
+    plan_fingerprint: str,
     before_write: Callable[[], None] | None = None,
 ) -> dict:
     """복구를 실행한다.
@@ -785,11 +809,9 @@ def execute_recovery(
         reasons = "; ".join(c["label"] for c in failed)
         raise ValueError(f"자동 복구 조건 미충족 — {reasons}")
 
+    if plan_fingerprint != analysis["plan_fingerprint"]:
+        raise ValueError("복구 계획이 변경되었습니다. 다시 점검하고 확인하세요.")
     steps = analysis["steps"]
-    if expected_guest_restart is not None and expected_guest_restart != any(
-        s["action"] == "hard_reboot" for s in steps
-    ):
-        raise ValueError("복구 계획의 게스트 재시작 여부가 바뀌었습니다. 다시 진단하고 확인하세요.")
 
     executed = True
     executed_steps: list[dict] = []

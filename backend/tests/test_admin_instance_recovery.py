@@ -28,6 +28,7 @@ _MIGRATION_UPDATED = "2026-01-01T09:20:05Z"
 _ACTION_STARTED = "2026-01-01T09:19:24.000000"
 _FAULT_CREATED = "2026-01-07T13:29:41Z"
 _INSTANCE_URL = f"/api/v1/admin/instances/{_SERVER_ID}"
+_UNMATCHED_FINGERPRINT = "0" * 64
 _RECOVERY_STEPS = ["reset_server_state", "hard_reboot"]
 _VOLUME_RECOVERY_STEPS = ["reset_volume_state", *_RECOVERY_STEPS]
 _LIVE_CHECKS = {
@@ -201,6 +202,14 @@ def _checks(analysis):
     return {check["key"]: check["passed"] for check in analysis["checks"]}
 
 
+def _preview_fingerprint(conn):
+    analysis = instance_recovery.analyze_error_instance(conn, _SERVER_ID)
+    assert analysis["auto_executable"] is True
+    fingerprint = analysis["plan_fingerprint"]
+    assert isinstance(fingerprint, str) and len(fingerprint) == 64
+    return fingerprint
+
+
 def _assert_no_mutations(conn):
     conn.block_storage.reset_volume_status.assert_not_called()
     conn.compute.reset_server_state.assert_not_called()
@@ -214,7 +223,7 @@ def _assert_recovery_blocked(conn, check, *, live=True):
         assert analysis["scenario"] == "manual_review"
     assert _checks(analysis)[check] is False
     with pytest.raises(ValueError, match="자동 복구 조건 미충족"):
-        instance_recovery.execute_recovery(conn, _SERVER_ID)
+        instance_recovery.execute_recovery(conn, _SERVER_ID, plan_fingerprint=_UNMATCHED_FINGERPRINT)
     _assert_no_mutations(conn)
 
 
@@ -243,7 +252,7 @@ def test_verified_live_migration_recovery_plan_and_execution(live_conn, power_st
         call("/resource_providers", params={"name": _SOURCE_NODE}, microversion="1.14", raise_exc=True),
     ]
 
-    result = instance_recovery.execute_recovery(live_conn, _SERVER_ID, expected_guest_restart=power_state != 1)
+    result = instance_recovery.execute_recovery(live_conn, _SERVER_ID, plan_fingerprint=analysis["plan_fingerprint"])
 
     assert result["executed"] is True
     assert result["recovered"] is True
@@ -471,7 +480,7 @@ def test_live_migration_blocks_ambiguous_migration_history(live_conn, failure):
     if failure in ("tied-migrations", "newer-migration"):
         assert analysis["scenario"] == "manual_review"
     with pytest.raises(ValueError, match="자동 복구 조건 미충족"):
-        instance_recovery.execute_recovery(live_conn, _SERVER_ID)
+        instance_recovery.execute_recovery(live_conn, _SERVER_ID, plan_fingerprint=_UNMATCHED_FINGERPRINT)
     _assert_no_mutations(live_conn)
 
 
@@ -521,7 +530,7 @@ def test_legacy_recovery_keeps_plan_without_live_evidence(mock_conn, scenario, a
     mutations.attach_mock(conn.compute.reboot_server, "reboot")
 
     analysis = instance_recovery.analyze_error_instance(conn, _SERVER_ID)
-    result = instance_recovery.execute_recovery(conn, _SERVER_ID)
+    result = instance_recovery.execute_recovery(conn, _SERVER_ID, plan_fingerprint=analysis["plan_fingerprint"])
 
     assert analysis["scenario"] == result["scenario"] == scenario
     assert analysis["auto_executable"] is True
@@ -573,7 +582,7 @@ def test_execute_recovery_stops_on_step_failure(mock_conn):
     conn = _configure_recovery(mock_conn, "generic_error")
     conn.compute.reset_server_state.side_effect = RuntimeError("nova error")
 
-    result = instance_recovery.execute_recovery(conn, _SERVER_ID)
+    result = instance_recovery.execute_recovery(conn, _SERVER_ID, plan_fingerprint=_preview_fingerprint(conn))
 
     assert result["executed"] is False
     assert result["recovered"] is False
@@ -600,7 +609,7 @@ async def test_recovery_analysis_requires_admin(client):
 @pytest.mark.anyio
 async def test_recover_requires_admin(client):
     """일반 사용자 recover → 403."""
-    resp = await client.post(f"{_INSTANCE_URL}/recover", json={"expected_guest_restart": True})
+    resp = await client.post(f"{_INSTANCE_URL}/recover", json={"plan_fingerprint": _UNMATCHED_FINGERPRINT})
     assert resp.status_code == 403
 
 
@@ -611,6 +620,8 @@ async def test_recover_serializes_concurrent_posts(admin_client, live_conn, _rec
     finish_analysis = Event()
     server = live_conn.compute.get_server.return_value
     lock_key = f"afterglow:instance-recovery:lock:{_SERVER_ID}"
+    payload = {"plan_fingerprint": _preview_fingerprint(live_conn)}
+    live_conn.compute.get_server.reset_mock()
 
     def get_server(_server_id):
         started.set()
@@ -618,10 +629,10 @@ async def test_recover_serializes_concurrent_posts(admin_client, live_conn, _rec
         return server
 
     live_conn.compute.get_server.side_effect = get_server
-    first = asyncio.create_task(admin_client.post(f"{_INSTANCE_URL}/recover", json={"expected_guest_restart": True}))
+    first = asyncio.create_task(admin_client.post(f"{_INSTANCE_URL}/recover", json=payload))
     try:
         assert await asyncio.to_thread(started.wait, 5)
-        second = await admin_client.post(f"{_INSTANCE_URL}/recover", json={"expected_guest_restart": True})
+        second = await admin_client.post(f"{_INSTANCE_URL}/recover", json=payload)
         assert second.status_code == 409
         assert "이미 진행 중" in second.json()["detail"]
         live_conn.compute.get_server.assert_called_once()
@@ -650,7 +661,7 @@ async def test_recover_requires_shared_redis_before_reanalysis(admin_client, liv
     monkeypatch.setattr(
         "app.api.identity.admin._get_redis", AsyncMock(side_effect=ConnectionError("Redis unavailable"))
     )
-    response = await admin_client.post(f"{_INSTANCE_URL}/recover", json={"expected_guest_restart": True})
+    response = await admin_client.post(f"{_INSTANCE_URL}/recover", json={"plan_fingerprint": _UNMATCHED_FINGERPRINT})
 
     assert response.status_code == 503
     live_conn.compute.get_server.assert_not_called()
@@ -665,7 +676,9 @@ async def test_recover_returns_409_with_failed_evidence(admin_client, live_conn)
     assert analysis_resp.json()["auto_executable"] is True
 
     live_conn.compute.get_server_action.return_value.events = []
-    resp = await admin_client.post(f"{_INSTANCE_URL}/recover", json={"expected_guest_restart": True})
+    resp = await admin_client.post(
+        f"{_INSTANCE_URL}/recover", json={"plan_fingerprint": analysis_resp.json()["plan_fingerprint"]}
+    )
 
     assert resp.status_code == 409
     failed_analysis_resp = await admin_client.get(f"{_INSTANCE_URL}/recovery-analysis")
@@ -681,7 +694,7 @@ async def test_recover_returns_409_with_failed_evidence(admin_client, live_conn)
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(("old_power", "new_power"), [(1, 4), (4, 1)])
-async def test_recover_rejects_stale_guest_restart_confirmation(admin_client, live_conn, old_power, new_power):
+async def test_recover_rejects_stale_power_state_confirmation(admin_client, live_conn, old_power, new_power):
     server = live_conn.compute.get_server.return_value
     server.power_state = old_power
     analysis_resp = await admin_client.get(f"{_INSTANCE_URL}/recovery-analysis")
@@ -692,11 +705,46 @@ async def test_recover_rejects_stale_guest_restart_confirmation(admin_client, li
     assert expected_restart is (old_power != 1)
 
     server.power_state = new_power
-    resp = await admin_client.post(f"{_INSTANCE_URL}/recover", json={"expected_guest_restart": expected_restart})
+    resp = await admin_client.post(f"{_INSTANCE_URL}/recover", json={"plan_fingerprint": analysis["plan_fingerprint"]})
 
     assert resp.status_code == 409
-    assert "재시작" in resp.json()["detail"]
+    assert "복구 계획이 변경" in resp.json()["detail"]
     _assert_no_mutations(live_conn)
+
+
+@pytest.mark.anyio
+async def test_recover_rejects_same_reboot_plan_drift(admin_client, mock_conn):
+    conn = _configure_recovery(mock_conn, "generic_error")
+    preview = (await admin_client.get(f"{_INSTANCE_URL}/recovery-analysis")).json()
+    assert preview["scenario"] == "generic_error"
+    assert _actions(preview) == _RECOVERY_STEPS
+    conn.block_storage.get_volume.return_value.status = "attaching"
+    current = (await admin_client.get(f"{_INSTANCE_URL}/recovery-analysis")).json()
+    assert current["scenario"] == "volume_stuck"
+    assert _actions(current) == _VOLUME_RECOVERY_STEPS
+    assert current["plan_fingerprint"] != preview["plan_fingerprint"]
+
+    resp = await admin_client.post(f"{_INSTANCE_URL}/recover", json={"plan_fingerprint": preview["plan_fingerprint"]})
+
+    assert resp.status_code == 409
+    assert "복구 계획이 변경" in resp.json()["detail"]
+    _assert_no_mutations(conn)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("payload", [None, {}, {"plan_fingerprint": "bad-digest"}], ids=["no-body", "missing", "bad"])
+async def test_recover_requires_valid_plan_fingerprint(admin_client, live_conn, payload):
+    resp = await admin_client.post(f"{_INSTANCE_URL}/recover", json=payload)
+
+    assert resp.status_code == 422
+    live_conn.compute.get_server.assert_not_called()
+    _assert_no_mutations(live_conn)
+
+
+def test_plan_fingerprint_ignores_unrelated_latest_fault(live_conn):
+    fingerprint = _preview_fingerprint(live_conn)
+    live_conn.compute.get_server.return_value.fault["message"] = "New console-related fault"
+    assert _preview_fingerprint(live_conn) == fingerprint
 
 
 def test_recovery_polls_until_running_and_idle(live_conn, monkeypatch):
@@ -712,7 +760,7 @@ def test_recovery_polls_until_running_and_idle(live_conn, monkeypatch):
         _observed_server(),
     ]
 
-    result = instance_recovery.execute_recovery(live_conn, _SERVER_ID)
+    result = instance_recovery.execute_recovery(live_conn, _SERVER_ID, plan_fingerprint=_preview_fingerprint(live_conn))
 
     assert result["executed"] is True
     assert result["recovered"] is True
@@ -739,7 +787,7 @@ def test_recovery_does_not_confuse_accepted_requests_with_completion(live_conn, 
     else:
         live_conn.compute.get.return_value.json.return_value = observation
 
-    result = instance_recovery.execute_recovery(live_conn, _SERVER_ID)
+    result = instance_recovery.execute_recovery(live_conn, _SERVER_ID, plan_fingerprint=_preview_fingerprint(live_conn))
 
     assert result["executed"] is True
     assert result["recovered"] is False
@@ -762,7 +810,8 @@ async def test_recover_reports_and_audits_observed_status(
         status, task_state=None if recovered else "rebooting_hard"
     )
 
-    resp = await admin_client.post(f"{_INSTANCE_URL}/recover", json={"expected_guest_restart": True})
+    fingerprint = _preview_fingerprint(live_conn)
+    resp = await admin_client.post(f"{_INSTANCE_URL}/recover", json={"plan_fingerprint": fingerprint})
 
     assert resp.status_code == 200
     body = resp.json()
@@ -778,17 +827,19 @@ async def test_recover_reports_and_audits_observed_status(
     assert kwargs["resource_type"] == "instance"
     assert kwargs["status"] == audit_status
     assert kwargs["extra"]["scenario"] == body["scenario"]
+    assert kwargs["extra"]["plan_fingerprint"] == fingerprint
     assert kwargs["extra"]["observed_status"] == status
     assert kwargs["extra"]["recovered"] is recovered
     assert kwargs["extra"]["steps"] == body["steps"]
 
 
 @pytest.mark.anyio
-async def test_recover_accepts_legacy_request_without_body(admin_client, mock_conn, monkeypatch):
+async def test_recover_accepts_matching_legacy_plan(admin_client, mock_conn, monkeypatch):
     conn = _configure_recovery(mock_conn, "generic_error")
     monkeypatch.setattr("app.api.identity.admin.rec", AsyncMock())
 
-    resp = await admin_client.post(f"{_INSTANCE_URL}/recover")
+    preview = (await admin_client.get(f"{_INSTANCE_URL}/recovery-analysis")).json()
+    resp = await admin_client.post(f"{_INSTANCE_URL}/recover", json={"plan_fingerprint": preview["plan_fingerprint"]})
 
     assert resp.status_code == 200
     body = resp.json()

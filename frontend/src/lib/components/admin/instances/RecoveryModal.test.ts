@@ -32,6 +32,7 @@ const plan: RecoveryAnalysis = {
 	volumes: [], ports: [],
 	checks: [{ key: 'live_migration_rollback', label: 'Native check label', passed: true, detail: 'Rollback event recorded' }],
 	scenario: 'live_migration_rolled_back', scenario_description: 'Native description',
+	plan_fingerprint: '1'.repeat(64),
 	steps: [reset], auto_executable: true, placement_note: null,
 };
 
@@ -93,7 +94,7 @@ describe('instance recovery dialog', () => {
 		expect(callbacks.onRecovered).not.toHaveBeenCalled();
 	});
 
-	it('requires an exact name, sends a no-restart guard, and shows confirmed recovery before refreshing', async () => {
+	it('binds confirmation to the reviewed plan and shows confirmed recovery before refreshing', async () => {
 		api.post.mockResolvedValue({ ...accepted, recovered: true, observed_status: 'ACTIVE', steps: [accepted.steps[0]] });
 		const callbacks = openModal();
 		await screen.findByText(/without rebooting the guest/);
@@ -109,14 +110,15 @@ describe('instance recovery dialog', () => {
 		await confirmAndSubmit();
 		await screen.findByText('Last observed Nova status: ACTIVE');
 		expect(screen.getByText('Nova confirmed recovery.')).toBeTruthy();
-		expect(api.post).toHaveBeenCalledExactlyOnceWith(`${root}/recover`, { expected_guest_restart: false }, 'test-token', 'current-project', expect.objectContaining({ timeoutMs: 120_000, replayOnUnauthorized: false }));
+		expect(api.post).toHaveBeenCalledExactlyOnceWith(`${root}/recover`, { plan_fingerprint: plan.plan_fingerprint }, 'test-token', 'current-project', expect.objectContaining({ timeoutMs: 120_000, replayOnUnauthorized: false }));
 		expect(callbacks.onRecovered).not.toHaveBeenCalled();
 		await fireEvent.click(screen.getByRole('button', { name: 'Close' }));
 		expect(callbacks.onRecovered).toHaveBeenCalledTimes(1);
 	});
 
 	it('warns about hard restart, blocks duplicate submits and does not report acceptance as recovery', async () => {
-		api.get.mockResolvedValue({ ...plan, server: { ...plan.server, power_state: 4 }, steps: [reset, restart] });
+		const fingerprint = '2'.repeat(64);
+		api.get.mockResolvedValue({ ...plan, server: { ...plan.server, power_state: 4 }, steps: [reset, restart], plan_fingerprint: fingerprint });
 		const pending = Promise.withResolvers<RecoveryResult>();
 		api.post.mockReturnValue(pending.promise);
 		const callbacks = openModal();
@@ -127,7 +129,7 @@ describe('instance recovery dialog', () => {
 		await fireEvent.submit(form);
 		await fireEvent.keyDown(document, { key: 'Escape' });
 		expect(callbacks.onClose).not.toHaveBeenCalled();
-		expect(api.post).toHaveBeenCalledExactlyOnceWith(`${root}/recover`, { expected_guest_restart: true }, 'test-token', 'current-project', expect.anything());
+		expect(api.post).toHaveBeenCalledExactlyOnceWith(`${root}/recover`, { plan_fingerprint: fingerprint }, 'test-token', 'current-project', expect.anything());
 		pending.resolve(accepted);
 		await screen.findByText('Last observed Nova status: REBOOT');
 		expect(screen.getByText(/accepted all requests but did not confirm recovery/)).toBeTruthy();
@@ -152,7 +154,7 @@ describe('instance recovery dialog', () => {
 	});
 
 	it.each([
-		{ error: new ApiError(409, 'Guest restart requirement changed'), expected: /latest safety check blocked recovery/ },
+		{ error: new ApiError(409, 'Recovery plan changed'), expected: /latest safety check blocked recovery/ },
 		{ error: new TypeError('Network unavailable'), expected: /recovery outcome is unknown/ },
 	])('requires a fresh review after an unsuccessful response ($error.message)', async ({ error, expected }) => {
 		api.post.mockRejectedValue(error);

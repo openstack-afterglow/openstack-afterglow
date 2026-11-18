@@ -2729,7 +2729,7 @@ async def get_recovery_analysis(
 class RecoverInstanceRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    expected_guest_restart: bool | None = None
+    plan_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
 _INSTANCE_RECOVERY_LOCK_SECONDS = 600
@@ -2738,9 +2738,9 @@ _INSTANCE_RECOVERY_LOCK_SECONDS = 600
 @router.post("/instances/{server_id}/recover", dependencies=[Depends(require_admin)])
 async def recover_instance(
     server_id: str,
+    request: RecoverInstanceRequest,
     conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     token_info: dict = Depends(get_token_info),
-    request: RecoverInstanceRequest | None = None,
 ):
     """ERROR 인스턴스 복구 실행.
 
@@ -2781,7 +2781,7 @@ async def recover_instance(
                 instance_recovery.execute_recovery,
                 conn,
                 server_id,
-                expected_guest_restart=request.expected_guest_restart if request else None,
+                plan_fingerprint=request.plan_fingerprint,
                 before_write=before_write,
             )
         )
@@ -2818,6 +2818,7 @@ async def recover_instance(
                 "scenario": result["scenario"],
                 "steps": result["steps"],
                 "observed_status": result["observed_status"],
+                "plan_fingerprint": request.plan_fingerprint,
                 "recovered": result["recovered"],
             },
         )
