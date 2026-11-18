@@ -8,6 +8,7 @@
 	import RichText from '$lib/i18n/RichText.svelte';
 	import { t as studioT } from '$lib/i18n/ns/chat-studio';
 	import { resolveCatalogModel } from '$lib/api/modelCatalog';
+	import { modelBillingReason } from '$lib/api/modelDomainBilling';
 	import ProviderModelSelect from './ProviderModelSelect.svelte';
 
 	interface Props {
@@ -35,6 +36,7 @@
 
 	const canSubmit = $derived(form.name.trim().length > 0 && !saving && !disabled);
 	const selectedModel = $derived(resolveCatalogModel(models, form.model_row_id, form.model_name));
+	const selectedModelBlock = $derived(selectedModel ? modelBillingReason(selectedModel) : null);
 
 	function selectModel(row: AvailableModel | null) {
 		form.model_row_id = row?.id ?? null;
@@ -89,6 +91,11 @@
 				placeholder={t('agentBuilder.model.default')} onSelect={selectModel} />
 			{#if (form.model_name || form.model_row_id != null) && !selectedModel}
 				<p class="empty">{studioT('modelSelector.unavailable')}</p>
+				<Button variant="ghost" size="sm" disabled={disabled || saving} onclick={() => selectModel(null)}>
+					{t('agentBuilder.model.default')}
+				</Button>
+			{:else if selectedModelBlock}
+				<p class="empty" role="status">{selectedModelBlock}</p>
 				<Button variant="ghost" size="sm" disabled={disabled || saving} onclick={() => selectModel(null)}>
 					{t('agentBuilder.model.default')}
 				</Button>

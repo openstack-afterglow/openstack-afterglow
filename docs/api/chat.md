@@ -132,7 +132,7 @@ Afterglow 백엔드는 대부분의 `/api/v1/chat/{path}` 요청을 내부 Lumen
 
 | 메서드 · 경로 | 상위 위임 경로 | 설명 |
 |--------------|----------------|------|
-| `GET /api/v1/chat/models` | `/v1/chat/models` | 사용 가능한 LLM 모델 목록 조회. `reasoning_none_supported`가 true인 모델에만 추론 강도 "없음"(`reasoning_effort="none"`)을 노출한다. Lumen은 그 밖의 모델에서 `none`을 422로 거부하며, 값이 없으면(구버전 Lumen) 숨긴다 |
+| `GET /api/v1/chat/models` | `/v1/chat/models` | 사용 가능한 LLM 모델 목록 조회. `reasoning_none_supported`가 true인 모델에만 추론 강도 "없음"(`reasoning_effort="none"`)을 노출한다. Lumen은 그 밖의 모델에서 `none`을 422로 거부하며, 값이 없으면(구버전 Lumen) 숨긴다. 텍스트 모델의 `domain_billing: {ready, reason_code}`(`pricing_unavailable`·`output_budget_unenforced`·`context_limit_unknown`)이 `ready: false`이면 대시보드 선택기는 사유와 함께 비활성으로 표시하고 자동 선택하지 않는다. 필드가 없으면(구버전 Lumen) 준비된 것으로 취급하며, Lumen의 422 `domain_billing (<reason>)` 거부도 같은 사유로 표시한다 |
 | `POST /api/v1/chat/images/generations`, `/images/edits` | `/v1/chat/images/generations`, `/edits` | durable image run 접수. 두 경로 모두 JSON `prompt`와 UUID `Idempotency-Key` 필수. `generations`는 입력 이미지를 받지 않고, `edits`는 소유한 scanned `input_asset_id`를 요구한다 |
 | `POST /api/v1/chat/audio/speech` | `/v1/chat/audio/speech` | 음성 생성 요청을 전달하고 오디오 응답 바이트와 Content-Type을 보존 |
 | `POST /api/v1/chat/audio/transcriptions` | `/v1/chat/audio/transcriptions` | 저장된 오디오 asset ID와 선택 `language`·`prompt`, capability가 광고할 때만 `timestamp_granularities: ["segment"]`를 담은 JSON 전사 요청을 전달하고 응답 바이트와 Content-Type을 보존. 응답은 `{text}` 또는 timing 요청 시 `{text, segments:[{start,end,text}]}` |

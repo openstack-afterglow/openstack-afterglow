@@ -16,6 +16,7 @@ import { experienceHealth, installExperienceCollector, type ExperienceCollectorC
 import { managedSandboxTools, setManagedSandboxTools } from '$lib/stores/managedSandboxTools';
 import type { McpSettingsPage } from '$lib/api/mcpCatalog';
 import { t as mcpT } from '$lib/i18n/ns/mcp-gallery';
+import { t as studioT } from '$lib/i18n/ns/chat-studio';
 const mocks = vi.hoisted(() => ({
 	get: vi.fn(),
 	post: vi.fn(),
@@ -290,6 +291,65 @@ describe('ChatPanel', () => {
 		expect(choices.every((choice) => choice.getAttribute('aria-pressed') === 'false')).toBe(true);
 		expect(localStorage.getItem('chat:lastModelId')).toBeNull();
 		expect(localStorage.getItem('chat:lastModel')).toBe('shared-model');
+	});
+
+	const unreadyContext = { ready: false, reason_code: 'context_limit_unknown' } as const;
+	const billingRows = [
+		{ id: 1, provider_id: 11, provider: 'Provider A', model_name: 'model-1', display_name: 'Model 1', domain_billing: unreadyContext },
+		{ id: 2, provider_id: 11, provider: 'Provider A', model_name: 'model-2', display_name: 'Model 2', domain_billing: { ready: true, reason_code: null } }
+	];
+	function loadBillingCatalog(rows: object[]) {
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation((path: string, ...rest: unknown[]) => path === '/api/v1/chat/models'
+			? Promise.resolve(rows) : fallback(path, ...rest));
+	}
+
+	it('defaults to the first domain-billing-ready model and shows unready rows disabled with a reason', async () => {
+		loadBillingCatalog(billingRows);
+		render(ChatPanel);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Model 2' }));
+		const picker = within(screen.getByRole('dialog'));
+		const unready = picker.getByRole('button', { name: 'Model 1 모델 선택' });
+		expect(unready.getAttribute('aria-disabled')).toBe('true');
+		expect(picker.getByText(studioT('modelBilling.contextLimit'))).toBeTruthy();
+		await fireEvent.click(unready);
+		expect(screen.getByRole('dialog')).toBeTruthy();
+		expect(localStorage.getItem('chat:lastModelId')).toBeNull();
+	});
+
+	it('replaces a remembered model that became unready and explains why', async () => {
+		localStorage.setItem('chat:lastModelId', '1');
+		loadBillingCatalog(billingRows);
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 2' });
+		expect(screen.getByText(studioT('modelBilling.fallback', {
+			previous: 'Model 1', next: 'Model 2', reason: studioT('modelBilling.contextLimit')
+		}))).toBeTruthy();
+		expect(localStorage.getItem('chat:lastModelId')).toBe('1');
+		mocks.post.mockResolvedValue({ id: 'fallback-conversation', model_name: 'model-2', workspace_id: null });
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Use the ready model' } });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		await waitFor(() => expect(mocks.createRun.mock.calls[0]?.[1]).toMatchObject({ model_id: 'model-2', model_row_id: 2 }));
+	});
+
+	it('selects nothing and guides the user when no model is ready for domain billing', async () => {
+		loadBillingCatalog(billingRows.map((row) => ({ ...row, domain_billing: unreadyContext })));
+		render(ChatPanel);
+		expect(await screen.findByText(studioT('modelBilling.noneReady'))).toBeTruthy();
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Nothing can run' } });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		await waitFor(() => expect(screen.getAllByText(studioT('modelBilling.noneReady')).length).toBeGreaterThan(1));
+		expect(mocks.createRun).not.toHaveBeenCalled();
+	});
+
+	it('maps a 422 domain_billing admission refusal to the localized reason', async () => {
+		mocks.createRun.mockRejectedValue(new mocks.ChatHttpError('requested chat capability is not available: domain_billing (pricing_unavailable)', 422));
+		mocks.post.mockResolvedValue({ id: 'refused-conversation', model_name: 'model-1', workspace_id: null });
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Refused at admission' } });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		expect(await screen.findByText(studioT('modelBilling.pricing'))).toBeTruthy();
 	});
 
 	it.each(['baseline', 'rich'] as const)('keeps %s unpositioned approval usable after SSE failure and restores its actual start after reload', async (shape) => {

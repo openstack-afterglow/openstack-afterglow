@@ -1,3 +1,9 @@
+/** Lumen's per-text-model domain-pool admission readiness (absent before Lumen 0.6.21). */
+export interface DomainBillingReadiness {
+	ready: boolean;
+	reason_code: 'pricing_unavailable' | 'output_budget_unenforced' | 'context_limit_unknown' | null;
+}
+
 export interface ModelCatalogRow {
 	id: number;
 	provider_id?: number;
@@ -5,6 +11,7 @@ export interface ModelCatalogRow {
 	provider_type?: string | null;
 	model_name: string;
 	display_name: string;
+	domain_billing?: DomainBillingReadiness | null;
 }
 
 export interface ModelProvider<T extends ModelCatalogRow> {
