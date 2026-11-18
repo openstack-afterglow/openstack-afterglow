@@ -1544,6 +1544,8 @@ Image Studio consumes Lumen's advanced image capability metadata for ordered mul
 
 Removing an attachment during an upload aborts that batch, discards every unconfirmed attachment, and revokes its local preview. Completed sources not selected for removal remain usable.
 
+Completed Image Studio runs report billed image count and cost for the `image_units` usage component; zero token placeholders are not displayed as provider usage.
+
 Afterglow Embedding Studio is a session-authenticated text-to-vector surface, separate from chat history. It selects only Lumen `model_kind=embedding` routes, checks current `lumen-chat_user` and model `embeddings`/pricing capability gates, limits input to 1–16 texts, and fences late results by request/user/project ownership. It displays dimensions, bounded vector preview, norm, token/cost and pairwise cosine similarity; it does not persist prompt or vector data. Public OpenAI/Gemini API-key embedding compatibility remains owned by Lumen, not the browser BFF.
 
 대시보드 텍스트 채팅은 API-key 기반 OpenAI 호환 `/v1/responses`(Codex 경로)가 아니라 Keystone 사용자/프로젝트가 소유한 `/v1/conversations/{id}/completions`·`/v1/temp-completions`에서 `202` durable run을 만들고 `/v1/runs/{id}/events`를 구독한다. 따라서 호환 API의 성공만으로 native provider worker의 인증·모델 라우팅을 검증하지 않는다. 접수 전 오류는 BFF가 보존한 HTTP 상태와 안전한 detail을 표시하고, 접수 뒤 `run.failed`는 Lumen의 `error_code`·`safe_message`를 별도로 표시한다. Provider 응답 원문·비밀값은 브라우저로 전달하지 않는다.

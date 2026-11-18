@@ -378,6 +378,7 @@
 	"imageStudio.options.gifBudget": "Đã vượt giới hạn pixel của GIF. Hãy giảm kích thước, số khung hình hoặc số ảnh.",
 	"imageStudio.options.estimate": "Ước tính ảnh đầu ra: {tokens} token · {cost}. Chưa gồm chi phí đầu vào.",
 	"imageStudio.options.usage": "Mức sử dụng thực tế: {input} token đầu vào · {output} token đầu ra · chi phí nhà cung cấp {cost}",
+	"imageStudio.options.unitUsage": "Mức sử dụng thực tế: {count} ảnh · chi phí nhà cung cấp {cost}",
 	"imageStudio.quality.medium": "Trung bình",
 	"imageStudio.quality.low": "Thấp",
 	"imageStudio.quality.standard": "Tiêu chuẩn",

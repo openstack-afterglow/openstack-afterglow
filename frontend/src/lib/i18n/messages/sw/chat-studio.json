@@ -378,6 +378,7 @@
 	"imageStudio.options.gifBudget": "Kikomo cha pikseli za GIF kimezidiwa. Punguza ukubwa, idadi ya fremu au idadi ya picha.",
 	"imageStudio.options.estimate": "Makadirio ya picha tokeo: tokeni {tokens} · {cost}. Hayajumuishi gharama za ingizo.",
 	"imageStudio.options.usage": "Matumizi halisi: tokeni {input} za ingizo · tokeni {output} za tokeo · gharama ya mtoa huduma {cost}",
+	"imageStudio.options.unitUsage": "Matumizi halisi: picha {count} · gharama ya mtoa huduma {cost}",
 	"imageStudio.quality.medium": "Wastani",
 	"imageStudio.quality.low": "Chini",
 	"imageStudio.quality.standard": "Kawaida",

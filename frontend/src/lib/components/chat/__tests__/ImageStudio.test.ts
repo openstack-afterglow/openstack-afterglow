@@ -122,6 +122,28 @@ describe('Image Studio', () => {
 		expect(await screen.findByText(/0.211335/)).toBeTruthy();
 	});
 
+	it('shows billed image units rather than token placeholders for a unit-priced completed run', async () => {
+		initLocale('en');
+		api.run.mockResolvedValue({
+			run_id: 'run-1', status: 'completed', terminal: true,
+			output_assets: ['asset-1', 'asset-2'].map((asset_id) => ({
+				asset_id, mime_type: 'image/png', size_bytes: 5, download_url: `/v1/assets/${asset_id}/download`
+			}))
+		} satisfies ImageStudioModule.ImageRun);
+		api.usage.mockResolvedValue({
+			prompt_tokens: 0, completion_tokens: 0, raw_cost: '0.08', credited_cost: '0.1',
+			components: [{ kind: 'image_units', quantity: '2', unit: 'image', unit_price_usd: '0.04', cost_usd: '0.08',
+				segment_id: 'image', source: 'media', model_name: 'image-model', metadata: { size: '1024x1024', quality: 'high' } }]
+		} satisfies ImageStudioModule.ImageUsage);
+		render(ImageStudio);
+		await screen.findByRole('option', { name: t('imageStudio.quality.high') });
+		await fireEvent.input(screen.getByLabelText(t('imageStudio.prompt')), { target: { value: 'A tree' } });
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.imageCount')), { target: { value: '2' } });
+		await fireEvent.click(screen.getByRole('button', { name: t('imageStudio.createImage') }));
+		expect(await screen.findByText(t('imageStudio.options.unitUsage', { count: '2', cost: '$0.08' }))).toBeTruthy();
+		expect(screen.queryByText(/0 input tokens/)).toBeNull();
+	});
+
 	it.each(['gif', 'svg'] as const)('sends format-specific fields and displays %s only as an image', async (format) => {
 		const mime = format === 'gif' ? 'image/gif' : 'image/svg+xml';
 		api.capabilities.mockResolvedValue(openaiCapabilities);

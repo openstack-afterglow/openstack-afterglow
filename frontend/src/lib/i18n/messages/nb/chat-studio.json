@@ -378,6 +378,7 @@
 	"imageStudio.options.gifBudget": "Pikselgrensen for GIF er overskredet. Reduser størrelsen, antall bilderuter eller antall bilder.",
 	"imageStudio.options.estimate": "Anslått bildeoutput: {tokens} tokener · {cost}. Kostnader for inndata er ikke inkludert.",
 	"imageStudio.options.usage": "Faktisk bruk: {input} inndatatokener · {output} utdatatokener · leverandørkostnad {cost}",
+	"imageStudio.options.unitUsage": "Faktisk bruk: bildeantall {count} · leverandørkostnad {cost}",
 	"imageStudio.quality.medium": "Middels",
 	"imageStudio.quality.low": "Lav",
 	"imageStudio.quality.standard": "Standard",

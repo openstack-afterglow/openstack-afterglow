@@ -791,7 +791,12 @@
 					{#if currentRun?.status === 'canceled'}<Alert tone="neutral">{t('imageStudio.jobCanceled')}</Alert>{/if}
 					{#if currentRun?.status === 'completed'}
 						{#if usage}
-							<p class="muted">{t('imageStudio.options.usage', { input: usage.prompt_tokens, output: usage.completion_tokens, cost: currency.format(Number(usage.raw_cost)) })}</p>
+							{@const units = usage.components.find(({ kind }) => kind === 'image_units')}
+							{#if units}
+								<p class="muted">{t('imageStudio.options.unitUsage', { count: new Intl.NumberFormat(intlLocale()).format(Number(units.quantity)), cost: currency.format(Number(units.cost_usd)) })}</p>
+							{:else}
+								<p class="muted">{t('imageStudio.options.usage', { input: usage.prompt_tokens, output: usage.completion_tokens, cost: currency.format(Number(usage.raw_cost)) })}</p>
+							{/if}
 						{/if}
 						{#if currentRun.output_assets?.length}
 							<div class="gallery">

@@ -378,6 +378,7 @@
 	"imageStudio.options.gifBudget": "Had piksel GIF dilampaui. Kurangkan saiz, bilangan bingkai atau bilangan imej.",
 	"imageStudio.options.estimate": "Anggaran output imej: {tokens} token · {cost}. Kos input tidak termasuk.",
 	"imageStudio.options.usage": "Penggunaan sebenar: {input} token input · {output} token output · kos penyedia {cost}",
+	"imageStudio.options.unitUsage": "Penggunaan sebenar: {count} imej · kos penyedia {cost}",
 	"imageStudio.quality.medium": "Sederhana",
 	"imageStudio.quality.low": "Rendah",
 	"imageStudio.quality.standard": "Standard",

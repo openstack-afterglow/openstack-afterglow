@@ -378,6 +378,7 @@
 	"imageStudio.options.gifBudget": "This exceeds the GIF pixel budget. Reduce the size, frame count, or image count.",
 	"imageStudio.options.estimate": "Estimated image output: {tokens} tokens · {cost}. Input costs not included.",
 	"imageStudio.options.usage": "Actual usage: {input} input tokens · {output} output tokens · {cost} provider cost",
+	"imageStudio.options.unitUsage": "Actual usage: image count {count} · {cost} provider cost",
 	"imageStudio.quality.medium": "Medium",
 	"imageStudio.quality.low": "Low",
 	"imageStudio.quality.standard": "Standard",

@@ -378,6 +378,7 @@
 	"imageStudio.options.gifBudget": "GIF-এর পিক্সেল সীমা ছাড়িয়েছে। মাপ, ফ্রেমের সংখ্যা বা ছবির সংখ্যা কমান।",
 	"imageStudio.options.estimate": "ছবির আনুমানিক আউটপুট: {tokens} টোকেন · {cost}। ইনপুটের খরচ অন্তর্ভুক্ত নয়।",
 	"imageStudio.options.usage": "প্রকৃত ব্যবহার: ইনপুট {input} টোকেন · আউটপুট {output} টোকেন · প্রদানকারীর খরচ {cost}",
+	"imageStudio.options.unitUsage": "প্রকৃত ব্যবহার: {count}টি ছবি · প্রদানকারীর খরচ {cost}",
 	"imageStudio.quality.medium": "মাঝারি",
 	"imageStudio.quality.low": "নিম্ন",
 	"imageStudio.quality.standard": "স্ট্যান্ডার্ড",

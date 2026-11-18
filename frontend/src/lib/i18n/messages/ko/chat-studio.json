@@ -378,6 +378,7 @@
 	"imageStudio.options.gifBudget": "GIF 픽셀 한도를 초과했습니다. 크기, 프레임 수 또는 이미지 수를 줄이세요.",
 	"imageStudio.options.estimate": "이미지 출력 예상: {tokens}토큰 · {cost}. 입력 비용은 제외됩니다.",
 	"imageStudio.options.usage": "실제 사용량: 입력 {input}토큰 · 출력 {output}토큰 · 공급자 비용 {cost}",
+	"imageStudio.options.unitUsage": "실제 사용량: 이미지 {count}개 · 공급자 비용 {cost}",
 	"imageStudio.quality.medium": "medium",
 	"imageStudio.quality.low": "low",
 	"imageStudio.quality.standard": "standard",

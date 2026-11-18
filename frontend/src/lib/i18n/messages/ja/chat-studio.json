@@ -378,6 +378,7 @@
 	"imageStudio.options.gifBudget": "GIFのピクセル上限を超えています。サイズ、フレーム数、または画像数を減らしてください。",
 	"imageStudio.options.estimate": "画像出力の見積もり：{tokens}トークン · {cost}。入力費用は含まれません。",
 	"imageStudio.options.usage": "実際の使用量：入力{input}トークン · 出力{output}トークン · プロバイダー費用{cost}",
+	"imageStudio.options.unitUsage": "実際の使用量：画像{count}枚 · プロバイダー費用{cost}",
 	"imageStudio.quality.medium": "中",
 	"imageStudio.quality.low": "低",
 	"imageStudio.quality.standard": "標準",
