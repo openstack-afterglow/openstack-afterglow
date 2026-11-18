@@ -11,6 +11,8 @@
 
 - Lumen CLI 설치기는 Afterglow 시작 시 배포의 공개 Lumen 주소를 포함한다. Codex·Claude Code 자동 설정 명령에는 URL 옵션이 없으며, 공개 주소가 없으면 명령을 표시하지 않는다.
 - Lumen CLI installers embed the deployment's public Lumen URL at Afterglow startup. Codex and Claude Code setup commands take no URL options and stay hidden when no public URL is configured.
+- Lumen 개인 키는 프로젝트에 묶이지 않는다. 도메인 매니저는 서비스 키와 선불 풀 한도를 관리하고, 시스템 관리자는 도메인 풀을 충전하고 서비스 키를 조회한다.
+- Lumen personal keys are project-independent. Domain managers manage service keys and pool limits; system administrators top up domain pools and inspect service keys.
 - 채팅 기록, 에이전트, 메모리 및 도구 연결은 같은 도메인의 프로젝트 전환 시 유지된다. 사용량 기록과 클라우드 도구는 선택한 프로젝트를 사용한다. 연결 관리에서 보관된 개인 연결과 도구를 복원할 수 있으며, 조직 항목은 권한을 확인한 관리자가 복원한다.
 - Chat history, agents, memory and tool connections persist across project switches in a domain. Usage attribution and cloud tools follow the selected project. Manage connections can restore archived personal duplicates; authorized managers can restore organization duplicates.
 - 채팅·에이전트·Studio에서 공급자를 먼저 선택하고 등록 모델을 고른다. 공급자가 다른 동명 모델은 별도 선택지로 표시하며 실행에서도 정확한 등록 모델을 사용한다.

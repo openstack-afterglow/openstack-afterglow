@@ -72,6 +72,8 @@
 	"items.clusterTemplates": "Klyngemaler",
 	"items.chatStats": "Chatstatistikk",
 	"items.userQuotas": "Brukerkvoter",
+	"items.lumenDomainPools": "Kredittpotter for domener",
+	"items.lumenServiceKeys": "Oversikt over tjenestenøkler",
 	"items.modelSettings": "Modellinnstillinger",
 	"items.providerSettings": "Leverandørinnstillinger",
 	"items.toolSettings": "Verktøyinnstillinger",

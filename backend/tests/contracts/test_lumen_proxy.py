@@ -1306,3 +1306,159 @@ async def test_private_account_transport_failure_does_not_log_url_or_exception_s
     assert secret not in response.text
     assert secret not in caplog.text
     assert "provider administration failed" in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "api-keys"),
+        ("POST", "service-keys"),
+        ("PATCH", "domain-pool"),
+        ("GET", "admin/domain-pools"),
+        ("PATCH", "admin/domain-pools/domain-1"),
+        ("POST", "admin/domain-pools/domain-1/topups"),
+        ("GET", "admin/service-keys"),
+    ],
+)
+async def test_lumen_key_billing_routes_require_session(api_client, method, path):
+    with patch("app.services.service_proxy._get_internal_endpoint") as endpoint:
+        response = await api_client.request(method, f"/api/v1/chat/{path}")
+    assert response.status_code == 401
+    assert response.headers["cache-control"] == "no-store"
+    endpoint.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "admin/domain-pools"),
+        ("PATCH", "admin/domain-pools/domain-1"),
+        ("POST", "admin/domain-pools/domain-1/topups"),
+        ("GET", "admin/service-keys"),
+    ],
+)
+async def test_lumen_key_billing_admin_routes_deny_project_members(api_client, method, path):
+    app.dependency_overrides[get_token_info] = _authenticated
+    with patch("app.services.service_proxy._get_internal_endpoint") as endpoint:
+        response = await api_client.request(method, f"/api/v1/chat/{path}")
+    assert response.status_code == 403
+    assert response.headers["cache-control"] == "no-store"
+    endpoint.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["service-keys", "domain-pool"])
+async def test_lumen_key_billing_manager_routes_deny_stale_or_spoofed_authority(api_client, path):
+    app.dependency_overrides[get_token_info] = _authenticated
+    with (
+        patch("app.services.domain_scope.domain_context", return_value={"is_domain_manager": False}) as context,
+        patch("app.services.service_proxy._get_internal_endpoint") as endpoint,
+    ):
+        response = await api_client.get(f"/api/v1/chat/{path}", headers={"X-Is-Domain-Manager": "true"})
+    assert response.status_code == 403
+    assert response.headers["cache-control"] == "no-store"
+    context.assert_called_once_with("user-1", "default")
+    endpoint.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "path", "status", "body", "reply"),
+    [
+        ("GET", "api-keys", 200, None, []),
+        ("GET", "api-keys/issuance-policy", 200, None, {"allowed_scopes": ["models:read"]}),
+        ("POST", "api-keys", 201, {"name": "CLI"}, {"key": "issued-once-fixture"}),
+        ("DELETE", "api-keys/12", 204, None, None),
+        ("GET", "service-keys", 200, None, []),
+        ("POST", "service-keys", 201, {"name": "Job"}, {"key": "issued-once-fixture"}),
+        ("DELETE", "service-keys/7", 204, None, None),
+        ("GET", "domain-pool", 200, None, {"domain_id": "default", "balance_credits": "3"}),
+        ("PATCH", "domain-pool", 409, {"manager_monthly_limit_credits": "5"}, {"detail": "domain_credit_insufficient"}),
+        ("GET", "admin/domain-pools", 200, None, {"items": []}),
+        ("PATCH", "admin/domain-pools/domain-1", 200, {"is_active": False}, {"is_active": False}),
+        (
+            "POST",
+            "admin/domain-pools/domain-1/topups",
+            409,
+            {"amount_credits": "1.5", "note": "test receipt"},
+            {"detail": {"code": "idempotency_key_reused_with_different_intent"}},
+        ),
+        ("GET", "admin/service-keys?owner_domain_id=domain-1&before_id=10", 200, None, {"items": [], "next_before_id": None}),
+    ],
+)
+async def test_lumen_key_billing_transport_preserves_scope_and_codes(
+    api_client, current_system_admin, method, path, status, body, reply
+):
+    app.dependency_overrides[get_token_info] = _authenticated_system_admin if path.startswith("admin/") else _authenticated
+
+    async def handler(request):
+        assert request.method == method
+        assert str(request.url) == f"http://isolated.test/v1/{path}"
+        assert request.headers["x-auth-token"] == "caller-token"
+        assert request.headers["x-project-id"] == "project-1"
+        assert "x-domain-id" not in request.headers
+        if path.endswith("/topups"):
+            assert request.headers["idempotency-key"] == "topup-test-id"
+        if body is not None:
+            assert json.loads(await request.aread()) == body
+        return HttpxResponse(
+            status,
+            headers={"content-type": "application/json", "cache-control": "public, max-age=60"},
+            stream=httpx.ByteStream(b"" if reply is None else json.dumps(reply).encode()),
+        )
+
+    upstream = AsyncClient(transport=httpx.MockTransport(handler))
+    with (
+        patch("app.api.lumen.proxy.require_domain_manager", new_callable=AsyncMock) as manager_guard,
+        patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1"),
+        patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
+    ):
+        response = await api_client.request(
+            method,
+            f"/api/v1/chat/{path}",
+            json=body,
+            headers={"X-Domain-Id": "spoofed-domain", "Idempotency-Key": "topup-test-id"},
+        )
+    assert manager_guard.await_count == (1 if path.startswith(("service-keys", "domain-pool")) else 0)
+    assert response.status_code == status
+    assert response.headers["cache-control"] == "no-store"
+    if reply is None:
+        assert not response.content
+    else:
+        assert response.json() == reply
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "path", "status"),
+    [("GET", "service-keys/7", 405), ("POST", "admin/domain-pools/a/topup", 404), ("POST", "domain-pool", 405)],
+)
+async def test_lumen_key_billing_allowlist_denies_unknown_paths_and_methods(api_client, method, path, status):
+    app.dependency_overrides[get_token_info] = _authenticated
+    with patch("app.services.service_proxy._get_internal_endpoint") as endpoint:
+        response = await api_client.request(method, f"/api/v1/chat/{path}")
+    assert response.status_code == status
+    assert response.headers["cache-control"] == "no-store"
+    endpoint.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_lumen_key_billing_transport_does_not_log_private_exception(api_client, caplog):
+    app.dependency_overrides[get_token_info] = _authenticated
+    private = "private-native-fixture"
+
+    def handler(request):
+        raise httpx.ConnectError(f"transport rejected {private}", request=request)
+
+    upstream = AsyncClient(transport=httpx.MockTransport(handler))
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1"),
+        patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
+    ):
+        response = await api_client.post("/api/v1/chat/api-keys", json={"name": "CLI"})
+    assert response.status_code == 503
+    assert response.headers["cache-control"] == "no-store"
+    assert private not in response.text
+    assert private not in caplog.text

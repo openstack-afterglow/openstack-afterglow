@@ -24,7 +24,9 @@ Chat, agent, and Studio model pickers scope the model choices by provider. Exist
 
 Drover 작업의 초기 비결정 progress는 전체 track 너비에 분산한다. 이후 관측된 단계 기반 추정치와 native 보고 진행률은 구분하며, authoritative terminal 전100%를 표시하지 않는다. 생성 modal 최소화 뒤 동일 소유자·프로젝트의 하단 dock에서 상태를 계속 볼 수 있고, 실제 terminal 전에는 완전히 닫지 않는다. 연결 유실과 operation ID 미수신은 unknown이며 재시도·성공으로 합성하지 않는다. Dock은 기존 upload 표시와 겹치지 않고 좁은 화면에서도 조작할 수 있다.
 
-OAuth 연결 카드와 삭제 확인은 client ID 기반 저장 이름 대신 지역화된 OAuth 이름+현재 목록 순번을 사용한다. Origin은 발급 project 대신 승인 도메인의 현재 이름+ID로 표시해 동명 도메인을 구분하고, 확인 불가 시 현재/home domain을 대신 넣지 않는다. 저장된 승인 프로젝트는 이름으로 계속 표시하며 만료·접근 상한·클라이언트 관측·exact grant 제거를 유지한다. 순번은 영구 식별자가 아니고 도메인 이름은 승인 당시 snapshot이 아니다. 개인 API 키의 발급 project·일회성 평문은 바꾸지 않는다.
+OAuth 연결 카드와 삭제 확인은 client ID 기반 저장 이름 대신 지역화된 OAuth 이름+현재 목록 순번을 사용한다. Origin은 발급 project 대신 승인 도메인의 현재 이름+ID로 표시해 동명 도메인을 구분하고, 확인 불가 시 현재/home domain을 대신 넣지 않는다. 저장된 승인 프로젝트는 이름으로 계속 표시하며 만료·접근 상한·클라이언트 관측·exact grant 제거를 유지한다. 순번은 영구 식별자가 아니고 도메인 이름은 승인 당시 snapshot이 아니다.
+
+Lumen 개인 키에는 발급 프로젝트 선택이 없고, 서비스 키·풀 설정은 검증된 현재 도메인 매니저에게만 표시한다. 두 키 종류 모두 발급 직후 닫기 가능한 일회성 비밀 dialog를 공유한다. 도메인 사용량은 사용자 본인 키 과금과 구분하고 풀의 선불 잔액·예약·한도를 실제 값으로 표시한다. 관리자는 충전 전에 정확한 도메인 ID·금액·메모를 확인한다. 결과 불명은 별도 오류로 표시하며 같은 의도의 키와 변경 불가능한 본문으로만 재시도한다. 기존 Card·FormModal·ConfirmDialog·Field·Alert와9locale를 사용한다.
 
 MCP 권한 preview는 `프로젝트의 클라우드 권한`과 `이 연결에 허용할 접근`을 별도 label/StatusChip 행으로 표시한다. Member가 read key를 선택해도 관리 가능한 프로젝트의 상태는 남고 연결의 읽기 제한만 바뀐다. 프로젝트 인증 범위 검증 실패는 단일 scope 안내로 표시해 서비스별 추가 역할 요구처럼 보이지 않게 하며, 검증된 scope에서의 개별 native 정책 오류는 그 서비스에만 남긴다. Reader와 unknown은 관리로 추정하지 않는다. 모든 도메인의 `Default` 프로젝트는 MCP 선택 목록에 나타나지 않으며 별도 placeholder나 새 시각 요소를 만들지 않는다. 클라이언트 관측의 이름·버전·신고/추정 근거·privacy와9locale·모바일 줄바꿈 계약은 유지한다.
 

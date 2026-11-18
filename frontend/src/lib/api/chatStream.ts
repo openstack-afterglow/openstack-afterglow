@@ -5,6 +5,7 @@ import { serviceCapabilities } from '$lib/stores/servicePermissions';
 import { requireLumenCapability } from './lumenAccess';
 import { chatRequestPermission, permissionReason } from './lumenPermissions';
 import { ApiError } from './errors';
+import { domainBillingCode } from './chatDomainBilling';
 import { parseChatRunEvent, parseContextState, type ChatRunDescriptor, type ChatRunEvent, type ChatRunStatus, type ContextState } from './chatContracts';
 import type { ExperienceContext } from '$lib/utils/experience';
 export type { ChatRunDescriptor, ContextState } from './chatContracts';
@@ -23,7 +24,7 @@ export class ChatProtocolError extends Error {
 export class ChatHttpError extends ChatProtocolError {
 	readonly status: number;
 
-	constructor(message: string, status: number) {
+	constructor(message: string, status: number, readonly code?: string) {
 		super(message, status);
 		this.name = 'ChatHttpError';
 		this.status = status;
@@ -163,6 +164,8 @@ async function errorFrom(response: Response): Promise<ChatHttpError> {
 		}
 		const body: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
 		if (isRecord(body)) {
+			const billingCode = domainBillingCode(body);
+			if (billingCode) return new ChatHttpError(t('http.requestFailed'), response.status, billingCode);
 			let detail: string | undefined;
 			if (typeof body.detail === 'string') {
 				detail = body.detail.trim();

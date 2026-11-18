@@ -72,6 +72,8 @@
 	"items.clusterTemplates": "Cluster templates",
 	"items.chatStats": "Chat statistics",
 	"items.userQuotas": "User quotas",
+	"items.lumenDomainPools": "Domain credit pools",
+	"items.lumenServiceKeys": "Service key inventory",
 	"items.modelSettings": "Model settings",
 	"items.providerSettings": "Provider settings",
 	"items.toolSettings": "Tool settings",

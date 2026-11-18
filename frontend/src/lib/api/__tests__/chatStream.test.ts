@@ -109,6 +109,22 @@ describe('durable chat SSE framing', () => {
 			fetchMock.mockRestore();
 		}
 	});
+	it.each([
+		{ detail: 'domain_credit_insufficient' },
+		{ detail: { code: 'domain_credit_insufficient', message: 'internal accounting data' } },
+		{ error: { code: 'domain_credit_insufficient', message: 'internal accounting data' } },
+	])('preserves the stable domain credit admission code without publishing upstream text', async (body) => {
+		const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+			new Response(JSON.stringify(body), { status: 402 })
+		);
+		try {
+			await expect(createChatRun('/api/v1/chat/runs', {})).rejects.toMatchObject({
+				status: 402, code: 'domain_credit_insufficient', message: expect.not.stringContaining('internal accounting data')
+			});
+		} finally {
+			fetchMock.mockRestore();
+		}
+	});
 	it('shows only a bounded structured detail on admission failures, with status fallback otherwise', async () => {
 		const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
 			new Response(JSON.stringify({ detail: 'Model quota exceeded' }), { status: 429 })

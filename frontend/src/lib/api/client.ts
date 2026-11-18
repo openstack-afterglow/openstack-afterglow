@@ -1269,10 +1269,13 @@ export const api = {
 	},
 	prefetch: prefetchJson,
 	clearPrefetchCache,
-	post: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: ApiMutationOptions) => {
+	post: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: ApiMutationOptions & { idempotencyKey?: string }) => {
 		const scope = captureRequestScope(token, projectId);
 		return withMutationInvalidation(scope, () =>
-			request<T>(path, { method: 'POST', body: JSON.stringify(body), signal: opts?.signal, cache: opts?.cache }, token, projectId, { ...opts, baseUrl: scope.baseUrl })
+			request<T>(path, {
+				method: 'POST', body: JSON.stringify(body), signal: opts?.signal, cache: opts?.cache,
+				headers: opts?.idempotencyKey === undefined ? undefined : { 'Idempotency-Key': opts.idempotencyKey },
+			}, token, projectId, { ...opts, baseUrl: scope.baseUrl })
 		);
 	},
 	put: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: ApiMutationOptions) => {
@@ -1490,7 +1493,7 @@ export const api = {
 function bindExperienceApi(experience: ExperienceContext | undefined) {
 	return {
 		get: <T>(path: string, token?: string, projectId?: string, opts?: ApiReadOptions): Promise<T> => api.get<T>(path, token, projectId, { ...opts, experience: opts?.experience ?? experience }),
-		post: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: ApiMutationOptions): Promise<T> => api.post<T>(path, body, token, projectId, { ...opts, experience: opts?.experience ?? experience }),
+		post: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: Parameters<typeof api.post>[4]): Promise<T> => api.post<T>(path, body, token, projectId, { ...opts, experience: opts?.experience ?? experience }),
 		put: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: ApiMutationOptions): Promise<T> => api.put<T>(path, body, token, projectId, { ...opts, experience: opts?.experience ?? experience }),
 		patch: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: ApiMutationOptions): Promise<T> => api.patch<T>(path, body, token, projectId, { ...opts, experience: opts?.experience ?? experience }),
 		delete: <T>(path: string, token?: string, projectId?: string, opts?: ApiMutationOptions): Promise<T> => api.delete<T>(path, token, projectId, { ...opts, experience: opts?.experience ?? experience }),

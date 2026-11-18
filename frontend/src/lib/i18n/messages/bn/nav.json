@@ -72,6 +72,8 @@
 	"items.clusterTemplates": "ক্লাস্টার টেমপ্লেট",
 	"items.chatStats": "চ্যাট পরিসংখ্যান",
 	"items.userQuotas": "ব্যবহারকারী কোটা",
+	"items.lumenDomainPools": "ডোমেইনের ক্রেডিট পুল",
+	"items.lumenServiceKeys": "পরিষেবা কীর তালিকা",
 	"items.modelSettings": "মডেল সেটিংস",
 	"items.providerSettings": "প্রদানকারী সেটিংস",
 	"items.toolSettings": "টুল সেটিংস",

@@ -51,6 +51,13 @@ export interface ChatUsage {
 	quota_used: number;
 	quota_max: number;
 	quota_weekly_max: number;
+	billing_scope?: 'domain' | 'user';
+	payer_domain_id?: string | null;
+	balance_credits?: string | number | null;
+	reserved_credits?: string | number | null;
+	monthly_used_credits?: string;
+	effective_monthly_limit_credits?: string | null;
+	is_active?: boolean;
 }
 
 export interface ChatMessage {

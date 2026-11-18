@@ -184,6 +184,7 @@ async def _forward(
     headers: dict[str, str],
     read_timeout: float | None = None,
     content: AsyncIterable[bytes] | None = None,
+    sensitive: bool = False,
 ) -> Response:
     if not endpoint:
         return JSONResponse(
@@ -217,9 +218,14 @@ async def _forward(
         )
         upstream_response = await client.send(outgoing, stream=True)
     except Exception as exc:
-        if service_type == "lumen" and upstream_path.startswith(("/v1/admin/providers", "/v1/vault/")):
-            # Private URLs and transport exception text can contain credentials or Vault queries.
+        if service_type == "lumen" and upstream_path.startswith("/v1/admin/providers"):
+            # Private URLs and transport exception text can contain credentials.
+            _logger.warning("Upstream proxy request to lumen provider administration failed")
+        elif service_type == "lumen" and upstream_path.startswith("/v1/vault/"):
+            # Vault query parameters and transport exception text can contain private note data.
             _logger.warning("Upstream proxy request to private Lumen route failed")
+        elif sensitive:
+            _logger.warning("Upstream proxy request to %s private route failed", service_type)
         else:
             _logger.warning("Upstream proxy request to %s failed: %s", upstream_url, exc)
         await client.aclose()
@@ -254,6 +260,7 @@ async def proxy(
     *,
     read_timeout: float | None = None,
     prepare_body: Callable[[Request], Awaitable[AsyncIterable[bytes]]] | None = None,
+    sensitive: bool = False,
 ) -> Response:
     """Proxy a browser request using its validated caller-scoped Keystone token."""
     token_info = getattr(request.state, "token_info", None)
@@ -280,6 +287,7 @@ async def proxy(
         headers=headers,
         read_timeout=read_timeout,
         content=content,
+        sensitive=sensitive,
     )
 
 

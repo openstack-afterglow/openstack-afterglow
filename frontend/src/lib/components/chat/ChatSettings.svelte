@@ -8,6 +8,8 @@
 	import ChatApiKeysManager from './ChatApiKeysManager.svelte';
 	import ChatUsagePanel from './ChatUsagePanel.svelte';
 	import type { ChatUsage } from '$lib/api/chatTree';
+	import { displayDomainCredit } from '$lib/api/chatDomainBilling';
+	import Alert from '$lib/components/ui/Alert.svelte';
 
 	export type ChatSettingsSection = 'usage' | 'apikeys' | 'memory' | 'mcp' | 'tools' | 'skills';
 
@@ -77,6 +79,9 @@
 	const requests = $derived(usage?.month_request_count ?? 0);
 	const quotaMax = $derived(usage?.quota_max ?? 0);
 	const quotaUsed = $derived(usage?.quota_used ?? 0);
+	const domainUsage = $derived(usage?.billing_scope === 'domain' && !!$auth.domainId && usage.payer_domain_id === $auth.domainId ? usage : null);
+	const domainInsufficient = $derived(domainUsage?.balance_credits != null && domainUsage.reserved_credits != null &&
+		Number(domainUsage.balance_credits) <= Number(domainUsage.reserved_credits));
 	function fmt(n: number): string {
 		return n.toLocaleString('en-US');
 	}
@@ -126,7 +131,28 @@
 								<span class="stat-lbl">{t('settings.usage.requests')}</span>
 							</div>
 						</div>
-						{#if quotaMax > 0}
+						{#if domainUsage}
+							<div class="space-y-2 py-3">
+								<h3 class="text-sm font-semibold text-ink-1">{t('domainBilling.title')}</h3>
+								<p class="text-xs text-ink-2">{t('domainBilling.memberDescription')}</p>
+								<dl class="grid grid-cols-2 gap-3 text-sm tabular-nums">
+									<div><dt class="text-xs text-ink-2">{t('domainBilling.balance')}</dt><dd>{displayDomainCredit(domainUsage.balance_credits)}</dd></div>
+									<div><dt class="text-xs text-ink-2">{t('domainBilling.reserved')}</dt><dd>{displayDomainCredit(domainUsage.reserved_credits)}</dd></div>
+									{#if domainUsage.monthly_used_credits !== undefined}
+										<div><dt class="text-xs text-ink-2">{t('domainBilling.monthlyUsed')}</dt><dd>{displayDomainCredit(domainUsage.monthly_used_credits)}</dd></div>
+									{/if}
+									{#if domainUsage.effective_monthly_limit_credits !== undefined}
+										<div>
+											<dt class="text-xs text-ink-2">{t('apiKeys.monthlyLimit')}</dt>
+											<dd>{domainUsage.effective_monthly_limit_credits === null ? t('domainBilling.noLimit') : displayDomainCredit(domainUsage.effective_monthly_limit_credits)}</dd>
+										</div>
+									{/if}
+								</dl>
+								{#if domainUsage.is_active === false}<Alert flat tone="warning">{t('domainBilling.inactive')}</Alert>{/if}
+								{#if domainInsufficient}<Alert flat tone="warning">{t('domainBilling.insufficient')}</Alert>{/if}
+							</div>
+						{/if}
+						{#if !domainUsage && quotaMax > 0}
 							<p class="sec-desc quota">
 								{t('settings.usage.monthlyQuota', { used: fmt(quotaUsed), limit: fmt(quotaMax) })}
 							</p>
@@ -143,7 +169,7 @@
 				{:else if section === 'apikeys'}
 					<section class="sec">
 						<h2 class="sr-only">{t('settings.sections.apiKeys')}</h2>
-						<ChatApiKeysManager {usage} />
+						<ChatApiKeysManager />
 					</section>
 				{:else if section === 'memory'}
 					<ChatVault />

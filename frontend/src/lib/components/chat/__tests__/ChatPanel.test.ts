@@ -2523,6 +2523,7 @@ describe('ChatPanel explicit sandbox selection', () => {
 		['sandbox_tool_unavailable', 503, '실행 환경을 현재 사용할 수 없습니다'],
 		['sandbox_selection_multiple_pools', 422, '도구 구성이 더 이상 유효하지 않습니다'],
 		['sandbox_pool_full', 422, '현재 한도가 소진되었습니다'],
+		['domain_credit_insufficient', 402, '도메인 크레딧이 부족합니다'],
 		['sandbox_configuration_changed', 422, '샌드박스 구성이 변경되었습니다']
 	] as const)('shows actionable native %s errors without automatic retry or clearing the selection', async (code, status, message) => {
 		catalogue();

@@ -72,6 +72,8 @@
 	"items.clusterTemplates": "クラスターテンプレート",
 	"items.chatStats": "チャット統計",
 	"items.userQuotas": "ユーザークォータ",
+	"items.lumenDomainPools": "ドメインクレジットプール",
+	"items.lumenServiceKeys": "サービスキー一覧",
 	"items.modelSettings": "モデル設定",
 	"items.providerSettings": "プロバイダー設定",
 	"items.toolSettings": "ツール設定",

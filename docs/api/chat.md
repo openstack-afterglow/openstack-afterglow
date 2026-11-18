@@ -95,7 +95,7 @@ Native Lumen의 fresh Keystone core role·유효 할당과 실제 `oslo.policy` 
 BFF·UI는 native capability 결과를 사용하고 표시 역할 배열/`can_write`로 장애를 우회하지 않습니다. 현재 core role floor는 operator policy보다 먼저 적용하여 `@`로 reader의 mutation/paid inference를 허용하지 않습니다. Provider/model/pricing/quota 및 전역 통계 API는 project member와 별개인 genuine human system-admin 전용입니다. Original credential/issued-role-ID, API key scope, owner/private content와 frozen budget/approval/tool 권한은 각각 유지됩니다.
 
 
-API-key scope는 발급자의 현재 native 정책 결과를 좁히는 ceiling입니다. 발급에는 keys action과 요청 scope의 현재 권한이 필요하며, 기존 키 사용·새 provider I/O에서도 enabled owner/project·현재 role과 정책을 재검증합니다. Issuer 편집 action만 회수해도 기존 사용 scope까지 자동 소멸하지는 않지만 사용 action의 grant 또는 YAML 허용을 회수하면 해당 호출을 거부합니다. 다른 사용자/private content 소유권 검사는 별도로 유지합니다.
+개인 API 키는 프로젝트에 묶이지 않고 발급 사용자에게 귀속됩니다. 서비스 키는 도메인 소유이며 발급자가 도메인을 떠나도 유지됩니다. 두 키 종류 모두 모델 조회·채팅·임베딩·이미지·오디오·실시간·의사결정의 허용된 모델 API만 호출할 수 있습니다. 클라우드 도구, 대화 이력, 메모리 및 키 관리에는 사용할 수 없습니다. 개인 키의 발급 및 관리에는 계속 native keys action이 필요합니다. 서비스 키는 현재 도메인 매니저만 관리할 수 있습니다.
 
 동일 user/project의 token 갱신·권한 확인 pending/error 동안 Studio는 입력·이미 표시한 결과 Blob을 메모리에 유지하되 미리보기/다운로드·새 액션을 숨기거나 차단합니다. 현재 권한이 복구되면 같은 Blob을 다시 보여 줍니다. 확인 중 완료한 새 응답은 게시하지 않으며 같은 입력의 명시적 재요청은 기존 idempotency intent를 재사용합니다. Native 사용 capability의 확정 회수와 user/project 전환은 해당 결과·요청·object URL을 폐기합니다.
 
@@ -155,9 +155,19 @@ Afterglow 백엔드는 대부분의 `/api/v1/chat/{path}` 요청을 내부 Lumen
 | `GET /api/v1/chat/runs/{run_id}/events` | `/v1/runs/{run_id}/events` | 실시간 실행 이벤트 스트림 (SSE 스트리밍) |
 | `POST /api/v1/chat/runs/{run_id}/cancel` | `/v1/runs/{run_id}/cancel` | 실행 중인 에이전트 중단 |
 | `POST /api/v1/chat/runs/{run_id}/approvals/{call_id}` | `/v1/runs/{run_id}/approvals/{call_id}` | 사용자 승인/거절 상태 제출 |
-| `GET /api/v1/chat/usage` | `/v1/usage` | 사용자 본인의 토큰 및 크레딧 사용량 조회 |
+| `GET /api/v1/chat/usage` | `/v1/usage` | 현재 사용자 사용량과 현재 도메인이 지불자인 경우 선불 잔액·예약·월간 사용량/한도 |
+| `GET/POST /api/v1/chat/api-keys` | `/v1/api-keys` | 개인 키 목록·발급. 프로젝트 선택 없음 |
+| `GET /api/v1/chat/api-keys/issuance-policy` | `/v1/api-keys/issuance-policy` | 허용된 모델 scope와 사용자 한도 |
+| `DELETE /api/v1/chat/api-keys/{id}` | `/v1/api-keys/{id}` | 본인 개인 키 폐기 |
 | `PATCH /api/v1/chat/api-keys/{id}` | `/v1/api-keys/{id}` | 본인 API 키 이름 변경 |
 | `PATCH /api/v1/chat/api-keys/{id}/limits` | `/v1/api-keys/{id}/limits` | 본인 API 키의 월·주간 크레딧 한도 설정(`null`은 해제) |
+| `GET/POST /api/v1/chat/service-keys` | `/v1/service-keys` | 현재 도메인 매니저: 서비스 키 목록·발급 |
+| `DELETE /api/v1/chat/service-keys/{id}` | `/v1/service-keys/{id}` | 현재 도메인 매니저: 서비스 키 폐기 |
+| `GET/PATCH /api/v1/chat/domain-pool` | `/v1/domain-pool` | 현재 도메인 매니저: 선불 잔액, 예약, 월간 사용량·한도·상한 조회; `manager_monthly_limit_credits` 변경 |
+| `GET /api/v1/chat/admin/domain-pools` | `/v1/admin/domain-pools` | 시스템 관리자: 도메인 크레딧 풀 목록 |
+| `PATCH /api/v1/chat/admin/domain-pools/{domain_id}` | `/v1/admin/domain-pools/{domain_id}` | 시스템 관리자: `admin_ceiling_credits`·`is_active` 변경 |
+| `POST /api/v1/chat/admin/domain-pools/{domain_id}/topups` | `/v1/admin/domain-pools/{domain_id}/topups` | 시스템 관리자: `amount_credits`, 선택 `note`, 필수 `Idempotency-Key`로 충전 |
+| `GET /api/v1/chat/admin/service-keys` | `/v1/admin/service-keys` | 시스템 관리자: 서비스 키 metadata. `owner_domain_id`·`before_id`·`limit` 지원 |
 | `GET /api/v1/chat/admin/quotas` | `/v1/admin/quotas` | 관리자: 시스템 기본 월 한도·credit 환산 정책·사용자별 상속/override와 현재 사용량 목록 |
 | `PUT /api/v1/chat/admin/quotas/defaults` | `/v1/admin/quotas/defaults` | 관리자: 시스템 전체 기본 월 한도 설정(`null`은 무제한) |
 | `PUT /api/v1/chat/admin/quotas/{user_id}` | `/v1/admin/quotas/{user_id}` | 관리자: 사용자 개인 월·주간 override 설정(`null`은 명시적 무제한) |
@@ -497,7 +507,7 @@ claude
 
 ### API 키와 모델 ID
 
-1. 채팅 화면의 **설정 → API 키 → 새 API 키** 또는 `/dashboard/chat/settings?section=apikeys`에서 발급한다. Modal에서 프로젝트·선택적 이름·만료 없음/30일/90일/직접 날짜·허용된 전체/선택/읽기 전용 권한·월 크레딧 한도를 한 번에 지정한다. 선택 프로젝트의 current permissions와 `GET /api/v1/chat/api-keys/issuance-policy`를 새로 조회하고 같은 프로젝트 header로 한 번의 POST를 보낸다. 원래 프로젝트 권한이나 쿼터를 대상에 재사용하지 않는다. 미래의 timezone-aware `expires_at`만 허용하며 기존 무만료 키는 유지한다. 평문 키는 발급 직후 한 번만 표시한다. 폐기 키는 기본 숨김이며 **전체 보기 / 활성만 보기**로 전환하고 폐기 행의 수정·폐기 액션은 표시하지 않는다. 만료됐지만 미폐기인 키는 만료 상태로 표시한다. 같은 화면의 이름 변경과 월·주간 한도 수정은 유지하며 초과 한도는 인라인 오류로 막는다.
+1. **설정 → API 키 → 새 API 키** 또는 `/dashboard/chat/settings?section=apikeys`에서 개인 키를 발급한다. 프로젝트를 고르지 않고 현재 세션의 허용 scope, 선택적 이름, 만료, 월 크레딧 한도를 지정한다. 평문 키는 발급 직후 한 번만 표시한다. 폐기 키는 기본 숨김이며 만료와 폐기는 별도 상태다. 이름 변경과 월·주간 키 한도 수정은 같은 화면에서 수행한다. 현재 도메인 매니저는 **서비스 키**에서도 별도로 발급·폐기할 수 있다.
 2. 메시지 작성창의 **모델 선택**에서 원하는 모델 옆의 **ID 복사**를 누른다.
 3. 복사되는 **API ID**는 `api_model_name`이다. 표시 이름, 내부 숫자 ID, 운영용 `model_name`/LiteLLM route가 아니며 따옴표·`model=` 접두사를 포함하지 않는다.
 4. 목록의 **Provider**는 `api_provider`다. 같은 공개 API ID가 여러 provider에 있을 때 SDK 요청의 `provider` 선택자로 사용한다.
@@ -505,6 +515,8 @@ claude
 6. 실행 환경의 `LUMEN_API_KEY`에 발급 키를, `LUMEN_MODEL`에 복사한 API ID를 설정한다. route 충돌 시 `LUMEN_PROVIDER`에 Provider를 설정한다. 키를 소스·노트북 출력·로그에 기록하지 않는다.
 
 호환 API는 API 키를 사용하며 Keystone 토큰은 사용하지 않는다. 기본 scope는 모델 조회용 `models:read`와 completion용 `compat:completions:write`다.
+
+개인 키 사용량은 해당 사용자에게 청구된다. 대시보드 모델 요청과 서비스 키 사용은 같은 도메인의 선불 크레딧에 청구된다. 풀 월 한도의 `null`은 생략 가능한 한도 자체를 해제하고 `0`은 새 이용을 차단한다. 도메인 매니저 한도는 시스템 관리자 상한을 초과할 수 없다. 관리자 충전 확인에는 대상 도메인 ID·금액·메모를 표시한다. 충전 결과가 불명확하면 같은 요청의 본문과 `Idempotency-Key`를 재사용하며, 다른 본문과 같은 키는409를 반환한다. 키·풀 BFF 응답은 `no-store`이고 Lumen의 원본 상태/오류 코드는 보존한다. Afterglow와 Lumen이 현재 권한을 독립적으로 확인하며 추가 신뢰 헤더는 없다.
 
 - OpenAI 인증: `Authorization: Bearer <API 키>`
 - Anthropic 인증: `x-api-key: <API 키>`

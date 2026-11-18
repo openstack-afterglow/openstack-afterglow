@@ -269,6 +269,8 @@ export const adminNavSections: NavSection[] = [
       withLabel('items.providerSettings', { href: '/admin/chat', icon: navIcons.chat, service: 'chat' }),
       withLabel('items.chatStats', { href: '/admin/chat/stats', icon: navIcons.chart, service: 'chat' }),
       withLabel('items.userQuotas', { href: '/admin/chat/quotas', icon: navIcons.quota, service: 'chat' }),
+      withLabel('items.lumenDomainPools', { href: '/admin/chat/domain-pools', icon: navIcons.quota, service: 'chat' }),
+      withLabel('items.lumenServiceKeys', { href: '/admin/chat/service-keys', icon: navIcons.key, service: 'chat' }),
       withLabel('items.modelSettings', { href: '/admin/chat/models', icon: navIcons.sliders, service: 'chat' }),
       withLabel('items.toolSettings', { href: '/admin/chat/tools', icon: navIcons.tools, service: 'chat' }),
     ],

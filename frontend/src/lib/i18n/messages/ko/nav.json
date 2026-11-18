@@ -72,6 +72,8 @@
 	"items.clusterTemplates": "클러스터 템플릿",
 	"items.chatStats": "채팅 통계",
 	"items.userQuotas": "사용자 쿼터",
+	"items.lumenDomainPools": "도메인 크레딧 풀",
+	"items.lumenServiceKeys": "서비스 키 인벤토리",
 	"items.modelSettings": "모델 설정",
 	"items.providerSettings": "프로바이더 설정",
 	"items.toolSettings": "도구 설정",
