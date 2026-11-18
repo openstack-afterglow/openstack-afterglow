@@ -7,10 +7,27 @@
 
 ## [Unreleased]
 
+## [1.32.28] - 2026-11-18
+
+### Added
+
+- 네트워크 토폴로지, 인스턴스 네트워크·보안 그룹, Waygate VPN 화면에 읽기 전용 등각 그리드 보기를 추가했다. 그리드가 기본 보기이며 기존 레인/캔버스/목록 보기와 편집 기능은 그대로 유지한다. 움직이는 점은 설정된 경로이며 실시간 트래픽이나 연결 가능 여부가 아님을 범례에 항상 표시한다.
+- Network topology, instance networking and security groups, and Waygate VPN add a read-only isometric grid view. Grid is the default; existing lane, canvas and list views keep every editing action. The legend always states that moving dots show configured paths, not live traffic or reachability.
+
+### Changed
+
+- 채팅 설정의 MCP·도구 화면을 찾아보기 / 연결됨 / 관리 탭, 검색·유형 필터, 간결한 카탈로그 행과 별도의 연결 목록으로 단순화했다. 권한, 동의, 활성화 버전과 샌드박스 선택 동작은 바뀌지 않는다.
+- Chat settings MCP and tools pages use Browse / Connected / Manage tabs, search and type filters, compact catalogue rows and a separate connected list. Permission, consent, activation-version and sandbox-selection behavior is unchanged.
+
 ### Fixed
 
-- 관리자는 롤백이 확인된 라이브 마이그레이션의 ERROR 인스턴스를 안전 점검 뒤 복구할 수 있다. 실행 중인 게스트는 재시작하지 않으며 Nova에서 관찰한 결과를 표시한다.
-- Admins can recover ERROR instances after verified live migration rollback. Running guests are not restarted, and the result shows the observed Nova state.
+- 관리자는 롤백이 확인된 라이브 마이그레이션의 ERROR 인스턴스를 안전 점검 뒤 복구할 수 있다. 정지된 게스트는 ERROR에서 HARD 재부팅 한 번만 수행하고, 실행 중인 게스트는 상태만 재설정한다. 확인 화면의 계획 지문이 바뀌거나 쓰기 직전 Nova 상태가 달라지면 아무것도 변경하지 않으며, 응답이 유실된 요청은 재시도하지 않고 Nova에서 관찰한 결과를 표시한다.
+- Admins can recover ERROR instances after verified live migration rollback. Stopped guests get exactly one HARD reboot from ERROR; running guests get a state reset only. A changed plan fingerprint or Nova state before a write changes nothing, and a request whose response was lost is never retried; the result shows the observed Nova state.
+
+### Deployment
+
+- 새 DB migration, 설정 키, Lumen 요구 버전 변경은 없다.
+- No new DB migration, configuration key or Lumen requirement.
 
 ## [1.32.27] - 2026-11-18
 
