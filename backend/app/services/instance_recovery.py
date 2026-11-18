@@ -304,7 +304,9 @@ def _check_rollback_event(conn: openstack.connection.Connection, server_id: str,
             item for item in live_actions if abs((item[0] - migration_started).total_seconds()) <= _ACTION_MATCH_SECONDS
         ]
         if len(matches) != 1 or matches[0][0] != max(start for start, _ in live_actions):
-            return _check(key, label, False, "실패 시각과 일치하는 최신 Nova 라이브 마이그레이션 요청을 특정할 수 없습니다")
+            return _check(
+                key, label, False, "실패 시각과 일치하는 최신 Nova 라이브 마이그레이션 요청을 특정할 수 없습니다"
+            )
         _, request_id = matches[0]
         if not isinstance(request_id, str) or not request_id.startswith("req-"):
             raise ValueError("Nova request ID unavailable")
@@ -324,7 +326,9 @@ def _check_rollback_event(conn: openstack.connection.Connection, server_id: str,
         return _check(key, label, False, "Nova 작업 또는 이벤트를 읽을 수 없습니다")
 
 
-def _check_live_port_bindings(conn: openstack.connection.Connection, ports: list[dict] | None, host: str | None) -> dict:
+def _check_live_port_bindings(
+    conn: openstack.connection.Connection, ports: list[dict] | None, host: str | None
+) -> dict:
     key, label = "live_migration_ports", "포트가 소스 호스트에만 연결"
     if ports is None or not host:
         return _check(key, label, False, "Neutron 포트 또는 소스 호스트를 확인할 수 없습니다")
@@ -348,7 +352,9 @@ def _check_live_port_bindings(conn: openstack.connection.Connection, ports: list
             or not isinstance(bindings[0].get("profile"), dict)
             or "migrating_to" in bindings[0]["profile"]
         ):
-            return _check(key, label, False, f"포트 {port_id}: 소스 외 바인딩이 있거나 활성 소스 바인딩을 확인할 수 없습니다")
+            return _check(
+                key, label, False, f"포트 {port_id}: 소스 외 바인딩이 있거나 활성 소스 바인딩을 확인할 수 없습니다"
+            )
     return _check(key, label, True, f"포트 {len(ports)}개 확인 — 대상 호스트 바인딩 또는 이동 프로필 없음")
 
 
@@ -363,14 +369,20 @@ def _check_live_volume_attachments(volumes: list[dict] | None, server_id: str, h
             or not any(attachment.get("server_id") == server_id for attachment in attachments)
             or any(attachment.get("host_name") != host for attachment in attachments)
         ):
-            return _check(key, label, False, f"볼륨 {volume['volume_id']}: 소스 호스트의 볼륨 연결을 확인할 수 없습니다")
+            return _check(
+                key, label, False, f"볼륨 {volume['volume_id']}: 소스 호스트의 볼륨 연결을 확인할 수 없습니다"
+            )
     return _check(key, label, True, f"볼륨 {len(volumes)}개 확인 — 모든 연결 호스트가 {host}")
 
 
-def _check_live_placement(conn: openstack.connection.Connection, server_id: str) -> dict:
-    key, label = "live_migration_placement", "Placement 단일 리소스 공급자"
+def _check_live_placement(conn: openstack.connection.Connection, server_id: str, source: str | None) -> dict:
+    key, label = "live_migration_placement", "Placement 소스 리소스 공급자 단일 할당"
+    if not isinstance(source, str) or not source:
+        return _check(key, label, False, "소스 호스트를 확인할 수 없습니다")
     try:
-        allocations = conn.placement.get(f"/allocations/{quote(server_id, safe='')}", raise_exc=True).json()["allocations"]
+        allocations = conn.placement.get(f"/allocations/{quote(server_id, safe='')}", raise_exc=True).json()[
+            "allocations"
+        ]
         if not isinstance(allocations, dict):
             raise ValueError("Invalid Placement allocations")
     except Exception:
@@ -382,7 +394,28 @@ def _check_live_placement(conn: openstack.connection.Connection, server_id: str)
     resources = allocations[provider].get("resources") if isinstance(allocations[provider], dict) else None
     if not provider or not isinstance(resources, dict) or not resources:
         return _check(key, label, False, "Placement 공급자의 리소스 할당을 확인할 수 없습니다")
-    return _check(key, label, True, f"리소스 공급자 1개 확인: {provider}")
+    try:
+        source_providers = conn.placement.get(
+            "/resource_providers", params={"name": source}, microversion="1.14", raise_exc=True
+        ).json()["resource_providers"]
+        if not isinstance(source_providers, list) or len(source_providers) != 1:
+            raise ValueError("Placement source provider not unique")
+        root = source_providers[0]
+        source_uuid = root["uuid"]
+        if (
+            root["name"] != source
+            or not isinstance(source_uuid, str)
+            or not source_uuid
+            or root["root_provider_uuid"] != source_uuid
+            or root["parent_provider_uuid"] is not None
+        ):
+            raise ValueError("Placement source provider is not the exact named root")
+    except Exception:
+        logger.warning("Placement 소스 리소스 공급자 확인 실패")
+        return _check(key, label, False, f"소스 호스트 {source}의 단일 Placement 공급자를 확인할 수 없습니다")
+    if provider != source_uuid:
+        return _check(key, label, False, f"Placement 할당 {provider}가 소스 공급자 {source_uuid}와 일치하지 않습니다")
+    return _check(key, label, True, f"소스 {source}의 단일 리소스 공급자 확인: {provider}")
 
 
 def _check_no_task_in_progress(srv: dict | None, active_migs: list | None) -> dict:
@@ -395,7 +428,9 @@ def _check_no_task_in_progress(srv: dict | None, active_migs: list | None) -> di
             "detail": "서버 정보를 가져올 수 없습니다",
         }
     if active_migs is None:
-        return _check("no_task_in_progress", "진행 중 작업 없음", False, "Nova 진행 중 마이그레이션을 확인할 수 없습니다")
+        return _check(
+            "no_task_in_progress", "진행 중 작업 없음", False, "Nova 진행 중 마이그레이션을 확인할 수 없습니다"
+        )
     if not srv.get("task_state_known"):
         return _check("no_task_in_progress", "진행 중 작업 없음", False, "Nova task_state를 확인할 수 없습니다")
 
@@ -580,7 +615,9 @@ def analyze_error_instance(
             "volumes_known",
             "볼륨 및 연결 정보 확인",
             volumes is not None,
-            f"Nova/Cinder 볼륨 {len(volumes)}개 확인" if volumes is not None else "볼륨 또는 연결 정보를 읽을 수 없습니다",
+            f"Nova/Cinder 볼륨 {len(volumes)}개 확인"
+            if volumes is not None
+            else "볼륨 또는 연결 정보를 읽을 수 없습니다",
         ),
         _check_no_task_in_progress(srv, active_migs),
     ]
@@ -612,7 +649,7 @@ def analyze_error_instance(
                 _check_rollback_event(conn, server_id, last_error_migration),
                 _check_live_port_bindings(conn, ports, host),
                 _check_live_volume_attachments(volumes, server_id, host),
-                _check_live_placement(conn, server_id),
+                _check_live_placement(conn, server_id, source),
                 _check(
                     "live_migration_power_state",
                     "Nova 게스트 전원 상태 확인",
@@ -629,13 +666,22 @@ def analyze_error_instance(
             scenario = "manual_review"
             scenario_description = "소스 호스트와 대상 롤백 증거를 확인하기 전에는 인스턴스를 재시작하지 마세요."
             steps = [
-                {"action": "manual", "params": {}, "description": "실패한 검사와 Nova, Cinder, Neutron 및 Placement를 확인하세요."}
+                {
+                    "action": "manual",
+                    "params": {},
+                    "description": "실패한 검사와 Nova, Cinder, Neutron 및 Placement를 확인하세요.",
+                }
             ]
     else:
         scenario, scenario_description, steps = _determine_scenario(srv, volumes or [], migrations or [])
     auto_executable = scenario != "manual_review" and all(c["passed"] for c in checks)
     placement_note: str | None = None
-    if migration_history["passed"] and not live_failure and last_error_migration and last_error_migration.get("source_compute"):
+    if (
+        migration_history["passed"]
+        and not live_failure
+        and last_error_migration
+        and last_error_migration.get("source_compute")
+    ):
         src = last_error_migration["source_compute"]
         placement_note = (
             f"소스 호스트 '{src}'에 잔여 placement 할당이 남았을 수 있습니다. "
@@ -730,7 +776,9 @@ def execute_recovery(
         raise ValueError(f"자동 복구 조건 미충족 — {reasons}")
 
     steps = analysis["steps"]
-    if expected_guest_restart is not None and expected_guest_restart != any(s["action"] == "hard_reboot" for s in steps):
+    if expected_guest_restart is not None and expected_guest_restart != any(
+        s["action"] == "hard_reboot" for s in steps
+    ):
         raise ValueError("복구 계획의 게스트 재시작 여부가 바뀌었습니다. 다시 진단하고 확인하세요.")
 
     executed = True

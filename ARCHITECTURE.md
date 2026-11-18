@@ -1115,6 +1115,7 @@ Nova2.47+ embedded flavor의 `original_name`을 SDK가 가상ID로 노출하는 
 관리자 인스턴스 목록과 공용 상세는 `RecoveryModal`을 공유하고, 상세 `InstanceHeader`는 별도 시각을 가진 Nova fault와 마이그레이션 실패 레코드를 서로 다른 배너로 표시한다. 최근 콘솔 요청 fault를 마이그레이션 원인으로 표시하지 않는다. 실패의 상세 원인은 컴퓨트 로그에서 확인한다.
 
 `instance_recovery`는 관리자 연결로 Nova 서버·task·진행 및 이력, Neutron 포트, Nova/Cinder 볼륨을 읽는다. 실패한 읽기는 관찰된 빈 결과와 구분해 모든 복구 시나리오에서 차단한다. 최신 실패가 라이브 마이그레이션이면 서버가 기록의 소스에 있고, 생성 시각 60초 이내의 유일한 최신 라이브 요청에서 `compute_rollback_live_migration_at_destination: Success`가 관찰되어야 한다. 모든 Neutron 포트는 소스 활성 바인딩만 보유하고 `migrating_to`가 없어야 하며, 모든 Cinder 연결은 소스에 있어야 한다. 인스턴스 consumer에 Placement 공급자가 하나뿐이어야 한다. Placement가 불가하면 대상 중복 할당을 배제할 수 없어 복구를 차단한다.
+단일 할당도 Placement에서 이름으로 고유하게 식별된 소스 컴퓨트의 루트 공급자 UUID와 정확히 일치해야 한다. 다른 호스트나 중첩 공급자의 단일 할당 및 소스 이름을 확인할 수 없는 경우는 차단한다.
 
 복구 POST는 서버별 공유 Redis lease 아래에서 재진단·쓰기·최종 Nova 관찰을 직렬화한다. 동일 서버의 중복 요청은 409, 잠금 획득 불가는 503이다. 각 쓰기 직전에 현재 owner만 TTL을 갱신하며, worker 종료 뒤 원자적으로 자신의 lease만 해제한다.
 

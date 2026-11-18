@@ -2762,7 +2762,9 @@ async def recover_instance(
         try:
             await lock.reacquire()
         except LockNotOwnedError:
-            raise HTTPException(status_code=409, detail="인스턴스 복구 잠금이 만료되었습니다. 다시 점검하세요") from None
+            raise HTTPException(
+                status_code=409, detail="인스턴스 복구 잠금이 만료되었습니다. 다시 점검하세요"
+            ) from None
         except Exception:
             raise HTTPException(status_code=503, detail="인스턴스 복구 잠금을 확인할 수 없습니다") from None
 

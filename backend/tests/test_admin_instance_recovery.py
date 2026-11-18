@@ -156,6 +156,20 @@ def _configure_recovery(conn, scenario):
             "allocations": {_SOURCE_PROVIDER: {"resources": {"VCPU": 4, "MEMORY_MB": 8192}}},
             "consumer_generation": 7,
         }
+        providers = MagicMock()
+        providers.json.return_value = {
+            "resource_providers": [
+                {
+                    "uuid": _SOURCE_PROVIDER,
+                    "name": _SOURCE,
+                    "root_provider_uuid": _SOURCE_PROVIDER,
+                    "parent_provider_uuid": None,
+                }
+            ]
+        }
+        conn.placement.get.side_effect = lambda path, **kwargs: (
+            providers if path == "/resource_providers" else conn.placement.get.return_value
+        )
     return conn
 
 
@@ -221,7 +235,10 @@ def test_verified_live_migration_recovery_plan_and_execution(live_conn, power_st
     live_conn.compute.server_actions.assert_called_once_with(_SERVER_ID)
     live_conn.compute.get_server_action.assert_called_once_with(_REQUEST_ID, _SERVER_ID)
     live_conn.network.get.assert_called_once_with(f"/ports/{_PORT_ID}/bindings", raise_exc=True)
-    live_conn.placement.get.assert_called_once_with(f"/allocations/{_SERVER_ID}", raise_exc=True)
+    assert live_conn.placement.get.call_args_list == [
+        call(f"/allocations/{_SERVER_ID}", raise_exc=True),
+        call("/resource_providers", params={"name": _SOURCE}, microversion="1.14", raise_exc=True),
+    ]
 
     result = instance_recovery.execute_recovery(live_conn, _SERVER_ID, expected_guest_restart=power_state != 1)
 
@@ -360,6 +377,33 @@ def test_live_migration_requires_single_readable_allocation(live_conn, failure):
         live_conn.placement.get.side_effect = RuntimeError("Placement unavailable")
     else:
         response.json.return_value = {"allocations": []}
+
+    _assert_recovery_blocked(live_conn, "live_migration_placement")
+
+
+@pytest.mark.parametrize("failure", ["wrong-host", "lookup-unreadable", "missing-source", "ambiguous-source", "nested"])
+def test_live_migration_requires_exact_source_provider(live_conn, failure):
+    placement = live_conn.placement
+    get = placement.get.side_effect
+    providers = get("/resource_providers").json.return_value["resource_providers"]
+    if failure == "wrong-host":
+        allocations = placement.get.return_value.json.return_value["allocations"]
+        allocations[_DEST_PROVIDER] = allocations.pop(_SOURCE_PROVIDER)
+    elif failure == "lookup-unreadable":
+
+        def unavailable(path, **kwargs):
+            if path == "/resource_providers":
+                raise ConnectionError("Placement provider lookup unavailable")
+            return get(path, **kwargs)
+
+        placement.get.side_effect = unavailable
+    elif failure == "missing-source":
+        providers.clear()
+    elif failure == "ambiguous-source":
+        providers.append({**providers[0], "uuid": _DEST_PROVIDER})
+    else:
+        providers[0]["parent_provider_uuid"] = _DEST_PROVIDER
+        providers[0]["root_provider_uuid"] = _DEST_PROVIDER
 
     _assert_recovery_blocked(live_conn, "live_migration_placement")
 
@@ -592,7 +636,9 @@ async def test_recover_serializes_concurrent_posts(admin_client, live_conn, _rec
 
 @pytest.mark.anyio
 async def test_recover_requires_shared_redis_before_reanalysis(admin_client, live_conn, monkeypatch):
-    monkeypatch.setattr("app.api.identity.admin._get_redis", AsyncMock(side_effect=ConnectionError("Redis unavailable")))
+    monkeypatch.setattr(
+        "app.api.identity.admin._get_redis", AsyncMock(side_effect=ConnectionError("Redis unavailable"))
+    )
     response = await admin_client.post(f"{_INSTANCE_URL}/recover", json={"expected_guest_restart": True})
 
     assert response.status_code == 503
