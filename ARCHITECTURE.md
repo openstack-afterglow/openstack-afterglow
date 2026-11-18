@@ -16,6 +16,8 @@ Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 �
 
 Decisions BFF는 Lumen 서비스 권한을 확인한 뒤에만 본문을 읽는다. 20 MiB를 초과하는 `Content-Length`는 즉시 413으로 응답하며, 길이를 알 수 없는 스트림에도 실제 바이트 제한을 적용한다. BFF의 upstream 읽기 타임아웃은 125초, Studio의 요청 기한은 150초다. Decision 전용 목록 장애는 기존 OpenAI 모델을 숨기지 않으며, Gemini capability 조회의 422는 Lumen 업데이트 필요 상태로 표시한다.
 
+**공급자별 모델 식별 — source/local:** 채팅·에이전트·Studio 선택기는 `/api/v1/chat/models`의 종류별 레코드를 공급자 ID로 묶고 모델 레코드 ID로 선택한다. 채팅은 `chat:lastModelId`를 저장하고 기존 이름이 하나의 행에만 일치할 때만 이관한다. 새 dashboard 실행은 기존 모델 선택자와 `model_row_id`를 함께 전송한다. 임베딩은 기존 정수 `model_id`를 유지한다. 이전 실행 재시도에서 `model_row_id`는 불변 실행 스냅샷을 확인하는 값이며, 현재 선택으로 경로를 바꾸지 않는다. Lumen이 모델·기능·단가·권한을 검증하며 Afterglow에는 새 레지스트리나 DB 스키마가 없다.
+
 **MCP 카탈로그·관리형 도구 선택 — source/local:** `ChatExtensionsManager`가 기존 설정/도구 경로에 `ChatMcpGallery`를 넣는다. 브라우저 `/api/v1/chat/*`는 기존 caller-token BFF로 Lumen `/v1/*`에 전달하며, 조직 연결 관리 권한·구성원 여부는 매 요청 Lumen이 다시 판정한다. 인증 없는 실제 OAuth callback은 generic proxy보다 먼저 mount되고 no-store를 적용한다. 채팅의 관리형 도구 선택은 사용자·범위별 선호로 저장되고, 실행 요청에는 정확한 sandbox 도구 이름만 실어 원격 MCP ID와 섞지 않는다. 오래된 admission 응답은 generation fence로 버린다.
 
 **System administrator readback:** `keystone`의 직접 system user/group role endpoint가 권한의 근거다. Computed-assignment 목록은 후보 발견용이며, Afterglow grant의 Redis 후보 힌트(660초, 현재 native cache TTL 600초를 전제, Keystone URL·region·interface별 key)를 합쳐 직접 재검증한다. 힌트 자체는 권한이 아니고 실패 시 닫힌다. 직접 대상 ID는 안전한 opaque 문자만 허용하고 exact `users.get` ID 일치 뒤에만 guard·쓰기·힌트에 사용한다. 동일 reader를 권위·마지막 활성 human 관리자 보호·회수 확인에 사용한다. 마지막 관리자 보호는 발견 결과가 비어도 변경 대상이 아닌 검증된 enabled human 관리자가 남아야 통과하며, 그 관리자의 exact home domain도 live enabled여야 한다. 외부 native grant의 즉시 발견은 별도 문제로 남는다. 관리자 화면의 표와 배너는 같은 snapshot을 사용하고 token-only renewal은 성공 응답을 버리지 않지만 owner/project/session 교체는 차단한다.
@@ -1582,6 +1584,8 @@ BFF 경로 `/api/v1/chat/admin/providers/{provider_id}/accounts...`는 `backend/
 
 실시간 음성은 generic proxy가 아니라 `realtime.py`가 Keystone caller/project로 Lumen session을 만들고 Lumen `connect_token`을 응답에서 제거한다. `ws_ticket`의 one-use Redis ticket만 브라우저에 전달한다. `WS /api/v1/chat/realtime/ws`는 허용 Origin·ticket을 확인하고 internal Lumen session WS에 header token을 붙여 bounded text frame을 양방향 relay한다. Lumen이 실행·lease·정산의 정본이고 Afterglow는 DB/S3에 realtime audio/transcript를 저장하지 않는다.
 
+Realtime admission은 기존 `model_id` 문자열과 선택적인 `model_row_id` 정수를 받으며, 둘 중 하나는 필요하다. BFF는 제공된 선택 값을 caller/project와 함께 Lumen으로 전달한다. 모델 행과 legacy 선택의 일치 여부, provider 및 mode 적합성은 Lumen이 판정한다.
+
 Realtime Studio는 Lumen이 반환한 `realtime_kind`와 `realtime_session_fields`를 사용한다. Translation은 `output_language`, GPT-Live는 voice와 선택 지침을 설정한다. 두 모드는 PCM16과 양방향 자막을 처리하며, conversation의 `response.cancel`이나 transcription의 commit을 보내지 않는다. 정상 종료에서는 서버 `session.closed`까지 수신한 뒤 마이크·playback·socket을 정리하며 자막은 현재 화면 메모리에만 남는다. 사용자·프로젝트·확정 권한 변경은 자막까지 즉시 폐기한다.
 
 Frontend 문서와 standalone HAProxy는 `microphone=(self)`로 SPA 이동 후에도 브라우저의 명시적 권한 요청을 허용한다. Camera/geolocation과 framing은 계속 차단하며 FastAPI 및 Kolla HAProxy 구성을 변경하지 않는다.
@@ -2289,9 +2293,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "f83d4c6070a8e6af0bd49cf6f18d44ca4a562adc9038b5b2216204954a29473e",
-  "reviewed_at": "2026-11-18T14:32:17Z",
-  "summary": "Prepare Afterglow 1.32.28 with the MCP and tools connections workspace, read-only isometric grid views for topology, instance networking and Waygate, and verified live-migration rollback instance recovery. No schema, configuration or Lumen requirement changes."
+  "source_sha256": "ab0c344197d70dcfecd54147467488f361ef9544df975afef9c081e2bf1f92e8",
+  "reviewed_at": "2026-11-18T15:36:49Z",
+  "summary": "Dashboard model pickers select exact Lumen catalog rows by provider and kind; native requests retain route identity, including agent pins and frozen retry assertions."
 }
 ```
 <!-- architecture-review:end -->

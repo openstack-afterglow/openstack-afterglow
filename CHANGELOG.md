@@ -11,6 +11,8 @@
 
 - Lumen CLI 설치기는 Afterglow 시작 시 배포의 공개 Lumen 주소를 포함한다. Codex·Claude Code 자동 설정 명령에는 URL 옵션이 없으며, 공개 주소가 없으면 명령을 표시하지 않는다.
 - Lumen CLI installers embed the deployment's public Lumen URL at Afterglow startup. Codex and Claude Code setup commands take no URL options and stay hidden when no public URL is configured.
+- 채팅·에이전트·Studio에서 공급자를 먼저 선택하고 등록 모델을 고른다. 공급자가 다른 동명 모델은 별도 선택지로 표시하며 실행에서도 정확한 등록 모델을 사용한다.
+- Chat, agents, and Studios select a provider before a registered model. Same-name models from different providers stay distinct during selection and execution.
 
 ## [1.32.28] - 2026-11-18
 

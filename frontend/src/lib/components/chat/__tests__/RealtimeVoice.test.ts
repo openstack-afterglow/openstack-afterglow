@@ -3,13 +3,15 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/sv
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { authReady, projectSwitching } from '$lib/stores/auth';
 import type * as RealtimeModule from '$lib/api/realtimeVoice';
+import type * as ClientModule from '$lib/api/client';
 import RealtimeVoice from '../RealtimeVoice.svelte';
 import { t } from '$lib/i18n/ns/chat-studio';
 import { t as chatT } from '$lib/i18n/ns/chat-panel';
 import * as experience from '$lib/utils/experience';
 
-const calls = vi.hoisted(() => ({ models: vi.fn(), capabilities: vi.fn(), createSession: vi.fn(), connect: vi.fn() }));
+const calls = vi.hoisted(() => ({ models: vi.fn(), capabilities: vi.fn(), createSession: vi.fn(), connect: vi.fn(), fetch: vi.fn() }));
 vi.mock('$lib/api/realtimeVoice', async (original) => ({ ...await original<typeof RealtimeModule>(), realtimeVoiceApi: calls }));
+vi.mock('$lib/api/client', async (original) => ({ ...await original<typeof ClientModule>(), fetchWithAuth: calls.fetch }));
 const gate = (priced = true) => ({ feature_gates: {
 	audio_input: { available: true, mode: 'native', pricing_available: priced },
 	audio_output: { available: true, mode: 'native', pricing_available: priced }
@@ -82,6 +84,33 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('Realtime Voice', () => {
+	it('admits the exact same-name model row from the selected provider', async () => {
+		const track = { stop: vi.fn(), enabled: true };
+		const getUserMedia = vi.fn().mockResolvedValue({ getTracks: () => [track] });
+		vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia } });
+		calls.models.mockResolvedValue([{ ...model(), provider_id: 1, provider: 'OpenAI' }, { ...model(), id: 27, provider_id: 2, provider: 'Second OpenAI account' }]);
+		calls.capabilities.mockImplementation(async (id: number) => ({ ...capability(), model_id: id }));
+		calls.fetch.mockResolvedValueOnce(Response.json({ status: 'ready', provider_type: 'openai', ticket: 'opaque', websocket_path: '/api/v1/chat/realtime/ws' }));
+		const actual = await vi.importActual<typeof RealtimeModule>('$lib/api/realtimeVoice');
+		calls.createSession.mockImplementationOnce(actual.realtimeVoiceApi.createSession);
+
+		render(RealtimeVoice);
+		await screen.findByText(t('realtimeVoice.ready'));
+		const start = screen.getByRole('button', { name: t('realtimeVoice.startSession') });
+		const select = screen.getByRole('combobox', { name: t('realtimeVoice.model') });
+		await fireEvent.change(screen.getByRole('combobox', { name: t('modelPicker.providers') }), { target: { value: '2' } });
+		expect(select).toHaveProperty('value', '');
+		expect(start).toHaveProperty('disabled', true);
+		await fireEvent.change(select, { target: { value: '27' } });
+		await screen.findByText(t('realtimeVoice.ready'));
+		await fireEvent.click(start);
+
+		await waitFor(() => expect(calls.fetch).toHaveBeenCalledOnce());
+		const [path, request] = calls.fetch.mock.calls[0];
+		expect(path).toBe('/api/v1/chat/realtime/sessions');
+		expect(JSON.parse(request.body)).toEqual({ model_id: '27', model_row_id: 27, voice: 'alloy', max_duration_seconds: 300 });
+	});
+
 	it.each([
 		['realtime_hold_limit', 'realtimeVoice.quotaInsufficient'],
 		['invalid_function_call_id', 'realtimeVoice.providerFailed'],

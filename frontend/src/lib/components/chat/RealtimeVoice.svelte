@@ -11,6 +11,7 @@
 	import { effortLabel } from '$lib/api/chatEffort';
 	import { serviceCapabilities, serviceDenials } from '$lib/stores/servicePermissions';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
+	import ProviderModelSelect from './ProviderModelSelect.svelte';
 	import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, type ExperienceContext } from '$lib/utils/experience';
 
 	// A refreshed token is the same actor, even while exact grants are unavailable.
@@ -20,7 +21,7 @@
 	let activeOwner = '';
 	let generation = 0;
 	let models = $state<RealtimeModel[]>([]);
-	let selected = $state('');
+	let selected = $state<number | null>(null);
 	let capabilities = $state<RealtimeCapabilities | null>(null);
 	let voice = $state('');
 	let outputLanguage = $state('');
@@ -60,7 +61,7 @@
 	let pendingRequest: AbortController | null = null;
 	let pendingIntent: { fingerprint: string; key: string } | null = null;
 	let connectionExperience: ExperienceContext | undefined;
-	const model = $derived(models.find((item) => String(item.id) === selected));
+	const model = $derived(models.find((item) => item.id === selected));
 	const readiness = $derived(realtimeReadiness(model, capabilities));
 	const mode = $derived(realtimeMode(capabilities));
 	const transcription = $derived(mode === 'transcription');
@@ -222,7 +223,7 @@
 			const list = await realtimeVoiceApi.models(requestScope);
 			if (!canPublish(epoch)) { experienceDiscarded(requestScope.experience, 'stale'); return; }
 			models = list.filter((item) => item.model_kind === 'realtime' && Number.isSafeInteger(item.id) && item.id > 0);
-			selected = models[0] ? String(models[0].id) : '';
+			selected = models[0]?.id ?? null;
 			experienceState(requestScope.experience, models.length ? 'ready' : 'empty', 0);
 			const appliedModels = models;
 			void experienceApplied(requestScope.experience, {}, () => canPublish(epoch) && models === appliedModels);
@@ -232,6 +233,15 @@
 			if (epoch === generation) loading = false;
 		}
 	}
+	function selectModel(row: RealtimeModel | null) {
+		const id = row?.id ?? null;
+		if (!audioAllowed || connecting || connected || loading || selected === id) return;
+		capabilityTicket++;
+		capabilities = null;
+		capabilityLoading = false;
+		error = '';
+		selected = id;
+	}
 	async function loadCapabilities(current: RealtimeModel, requestScope: RealtimeScope, epoch: number) {
 		if (!audioAllowed || activeOwner !== ownerKey) return;
 		requestScope = { ...requestScope, experience: beginExperienceLoad('lumen', 'resource.detail') };
@@ -240,7 +250,7 @@
 		capabilityLoading = true;
 		try {
 			const response = await realtimeVoiceApi.capabilities(current.id, requestScope);
-			if (!canPublish(epoch) || selected !== String(current.id) || ticket !== capabilityTicket) { experienceDiscarded(requestScope.experience, 'stale'); return; }
+			if (!canPublish(epoch) || selected !== current.id || ticket !== capabilityTicket) { experienceDiscarded(requestScope.experience, 'stale'); return; }
 			capabilities = response;
 			voice = response.available_voices?.includes(voice) ? voice : (response.default_voice ?? '');
 			outputLanguage = '';
@@ -252,11 +262,11 @@
 			ended = false;
 			experienceState(requestScope.experience, 'ready', 1);
 			const appliedCapabilities = capabilities;
-			void experienceApplied(requestScope.experience, {}, () => canPublish(epoch) && selected === String(current.id) && capabilities === appliedCapabilities);
+			void experienceApplied(requestScope.experience, {}, () => canPublish(epoch) && selected === current.id && capabilities === appliedCapabilities);
 		} catch {
-			if (canPublish(epoch) && selected === String(current.id) && ticket === capabilityTicket) { error = t('realtimeVoice.routeUnverified'); experienceState(requestScope.experience, 'error', 1); }
+			if (canPublish(epoch) && selected === current.id && ticket === capabilityTicket) { error = t('realtimeVoice.routeUnverified'); experienceState(requestScope.experience, 'error', 1); }
 		} finally {
-			if (epoch === generation && selected === String(current.id) && ticket === capabilityTicket) capabilityLoading = false;
+			if (epoch === generation && selected === current.id && ticket === capabilityTicket) capabilityLoading = false;
 		}
 	}
 	$effect(() => {
@@ -266,7 +276,7 @@
 		untrack(() => {
 			stop();
 			models = [];
-			selected = '';
+			selected = null;
 			capabilities = null;
 			voice = '';
 			outputLanguage = '';
@@ -283,7 +293,7 @@
 			if (!denied) return;
 			stop();
 			models = [];
-			selected = '';
+			selected = null;
 			capabilities = null;
 			voice = '';
 			outputLanguage = '';
@@ -503,7 +513,7 @@
 	<div class="studio">
 		<header class="header"><div><p class="muted">{t('realtimeVoice.breadcrumb')}</p><h1>{t('realtimeTranscription.title')}</h1><p class="muted">{t('realtimeTranscription.description')}</p></div><Button href="/dashboard/chat" variant="secondary">{t('realtimeVoice.textChat')}</Button></header>
 		<Card><div class="controls">
-			<Field label={t('realtimeVoice.model')} for="realtime-model"><SelectInput id="realtime-model" bind:value={selected} disabled={!audioAllowed || connecting || connected || loading}><option value="">{t('realtimeVoice.selectModel')}</option>{#each models as item (item.id)}<option value={String(item.id)}>{item.display_name}</option>{/each}</SelectInput></Field>
+			<ProviderModelSelect {models} value={selected} onSelect={selectModel} modelLabel={t('realtimeVoice.model')} placeholder={t('realtimeVoice.selectModel')} id="realtime-model" disabled={!audioAllowed || connecting || connected || loading} />
 			{#if capabilities}<p class="muted">{t('realtimeTranscription.mode')}: {modeLabel}</p>{/if}
 			{#if showVoice}
 				<Field label={t('realtimeVoice.voice')} for="realtime-voice"><SelectInput id="realtime-voice" bind:value={voice} disabled={!audioAllowed || connecting || connected || capabilityLoading}>{#each capabilities?.available_voices ?? [] as option (option)}<option value={option}>{option}</option>{/each}</SelectInput></Field>

@@ -34,6 +34,7 @@ export type DecisionQuestion = { name?: string; instructions: string | DecisionP
 );
 export interface DecisionRequest {
 	model: string;
+	model_row_id?: number;
 	input: string | Array<{ role: 'user' | 'developer' | 'system' | 'assistant'; content: DecisionPart[] }>;
 	questions: DecisionQuestion[];
 	prompt_cache_key?: string;
@@ -229,6 +230,7 @@ type GeminiQuestion = { instructions: string } & (
 );
 export interface GeminiDecisionRequest {
 	model: string;
+	model_row_id?: number;
 	input: GeminiDecisionPart[];
 	questions: Record<string, GeminiQuestion>;
 }
@@ -382,7 +384,7 @@ export async function buildGeminiDecisionRequest(model: DecisionModel, draft: Ge
 			questions[key] = { type, instructions, ...(Object.keys(criteria).length ? { criteria } : {}) };
 		}
 	}
-	const prefix = `{"model":${JSON.stringify(`lumen/${model.provider_id}/${model.id}`)},"input":[`;
+	const prefix = `{"model":${JSON.stringify(`lumen/${model.provider_id}/${model.id}`)},"model_row_id":${model.id},"input":[`;
 	const suffix = `],"questions":${JSON.stringify(questions)}}`;
 	// Count encoded fragments, separators and the image quote/brace before reading any image.
 	const envelopeBytes = bytes(prefix) + bytes(suffix) + input.length - 1 + 2 * draft.images.length;

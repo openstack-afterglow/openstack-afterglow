@@ -24,12 +24,14 @@ export interface AudioCapabilities {
 }
 export interface SpeechRequest {
 	model_id: string;
+	model_row_id?: number;
 	input: string;
 	voice: string;
 	response_format: AudioFormat;
 }
 export interface TranscriptionRequest {
 	model_id: string;
+	model_row_id?: number;
 	input_asset_id: string;
 	language?: string;
 	timestamp_granularities?: Array<'segment'>;
