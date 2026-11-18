@@ -237,7 +237,7 @@ When advertised, `image_moderation_options` permits `moderation`, and an SVG gen
 
 ### 실시간 음성 browser session
 
-`GET /api/v1/chat/models?model_kind=realtime`와 `GET /api/v1/chat/capabilities?model_id=<id>&model_kind=realtime`의 양방향 오디오 gate, 정확한 USD 가격, voice·sample-rate readiness를 먼저 확인합니다. 사용자가 **음성 세션 시작**을 누를 때에만 `getUserMedia` permission을 요청하고, `POST /api/v1/chat/realtime/sessions`에 `{model_id:"<id>",voice:"alloy",max_duration_seconds:300}` 및 UUID `Idempotency-Key`를 보냅니다. BFF는 Lumen의 provider key나 `connect_token`을 반환하지 않고 `{session_id,status,model_name,provider_type,expires_in_seconds,expires_at,ticket,websocket_path:"/api/v1/chat/realtime/ws"}`만 반환합니다. `ticket`은 Redis 60초, project-scoped, 단일 소비이며 일반 auth token을 WebSocket URL에 넣지 않습니다.
+`GET /api/v1/chat/models?model_kind=realtime`와 `GET /api/v1/chat/capabilities?model_id=<id>&model_kind=realtime`의 양방향 오디오 gate, 정확한 USD 가격, voice·sample-rate readiness를 먼저 확인합니다. 사용자가 **음성 세션 시작**을 누를 때에만 `getUserMedia` permission을 요청하고, `POST /api/v1/chat/realtime/sessions`에 `{model_id:"<id>",voice:"alloy",max_duration_seconds:300}` 및 UUID `Idempotency-Key`를 보냅니다. BFF는 Lumen의 provider key나 `connect_token`을 반환하지 않고 `{session_id,status,model_name,provider_type,expires_in_seconds,expires_at,ticket,websocket_path:"/api/v1/chat/realtime/ws",realtime_image_input}`만 반환합니다. `realtime_image_input`은 Lumen이 2 MiB 프레임을 승인한 conversation에서만 `true`입니다. `ticket`은 Redis 60초, project-scoped, 단일 소비이며 일반 auth token을 WebSocket URL에 넣지 않습니다.
 
 브라우저는 반환된 경로에 ticket으로 WSS 연결하고 `session.ready`의 `input_sample_rate_hz`(Gemini 16 kHz/OpenAI 24 kHz)에 맞춰 mono PCM16 worklet을 시작합니다. `audio.input.append`의 base64 chunk, `audio.output.delta`의 24 kHz playback, 자막 delta, `session.interrupted`, `response.cancel`을 처리합니다. 브라우저 프로젝트/사용자 변경·로그아웃·세션 종료 시 microphone track, AudioContext, playback, socket과 표시 자막을 즉시 정리합니다. 원본 오디오는 Afterglow→Lumen→선택 provider로 전송되며 Afterglow/Lumen은 원본 PCM·실시간 자막을 DB/S3에 보존하지 않습니다. Provider의 데이터 처리 정책은 별도로 확인해야 합니다. 생성 이미지·유한 오디오의 durable run/asset·usage는 **Lumen**이 소유합니다. 장애 시 upstream usage가 확정되지 않으면 Lumen hold가 unknown으로 남으며 BFF는 이를 임의 정산하지 않습니다.
 
@@ -247,7 +247,11 @@ Models advertising `realtime_kind=translation` accept `kind:"translation"` and r
 
 Conversation requests may send `reasoning_effort` only when listed in `realtime_session_fields` and `available_reasoning_efforts`. The Studio never offers `none`. A Live transport close without a terminal frame leaves final usage unconfirmed; the Studio does not estimate the charged duration.
 
+Lumen sends `session.ready` only after setup completes. An `error` event (including `realtime_hold_limit` when a request exceeds the existing hold) reports a rejected operation, not a session close. The Studio shows localized feedback while leaving the session running; `session.closed` or a transport close determines the terminal state.
+
 If both model capabilities and the native admission grant `realtime_image_input`, a conversation can send `{"type":"conversation.input_image","image_url":"data:image/png;base64,..."}`. The Studio converts local PNG/JPEG/WebP to PNG or JPEG, with each edge at most 2,048 px and at most 1 MiB decoded per image, up to eight per session. Picks stay in browser memory and are not uploaded as durable assets. Admission freezes the relay limit in the private ticket: **2 MiB UTF‑8 per JSON message in either direction** for image sessions, **64 KiB** otherwise. Oversize messages close the browser socket with `1009` and are not forwarded. The 960-second relay lifetime and the existing upstream limits still apply.
+
+The internal Afterglow-to-Lumen WebSocket does not negotiate compression. Message limits apply to the original UTF‑8 input; the relay does not forward a clipped payload.
 
 Realtime function calling remains **native Lumen API only**: capability `realtime_function_calling`, admission `tools` / `tool_choice`, events `function_call.arguments.delta` / `function_call.arguments.done`, and client result `function_call.output`. The Studio neither declares nor executes arbitrary client functions.
 

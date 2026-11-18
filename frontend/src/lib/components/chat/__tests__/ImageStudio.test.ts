@@ -104,7 +104,7 @@ describe('Image Studio', () => {
 		await fireEvent.input(custom, { target: { value: '1025x1024' } });
 		const create = screen.getByRole('button', { name: t('imageStudio.createImage') });
 		await fireEvent.click(create);
-		const help = t('imageStudio.options.sizeHelp', { multiple: 16, edge: 3840, ratio: 3, min: 655360, max: 8294400 });
+		const help = t('imageStudio.options.sizeHelp', { multiple: '16', edge: '3,840', ratio: '3', min: '655,360', max: '8,294,400' });
 		expect(await screen.findByText(t('imageStudio.options.badSize', { limits: help }))).toBeTruthy();
 		expect(api.submit).not.toHaveBeenCalled();
 		await fireEvent.input(custom, { target: { value: '1024X1024' } });
@@ -156,6 +156,54 @@ describe('Image Studio', () => {
 		await waitFor(() => expect(api.submit.mock.calls[0]?.[1]).toMatchObject({
 			output_format: 'svg', svg_model: 'gpt-6.2-sol', svg_reasoning_effort: 'high', n: 1
 		}));
+	});
+
+	it('formats advertised dimension limits in the current locale, including the Bengali aspect ratio', async () => {
+		initLocale('bn');
+		api.capabilities.mockResolvedValue(openaiCapabilities);
+		render(ImageStudio);
+		await screen.findByRole('option', { name: t('imageStudio.options.custom') });
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.size')), { target: { value: 'custom' } });
+		const note = await screen.findByText(/৩:১/);
+		expect(note.textContent).toContain('৩,৮৪০');
+		expect(note.textContent).toContain('৬,৫৫,৩৬০');
+	});
+
+	it('removes every pending batch attachment on abort and can submit with the completed source', async () => {
+		api.capabilities.mockResolvedValue({ ...openaiCapabilities, max_image_input_count: 3 });
+		const first = { id: 'ready-source', name: 'first.png' };
+		const pending = Promise.withResolvers<{ id: string; name: string }>();
+		api.upload.mockResolvedValueOnce(first).mockReturnValueOnce(pending.promise);
+		vi.mocked(URL.createObjectURL)
+			.mockReturnValueOnce('blob:first')
+			.mockReturnValueOnce('blob:second')
+			.mockReturnValueOnce('blob:third');
+		render(ImageStudio);
+		await screen.findByRole('option', { name: 'PNG' });
+		await fireEvent.input(screen.getByLabelText(t('imageStudio.prompt')), { target: { value: 'A tree' } });
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.inputImage')), {
+			target: { files: ['first.png', 'second.png', 'third.png'].map((name) => new File(['pixels'], name, { type: 'image/png' })) }
+		});
+		await screen.findByText(t('imageStudio.uploadComplete', { name: first.name }));
+		await waitFor(() => expect(api.upload).toHaveBeenCalledTimes(2));
+		const signal = api.upload.mock.calls[1][2] as AbortSignal;
+		const create = screen.getByRole('button', { name: t('imageStudio.createImage') });
+		expect(create).toHaveProperty('disabled', true);
+		await fireEvent.click(screen.getByRole('button', { name: t('imageStudio.advanced.remove', { name: 'second.png' }) }));
+		expect(signal.aborted).toBe(true);
+		expect(screen.queryByText('second.png')).toBeNull();
+		expect(screen.queryByText('third.png')).toBeNull();
+		expect(URL.revokeObjectURL).not.toHaveBeenCalledWith('blob:first');
+		expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:second');
+		expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:third');
+		pending.resolve({ id: 'discarded-source', name: 'second.png' });
+		await tick();
+		expect(api.upload).toHaveBeenCalledTimes(2);
+		expect(create).toHaveProperty('disabled', false);
+		await fireEvent.click(create);
+		await waitFor(() => expect(api.submit.mock.calls[0]?.slice(0, 2)).toEqual([
+			'edits', { model_id: '1', prompt: 'A tree', size: '1024x1024', quality: 'high', n: 1, input_asset_id: 'ready-source' }
+		]));
 	});
 
 	it('retains mask incompatibility and submits ordered sources with one replacement markup', async () => {

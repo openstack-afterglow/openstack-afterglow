@@ -82,6 +82,34 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('Realtime Voice', () => {
+	it.each([
+		['realtime_hold_limit', 'realtimeVoice.quotaInsufficient'],
+		['invalid_function_call_id', 'realtimeVoice.providerFailed'],
+		['upstream_error', 'realtimeVoice.providerFailed']
+	] as const)('shows %s without losing the session before a socket close', async (code, message) => {
+		const track = { stop: vi.fn(), enabled: true };
+		vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [track] }) } });
+		render(RealtimeVoice);
+		await screen.findByText(t('realtimeVoice.ready'));
+		await fireEvent.click(screen.getByRole('button', { name: t('realtimeVoice.startSession') }));
+		await waitFor(() => expect(Socket.instances).toHaveLength(1));
+		const socket = Socket.instances[0];
+		socket.open();
+		socket.message({ type: 'session.ready', realtime_kind: 'conversation', input_sample_rate_hz: 24000, output_sample_rate_hz: 24000 });
+		await screen.findByText(t('realtimeVoice.connectedMicrophoneOn'));
+		socket.message({ type: 'error', code, message: 'Do not expose raw provider text' });
+		await screen.findByText(t(message));
+		expect(track.stop).not.toHaveBeenCalled();
+		expect(socket.closed).toBe(false);
+		expect(socket.sent).toEqual([]);
+		socket.message({ type: 'transcript.output.delta', delta: 'Response continues' });
+		await screen.findByText('Response continues');
+		socket.close();
+		socket.onclose?.();
+		await screen.findByText(t('realtimeVoice.connectionClosed'));
+		expect(track.stop).toHaveBeenCalledTimes(1);
+	});
+
 	it('converts a WebP pick within both wire limits and fences encoding when permissions change', async () => {
 		const webp = new File(['webp fixture'], 'reference.webp', { type: 'image/webp' });
 		const close = vi.fn();

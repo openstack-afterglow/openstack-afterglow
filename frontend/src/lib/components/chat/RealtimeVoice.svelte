@@ -400,7 +400,13 @@
 					if (activeMode !== 'conversation') finishSession(epoch);
 					else stop();
 					break;
-				case 'error': error = t('realtimeVoice.providerFailed'); experienceState(experience, 'error', 5); stop(false, false, activeMode === 'transcription'); break;
+				case 'error':
+					// Lumen reports rejected operations independently of session closure.
+					if (audioAllowed) {
+						error = t(packet.code === 'realtime_hold_limit' ? 'realtimeVoice.quotaInsufficient' : 'realtimeVoice.providerFailed');
+						experienceState(experience, 'error', 5);
+					}
+					break;
 			}
 		} catch {
 			error = t('realtimeVoice.invalidResponse');

@@ -273,16 +273,19 @@
 		if (overlayInput) overlayInput.value = '';
 	}
 	function removeAttachment(item: ImageAttachment) {
-		if (uploading) {
+		const aborting = uploading;
+		if (aborting) {
 			inputGeneration += 1;
 			uploadAbort?.abort();
 			uploadAbort = null;
 			uploading = false;
 		}
 		const pairedOverlay = item.role === 'input' && inputs[0]?.key === item.key ? overlay : undefined;
-		attachments = attachments.filter(({ key }) => key !== item.key && key !== pairedOverlay?.key);
-		URL.revokeObjectURL(item.url);
-		if (pairedOverlay) URL.revokeObjectURL(pairedOverlay.url);
+		attachments = attachments.filter((entry) => {
+			const drop = entry.key === item.key || entry.key === pairedOverlay?.key || (aborting && !entry.id);
+			if (drop) URL.revokeObjectURL(entry.url);
+			return !drop;
+		});
 	}
 	function saveHistory(key: string, ids: string[]) {
 		try { sessionStorage.setItem(key, JSON.stringify(ids.slice(0, 20))); } catch { /* Storage is optional. */ }
@@ -680,7 +683,8 @@
 					<fieldset class="advanced-options" disabled={!imagesAllowed || busy || capabilitiesLoading}>
 						<legend class="muted">{t('imageStudio.options.title')}</legend>
 						{#if custom}
-							{@const limits = { multiple: customLimits!.dimension_multiple, edge: customLimits!.max_edge, ratio: customLimits!.max_aspect_ratio, min: customLimits!.min_pixels, max: customLimits!.max_pixels }}
+							{@const number = new Intl.NumberFormat(intlLocale())}
+							{@const limits = { multiple: number.format(customLimits!.dimension_multiple), edge: number.format(customLimits!.max_edge), ratio: number.format(customLimits!.max_aspect_ratio), min: number.format(customLimits!.min_pixels), max: number.format(customLimits!.max_pixels) }}
 							{@const help = t('imageStudio.options.sizeHelp', limits)}
 							<div class="custom-size" onfocusout={() => { if (customSize) customSizeChecked = true; }}>
 								<Field label={t('imageStudio.options.custom')} for="studio-custom-size" help={help} error={customSizeChecked && !customSizeValid ? t('imageStudio.options.badSize', { limits: help }) : undefined}>

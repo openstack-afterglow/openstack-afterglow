@@ -223,8 +223,12 @@ def test_realtime_ws_rejects_origin_and_relay_preserves_audio_frames(monkeypatch
     consume.assert_awaited_once_with("opaque", expected_kind="chat-realtime")
 
 
-@pytest.mark.parametrize("image_input", [True, False])
-def test_realtime_relay_preserves_admitted_large_messages_and_rejects_overflow(monkeypatch, image_input):
+@pytest.mark.parametrize(
+    ("image_input", "overflow_from_lumen"), [(True, False), (False, False), (True, True), (False, True)]
+)
+def test_realtime_relay_preserves_admitted_large_messages_and_rejects_overflow(
+    monkeypatch, image_input, overflow_from_lumen
+):
     app = FastAPI()
     app.include_router(router, prefix="/api/v1/chat")
     session_id = str(uuid4())
@@ -244,8 +248,12 @@ def test_realtime_relay_preserves_admitted_large_messages_and_rejects_overflow(m
         received.append((websocket.request.path, websocket.request.headers["x-realtime-token"]))
         received.append(websocket.recv(timeout=5))
         websocket.send(reply)
-        with pytest.raises(ConnectionClosed):
+        if overflow_from_lumen:
+            websocket.send("a" * (cap + 1))
+        with pytest.raises(ConnectionClosed) as stopped:
             websocket.recv(timeout=5)
+        if overflow_from_lumen:
+            received.append(stopped.value.rcvd.code)
 
     with serve(lumen, "127.0.0.1", 0, max_size=2 * 1024 * 1024) as server:
         thread = Thread(target=server.serve_forever, daemon=True)
@@ -274,15 +282,19 @@ def test_realtime_relay_preserves_admitted_large_messages_and_rejects_overflow(m
             ):
                 socket.send_text(accepted)
                 assert socket.receive_text() == reply
-                # Character count stays below the cap, but UTF-8 exceeds it by one byte.
-                socket.send_text("é" * (cap // 2) + " ")
-                with pytest.raises(WebSocketDisconnect) as rejected:
-                    socket.receive_text()
-                assert rejected.value.code == 1009
-            assert list(received) == [(f"/v1/chat/realtime/sessions/{session_id}/ws", token), accepted]
+                if not overflow_from_lumen:
+                    # Character count stays below the cap, but UTF-8 exceeds it by one byte.
+                    socket.send_text("é" * (cap // 2) + " ")
+                result = socket.receive()
+                assert (result["type"], result.get("code"), len(result.get("text", ""))) == ("websocket.close", 1009, 0)
         finally:
             server.shutdown()
             thread.join(timeout=5)
+    assert list(received) == [
+        (f"/v1/chat/realtime/sessions/{session_id}/ws", token),
+        accepted,
+        *([1009] if overflow_from_lumen else []),
+    ]
 
 
 @pytest.mark.asyncio

@@ -176,6 +176,8 @@ async def relay(websocket: WebSocket):
             ws_url,
             additional_headers={"x-realtime-token": token},
             max_size=frame_limit,
+            # Enforce the size limit on the original message, not a truncated decompression result.
+            compression=None,
             open_timeout=10,
             close_timeout=5,
         ) as upstream:
