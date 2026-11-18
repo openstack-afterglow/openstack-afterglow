@@ -23,6 +23,8 @@
 - Agent Vault can search, read, edit, and create notes restricted to one chat project.
 - Agent Vault는 Afterglow와 Lumen 사이의 서명된 인증 요청만 허용한다. 두 서비스에 같은 비공개 ingress 키를 설정해야 한다.
 - Agent Vault requires signed Afterglow-to-Lumen requests. Configure the same private ingress key on both services.
+- 이미지 모델 가격은 요금 적용 방식을 토큰 단위와 이미지 단위 중에서 고른다. 토큰 단위는 텍스트 토큰(입력·캐시 입력)과 이미지 토큰(입력·캐시 입력·출력)을 USD / 1M tokens로 표시하고, 검토 화면은 공식 가격을 출처와 함께 미리 채워 수정한 항목만 수동 가격으로 저장한다. OpenAI 이미지 토큰 방식은 예약 상한을 비워 둘 수 있다. Leaf 단위 가격 재정의를 지원하는 Lumen이 필요하다.
+- Image model pricing chooses per-token or per-image billing. Per-token billing shows text tokens (input, cached input) and image tokens (input, cached input, output) in USD / 1M tokens; review prefills official prices with provenance and saves only edited fields as manual overrides. OpenAI image token billing can leave the reservation cap blank. Requires a Lumen release with per-field price overrides.
 
 ## [1.32.28] - 2026-11-18
 
