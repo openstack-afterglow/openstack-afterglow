@@ -14,6 +14,11 @@
 - Decision Studio에서 Gemini Decision 1을 지원한다. 텍스트·JSON 텍스트·이미지로 예/아니요, 선택, 점수를 평가하고 신뢰도·확률·사용량·예상 비용을 표시한다. Gemini 요청은 인코딩 후 20 MiB까지 허용하며 모델 레지스트리는 입력 토큰 단가만 받는다. 기존 OpenAI 흐름은 유지한다.
 - Decision Studio supports Gemini Decision 1 with text, JSON-as-text, and images. View typed answers, confidence, token usage, and estimated cost. Gemini requests allow up to 20 MiB after encoding; the model registry uses input-token pricing only. The OpenAI workflow is unchanged.
 
+### Deployment
+
+- DMS Lab 컨트롤러 3대에 Lumen 0.6.19를 먼저 배포한 뒤 Afterglow 1.32.26을 07:39:44–07:41:38 UTC에 반영했다. 새 DB migration은 없다. [한영 릴리즈 노트](https://github.com/openstack-afterglow/openstack-afterglow/releases/tag/1.32.26) 및 [`docs/testing.md`](docs/testing.md)에 수신증을 기록했다.
+- Deployed Afterglow 1.32.26 to three DMS Lab controllers at 07:39:44–07:41:38 UTC after Lumen 0.6.19. No new DB migration. See the [bilingual release](https://github.com/openstack-afterglow/openstack-afterglow/releases/tag/1.32.26) and [`docs/testing.md`](docs/testing.md) for receipts.
+
 ## [1.32.25] - 2026-11-18
 
 ### Changed

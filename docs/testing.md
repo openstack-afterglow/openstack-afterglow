@@ -6,6 +6,23 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 운영 1.32.26·Lumen 0.6.19 릴리스·롤아웃
+
+- Afterglow: 불변 tag `1.32.26` → `ac516031642075de752e32f1bc69be8cf9e76e46`. [정확한 dev SHA CI](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/44254592959), [tag 이미지](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/44258539105), [Helm](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/44258539067) 통과. [한영 GitHub Release](https://github.com/openstack-afterglow/openstack-afterglow/releases/tag/1.32.26)는 2026-11-18 07:43:57 UTC에 공개했다.
+- 이미지 tag와 `latest`의 digest가 같고, 발행 matrix의 `linux/amd64`(워크스테이션에서 에뮬레이션)로 실제 이미지 버전·OCI revision을 확인했다. `helm show chart oci://ghcr.io/openstack-afterglow/charts/afterglow --version 1.32.26`의 `version`·`appVersion`도 일치했다.
+
+| 대상 | OCI digest |
+| --- | --- |
+| `afterglow-api` | `sha256:ab480c4d085e24d1306d14bfcee441e18597025484bf59488c53c9ce123fb1c7` |
+| `afterglow` | `sha256:3327b69086a5f39d256f53b3ccfa89c28c98b0b175e240f081415c6b5394c6c5` |
+| `afterglow-worker` | `sha256:0f01afd6a72ddf8c625cdeaeaf934c594d76003fa2e8cf4ef87f394feb9bdc31` |
+| Helm `afterglow` | `sha256:112aa1192850378d75322157b30123a90b9e6c8455148acbcba6a21ac8f849a1` |
+
+- DMS Lab 세 컨트롤러: `afterglow-kolla`만 lock에서 변경, pull 및 prechecks 통과. 동일 Kolla 실행기·inventory의 effective render를 새 backend/worker 이미지에서 네트워크 없이 읽어 DB·Redis/Sentinel, 서명·암호화 키 지문, 설정 마운트가 기존과 같은지 확인했다. Bootstrap·policy writer의 DB 설정도 실행 전에 상용 backend와 일치했다. `kolla-ansible reconfigure -i multinode --limit control --tags afterglow --skip-tags haproxy -e afterglow_start_restart=true` 성공(07:39:44–07:41:38 UTC). 재기동 후 동일 항목 일치. 새 DB migration 없음.
+- 647개 컨테이너 전후 비교에서 대상 backend/frontend/notion worker만 교체(각 컨트롤러), 정확한 image revision·버전과 재시작 0회, VIP 유지, 새 unhealthy 없음. 직접 health 200×3, 공개 `/login`·`/api/v1/health` 200, 사이트 설정 `services.chat=true`, 비인증 모델 목록 401. 운영 스냅샷: `/etc/kolla/.afterglow-rollout-backups/1.32.26-20261118T073537Z`.
+- 운영 `/dashboard/chat/decisions`는 비로그인 브라우저를 로그인 화면으로 보냈다. 인증 세션 relay 접속 제한으로 로그인 후 편집·실행은 확인하지 않았다. 로컬 데스크톱·모바일 편집/결과와 합성 Gemini 왕복은 별도 검증이다. 격리 `npm run test:gate`: backend 15,515, frontend 8,497, contract 281, functional 301 통과; Ruff·아키텍처 통과.
+- Lumen 0.6.19는 먼저 배포했다(07:21:14–07:22:18 UTC). `google-genai==3.5.0`으로 실제 텍스트 질문을 1회 보내 210 입력 토큰, 0 출력 토큰, 사용량 1행과 $0.000021 정산을 확인했다. 키는 폐기했고 재사용은 401이다. 운영 이미지 입력은 검증하지 않았다. [Lumen 릴리즈](https://github.com/openstack-afterglow/lumen/releases/tag/0.6.19) · [배포 수신증과 OpenSpec 보관](https://github.com/openstack-afterglow/lumen/pull/46). Sandbox runtime은 계속 비활성 상태다.
+
 ## 운영 1.32.25·Lumen 0.6.17 릴리스·롤아웃 (2026-11-18 KST, UTC 2026-11-17 20:34–20:52)
 
 - 릴리스: Afterglow `dev` `e8eefc30`(PR #106, dev CI 44158397161 성공)에 annotated tag `1.32.25`. 이미지 api `sha256:7bde09c6…`, frontend `sha256:ee54b7c9…`, worker `sha256:073f2f78…`, tag와 `latest`가 같은 digest, revision 라벨 `e8eefc30`. Lumen `dev` `c5b020be`(PR #39, 17 checks 성공)에 tag `0.6.17`, api/worker/controller/sandbox 이미지는 amd64+arm64.
