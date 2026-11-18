@@ -443,7 +443,7 @@ describe("admin media model registration", () => {
       model_name: "gpt-image-1",
       display_name: null,
       model_kind: "image",
-      media_pricing: { image_variants: { "1024x1024:high": "0.08" } },
+      media_pricing: { override_mode: "leaf", image_variants: { "1024x1024:high": "0.08" } },
     });
   });
 
@@ -522,28 +522,24 @@ describe("admin media model registration", () => {
     expect(post).not.toHaveBeenCalled();
   });
 
-  it.each(["gpt-image-2", "gpt-image-2.5-flare"])("requires an explicit token billing choice and entered reservation for %s", async (name) => {
+  it.each(["gpt-image-2", "gpt-image-2.5-flare"])("lets %s choose OpenAI token billing without a fixed reservation", async (name) => {
     const media = { token_rates: { image: { input_per_million: "8", cache_read_per_million: "2", output_per_million: "30" } } };
     serve([model(1, { provider_id: 2, model_name: name, display_name: name, model_kind: "image",
       input_price_per_million: "5", effective_input_price_per_million: "5",
       output_price_per_million: null, effective_output_price_per_million: null, media_pricing: media })], [openai]);
     render(ModelPage);
     const modal = await openEditor();
-    const basis = within(modal).getByLabelText(t("pricing.billingBasis", { kind: t("configuration.image") })) as HTMLSelectElement;
-    expect(basis.value).toBe("");
+    expect((within(modal).getByRole("radio", { name: t("pricing.imageUnit") }) as HTMLInputElement).checked).toBe(true);
     expect(document.querySelector("#model-edit-reservation-usd")).toBeNull();
-    await fireEvent.change(basis, { target: { value: "tokens" } });
+    await fireEvent.click(within(modal).getByRole("radio", { name: t("pricing.imageTokenUnit") }));
     const reservation = within(modal).getByLabelText(t("pricing.reservationCap")) as HTMLInputElement;
     expect(reservation.value).toBe("");
-    await fireEvent.click(within(modal).getByText("저장"));
-    expect(toastError).toHaveBeenCalledWith(t("pricing.reservationError"));
-    expect(patch).not.toHaveBeenCalled();
-    // This is an explicit test-user input, not a catalog-derived or guessed tariff.
-    await fireEvent.input(reservation, { target: { value: "0.50" } });
+    expect(within(modal).getByText(t("pricing.imageDerivedReservation"))).toBeTruthy();
     await fireEvent.click(within(modal).getByText("저장"));
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    expect(toastError).not.toHaveBeenCalled();
     expect(JSON.parse(JSON.stringify(patch.mock.calls[0][1]))).toStrictEqual({
-      media_pricing: { ...media, billing_basis: "tokens", reservation_usd: "0.50" },
+      media_pricing: { ...media, billing_basis: "tokens" },
     });
   });
 
