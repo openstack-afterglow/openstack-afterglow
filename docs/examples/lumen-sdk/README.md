@@ -13,6 +13,8 @@ npm --prefix node install
 
 Issue the key in the dashboard under **Chat settings → API keys**. Personal keys bill the user; service keys bill the domain credit pool. Keys can call model APIs only. To run every example, issue the key with these scopes (or choose **All allowed**): `models:read`, `compat:completions:write`, `embeddings:write`, `compat:images:write`.
 
+Perplexity Sonar and other web-search models are available only in dashboard chat. They need Lumen's web-search tool permission, which model-only keys cannot hold, so they are hidden from key model lists and key requests to them are rejected with `403`. The examples therefore cover OpenAI, Claude and Gemini models only.
+
 Set the model variables you want to try. Pick IDs from `python python/openai_example.py list`, `python python/anthropic_example.py list` and `python python/gemini_example.py list`.
 
 | Variable | Used by |
@@ -22,7 +24,6 @@ Set the model variables you want to try. Pick IDs from `python python/openai_exa
 | `LUMEN_IMAGE_MODEL` | OpenAI image generation |
 | `LUMEN_CLAUDE_MODEL`, `LUMEN_CLAUDE_PROVIDER` | Anthropic messages and OpenAI provider example |
 | `LUMEN_GEMINI_MODEL`, `LUMEN_GEMINI_PROVIDER` | Gemini text and OpenAI provider example |
-| `LUMEN_PERPLEXITY_MODEL`, `LUMEN_PERPLEXITY_PROVIDER` | OpenAI provider example |
 | `LUMEN_GEMINI_EMBED_MODEL` | Gemini embeddings |
 
 `LUMEN_CLAUDE_PROVIDER` and `LUMEN_GEMINI_PROVIDER` are optional for the native Anthropic and Gemini examples. Set them when a model ID is registered under more than one provider.

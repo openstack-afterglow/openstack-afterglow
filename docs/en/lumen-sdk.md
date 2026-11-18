@@ -48,6 +48,8 @@ Lumen serves the HTTP formats used by the official OpenAI SDK, Anthropic SDK and
 
 Both key types are **model-API only**. They can call permitted model operations such as model listing, chat, embeddings, images, audio, realtime and decisions. They cannot use OpenStack cloud tools, server tools, conversation history, Agent Vault/memory or key management. The dashboard-only virtual model `model=lumen` is not available to keys.
 
+> **Perplexity Sonar and other web-search models are available only in dashboard chat.** They need Lumen's web-search tool permission, which model-only API keys cannot hold. They are hidden from key model lists, and key requests to them are rejected with `403`.
+
 ## Environment variables
 
 Read the key from a hidden prompt so it does not enter shell history.
@@ -66,7 +68,6 @@ Model IDs differ between deployments. List the models first, then choose public 
 | `LUMEN_IMAGE_MODEL` | Image generation model |
 | `LUMEN_CLAUDE_MODEL`, `LUMEN_CLAUDE_PROVIDER` | Claude model and Lumen provider ID |
 | `LUMEN_GEMINI_MODEL`, `LUMEN_GEMINI_PROVIDER` | Gemini text model and Lumen provider ID |
-| `LUMEN_PERPLEXITY_MODEL`, `LUMEN_PERPLEXITY_PROVIDER` | Perplexity model and Lumen provider ID |
 | `LUMEN_GEMINI_EMBED_MODEL` | Gemini embedding model |
 
 ## Install the SDKs
@@ -80,7 +81,7 @@ The examples target Python 3.10+ and Node.js 20+. `examples/lumen-sdk/python/req
 
 ## OpenAI SDK
 
-The OpenAI SDK `base_url` includes `/v1`. The same client can call OpenAI models and the Claude, Gemini and Perplexity models registered in Lumen.
+The OpenAI SDK `base_url` includes `/v1`. The same client can call OpenAI models and the Claude and Gemini models registered in Lumen. Web-search models such as Perplexity Sonar cannot be called with a key.
 
 ### Python
 
@@ -147,7 +148,7 @@ await writeFile('lumen-image.png', Buffer.from(image.data[0].b64_json, 'base64')
 
 Image responses support `b64_json` only. `response_format="url"` is rejected.
 
-### Selecting Claude, Gemini and Perplexity models
+### Selecting Claude and Gemini models
 
 The same public model ID can be registered under more than one provider. Send the administrator-registered provider ID in the `X-Lumen-Provider` header. When a request without the header matches more than one route, Lumen rejects it with `409 model_route_ambiguous`. Chat Completions also accepts a `provider` body field, but the header works the same way in every SDK.
 
@@ -175,8 +176,8 @@ curl --fail-with-body "$LUMEN_BASE_URL/v1/models" -H "Authorization: Bearer $LUM
 
 curl --fail-with-body "$LUMEN_BASE_URL/v1/chat/completions" \
   -H "Authorization: Bearer $LUMEN_API_KEY" -H 'Content-Type: application/json' \
-  -H "X-Lumen-Provider: $LUMEN_PERPLEXITY_PROVIDER" \
-  -d "{\"model\":\"$LUMEN_PERPLEXITY_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Hello\"}]}"
+  -H "X-Lumen-Provider: $LUMEN_CLAUDE_PROVIDER" \
+  -d "{\"model\":\"$LUMEN_CLAUDE_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Hello\"}]}"
 ```
 
 ## Anthropic SDK
@@ -317,7 +318,7 @@ curl --fail-with-body --no-buffer "$LUMEN_BASE_URL/v1beta/models/${LUMEN_GEMINI_
 Gemini scope and limits:
 
 - Supported: model list and single-model get (`pageSize`, `pageToken`, `nextPageToken`), `generateContent`, `streamGenerateContent?alt=sse` (the final chunk carries `usageMetadata`), `embedContent` and `batchEmbedContents`.
-- The model list includes OpenAI, Anthropic and Perplexity text models as well as Gemini models. Gemini-provider models run natively; other text models are translated. Both support text, inline images, `systemInstruction`, function declarations (returned as `functionCall`), `temperature`, `topP`, `maxOutputTokens`, `stopSequences` and JSON mode (`responseMimeType: application/json`).
+- The model list includes text models from other providers such as OpenAI and Anthropic as well as Gemini models (excluding Perplexity Sonar models, which need the web-search tool). Gemini-provider models run natively; other text models are translated. Both support text, inline images, `systemInstruction`, function declarations (returned as `functionCall`), `temperature`, `topP`, `maxOutputTokens`, `stopSequences` and JSON mode (`responseMimeType: application/json`).
 - Inline image types: png/jpeg/webp/heic/heif for Gemini models, png/jpeg/webp/gif for translated models. `topK`, `safetySettings`, `thinkingConfig`, penalties and `seed` return `400` on translated models.
 - The request schema is closed; unknown fields return `400`. Rejected for every model: server tools (`googleSearch` and similar), `cachedContent`, `fileData`, audio/video/PDF input, `candidateCount` other than 1, `responseModalities` other than `TEXT`, `toolConfig` other than `functionCallingConfig`, and the virtual `lumen` model.
 - `countTokens` returns `501 UNIMPLEMENTED`.
@@ -332,6 +333,7 @@ Gemini scope and limits:
 | `401` | Missing, invalid, revoked or expired key | Check the complete key or issue a new one. |
 | `403` | Missing key permission | Issue a new key with the required permissions. |
 | `403 model_not_allowed_for_key` | Model unavailable to keys (for example `model=lumen`) | Use a public model ID from the model list. |
+| `403` (web-search model) | Perplexity Sonar or another model that needs the web-search tool | Use it in dashboard chat; keys cannot call it. |
 | `409 model_route_ambiguous` | The model ID matches more than one provider | Send the `X-Lumen-Provider` header. |
 | `domain_credit_insufficient` | The service key's domain prepaid balance or limit is exhausted. OpenAI-compatible responses use `429` | Ask a domain manager or system administrator for a top-up or limit change. |
 | `429` (other) | User limit or provider rate limit | Check usage and retry later. |

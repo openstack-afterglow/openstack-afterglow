@@ -45,7 +45,7 @@ switch (operation) {
     break;
   }
   case 'providers':
-    for (const family of ['CLAUDE', 'GEMINI', 'PERPLEXITY']) {
+    for (const family of ['CLAUDE', 'GEMINI']) {
       const provider = required(`LUMEN_${family}_PROVIDER`);
       const result = await client.chat.completions.create(
         { model: required(`LUMEN_${family}_MODEL`), messages },
