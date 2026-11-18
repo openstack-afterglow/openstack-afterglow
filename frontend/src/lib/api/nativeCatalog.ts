@@ -5,6 +5,7 @@ export type ProviderFamily = 'native' | 'compatible';
 export type PriceOrigin = 'manual' | 'native_catalog' | null;
 export interface NativeCatalogSummary {
 	id: string;
+	kind?: ModelKind;
 	status: 'active' | 'preview' | 'deprecated';
 	verified_at: string;
 	source_urls: string[];

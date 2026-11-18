@@ -63,6 +63,16 @@ async def api_client():
     app.dependency_overrides.pop(get_token_info, None)
 
 
+@pytest.fixture
+def decisions_policy():
+    with patch(
+        "app.api.lumen.proxy.get_policy_capabilities",
+        new_callable=AsyncMock,
+        return_value={"capabilities": ["lumen-chat_user"]},
+    ) as policy:
+        yield policy
+
+
 async def _authenticated(request: Request) -> dict:
     token_info = {
         "token": "caller-token",
@@ -215,7 +225,7 @@ async def test_embedding_playground_proxy_uses_native_route_and_no_store(api_cli
 
 
 @pytest.mark.asyncio
-async def test_decisions_proxy_preserves_wire_scope_and_private_response(api_client, current_access):
+async def test_decisions_proxy_preserves_wire_scope_and_private_response(api_client, current_access, decisions_policy):
     app.dependency_overrides[get_token_info] = _authenticated
     current_access["roles"].append("lumen-chat_user")
     body = b'{"model":"gpt-6-luna","input":"Synthetic","questions":[{"type":"predicate","instructions":"Is it text?"}]}'
@@ -229,7 +239,7 @@ async def test_decisions_proxy_preserves_wire_scope_and_private_response(api_cli
     upstream = AsyncClient(transport=httpx.MockTransport(handler))
     with (
         patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1"),
-        patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
+        patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream) as create_upstream,
     ):
         response = await api_client.post(
             "/api/v1/chat/decisions",
@@ -244,6 +254,119 @@ async def test_decisions_proxy_preserves_wire_scope_and_private_response(api_cli
     assert headers["x-auth-token"] == "caller-token"
     assert headers["x-project-id"] == "project-1"
     assert "authorization" not in headers
+    assert create_upstream.call_args.kwargs["timeout"].read == 125.0
+    decisions_policy.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("granted", "declared_size", "status"), [(True, 20 * 1024 * 1024 + 1, 413), (False, 1, 403)])
+async def test_decisions_proxy_rejects_without_reading_body(
+    api_client, current_access, decisions_policy, granted, declared_size, status
+):
+    app.dependency_overrides[get_token_info] = _authenticated
+    current_access["roles"].append("lumen-chat_user")
+    if not granted:
+        decisions_policy.return_value = {"capabilities": []}
+
+    body_read = False
+
+    async def input_chunks():
+        nonlocal body_read
+        body_read = True
+        yield b"x"
+
+    with patch("app.services.service_proxy._get_internal_endpoint") as endpoint:
+        response = await api_client.post(
+            "/api/v1/chat/decisions",
+            content=input_chunks(),
+            headers={"content-type": "application/json", "content-length": str(declared_size)},
+        )
+    assert response.status_code == status
+    assert response.headers["cache-control"] == "no-store"
+    assert not body_read
+    endpoint.assert_not_called()
+    if granted:
+        assert response.json() == {"detail": "decision_request_too_large"}
+        decisions_policy.assert_not_awaited()
+    else:
+        decisions_policy.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("extra", "status"),
+    [(0, 200), (1, 413)],
+)
+async def test_decisions_proxy_bounds_streamed_body_without_content_length(
+    api_client, current_access, decisions_policy, extra, status
+):
+    app.dependency_overrides[get_token_info] = _authenticated
+    current_access["roles"].append("lumen-chat_user")
+    size = 20 * 1024 * 1024
+    block = b"x" * (1024 * 1024)
+    prefix = b'{"model":"lumen/14/7","input":"'
+    suffix = b'","questions":{}}'
+    remainder = size + extra - len(prefix) - len(suffix) - 19 * len(block)
+
+    async def input_chunks():
+        decisions_policy.assert_awaited_once()
+        yield prefix
+        for _ in range(19):
+            yield block
+        yield block[:remainder]
+        yield suffix
+
+    async def handler(request):
+        body = await request.aread()
+        assert len(body) == size
+        assert body.startswith(prefix) and body.endswith(suffix)
+        return HttpxResponse(200, stream=httpx.ByteStream(b"{}"))
+
+    upstream = AsyncClient(transport=httpx.MockTransport(handler))
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1") as endpoint,
+        patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
+    ):
+        response = await api_client.post(
+            "/api/v1/chat/decisions", content=input_chunks(), headers={"content-type": "application/json"}
+        )
+    assert response.status_code == status
+    assert response.headers["cache-control"] == "no-store"
+    if extra:
+        endpoint.assert_not_called()
+        assert response.json() == {"detail": "decision_request_too_large"}
+    else:
+        endpoint.assert_called_once()
+    await upstream.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("status", "detail"), [(422, "decision_input_modality_unsupported"), (400, "image_safety")])
+async def test_gemini_decisions_preserves_upstream_error_code(
+    api_client, current_access, decisions_policy, status, detail
+):
+    app.dependency_overrides[get_token_info] = _authenticated
+    current_access["roles"].append("lumen-chat_user")
+    body = {"model": "lumen/14/7", "input": [{"type": "image", "data": "aGk=", "mime_type": "image/png"}]}
+
+    async def handler(request):
+        assert str(request.url) == "http://isolated.test/v1/chat/decisions"
+        assert json.loads(await request.aread()) == body
+        return HttpxResponse(
+            status,
+            headers={"content-type": "application/json"},
+            stream=httpx.ByteStream(json.dumps({"detail": detail}).encode()),
+        )
+
+    upstream = AsyncClient(transport=httpx.MockTransport(handler))
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1"),
+        patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
+    ):
+        response = await api_client.post("/api/v1/chat/decisions", json=body)
+    assert response.status_code == status
+    assert response.json() == {"detail": detail}
+    assert response.headers["cache-control"] == "no-store"
 
 
 @pytest.mark.asyncio

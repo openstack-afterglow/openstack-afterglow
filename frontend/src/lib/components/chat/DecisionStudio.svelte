@@ -6,11 +6,15 @@
 	import { ApiError } from '$lib/api/client';
 	import {
 		decisionStudioApi, decisionReadiness, validateDecisionRequest, parseDecisionJson, validateDecisionImage,
+		buildGeminiDecisionRequest, decisionFailure, GeminiDecisionValidationError, isGeminiDecisionModel,
 		MAX_DECISION_IMAGE_BYTES, DECISION_IMAGE_TYPES,
-		type DecisionModel, type DecisionCapabilities, type DecisionResult, type DecisionRequest, type DecisionQuestion
+		type DecisionModel, type DecisionCapabilities, type DecisionResult, type DecisionRequest, type DecisionQuestion,
+		type GeminiDecisionDraft, type GeminiDecisionRequest, type GeminiDecisionResult
 	} from '$lib/api/decisionStudio';
 	import { Alert, Button, Field, PageShell, SelectInput, TextareaInput, TextInput } from '$lib/components/ui';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import GeminiDecisionEditor from './GeminiDecisionEditor.svelte';
+	import GeminiDecisionResults from './GeminiDecisionResults.svelte';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
 	import { t } from '$lib/i18n/ns/decision-studio';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
@@ -23,6 +27,12 @@
 			{ id: nextId++, value: '', description: '' }, { id: nextId++, value: '', description: '' }
 		] };
 	}
+	function newGeminiDraft(): GeminiDecisionDraft {
+		return { text: '', json: '', images: [], questions: [
+			{ id: nextId++, key: '', type: 'noul', instructions: '', yes: '', no: '', rows: [] }
+		] };
+	}
+	let geminiDraft = $state(newGeminiDraft());
 	let questions = $state<QuestionDraft[]>([newQuestion()]);
 	let models = $state<DecisionModel[]>([]);
 	let selected = $state('');
@@ -38,9 +48,11 @@
 	let busy = $state(false);
 	let loadError = $state('');
 	let failure = $state('');
+	let invalidField = $state<string>();
 	let status = $state('');
 	let result = $state<DecisionResult | null>(null);
 	let resultQuestions = $state<DecisionQuestion[]>([]);
+	let geminiResult = $state<{ value: GeminiDecisionResult; questions: GeminiDecisionRequest['questions']; price?: string | null } | null>(null);
 	let activeOwner = $state('');
 	let generation = $state(0);
 	let fileGeneration = 0;
@@ -53,16 +65,19 @@
 		? { token: $auth.token, projectId: $auth.projectId } : null);
 	const allowed = $derived(Boolean(scope) && $serviceCapabilities('lumen-chat_user'));
 	const model = $derived(models.find((entry) => String(entry.id) === selected));
+	const gemini = $derived(isGeminiDecisionModel(model));
 	const readiness = $derived(decisionReadiness(model, verified));
 	const canRun = $derived(allowed && !loading && !checking && !busy && !fileReading && !loadError && !readiness);
 
-	function message(cause: unknown): string {
-		if (cause instanceof ApiError) {
-			if (cause.status === 401 || cause.status === 403) return t('decisions.projectDenied');
-			if (cause.status === 402) return t('decisions.quotaInsufficient');
-			return t('decisions.requestFailed', { status: cause.status });
-		}
+	function message(cause: unknown, geminiRequest = false): string {
+		if (cause instanceof ApiError) return decisionFailure(cause, geminiRequest);
 		return cause instanceof Error ? cause.message : t('decisions.connectionFailed');
+	}
+	function clearValidation() {
+		if (invalidField) { invalidField = undefined; failure = ''; }
+	}
+	function clearResults() {
+		result = null; resultQuestions = []; geminiResult = null;
 	}
 	function cancel(announce = true) {
 		decisionRequest?.abort(); decisionRequest = null; busy = false;
@@ -85,7 +100,9 @@
 		suspendRequests();
 		models = []; selected = ''; verified = null; questions = [newQuestion()];
 		content = ''; inputType = 'text'; imageDetail = 'auto'; fileData = ''; fileName = '';
-		loading = false; checking = false; loadError = ''; failure = ''; status = ''; result = null; resultQuestions = [];
+		geminiDraft = newGeminiDraft();
+		invalidField = undefined;
+		loading = false; checking = false; loadError = ''; failure = ''; status = ''; clearResults();
 	}
 	// Synchronous subscriptions invalidate A→B→A ownership and authority before promise callbacks.
 	const unsubscribers = [
@@ -104,7 +121,7 @@
 		capabilityRequest = null; checking = false;
 		const request = new AbortController(); modelRequest = request;
 		const epoch = generation, owner = activeOwner, requestScope = scope;
-		loading = true; loadError = ''; selected = ''; verified = null; models = []; result = null;
+		loading = true; loadError = ''; selected = ''; verified = null; models = []; clearResults();
 		try {
 			const list = await decisionStudioApi.models(requestScope, request.signal);
 			if (request.signal.aborted || modelRequest !== request || epoch !== generation || owner !== activeOwner || !allowed) return;
@@ -115,18 +132,20 @@
 			if (modelRequest === request) { modelRequest = null; loading = false; }
 		}
 	}
-	async function loadCapabilities(id: number) {
+	async function loadCapabilities(id: number, kind: DecisionModel['model_kind']) {
 		if (!allowed || !scope) return;
 		capabilityRequest?.abort(); cancel(false);
 		const request = new AbortController(); capabilityRequest = request;
 		const epoch = generation, owner = activeOwner, requestScope = scope;
-		checking = true; verified = null; result = null;
+		checking = true; verified = null; clearResults();
 		try {
-			const value = await decisionStudioApi.capabilities(id, requestScope, request.signal);
+			const value = await decisionStudioApi.capabilities(id, requestScope, request.signal, kind);
 			if (request.signal.aborted || capabilityRequest !== request || epoch !== generation || owner !== activeOwner || !allowed || selected !== String(id)) return;
 			verified = value;
 		} catch (cause) {
-			if (!request.signal.aborted && capabilityRequest === request && epoch === generation && owner === activeOwner && allowed && selected === String(id)) loadError = message(cause);
+			if (!request.signal.aborted && capabilityRequest === request && epoch === generation && owner === activeOwner && allowed && selected === String(id)) {
+				loadError = kind === 'decision' && cause instanceof ApiError && cause.status === 422 ? t('gemini.lumenUpdate') : message(cause);
+			}
 		} finally {
 			if (capabilityRequest === request) { capabilityRequest = null; checking = false; }
 		}
@@ -136,14 +155,15 @@
 		untrack(() => { if (epoch === generation && owner && enabled && !models.length && !loading && !loadError) void loadModels(); });
 	});
 	$effect(() => {
-		const id = selected, enabled = allowed, epoch = generation;
-		untrack(() => { if (epoch === generation && enabled && id && verified?.model_id !== Number(id) && !checking && !loadError) void loadCapabilities(Number(id)); });
+		const entry = model, enabled = allowed, epoch = generation;
+		untrack(() => { if (epoch === generation && enabled && entry && verified?.model_id !== entry.id && !checking && !loadError) void loadCapabilities(entry.id, entry.model_kind); });
 	});
 	function selectModel(event: Event) {
 		if (!allowed || busy) return;
 		capabilityRequest?.abort(); capabilityRequest = null; checking = false; verified = null;
 		stopFileRead(); selected = (event.currentTarget as HTMLSelectElement).value;
-		loadError = ''; failure = ''; status = ''; result = null;
+		invalidField = undefined;
+		loadError = ''; failure = ''; status = ''; clearResults();
 	}
 	function selectInputType(event: Event) {
 		if (!allowed || busy) return;
@@ -204,33 +224,54 @@
 	}
 	async function decide() {
 		if (!canRun || !scope || !model) return;
-		let payload: DecisionRequest;
-		try {
-			const input: DecisionRequest['input'] = inputType === 'text' ? content : [{ role: 'user', content: inputType === 'json'
-				? [{ type: 'input_json', data: parseDecisionJson(content) }]
-				: [{ type: 'input_image', image_url: inputType === 'file' ? fileData : content.trim(), detail: imageDetail }] }];
-			const built = questions.map((question): DecisionQuestion => {
-				const base = { instructions: question.instructions, ...(question.name.trim() ? { name: question.name.trim() } : {}) };
-				if (question.type === 'choice') return { ...base, type: 'choice', choices: question.options.map((entry) => ({ value: entry.value, description: entry.description })) };
-				if (question.type === 'score') return { ...base, type: 'score', levels: question.options.map((entry) => ({ label: entry.value, description: entry.description })) };
-				return { ...base, type: 'predicate' };
-			});
-			payload = { model: model.model_name, input, questions: built };
-			validateDecisionRequest(payload);
-		} catch (cause) {
-			failure = message(cause); await tick(); errorSummary?.focus(); return;
+		const selectedModel = model, useGemini = gemini;
+		let payload: DecisionRequest | undefined;
+		if (!useGemini) {
+			try {
+				const input: DecisionRequest['input'] = inputType === 'text' ? content : [{ role: 'user', content: inputType === 'json'
+					? [{ type: 'input_json', data: parseDecisionJson(content) }]
+					: [{ type: 'input_image', image_url: inputType === 'file' ? fileData : content.trim(), detail: imageDetail }] }];
+				const built = questions.map((question): DecisionQuestion => {
+					const base = { instructions: question.instructions, ...(question.name.trim() ? { name: question.name.trim() } : {}) };
+					if (question.type === 'choice') return { ...base, type: 'choice', choices: question.options.map((entry) => ({ value: entry.value, description: entry.description })) };
+					if (question.type === 'score') return { ...base, type: 'score', levels: question.options.map((entry) => ({ label: entry.value, description: entry.description })) };
+					return { ...base, type: 'predicate' };
+				});
+				payload = { model: selectedModel.model_name, input, questions: built };
+				validateDecisionRequest(payload);
+			} catch (cause) {
+				failure = message(cause); await tick(); errorSummary?.focus(); return;
+			}
 		}
 		const request = new AbortController(); decisionRequest = request;
 		const epoch = generation, owner = activeOwner, requestScope = scope;
-		busy = true; failure = ''; status = ''; result = null; resultQuestions = [];
+		const current = () => !request.signal.aborted && decisionRequest === request && epoch === generation && owner === activeOwner && allowed;
+		busy = true; failure = ''; invalidField = undefined; status = ''; clearResults();
+		let focusError = false;
 		try {
-			const value = await decisionStudioApi.decide(payload, requestScope, request.signal);
-			if (request.signal.aborted || decisionRequest !== request || epoch !== generation || owner !== activeOwner || !allowed) return;
-			result = value; resultQuestions = payload.questions;
+			if (payload) {
+				const value = await decisionStudioApi.decide(payload, requestScope, request.signal);
+				if (current()) { result = value; resultQuestions = payload.questions; }
+			} else {
+				const body = await buildGeminiDecisionRequest(selectedModel, geminiDraft, request.signal);
+				if (!current() || !scope) return;
+				const value = await decisionStudioApi.decideGemini(body, selectedModel.model_name, scope, request.signal);
+				if (current()) geminiResult = { value, questions: body.questions, price: selectedModel.effective_input_price_per_million };
+			}
 		} catch (cause) {
-			if (!request.signal.aborted && decisionRequest === request && epoch === generation && owner === activeOwner && allowed) failure = message(cause);
+			if (current()) {
+				failure = message(cause, useGemini);
+				if (cause instanceof GeminiDecisionValidationError) invalidField = cause.fieldId;
+				focusError = useGemini;
+			}
 		} finally {
 			if (decisionRequest === request) { decisionRequest = null; busy = false; }
+		}
+		if (focusError) {
+			await tick();
+			if (epoch === generation && owner === activeOwner && allowed && model?.id === selectedModel.id && !busy) {
+				((invalidField ? document.getElementById(invalidField) : null) ?? errorSummary)?.focus();
+			}
 		}
 	}
 	onDestroy(() => { unsubscribers.forEach((unsubscribe) => unsubscribe()); reset(); });
@@ -244,7 +285,7 @@
 			<div><h1 id="decision-title">{t('decisions.title')}</h1><p class="muted">{t('decisions.description')}</p></div>
 			<Button href="/dashboard/chat" variant="secondary">{t('decisions.textChat')}</Button>
 		</header>
-		<form class="workspace" aria-labelledby="decision-title" onsubmit={(event) => { event.preventDefault(); void decide(); }}>
+		<form class="workspace" aria-labelledby="decision-title" method="post" novalidate={gemini} oninput={clearValidation} onsubmit={(event) => { event.preventDefault(); void decide(); }}>
 			<section class="settings" aria-label={t('decisions.model')}>
 				<Field label={t('decisions.model')} for="decision-model"><SelectInput id="decision-model" value={selected} onchange={selectModel} disabled={!allowed || loading || busy}><option value="">{t('decisions.selectModel')}</option>{#each models as item (item.id)}<option value={String(item.id)}>{item.display_name}</option>{/each}</SelectInput></Field>
 				{#if allowed}
@@ -255,6 +296,9 @@
 					{:else}<p role="status" class="muted">{t('decisions.ready')}</p>{/if}
 				{/if}
 			</section>
+			{#if gemini}
+				<GeminiDecisionEditor bind:draft={geminiDraft} disabled={!allowed || busy} {invalidField} {clearValidation} allocateId={() => nextId++} />
+			{:else}
 			<fieldset disabled={!allowed || busy} class="input-section">
 				<legend>{t('decisions.input')}</legend>
 				<Field label={t('decisions.inputType')} for="decision-input-type"><SelectInput id="decision-input-type" value={inputType} onchange={selectInputType}><option value="text">{t('decisions.text')}</option><option value="json">{t('decisions.json')}</option><option value="image">{t('decisions.image')}</option><option value="file">{t('decisions.file')}</option></SelectInput></Field>
@@ -298,14 +342,17 @@
 				{/each}
 				<Button variant="outline" disabled={!allowed || busy || questions.length >= 400} onclick={addQuestion}>{t('decisions.addQuestion')}</Button>
 			</section>
+			{/if}
 			<div class="submit-row">
 				<p class="muted">{t('decisions.cancelHelp')}</p>
 				<div class="actions">{#if busy}<Button variant="secondary" onclick={() => cancel()}>{t('decisions.cancel')}</Button>{/if}<Button type="submit" disabled={!canRun}>{#if busy}<LoadingState variant="control" label={t('decisions.running')} />{:else}{t('decisions.run')}{/if}</Button></div>
 			</div>
 		</form>
-		{#if allowed && failure}<div bind:this={errorSummary} tabindex="-1" class="error-summary"><Alert tone="danger">{failure}</Alert></div>{/if}
+		{#if allowed && failure}<div id="decision-error-summary" bind:this={errorSummary} tabindex="-1" class="error-summary"><Alert tone="danger">{failure}</Alert></div>{/if}
 		{#if status}<p role="status" class="muted">{status}</p>{/if}
-		{#if allowed && result}
+		{#if allowed && gemini && geminiResult}
+			<GeminiDecisionResults result={geminiResult.value} questions={geminiResult.questions} inputPrice={geminiResult.price} />
+		{:else if allowed && !gemini && result}
 			<section class="results" aria-labelledby="decision-answers-heading" data-testid="decision-results">
 				<h2 id="decision-answers-heading">{t('decisions.answers')}</h2>
 				{#each result.answers as answer, index}

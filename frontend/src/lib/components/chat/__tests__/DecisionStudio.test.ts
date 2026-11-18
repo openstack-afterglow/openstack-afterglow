@@ -2,13 +2,14 @@ import { grantLumen, pendingLumen, refreshLumenAuth, setVerifiedLumenActor } fro
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as DecisionModule from '$lib/api/decisionStudio';
-import { MAX_DECISION_IMAGE_BYTES } from '$lib/api/decisionStudio';
+import { MAX_DECISION_IMAGE_BYTES, parseGeminiDecisionResult } from '$lib/api/decisionStudio';
+import { api, ApiError } from '$lib/api/client';
 import DecisionStudio from '../DecisionStudio.svelte';
 import { t } from '$lib/i18n/ns/decision-studio';
 import { projectSwitching } from '$lib/stores/auth';
 import { tick } from 'svelte';
 
-const calls = vi.hoisted(() => ({ models: vi.fn(), capabilities: vi.fn(), decide: vi.fn() }));
+const calls = vi.hoisted(() => ({ models: vi.fn(), capabilities: vi.fn(), decide: vi.fn(), decideGemini: vi.fn() }));
 vi.mock('$lib/api/decisionStudio', async (original) => ({ ...await original<typeof DecisionModule>(), decisionStudioApi: calls }));
 const gate = { decisions: true, feature_gates: { decisions: { available: true, mode: 'native' as const, reason_code: null, pricing_available: true } } };
 const model: DecisionModule.DecisionModel = { id: 9, provider_id: 1, provider_type: 'openai', provider_sort_order: 0, sort_order: 0, model_name: 'registered-luna', api_model_name: 'openai/gpt-6-luna', display_name: 'Luna decisions', model_kind: 'text', provider_api_key_configured: true, capabilities: gate };
@@ -339,4 +340,187 @@ describe('Decision Studio local image ownership', () => {
 		expect(old.abort).toHaveBeenCalledOnce(); old.finish(); await Promise.resolve();
 		expect(screen.queryByText('private.png')).toBeNull(); expect(calls.decide).not.toHaveBeenCalled();
 	});
+});
+
+const geminiModel: DecisionModule.DecisionModel = {
+	...model, id: 19, provider_id: 14, provider_type: 'gemini', model_kind: 'decision',
+	model_name: 'gemini/gemini-decision-1', display_name: 'Gemini Decision 1', effective_input_price_per_million: '0.10'
+};
+const geminiInput = () => screen.getByLabelText(t('decisions.text'));
+const geminiKey = (index = 0) => within(questionAt(index)).getByRole('textbox', { name: t('gemini.questionKey') });
+const fillInput = (element: HTMLElement, value: string) => fireEvent.input(element, { target: { value } });
+async function fillGeminiQuestion(index: number, key: string, instructions: string, type = 'noul') {
+	if (index) await fireEvent.click(screen.getByRole('button', { name: t('decisions.addQuestion') }));
+	await fillInput(geminiKey(index), key);
+	await fillInput(within(questionAt(index)).getByRole('textbox', { name: t('decisions.instructions') }), instructions);
+	await fireEvent.change(within(questionAt(index)).getByLabelText(t('decisions.type')), { target: { value: type } });
+}
+async function selectGeminiModel(entry = geminiModel) {
+	calls.models.mockResolvedValue([model, entry]);
+	calls.capabilities.mockImplementation(async (id: number, _scope, _signal, kind) => ({ ...capability(id), model_kind: kind }));
+	render(DecisionStudio); await fillPredicate();
+	await fireEvent.change(screen.getByRole('combobox', { name: t('decisions.model') }), { target: { value: String(entry.id) } });
+	await screen.findByText(t('decisions.ready'));
+}
+
+describe('Gemini Decision Studio', () => {
+	it('shows Gemini only for Gemini decision models, with independent unchanged OpenAI drafts', async () => {
+		await selectGeminiModel();
+		expect(geminiInput()).toBeTruthy();
+		expect(calls.capabilities).toHaveBeenLastCalledWith(19, expect.anything(), expect.any(AbortSignal), 'decision');
+		expect(screen.queryByLabelText(t('decisions.inputType'))).toBeNull();
+		await fillInput(geminiInput(), 'Gemini draft');
+		await fireEvent.change(screen.getByRole('combobox', { name: t('decisions.model') }), { target: { value: '9' } });
+		await screen.findByText(t('decisions.ready'));
+		expect(screen.queryByLabelText(t('gemini.images'))).toBeNull();
+		expect((screen.getByRole('textbox', { name: t('decisions.content') }) as HTMLTextAreaElement).value).toBe('A damaged parcel arrived.');
+		await fireEvent.click(run());
+		expect(calls.decide.mock.calls[0][0].questions[0].type).toBe('predicate');
+		expect(calls.decideGemini).not.toHaveBeenCalled();
+	});
+	it('also uses the Gemini editor for a Gemini text model with the decisions capability', async () => {
+		await selectGeminiModel({ ...geminiModel, model_kind: 'text' });
+		expect(geminiInput()).toBeTruthy();
+		expect(calls.capabilities).toHaveBeenLastCalledWith(19, expect.anything(), expect.any(AbortSignal), 'text');
+	});
+	it('requests decision-kind capabilities and explains a Lumen version rejection', async () => {
+		const actual = await vi.importActual<typeof DecisionModule>('$lib/api/decisionStudio');
+		const get = vi.spyOn(api, 'get').mockResolvedValueOnce(capability()).mockRejectedValueOnce(new ApiError(422, 'unsupported query kind')).mockResolvedValueOnce(capability());
+		calls.models.mockResolvedValue([model, geminiModel]);
+		calls.capabilities.mockImplementation(actual.decisionStudioApi.capabilities);
+		render(DecisionStudio); await fillPredicate();
+		await fireEvent.change(screen.getByRole('combobox', { name: t('decisions.model') }), { target: { value: '19' } });
+		await screen.findByText(t('gemini.lumenUpdate'));
+		expect(get).toHaveBeenLastCalledWith('/api/v1/chat/capabilities?model_id=19&model_kind=decision', 'token', 'project-1', expect.objectContaining({ signal: expect.any(AbortSignal) }));
+		expect((run() as HTMLButtonElement).disabled).toBe(true);
+		expect(calls.decideGemini).not.toHaveBeenCalled();
+		await fireEvent.change(screen.getByRole('combobox', { name: t('decisions.model') }), { target: { value: '9' } });
+		await screen.findByText(t('decisions.ready'));
+		expect((run() as HTMLButtonElement).disabled).toBe(false);
+	});
+	it('blocks empty input, malformed question keys, duplicate keys and incomplete criteria', async () => {
+		await selectGeminiModel();
+		await fillGeminiQuestion(0, 'bad key', 'Is the mug cracked?');
+		await fireEvent.click(run());
+		expect((await screen.findByRole('alert')).textContent).toContain(t('gemini.emptyInput'));
+		expect(document.activeElement).toBe(geminiInput());
+		expect(geminiInput().getAttribute('aria-invalid')).toBe('true');
+		await fillInput(geminiInput(), 'Cracked mug');
+		expect(geminiInput().getAttribute('aria-invalid')).toBeNull();
+		await fireEvent.click(run()); expect((await screen.findByRole('alert')).textContent).toContain(t('gemini.questionKeyHelp'));
+		expect(document.activeElement).toBe(geminiKey());
+		expect(geminiKey().getAttribute('aria-describedby')).toContain('decision-error-summary');
+		await fillInput(geminiKey(), 'damage');
+		await fillGeminiQuestion(1, 'damage', 'Which type?', 'choice');
+		await fireEvent.click(run());
+		const duplicate = await screen.findByRole('alert');
+		expect(duplicate.textContent).toContain(t('decisions.duplicateNames'));
+		expect(duplicate.textContent).toContain(t('gemini.questionField', { question: 2, field: t('gemini.questionKey') }));
+		expect(document.activeElement).toBe(geminiKey(1));
+		await fillInput(geminiKey(1), 'type');
+		const choice = within(questionAt(1));
+		const removeChoice = () => choice.getByRole('button', { name: t('decisions.removeChoice', { number: 1 }) }) as HTMLButtonElement;
+		expect(removeChoice().disabled).toBe(true);
+		await fireEvent.click(choice.getByRole('button', { name: t('decisions.addChoice') }));
+		expect(choice.getByRole('textbox', { name: t('gemini.optionKey', { number: 3 }) })).toBeTruthy();
+		await fireEvent.click(removeChoice());
+		expect(removeChoice().disabled).toBe(true);
+		expect(document.activeElement).toBe(choice.getByRole('textbox', { name: t('gemini.optionKey', { number: 1 }) }));
+		await fireEvent.click(run()); expect((await screen.findByRole('alert')).textContent).toContain(t('gemini.choiceKey'));
+		await fireEvent.change(choice.getByLabelText(t('decisions.type')), { target: { value: 'score' } });
+		const removeLevel = () => choice.getByRole('button', { name: t('decisions.removeLevel', { number: 1 }) }) as HTMLButtonElement;
+		expect(removeLevel().disabled).toBe(true);
+		await fireEvent.click(choice.getByRole('button', { name: t('decisions.addLevel') }));
+		expect(choice.getByRole('textbox', { name: t('gemini.levelDescription', { number: 3 }) })).toBeTruthy();
+		await fireEvent.click(removeLevel());
+		expect(removeLevel().disabled).toBe(true);
+		const firstLevel = choice.getByRole('textbox', { name: t('gemini.levelDescription', { number: 1 }) });
+		expect(document.activeElement).toBe(firstLevel);
+		await fireEvent.click(run()); expect((await screen.findByRole('alert')).textContent).toContain(t('gemini.requiredText'));
+		expect(document.activeElement).toBe(firstLevel);
+		expect(firstLevel.getAttribute('aria-invalid')).toBe('true');
+		expect(calls.decideGemini).not.toHaveBeenCalled();
+	});
+	it('posts mixed text, JSON and images; renders noul, choice, score and estimated usage cost', async () => {
+		// Answer examples from https://aistudio.google.com/docs/decisions-api#question-types.
+		const legend = {
+			0: 'Cosmetic: appearance only, no lost functionality.',
+			1: 'Workaround available: a task fails, but another way works.',
+			2: 'Fully blocked: a task fails with no workaround.'
+		};
+		const providerResponse = {
+			model: geminiModel.model_name,
+			answers: {
+				is_defect: { type: 'noul', noul: 0.03, confidence: 0.97 },
+				department: { type: 'choice', choice: 'billing', probabilities: { billing: 0.99, shipping: 0.004, other: 0.003, technical: 0.002 }, confidence: 0.99 },
+				severity: { type: 'score', score: 1.12, legend, probabilities: { 0: 0.03, 1: 0.83, 2: 0.15 }, confidence: 0.83 }
+			},
+			usage: { total_input_tokens: 100, input_tokens_by_modality: [{ modality: 'image', tokens: 70 }, { modality: 'text', tokens: 30 }], total_output_tokens: 0, total_tokens: 100 }
+		};
+		calls.decideGemini.mockImplementation(async (request: DecisionModule.PreparedGeminiDecision) => parseGeminiDecisionResult(providerResponse, request.questions, geminiModel.model_name));
+		await selectGeminiModel();
+		await fillInput(geminiInput(), 'Cracked mug');
+		await fillInput(screen.getByLabelText(t('gemini.json')), '{"id":9007199254740993}');
+		await fireEvent.change(screen.getByLabelText(t('gemini.images')), { target: { files: [new File(['mug'], 'mug.HEIC')] } });
+		await fireEvent.change(screen.getByLabelText(t('gemini.imageResolution')), { target: { value: 'high' } });
+		await fillGeminiQuestion(0, 'is_defect', 'Is the mug cracked?');
+		await fillInput(screen.getByLabelText(t('gemini.yesDescription')), 'Visible crack');
+		await fillGeminiQuestion(1, 'department', 'Which team?', 'choice');
+		const choice = within(questionAt(1));
+		for (const [index, key] of ['billing', 'shipping', 'other', 'technical'].entries()) {
+			if (index >= 2) await fireEvent.click(choice.getByRole('button', { name: t('decisions.addChoice') }));
+			await fillInput(choice.getByRole('textbox', { name: t('gemini.optionKey', { number: index + 1 }) }), key);
+		}
+		await fillGeminiQuestion(2, 'severity', 'How severe?', 'score');
+		const score = within(questionAt(2));
+		await fireEvent.click(score.getByRole('button', { name: t('decisions.addLevel') }));
+		for (const [index, description] of Object.values(legend).entries()) {
+			await fillInput(score.getByRole('textbox', { name: t('gemini.levelDescription', { number: index + 1 }) }), description);
+		}
+		await fireEvent.click(run());
+		const results = await screen.findByTestId('decision-results');
+		expect(calls.decideGemini).toHaveBeenCalledWith(expect.objectContaining({ body: expect.any(String) }), geminiModel.model_name, { token: 'token', projectId: 'project-1' }, expect.any(AbortSignal));
+		const sent = calls.decideGemini.mock.calls[0][0] as DecisionModule.PreparedGeminiDecision;
+		expect(JSON.parse(sent.body)).toEqual({
+			model: 'lumen/14/19', input: [{ type: 'text', text: 'Cracked mug' }, { type: 'text', text: '{"id":9007199254740993}' },
+				{ type: 'image', data: 'bXVn', mime_type: 'image/heic', resolution: 'high' }],
+			questions: {
+				is_defect: { type: 'noul', instructions: 'Is the mug cracked?', criteria: { true_description: 'Visible crack' } },
+				department: { type: 'choice', instructions: 'Which team?', criteria: { billing: '', shipping: '', other: '', technical: '' } },
+				severity: { type: 'score', instructions: 'How severe?', criteria: Object.values(legend) }
+			}
+		});
+		expect(within(results).getByText('3%', { selector: 'strong' })).toBeTruthy();
+		expect(within(results).getByText('97%', { exact: false })).toBeTruthy();
+		expect(within(results).getByText('billing', { selector: 'strong' })).toBeTruthy();
+		expect(within(results).getByText('1.12')).toBeTruthy();
+		expect(within(results).getByText(t('gemini.legendLevel', { number: '1', description: legend[1] }))).toBeTruthy();
+		expect(results.querySelectorAll('meter')).toHaveLength(7);
+		expect(within(results).getByText('0.00001')).toBeTruthy();
+		expect(within(results).getByText(t('gemini.imageTokens'))).toBeTruthy();
+		expect(within(results).queryByText(t('decisions.cacheWriteTokens'))).toBeNull();
+	});
+	it('cancels a pending Gemini decision without replay or late results', async () => {
+		const response = Promise.withResolvers<DecisionModule.GeminiDecisionResult>();
+		calls.decideGemini.mockReturnValue(response.promise);
+		await selectGeminiModel(); await fillInput(geminiInput(), 'Cracked mug'); await fillGeminiQuestion(0, 'damaged', 'Is it damaged?');
+		await fireEvent.click(run());
+		await waitFor(() => expect(calls.decideGemini).toHaveBeenCalledOnce());
+		const requestSignal = calls.decideGemini.mock.calls[0][3] as AbortSignal;
+		await fireEvent.click(screen.getByRole('button', { name: t('decisions.cancel') }));
+		expect(requestSignal.aborted).toBe(true);
+		response.resolve({ model: geminiModel.model_name, answers: {}, usage: { total_input_tokens: 0, input_tokens_by_modality: [], total_output_tokens: 0, total_tokens: 0 } });
+		await response.promise; await tick();
+		expect(screen.queryByTestId('decision-results')).toBeNull();
+		expect(calls.decideGemini).toHaveBeenCalledOnce();
+	});
+	it.each([[422, 'decision_input_modality_unsupported', 'gemini.unsupportedModality'], [400, 'image_safety', 'gemini.safetyBlocked']] as const)(
+		'localizes %s %s without displaying upstream text', async (status, code, key) => {
+			calls.decideGemini.mockRejectedValue(new ApiError(status, 'private provider message', code));
+			await selectGeminiModel(); await fillInput(geminiInput(), 'Cracked mug'); await fillGeminiQuestion(0, 'damaged', 'Is it damaged?');
+			await fireEvent.click(run()); await screen.findByText(t(key));
+			expect(screen.queryByText('private provider message')).toBeNull();
+			expect(calls.decideGemini).toHaveBeenCalledOnce();
+		}
+	);
 });

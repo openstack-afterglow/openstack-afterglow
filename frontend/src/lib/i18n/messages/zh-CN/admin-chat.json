@@ -1,6 +1,9 @@
 {
 	"configuration.embedding": "文本嵌入",
 	"pricing.embeddingInputOnly": "嵌入模型仅按输入令牌计费，不收取输出令牌费用。",
+	"configuration.decision": "决策",
+	"pricing.decisionInputOnly": "决策模型仅按输入令牌计费。",
+	"pricing.decisionProviderRequired": "决策模型需要原生 Gemini 提供商。",
 	"accounts.currentConnection": "当前连接设置",
 	"accounts.connectionIdentity": "提供商 #{provider} · 账户 #{account} · 密钥 #{credential}",
 	"accounts.currentEndpoint": "当前端点",

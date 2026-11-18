@@ -1,6 +1,6 @@
 """Authenticated proxy for browser-facing Lumen API routes."""
 
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -18,6 +18,40 @@ from app.services.service_proxy import get_policy_capabilities, proxy
 
 _PROXY_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
 _NO_STORE = {"Cache-Control": "no-store", "Pragma": "no-cache"}
+_DECISIONS_MAX_BODY_BYTES = 20 * 1024 * 1024
+
+
+async def _bounded_decisions_body(request: Request) -> AsyncIterator[bytes]:
+    """Admit the complete opaque body before opening the upstream request."""
+    limit_error = HTTPException(status_code=413, detail="decision_request_too_large")
+    declared = request.headers.get("content-length", "")
+    if declared.isascii() and declared.isdecimal():
+        # Compare normalized digits first; never parse an unbounded integer.
+        digits = declared.lstrip("0")
+        limit = str(_DECISIONS_MAX_BODY_BYTES)
+        if (len(digits), digits) > (len(limit), limit):
+            raise limit_error
+
+    principal = await current_service_principal(request)
+    native = await get_policy_capabilities("lumen", principal, timeout=5.0)
+    require_service_permission(
+        {**principal, "service_permissions": {"lumen": native["capabilities"]}}, "lumen-chat_user"
+    )
+
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > _DECISIONS_MAX_BODY_BYTES:
+            raise limit_error
+        if chunk:
+            chunks.append(chunk)
+
+    async def replay() -> AsyncIterator[bytes]:
+        for chunk in chunks:
+            yield chunk
+
+    return replay()
 
 
 def _noncanonical_path(parts: list[str]) -> bool:
@@ -200,4 +234,6 @@ async def proxy_lumen(path: str = "", *, request: Request) -> Response:
     if path in {"audio/speech", "audio/transcriptions"}:
         # Native audio waits for a durable run before its first response byte.
         return await proxy("lumen", request, upstream_path, read_timeout=310.0)
+    if path == "decisions":
+        return await proxy("lumen", request, upstream_path, read_timeout=125.0, prepare_body=_bounded_decisions_body)
     return await proxy("lumen", request, upstream_path)

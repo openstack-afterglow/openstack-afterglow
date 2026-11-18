@@ -15,7 +15,7 @@
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import NativeCatalogPricing from './NativeCatalogPricing.svelte';
 	import ModelCapabilityBadges from '$lib/components/chat/ModelCapabilityBadges.svelte';
-	import { modelKindLabel, type ModelKind } from './modelPricing';
+	import { modelKindLabel, MODEL_LABELS } from './modelPricing';
 
 	let catalog = $state<NativeCatalog | null>(null);
 	let loading = $state(false);
@@ -26,7 +26,7 @@
 	let destroyed = false;
 	let controller: AbortController | null = null;
 	const panelId = $props.id();
-	const kinds: ModelKind[] = ['text', 'image', 'tts', 'stt', 'realtime', 'embedding'];
+	const kinds = Object.keys(MODEL_LABELS);
 	let query = $state('');
 	let kind = $state('');
 	let pageSize = $state('5');

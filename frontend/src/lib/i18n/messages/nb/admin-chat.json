@@ -1,6 +1,9 @@
 {
 	"configuration.embedding": "Tekstembeddinger",
 	"pricing.embeddingInputOnly": "Embedding-modeller prises bare etter inndatatokener; det beregnes ingen pris for utdata.",
+	"configuration.decision": "Beslutning",
+	"pricing.decisionInputOnly": "Beslutningsmodeller prises bare etter inndatatokener.",
+	"pricing.decisionProviderRequired": "Beslutningsmodeller krever en direkte tilkoblet Gemini-leverandør.",
 	"accounts.currentConnection": "Gjeldende tilkoblingsinnstillinger",
 	"accounts.connectionIdentity": "Leverandør #{provider} · Konto #{account} · Nøkkel #{credential}",
 	"accounts.currentEndpoint": "Gjeldende endepunkt",

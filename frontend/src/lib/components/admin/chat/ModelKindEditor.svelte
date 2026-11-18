@@ -10,22 +10,25 @@
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
-	import { MODEL_LABELS, type ModelKind, type MediaPricing } from './modelPricing';
+	import type { NativeCatalogSummary } from '$lib/api/nativeCatalog';
+	import { inputTokenOnly, MODEL_LABELS, type ModelKind, type MediaPricing } from './modelPricing';
 
 	interface EditableModel {
 		id: number;
 		model_name: string;
 		display_name: string | null;
 		model_kind?: ModelKind;
+		catalog_entry?: Pick<NativeCatalogSummary, 'kind'> | null;
 		is_title_model?: boolean;
 		is_memory_model?: boolean;
 		media_pricing?: MediaPricing | null;
 		cache_write_price_per_million?: string | null;
 		cache_write_1h_price_per_million?: string | null;
 	}
-	let { model, mediaSupported, token, projectId, onclose, onsaved }: {
+	let { model, mediaSupported, decisionSupported = false, token, projectId, onclose, onsaved }: {
 		model: EditableModel;
 		mediaSupported: boolean;
+		decisionSupported?: boolean;
 		token?: string;
 		projectId?: string;
 		onclose: () => void;
@@ -39,7 +42,10 @@
 	let destroyed = false;
 	const originalKind = $derived(model.model_kind ?? 'text');
 	const protectedText = $derived(model.is_title_model || model.is_memory_model);
-	const unavailable = $derived(kind !== 'text' && (!mediaSupported || protectedText));
+	function unselectable(value: string): boolean {
+		return value !== 'text' && Boolean(protectedText || (value === 'decision' ? !decisionSupported || model.catalog_entry?.kind !== 'decision' : !mediaSupported));
+	}
+	const unavailable = $derived(unselectable(kind));
 	const unsubscribe = auth.subscribe((state) => {
 		const next = JSON.stringify([state.token, state.projectId, state.userId, state.sessionId, state.identityDomainId, state.domainId, state.isSystemAdmin, state.roles]);
 		if (identity && next !== identity) { ++epoch; onclose(); }
@@ -53,18 +59,19 @@
 		if (busy || !token || kind === originalKind || unavailable || !$authReady || $projectSwitching) return;
 		const generation = epoch, target = model, requestToken = token, requestProject = projectId;
 		const current = () => !destroyed && epoch === generation && model === target && token === requestToken && projectId === requestProject;
-		const media = kind === 'embedding' ? null : target.media_pricing?.token_rates ? { token_rates: target.media_pricing.token_rates } : null;
+		const inputOnly = inputTokenOnly(kind);
+		const media = inputOnly ? null : target.media_pricing?.token_rates ? { token_rates: target.media_pricing.token_rates } : null;
 		const body = {
 			model_kind: kind,
 			is_active: false,
 			media_pricing: media,
-			...(kind === 'embedding' ? {
+			...(inputOnly ? {
 				output_price_per_million: null,
 				cache_read_price_per_million: null,
 				cache_write_price_per_million: null,
 				cache_write_1h_price_per_million: null
 			} : {}),
-			...(kind !== 'text' && kind !== 'embedding' ? { cache_write_price_per_million: null, cache_write_1h_price_per_million: null } : {})
+			...(kind !== 'text' && !inputOnly ? { cache_write_price_per_million: null, cache_write_1h_price_per_million: null } : {})
 		};
 		busy = true; error = '';
 		try {
@@ -84,7 +91,9 @@
 	<Field label={t('configuration.modelType')} for="model-kind-edit">
 		<SelectInput id="model-kind-edit" bind:value={kind} disabled={busy}>
 			{#each Object.entries(MODEL_LABELS) as [value, label]}
-				<option {value} disabled={value !== 'text' && (!mediaSupported || protectedText)}>{label}</option>
+				{#if value !== 'decision' || (decisionSupported && model.catalog_entry?.kind === 'decision')}
+					<option {value} disabled={unselectable(value)}>{label}</option>
+				{/if}
 			{/each}
 		</SelectInput>
 	</Field>

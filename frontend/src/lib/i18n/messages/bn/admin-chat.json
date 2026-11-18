@@ -1,6 +1,9 @@
 {
 	"configuration.embedding": "টেক্সট এমবেডিং",
 	"pricing.embeddingInputOnly": "এমবেডিং মডেলে শুধু ইনপুট টোকেনের জন্য মূল্য ধরা হয়; আউটপুট টোকেনের মূল্য প্রযোজ্য নয়।",
+	"configuration.decision": "সিদ্ধান্ত",
+	"pricing.decisionInputOnly": "সিদ্ধান্ত মডেলে শুধু ইনপুট টোকেনের জন্য চার্জ নেওয়া হয়।",
+	"pricing.decisionProviderRequired": "সিদ্ধান্ত মডেলের জন্য সরাসরি সংযুক্ত Gemini প্রদানকারী প্রয়োজন।",
 	"accounts.currentConnection": "বর্তমান সংযোগ সেটিংস",
 	"accounts.connectionIdentity": "প্রদানকারী #{provider} · অ্যাকাউন্ট #{account} · কী #{credential}",
 	"accounts.currentEndpoint": "বর্তমান এন্ডপয়েন্ট",
