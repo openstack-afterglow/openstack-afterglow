@@ -67,6 +67,7 @@ async function confirmAndSubmit(useClock = false) {
 	if (useClock) vi.useFakeTimers();
 	await fireEvent.input(textbox, { target: { value: serverName } });
 	await fireEvent.click(screen.getByRole('button', { name: 'Run recovery' }));
+	if (useClock) await vi.advanceTimersByTimeAsync(0);
 }
 
 afterEach(() => vi.useRealTimers());
