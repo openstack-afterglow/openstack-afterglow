@@ -1,18 +1,20 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import DetailHeader from '$lib/components/ui/DetailHeader.svelte';
 	import ActionMenu from '$lib/components/ui/ActionMenu.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import { mobileViewport } from '$lib/utils/mobileViewport';
 	import { useInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 	import { t } from '$lib/i18n/ns/instance';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { t as tu } from '$lib/i18n/ns/usage-schedule';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import { t as tc } from '$lib/i18n/ns/common';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
-	import { AnimatedNumber, Button, ProgressTrack } from '$lib/components/ui';
+	import { Alert, AnimatedNumber, Button, ProgressTrack } from '$lib/components/ui';
 	import WaygateManagedNote from './WaygateManagedNote.svelte';
 	import { createdInstance } from '$lib/tutorial/createdInstance.svelte';
+	import RecoveryModal from '$lib/components/admin/instances/RecoveryModal.svelte';
 
 	interface Props {
 		adminProjectId: string | null;
@@ -42,6 +44,32 @@
 	}
 
 	const busy = $derived(!!s.actioning || s.deleting || s.resizeLoading);
+	const canRecover = $derived(!!adminProjectId && canMutate && s.instance?.status === 'ERROR');
+	const failedMigration = $derived(
+		adminProjectId && s.instance?.status === 'ERROR' && s.migrationStatus?.server_id === s.instance.id
+			&& s.migrationStatus.migration?.status === 'error' ? s.migrationStatus.migration : null
+	);
+	let recoveryTarget = $state<{ id: string; name: string } | null>(null);
+
+	function openRecovery() {
+		if (canRecover && s.instance) recoveryTarget = { id: s.instance.id, name: s.instance.name };
+	}
+
+	function formatIncidentTime(value: string) {
+		// Nova omits the timezone on some migration timestamps; they are UTC.
+		const date = new Date(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : `${value}Z`);
+		return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(intlLocale(), {
+			dateStyle: 'medium', timeStyle: 'medium',
+		}).format(date);
+	}
+
+	$effect(() => {
+		const instance = s.instance;
+		if (adminProjectId && instance?.status === 'ERROR'
+			&& untrack(() => s.migrationStatus?.migration?.status === 'running')) {
+			untrack(() => { void s.loadMigrationStatus(instance.id); });
+		}
+	});
 	const lockTitle = $derived(s.waygateLocked ? t('waygate.managedNote') : undefined);
 	// Tutorial anchors exist only on the tut- instance the instance-detail-delete tour just created.
 	const tourCreated = $derived(!!s.instance && createdInstance.id === s.instance.id && s.instance.name.startsWith('tut-'));
@@ -96,11 +124,12 @@
 		{#if s.waygateLocked}
 			<WaygateManagedNote class="max-w-xl" />
 		{/if}
-		{#if s.instance!.status === 'ERROR' && s.instance!.fault?.message && adminProjectId}
-			<div class="p-3 rounded-lg bg-red-900/30 border border-red-800/40 text-red-300 text-sm max-w-xl">
-				<div class="font-medium mb-1 text-xs text-red-400">{t('header.errorDetails')}</div>
-				<div class="text-xs opacity-90 break-words">{s.instance!.fault!.message}</div>
-			</div>
+		{#if s.instance!.status === 'ERROR' && s.instance!.fault && adminProjectId}
+			{@const fault = s.instance!.fault!}
+			<Alert title={t('header.latestFault')} class="max-w-xl">
+				{#if fault.created}<time datetime={fault.created}>{formatIncidentTime(fault.created)}</time>{/if}
+				{#if fault.message}<div class="break-words">{fault.message}</div>{/if}
+			</Alert>
 		{/if}
 		{#if adminProjectId && s.instance!.status === 'MIGRATING' && s.migrationStatus?.migration}
 			{@const mig = s.migrationStatus.migration}
@@ -116,11 +145,15 @@
 				<ProgressTrack value={mig.memory_percent ?? null} label={t('header.migrationInProgress')} active />
 			</div>
 		{/if}
-		{#if adminProjectId && s.migrationStatus?.error && s.instance!.status !== 'ACTIVE'}
-			<div class="p-3 rounded-lg bg-red-900/30 border border-red-800/40 text-red-300 text-sm max-w-xl">
-				<div class="font-medium mb-1 text-xs text-red-400">{t('header.migrationFailed')}</div>
-				<div class="text-xs opacity-90 break-words">{s.migrationStatus.error}</div>
-			</div>
+		{#if failedMigration}
+			{@const time = failedMigration.updated_at ?? failedMigration.created_at}
+			<Alert title={t('header.migrationFailed')} class="max-w-xl">
+				<div class="break-words">
+					{failedMigration.type ?? '—'} · {failedMigration.source ?? '—'} → {failedMigration.dest ?? '—'}
+				</div>
+				{#if time}<time datetime={time}>{formatIncidentTime(time)}</time>{/if}
+				{#if failedMigration.type === 'live-migration'}<div>{t('header.liveMigrationLogs')}</div>{/if}
+			</Alert>
 		{/if}
 {/snippet}
 
@@ -213,6 +246,7 @@
 										<Button onclick={() => fromOverflow(() => onOpenMigrateModal('cold'))} disabled={busy} variant="ghost" size="sm" class="w-full justify-start">{t('header.coldMigration')}</Button>
 									{/if}
 								{/if}
+								{#if canRecover}<Button onclick={() => fromOverflow(openRecovery)} disabled={busy} variant="ghost" size="sm" class="w-full justify-start">{t('header.recoveryAnalysis')}</Button>{/if}
 								<Button onclick={() => fromOverflow(onOpenEvacuateModal)} disabled={busy} variant="ghost" size="sm" class="w-full justify-start">{t('header.evacuate')}</Button>
 							{/if}
 							{#if canMutate && s.instance!.status === 'SHUTOFF'}
@@ -310,6 +344,7 @@
 
 				<!-- Administrator recovery and password actions remain separate. -->
 				<div class="flex items-center gap-2 flex-wrap justify-end">
+					{#if canRecover}<Button onclick={openRecovery} disabled={busy} variant="outline" size="sm">{t('header.recoveryAnalysis')}</Button>{/if}
 					<Button onclick={onOpenEvacuateModal} disabled={busy} variant="outline" size="sm">{t('header.evacuate')}</Button>
 					{#if s.canChangePassword}{@render passwordAction()}{/if}
 				</div>
@@ -325,4 +360,13 @@
 		</div>
 	{/snippet}
 </DetailHeader>
+{/if}
+
+{#if recoveryTarget && adminProjectId && canMutate && recoveryTarget.id === s.instance?.id}
+	<RecoveryModal
+		serverId={recoveryTarget.id}
+		serverName={recoveryTarget.name}
+		onClose={() => { recoveryTarget = null; }}
+		onRecovered={s.manualRefresh}
+	/>
 {/if}

@@ -376,17 +376,39 @@ def test_get_server_migration_status_no_active():
     assert result["host"] == "compute1"
 
 
-def test_get_server_migration_status_fault_message():
-    """인스턴스 fault.message를 error로 반환."""
+def test_get_server_migration_status_separates_fault_from_failed_migration():
+    """A recent console fault must not suppress a prior failed migration record."""
     conn = MagicMock()
     srv = MagicMock()
     srv.compute_host = "compute1"
-    srv.fault = {"message": "No valid host was found"}
+    srv.fault = {"message": "Guest does not have a console available.", "created": "2026-11-18T13:29:41Z"}
     conn.compute.get_server.return_value = srv
     conn.compute.server_migrations.return_value = []
+    conn.compute.migrations.return_value = [
+        MagicMock(
+            id="migration-1",
+            status="error",
+            migration_type="live-migration",
+            source_compute="compute1",
+            dest_compute="compute2",
+            created_at="2026-11-12T09:19:25Z",
+            updated_at="2026-11-12T09:20:05Z",
+        )
+    ]
 
     result = nova.get_server_migration_status(conn, "server-1")
-    assert result["error"] == "No valid host was found"
+    assert result["server_id"] == "server-1"
+    assert result["error"] == srv.fault["message"]
+    assert result["migration"] == {
+        "id": "migration-1",
+        "source": "compute1",
+        "dest": "compute2",
+        "status": "error",
+        "type": "live-migration",
+        "memory_percent": None,
+        "created_at": "2026-11-12T09:19:25Z",
+        "updated_at": "2026-11-12T09:20:05Z",
+    }
 
 
 def test_get_server_migration_status_memory_zero_total():

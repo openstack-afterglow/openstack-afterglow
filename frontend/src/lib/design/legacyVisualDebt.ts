@@ -177,10 +177,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 		count: 38,
 		tokens: ["bg-amber-600","bg-amber-700","bg-amber-900/20","bg-gray-600","bg-gray-700","bg-gray-800","bg-gray-900","bg-green-900/30","bg-red-900/40","border-amber-700/40","border-blue-500","border-gray-600","border-gray-700","border-gray-800","border-green-700/50","border-red-700","text-amber-300","text-amber-400","text-amber-500","text-blue-500","text-gray-200","text-gray-300","text-gray-400","text-gray-500","text-gray-600","text-green-300","text-red-300"],
 	},
-	"frontend/src/lib/components/admin/instances/RecoveryModal.svelte": {
-		count: 64,
-		tokens: ["bg-amber-900/20","bg-gray-600","bg-gray-700","bg-gray-800","bg-gray-900","bg-green-900/30","bg-red-600","bg-red-700","bg-red-900/30","bg-red-900/40","border-amber-700/40","border-gray-600","border-gray-700","border-gray-800","border-green-700/50","border-red-700","border-red-700/50","text-amber-200/70","text-amber-300","text-amber-400","text-blue-400","text-gray-200","text-gray-300","text-gray-400","text-gray-500","text-green-300","text-green-400","text-red-300","text-red-400","text-red-500"],
-	},
 	"frontend/src/lib/components/admin/monitoring/InstanceMetricsTab.svelte": {
 		count: 38,
 		tokens: ["bg-gray-500","bg-gray-800","bg-gray-900","bg-green-400","bg-green-900/30","bg-purple-900/30","bg-red-400","bg-red-900/30","border-gray-800","text-blue-300","text-blue-400","text-gray-200","text-gray-300","text-gray-400","text-gray-500","text-gray-600","text-gray-700","text-green-400","text-purple-400","text-red-400"],

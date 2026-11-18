@@ -1114,6 +1114,16 @@ Nova2.47+ embedded flavor의 `original_name`을 SDK가 가상ID로 노출하는 
 
 일반 polling은 rename draft를 보존한다. 실제 selection 변경 경계의 동기 revision과 auth/permission subscription, mode/target/session/project fence가 same-tick ABA·close/unmount 뒤의 응답을 폐기하며, 현재 문맥의 성공만 공용 상세와 열린 사용자/관리자 목록을 갱신한다. 기존 resize·confirm/revert·SHUTOFF-only UI는 그대로다. 새 endpoint 외 DB/schema·서비스 소유권·배포 topology 변화는 없다.
 
+### 실패한 라이브 마이그레이션 인스턴스 복구
+
+관리자 인스턴스 목록과 공용 상세는 `RecoveryModal`을 공유하고, 상세 `InstanceHeader`는 별도 시각을 가진 Nova fault와 마이그레이션 실패 레코드를 서로 다른 배너로 표시한다. 최근 콘솔 요청 fault를 마이그레이션 원인으로 표시하지 않는다. 실패의 상세 원인은 컴퓨트 로그에서 확인한다.
+
+`instance_recovery`는 관리자 연결로 Nova 서버·task·진행 및 이력, Neutron 포트, Nova/Cinder 볼륨을 읽는다. 실패한 읽기는 관찰된 빈 결과와 구분해 모든 복구 시나리오에서 차단한다. 최신 실패가 라이브 마이그레이션이면 서버가 기록의 소스에 있고, 생성 시각 60초 이내의 유일한 최신 라이브 요청에서 `compute_rollback_live_migration_at_destination: Success`가 관찰되어야 한다. 모든 Neutron 포트는 소스 활성 바인딩만 보유하고 `migrating_to`가 없어야 하며, 모든 Cinder 연결은 소스에 있어야 한다. 인스턴스 consumer에 Placement 공급자가 하나뿐이어야 한다. Placement가 불가하면 대상 중복 할당을 배제할 수 없어 복구를 차단한다.
+
+복구 POST는 서버별 공유 Redis lease 아래에서 재진단·쓰기·최종 Nova 관찰을 직렬화한다. 동일 서버의 중복 요청은 409, 잠금 획득 불가는 503이다. 각 쓰기 직전에 현재 owner만 TTL을 갱신하며, worker 종료 뒤 원자적으로 자신의 lease만 해제한다.
+
+모든 검사를 통과한 `live_migration_rolled_back`은 실행 중인 게스트(`power_state=1`)를 재시작하지 않고 Nova 상태만 `active`로 재설정한다. `SHUTDOWN`·`CRASHED`는 게스트가 실행 상태가 아님을 확인하므로 재설정 뒤 소스에서 하드 리부트한다. `NOSTATE`는 정지 증거가 아니므로 자동 실행을 차단한다. Cold/resize와 일반 볼륨 복구는 기존 단계 순서를 유지한다. 실행은 안전 증거를 다시 읽고, UI가 동의한 재시작 여부와 다르면 쓰기 없이 거부한다. 단계 요청을 수락한 뒤 최대 약 55초 동안 Nova가 보고한 상태를 관찰해 `observed_status`를 반환하고, 업무 로그에는 순서와 실제 관찰 상태를 보존한다. Nova `ACTIVE` 확인은 게스트 애플리케이션 헬스를 증명하지 않는다. 새 DB schema나 컴퓨트 설정 변경은 없다. [응답 계약·CPU 모델 운영 예시](docs/api/admin.md#error-인스턴스-복구).
+
 ### GPU·고성능 인스턴스 사용 일정
 
 `models/instance_usage.py`와 `services/instance_usage.py`는 Nova 서버의 `afterglow_usage_*` metadata를 일정·종료일·동작·볼륨 동의·revision·최신 연장 사유·dispatch 상태의 유일한 정본으로 사용한다. SQL108의 도메인 승인 정책·요청 이력은 일정 정본이 아니며 Redis는 조정만 소유한다. GPU 전체 및12vCPU 이상 또는65536MiB 이상, 관리자 추가 extra spec 대상의 sync/SSE·admin SSE·MCP 생성은 최초 Nova CREATE에 일정을 싣는다. 기본은 달력 한 달(UTC 월말 보정)·shelve이고 한 달 초과 초기 기간은 사유를 요구한다. MCP는 승인 fingerprint의 날짜가 흔들리지 않도록 명시적인 aware expires_at을 요구한다.
