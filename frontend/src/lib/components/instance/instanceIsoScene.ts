@@ -74,6 +74,7 @@ export function buildInstanceIsoScene({ instance, ports, networks, floatingIps, 
 	let networkIndex = 0;
 	let networkDepth = 0;
 	let rowDepth = 0;
+	let slabExtent = 0;
 	for (const [id, members] of networksByPort) {
 		const networkId = members[0].network_id;
 		const network = networkId ? catalog.get(networkId) : undefined;
@@ -83,19 +84,22 @@ export function buildInstanceIsoScene({ instance, ports, networks, floatingIps, 
 		const x = networkDepth + (right ? 1.3 : 0.05);
 		const y = networkDepth + (right ? 0.05 : 1.3);
 		const h = 1.2 + (members.length - 1) * 0.95;
+		const w = 1.25;
 		if (label) {
-			scene.platforms.push({ id, label, x, y, w: 1.25, h, style: 'slab', tone });
+			scene.platforms.push({ id, label, x, y, w, h, style: 'slab', tone });
+			slabExtent = Math.max(slabExtent, (x + y + w + h) / 2);
 			details.set(id, { kind: 'network', label, ports: members });
 		}
 		for (const [index, port] of members.entries()) {
 			const portId = `port:${port.id}`;
 			const address = port.fixed_ips.map(ip => ip.ip_address).join(', ');
 			const portLabel = port.name || t('network.iso.port');
-			const status = resourceStatus(port.status);
+			const down = port.status === 'DOWN';
+			const status = down ? undefined : resourceStatus(port.status);
 			scene.nodes.push({ id: portId, label: portLabel, sublabel: address || undefined,
 				ariaLabel: [portLabel, address, port.id].filter(Boolean).join(', '), kind: 'port', tone,
 				x: x + 0.57, y: y + 0.37 + index * 0.95, size: 'sm', platformId: label ? id : undefined, status,
-				badges: port.status ? [{ text: getStatusLabel(port.status), tone: getStatusStyle(port.status).tone }] : undefined });
+				badges: port.status ? [{ text: down ? port.status : getStatusLabel(port.status), tone: getStatusStyle(port.status).tone }] : undefined });
 			scene.edges.push({ id: `interface:${port.id}`, from: instanceId, to: portId, kind: 'link', tone, flow: true });
 			details.set(portId, { kind: 'port', label: portLabel, port, network: label });
 		}
@@ -110,7 +114,9 @@ export function buildInstanceIsoScene({ instance, ports, networks, floatingIps, 
 	if (addresses.length) {
 		const internetId = 'floating:external';
 		const label = t('network.iso.internet');
-		scene.nodes.push({ id: internetId, kind: 'internet', label, tone: 'external', x: 2.7, y: 2.7, size: 'sm' });
+		// On the center diagonal, x + y is the depth projected toward the viewer.
+		const depth = Math.max(2.29, slabExtent + 0.35);
+		scene.nodes.push({ id: internetId, kind: 'internet', label, tone: 'external', x: depth, y: depth, size: 'sm' });
 		details.set(internetId, { kind: 'floating', label, addresses });
 		for (const ip of addresses) {
 			scene.edges.push({ id: `floating:${ip.id}`, from: `port:${ip.port_id}`, to: internetId,
@@ -130,28 +136,44 @@ export function buildInstanceIsoScene({ instance, ports, networks, floatingIps, 
 			}
 		}
 	}
-	const outgoing = union.rows.filter(row => row.direction === 'egress');
+	const ingress = new Map<string, SecurityGroupUnionRow[]>();
+	const outgoing: SecurityGroupUnionRow[] = [];
+	for (const row of union.rows) {
+		if (row.direction === 'ingress') {
+			const key = JSON.stringify([row.ethertype, row.remote.kind, row.remote.value]);
+			const rules = ingress.get(key);
+			if (rules) rules.push(row);
+			else ingress.set(key, [row]);
+		} else if (row.direction === 'egress') {
+			outgoing.push(row);
+		}
+	}
 	const egress = t('securityGroupUnion.direction.egress');
 	const groupedEgress = outgoing.length > EGRESS_DETAIL_LIMIT;
-	let sourceIndex = 0;
-	for (const row of union.rows) {
+	const ruleNodes = [...ingress].map(([key, rules]) => ({ id: `source:${key}`, rules }));
+	if (!groupedEgress) {
+		for (const row of outgoing) ruleNodes.push({ id: `rule:${row.key}`, rules: [row] });
+	}
+	for (const [index, { id, rules }] of ruleNodes.entries()) {
+		const row = rules[0];
 		const incoming = row.direction === 'ingress';
-		if (!incoming && row.direction !== 'egress') continue;
-		if (!incoming && groupedEgress) continue;
 		const all = row.remote.kind === 'cidr' && (row.remote.value === '0.0.0.0/0' || row.remote.value === '::/0');
 		const internet = all && incoming && internetVersions.has(row.ethertype);
 		const kind = internet ? 'internet' : row.remote.kind === 'group' ? 'security-group' : 'cidr';
 		const label = internet ? t('network.iso.internet') : all ? t('securityGroupUnion.any')
 			: row.remote.kind === 'group' ? groupNames.get(row.remote.value) ?? row.remote.value : row.remote.value;
-		const id = `rule:${row.key}`;
 		const tone = incoming ? 'shared' : 'router';
-		const side = incoming ? (sourceIndex % 3 - 1) * 0.65 : 0;
-		const depth = incoming ? Math.floor(sourceIndex++ / 3) * 0.9 : outgoing.indexOf(row) * 0.9;
-		scene.nodes.push({ id, kind, label, sublabel: all ? row.remote.value : undefined, tone, size: 'sm',
-			x: (incoming ? -1.88 + side : -1.37) - depth, y: (incoming ? -1.88 - side : 0.6) - depth });
+		const side = incoming ? (index % 3 - 1) * 0.65 : 0;
+		const depth = (incoming ? Math.floor(index / 3) : index - ingress.size) * 0.9;
+		const sublabel = all ? row.remote.value : row.remote.kind === 'group' ? row.ethertype : undefined;
+		scene.nodes.push({ id, kind, label, sublabel, tone, size: 'sm',
+			ariaLabel: row.remote.kind === 'group' ? `${label}, ${row.ethertype}, ${row.remote.value}` : undefined,
+			x: (incoming ? -1.53 + side : -1.37) - depth, y: (incoming ? -1.53 - side : 0.6) - depth });
+		const ruleLabel = rules.length > 1 ? t('network.iso.rulesCount', { count: rules.length })
+			: row.protocol === null ? row.protocolLabel : `${row.protocolLabel} ${row.portLabel}`;
 		scene.edges.push({ id: `edge:${id}`, from: incoming ? id : instanceId, to: incoming ? instanceId : id, directed: true,
-			kind: incoming ? 'ingress' : 'egress', tone, label: row.protocol === null ? row.protocolLabel : `${row.protocolLabel} ${row.portLabel}` });
-		details.set(id, { kind: 'rules', label, rules: [row] });
+			kind: incoming ? 'ingress' : 'egress', tone, label: ruleLabel });
+		details.set(id, { kind: 'rules', label, rules });
 	}
 	if (groupedEgress) {
 		const id = 'egress';

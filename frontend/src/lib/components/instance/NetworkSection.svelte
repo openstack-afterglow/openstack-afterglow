@@ -72,18 +72,20 @@
 	}
 </script>
 
-<div class="min-w-0 bg-surface-base border border-line rounded-lg p-4 @md/panel:p-6 mb-4">
+<div class="min-w-0 bg-surface-base border border-line rounded-lg p-6 mb-4">
 	<div class="mb-4 flex flex-wrap items-center justify-between gap-2">
 		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide">{t('network.title')}</h2>
 		<IsoViewToggle value={viewMode} onchange={mode => { viewMode = mode; }} storageKey="instance.network.view" />
 	</div>
 
 	{#if grid && s.instance}
-		<IsoGridView scene={grid.scene} label={t('network.iso.label')} caption={t('network.iso.caption')}
-			height="clamp(16rem, 43dvh, 22rem)" fitKey={s.instance.id}
-			selectedId={detail ? selectedId : null}
-			onselect={id => { if (s.instance) selection = { instanceId: s.instance.id, id }; }}
-			onclear={() => { selection = null; }} />
+		<div class="min-w-0 @max-md/panel:-mx-2">
+			<IsoGridView scene={grid.scene} label={t('network.iso.label')} caption={t('network.iso.caption')}
+				height="clamp(17rem, 51dvh, 26.5rem)" fitKey={s.instance.id}
+				selectedId={detail ? selectedId : null}
+				onselect={id => { if (s.instance) selection = { instanceId: s.instance.id, id }; }}
+				onclear={() => { selection = null; }} />
+		</div>
 		{#if s.interfaces.length === 0}
 			<p class="mt-3 text-sm text-ink-2">{t('network.empty')}</p>
 		{:else if s.securityGroupsLoading}

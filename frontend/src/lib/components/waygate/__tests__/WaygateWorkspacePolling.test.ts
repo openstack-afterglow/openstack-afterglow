@@ -97,6 +97,7 @@ beforeEach(() => {
 	vi.setSystemTime(new Date('2026-09-20T00:00:00Z'));
 	localStorage.clear();
 	localStorage.setItem('waygate.view', 'list');
+	localStorage.setItem('admin-waygate.view', 'list');
 	hidden = false;
 	vi.spyOn(document, 'hidden', 'get').mockImplementation(() => hidden);
 	auth.update((value) => ({ ...value, token: 'token-a', projectId: 'project-a' }));

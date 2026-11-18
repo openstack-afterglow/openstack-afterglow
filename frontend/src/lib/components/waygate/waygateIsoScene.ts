@@ -33,12 +33,12 @@ export function waygatePeerStatus(client: WaygateClient, now: number, pollSecond
 }
 
 const PEER_LIMIT = 6;
-const PEER_MARK: Record<WaygatePeerStatus, { status: IsoStatus; tone: IsoTone }> = {
-	disabled: { status: 'off', tone: 'neutral' },
+const PEER_MARK: Record<WaygatePeerStatus, { status?: IsoStatus; tone: IsoTone }> = {
+	disabled: { tone: 'neutral' },
 	unknown: { status: 'unknown', tone: 'neutral' },
 	delayed: { status: 'warning', tone: 'warning' },
 	online: { status: 'ok', tone: 'success' },
-	offline: { status: 'off', tone: 'neutral' },
+	offline: { tone: 'neutral' },
 };
 
 export function buildWaygateIsoScene({ server, clients, attachments, networks, now, pollSeconds, locale }: WaygateIsoInput) {
@@ -80,7 +80,8 @@ export function buildWaygateIsoScene({ server, clients, attachments, networks, n
 		const rows = collapsed ? 1 : Math.ceil(observed.length / columns);
 		const w = columns * 1.1 + 0.4;
 		const h = rows * 1.1 + 0.4;
-		const x = -w - 0.55, y = -h - 0.55;
+		// Leave a full label band between the client slab and the raised gateway block.
+		const x = -w - 1.28, y = -h - 0.66;
 		scene.platforms.push({ id: peersId, label: peersLabel, x, y, w, h, tone: 'info', style: 'slab' });
 		targets.set(peersId, { kind: 'peers' });
 		if (collapsed) {
@@ -120,7 +121,9 @@ export function buildWaygateIsoScene({ server, clients, attachments, networks, n
 		const tone: IsoTone = network?.is_external ? 'external' : network?.is_shared ? 'shared' : 'internal';
 		const depth = Math.floor(index / 2) * 1.45;
 		const right = index % 2 === 0;
-		scene.platforms.push({ id, label: network?.name || attachment.network_id, sublabel: attachment.cidr || undefined,
+		const sublabel = [attachment.cidr, attachment.status !== 'ACTIVE' ? getStatusLabel(attachment.status) : undefined]
+			.filter(Boolean).join(' · ') || undefined;
+		scene.platforms.push({ id, label: network?.name || attachment.network_id, sublabel,
 			x: depth + (right ? 1.28 : -0.08), y: depth + (right ? -0.08 : 1.28), w: 1.33, h: 1.33, style: 'slab', tone });
 		targets.set(id, { kind: 'attachment', id: attachment.id });
 		const edge: IsoEdge = { id: `link:${id}`, from: serverId, to: id, kind: 'link', tone,

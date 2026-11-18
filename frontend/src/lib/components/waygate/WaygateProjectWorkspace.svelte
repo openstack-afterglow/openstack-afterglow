@@ -1488,7 +1488,7 @@
 					<h2 id={`${isoTargetPrefix}-server`} tabindex="-1" class="break-words text-xl font-semibold text-ink-0">{selectedServer.name}</h2>
 					<div class="mt-1"><StatusChip status={selectedServer.status} /></div>
 				</div>
-				<IsoViewToggle value={detailView} storageKey="waygate.view"
+				<IsoViewToggle value={detailView} storageKey={workspaceContext ? 'admin-waygate.view' : 'waygate.view'}
 					onchange={mode => { preferredView = mode; revealedFromGrid = null; }} />
 			</div>
 			{#if detailView === 'list' && (can.createGateway || can.deleteGateway)}
@@ -1509,7 +1509,7 @@
 			{#if vpnGrid}
 				<div class="mb-6 min-w-0">
 					<IsoGridView scene={vpnGrid.scene} label={t('project.iso.label')} caption={t('project.iso.caption')}
-						height="clamp(17rem, 46dvh, 28rem)" fitKey={selectedServer.id} onselect={revealVpnTarget} />
+						height="clamp(20rem, 56dvh, 30.5rem)" fitKey={selectedServer.id} onselect={revealVpnTarget} />
 					{#if clientsError}<Alert flat tone="danger" class="mt-3">{clientsError}</Alert>{/if}
 					{#if attachmentsError}<Alert flat tone="danger" class="mt-3">{attachmentsError}</Alert>{/if}
 					{#if (clientsLoading && !clientsLoaded) || (attachmentsLoading && !attachmentsLoaded)}
