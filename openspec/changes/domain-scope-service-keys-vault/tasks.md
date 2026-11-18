@@ -14,12 +14,13 @@
 
 ## 4. Keys, service keys and domain credit pool
 
-- [ ] Personal keys without project selector; service keys for domain managers; domain pool card (balance, reserved, monthly used, manager limit, admin ceiling).
-- [ ] System-admin pool top-up/ceiling and service-key inventory pages; BFF routes with pytest.
+- [x] Personal keys without project selector; service keys for domain managers; domain pool card (balance, reserved, monthly used, manager limit, admin ceiling).
+- [x] System-admin pool top-up/ceiling and service-key inventory pages; BFF routes with pytest.
 
 ## 5. Vault memory
 
-- [ ] Vault UI in chat settings (kinds, search, revisions, hash-guarded edits, append-only kinds, secret refusal, memory.md) with domain-keyed lifetime; BFF routes with pytest.
+- [x] Vault UI in chat settings (kinds, search, revisions, hash-guarded edits, append-only kinds, secret refusal, memory.md, chat-folder notes) with domain-keyed lifetime; BFF routes with pytest and `chat_vault_note` audit.
+- [ ] Signed Afterglow→Lumen ingress (`X-Lumen-Ingress`, shared secret wired through Kolla/K8s/Helm/Compose) so the vault stays dashboard-only.
 
 ## 6. Integration and verification
 
