@@ -2302,9 +2302,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "ea6a3dde6693495559c0015254b783041fb97e1097df66e297dd06273b4272f4",
-  "reviewed_at": "2026-11-18T16:13:43Z",
-  "summary": "Signed Lumen ingress binds the outbound raw path, Keystone token fingerprint and both project assertions. Compose, Helm, Kubernetes and Kolla keep the matched key private."
+  "source_sha256": "4a50a23f5d33387afd0ca6045751672fbf45bc3b56c211a03ea54f18c607562d",
+  "reviewed_at": "2026-11-18T16:22:30Z",
+  "summary": "Kolla ingress initialization preserves private YAML bytes and publishes only the new key under the original file ownership and mode."
 }
 ```
 <!-- architecture-review:end -->
