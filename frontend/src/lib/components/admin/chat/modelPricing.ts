@@ -234,11 +234,16 @@ export function imagePricingError(draft: ImagePricingDraft, useCatalog: boolean,
 	}
 }
 
+/** Per-image execution prices only exact positive size:quality variants; a base price alone cannot run. */
 export function imagePricingReady(draft: ImagePricingDraft, useCatalog: boolean): boolean {
 	const follows = imageFollowsMedia(draft, useCatalog);
-	return imageBasis(draft, useCatalog) === 'tokens'
-		? effectiveImagePrice(draft.text.input_price_per_million, useCatalog) !== null && effectiveImagePrice(draft.tokens.image.output_per_million, follows) !== null
-		: effectiveImagePrice(draft.rates.image_per_unit, follows) !== null || imageVariants(draft, follows).some(({ rate }) => effectiveImagePrice(rate, follows) !== null);
+	if (imageBasis(draft, useCatalog) === 'tokens') {
+		return effectiveImagePrice(draft.text.input_price_per_million, useCatalog) !== null && effectiveImagePrice(draft.tokens.image.output_per_million, follows) !== null;
+	}
+	return imageVariants(draft, follows).some(({ rate }) => {
+		const price = effectiveImagePrice(rate, follows);
+		return price !== null && DECIMAL.test(price) && !ZERO.test(price);
+	});
 }
 
 /** Compare against stored leaves, not rendered catalog suggestions. */

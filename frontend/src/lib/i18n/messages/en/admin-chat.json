@@ -558,7 +558,6 @@
 	"pricing.imageTokenReadiness": "Image generation requires text input and image output rates. Image edits also require an image input rate. Cache rates are optional.",
 	"pricing.imageCachedInputHelp": "The direct Images API does not currently report cached image tokens separately. This rate applies only when the provider reports a separate cached image token count.",
 	"pricing.imageDerivedReservation": "USD · Optional. Leave blank for Lumen to calculate an OpenAI reservation cap per request.",
-	"pricing.imageUnitVariantHelp": "Set a base price per image or prices for exact size:quality combinations.",
 	"pricing.imageUnitClearsReservation": "Saving per-image billing clears the token reservation cap.",
 	"pricing.imageUnitCatalogReservation": "The official reservation cap requires token billing. Reset to the official billing basis.",
 	"pricing.imageLegacyManual": "Manual pricing (whole media price table)",

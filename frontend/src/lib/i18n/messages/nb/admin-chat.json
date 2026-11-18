@@ -558,7 +558,6 @@
 	"pricing.imageTokenReadiness": "Bildegenerering krever priser for tekstinndata og bildeutdata. Bilderedigering krever også pris for bildeinndata. Bufferpriser er valgfrie.",
 	"pricing.imageCachedInputHelp": "Det direkte Images API-et rapporterer for øyeblikket ikke bufrede bildetoken separat. Prisen gjelder bare når leverandøren rapporterer et eget antall bufrede bildetoken.",
 	"pricing.imageDerivedReservation": "USD · Valgfritt. La feltet stå tomt for å la Lumen beregne et reservasjonstak per OpenAI-forespørsel.",
-	"pricing.imageUnitVariantHelp": "Angi en grunnpris per bilde eller priser for eksakte size:quality-kombinasjoner.",
 	"pricing.imageUnitClearsReservation": "Lagring av fakturering per bilde fjerner reservasjonstaket for token.",
 	"pricing.imageUnitCatalogReservation": "Det offisielle reservasjonstaket krever tokenfakturering. Gjenopprett det offisielle faktureringsgrunnlaget.",
 	"pricing.imageLegacyManual": "Manuell pris (hele mediepristabellen)",

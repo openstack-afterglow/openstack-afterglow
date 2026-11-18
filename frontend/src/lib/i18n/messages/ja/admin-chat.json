@@ -558,7 +558,6 @@
 	"pricing.imageTokenReadiness": "画像生成にはテキスト入力と画像出力の単価が必要です。画像編集には画像入力の単価も必要です。キャッシュ単価は任意です。",
 	"pricing.imageCachedInputHelp": "現在、直接接続の Images API はキャッシュ済み画像トークンを個別に報告しません。この単価はプロバイダーがその数を個別に報告した場合にのみ適用されます。",
 	"pricing.imageDerivedReservation": "USD · 任意。空欄にすると、Lumen が OpenAI のリクエストごとに予約上限を算出します。",
-	"pricing.imageUnitVariantHelp": "画像1枚あたりの基本単価、または size:quality の組み合わせ別単価を設定します。",
 	"pricing.imageUnitClearsReservation": "画像単位で保存すると、トークン予約上限が解除されます。",
 	"pricing.imageUnitCatalogReservation": "公式の予約上限にはトークン課金が必要です。公式の課金方式に戻してください。",
 	"pricing.imageLegacyManual": "手動設定価格（メディア単価全体）",

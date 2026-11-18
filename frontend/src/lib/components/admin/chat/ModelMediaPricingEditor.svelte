@@ -121,7 +121,7 @@
 			t(imageReservationDerived(providerType) ? 'pricing.imageDerivedReservation' : 'pricing.reservationHelp'))}
 	{:else}
 		{@render imageRate(prices.rates.image_per_unit, follows, `${prefix}-image_per_unit`, t('pricing.imageBaseRate'), t('pricing.imageBaseHelp'))}
-		<p class="text-xs text-ink-2">{t('pricing.imageUnitVariantHelp')}</p>
+		<p class="text-xs leading-relaxed text-ink-2" class:font-semibold={!imagePricingReady(prices, useImageCatalog)}>{t('pricing.imageVariantHelp')}</p>
 		{#if prices.stored?.reservation_usd && manualImagePrice(prices.basis) === 'unit'}
 			<p class="text-xs text-ink-2">{t('pricing.imageUnitClearsReservation')}</p>
 		{/if}

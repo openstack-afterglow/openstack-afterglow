@@ -558,7 +558,6 @@
 	"pricing.imageTokenReadiness": "ছবি তৈরিতে টেক্সট ইনপুট এবং ছবির আউটপুট হার প্রয়োজন। ছবি সম্পাদনায় ছবির ইনপুট হারও প্রয়োজন। ক্যাশ হার ঐচ্ছিক।",
 	"pricing.imageCachedInputHelp": "সরাসরি Images API বর্তমানে ক্যাশ করা ছবির টোকেন আলাদা করে জানায় না। প্রদানকারী সেই টোকেনের সংখ্যা আলাদা করে জানালেই এই হার প্রযোজ্য।",
 	"pricing.imageDerivedReservation": "USD · ঐচ্ছিক। খালি রাখলে Lumen প্রতিটি OpenAI অনুরোধের জন্য সংরক্ষণের সর্বোচ্চ সীমা হিসাব করে।",
-	"pricing.imageUnitVariantHelp": "প্রতি ছবির মূল হার বা নির্দিষ্ট size:quality জুটির হার নির্ধারণ করুন।",
 	"pricing.imageUnitClearsReservation": "প্রতি-ছবি বিলিং সংরক্ষণ করলে টোকেনের সংরক্ষণ সীমা মুছে যায়।",
 	"pricing.imageUnitCatalogReservation": "অফিসিয়াল সংরক্ষণ সীমার জন্য টোকেন বিলিং প্রয়োজন। অফিসিয়াল বিলিং পদ্ধতিতে ফিরে যান।",
 	"pricing.imageLegacyManual": "ম্যানুয়াল মূল্য (সম্পূর্ণ মিডিয়া মূল্যতালিকা)",

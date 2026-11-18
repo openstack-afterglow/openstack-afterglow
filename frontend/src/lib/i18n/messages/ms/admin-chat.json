@@ -558,7 +558,6 @@
 	"pricing.imageTokenReadiness": "Penjanaan imej memerlukan kadar input teks dan output imej. Penyuntingan imej turut memerlukan kadar input imej. Kadar cache adalah pilihan.",
 	"pricing.imageCachedInputHelp": "Images API langsung tidak melaporkan token imej dalam cache secara berasingan buat masa ini. Kadar ini hanya terpakai apabila penyedia melaporkan bilangan token tersebut secara berasingan.",
 	"pricing.imageDerivedReservation": "USD · Pilihan. Jika dikosongkan, Lumen mengira had rizab bagi setiap permintaan OpenAI.",
-	"pricing.imageUnitVariantHelp": "Tetapkan kadar asas setiap imej atau kadar bagi gabungan size:quality yang tepat.",
 	"pricing.imageUnitClearsReservation": "Menyimpan pengebilan setiap imej akan memadamkan had rizab token.",
 	"pricing.imageUnitCatalogReservation": "Had rizab rasmi memerlukan pengebilan token. Pulihkan kaedah pengebilan rasmi.",
 	"pricing.imageLegacyManual": "Harga manual (seluruh jadual harga media)",

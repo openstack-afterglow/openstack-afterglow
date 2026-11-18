@@ -493,6 +493,47 @@ describe('image official-price provenance', () => {
 			media_pricing: { override_mode: 'leaf', billing_basis: 'tokens', ...(valid ? {} : { reservation_usd: '2' }), token_rates: { image: { output_per_million: '30' } } }
 		}));
 	});
+	it('activates per-image billing only after an exact positive size:quality variant', async () => {
+		candidates = [{ id: 'unit-image', purpose: 'non_chat', model_kind: 'image' }];
+		render(ModelPage);
+		const dialog = await openDiscovery();
+		await fireEvent.click(within(dialog).getByRole('button', { name: '모델 불러오기' }));
+		await fireEvent.click(await screen.findByRole('checkbox', { name: 'unit-image' }));
+		await fireEvent.click(within(dialog).getByRole('button', { name: '선택 모델 검토' }));
+		await fireEvent.input(within(dialog).getByLabelText('이미지 기본 단가'), { target: { value: '0.04' } });
+		const save = within(dialog).getByRole('button', { name: '비활성으로 저장' }) as HTMLButtonElement;
+		const activate = within(dialog).getByRole('button', { name: '가격 확인 후 등록·활성화' }) as HTMLButtonElement;
+		const guidance = within(dialog).getByText(t('pricing.imageVariantHelp'));
+		expect(activate.disabled).toBe(true);
+		expect(save.disabled).toBe(false);
+		expect(guidance.classList.contains('font-semibold')).toBe(true);
+		await fireEvent.click(within(dialog).getByRole('button', { name: '+ variant 추가' }));
+		await fireEvent.input(within(dialog).getByLabelText('이미지 variant 이름'), { target: { value: '1024x1024:high' } });
+		await fireEvent.input(within(dialog).getByLabelText('이미지 variant 단가'), { target: { value: '0' } });
+		expect(activate.disabled).toBe(true);
+		await fireEvent.input(within(dialog).getByLabelText('이미지 variant 단가'), { target: { value: '0.08' } });
+		expect(activate.disabled).toBe(false);
+		expect(guidance.classList.contains('font-semibold')).toBe(false);
+		await fireEvent.click(activate);
+		await waitFor(() => expect(mocks.post.mock.calls[0][1]).toEqual({
+			provider_id: 1, model_name: 'unit-image', model_kind: 'image', is_active: true,
+			media_pricing: { override_mode: 'leaf', image_per_unit: '0.04', image_variants: { '1024x1024:high': '0.08' } }
+		}));
+	});
+	it('saves a base-only per-image draft inactive', async () => {
+		candidates = [{ id: 'unit-image', purpose: 'non_chat', model_kind: 'image' }];
+		render(ModelPage);
+		const dialog = await openDiscovery();
+		await fireEvent.click(within(dialog).getByRole('button', { name: '모델 불러오기' }));
+		await fireEvent.click(await screen.findByRole('checkbox', { name: 'unit-image' }));
+		await fireEvent.click(within(dialog).getByRole('button', { name: '선택 모델 검토' }));
+		await fireEvent.input(within(dialog).getByLabelText('이미지 기본 단가'), { target: { value: '0.04' } });
+		await fireEvent.click(within(dialog).getByRole('button', { name: '비활성으로 저장' }));
+		await waitFor(() => expect(mocks.post.mock.calls[0][1]).toEqual({
+			provider_id: 1, model_name: 'unit-image', model_kind: 'image', is_active: false,
+			media_pricing: { override_mode: 'leaf', image_per_unit: '0.04' }
+		}));
+	});
 	it('shows stored and official provenance in the edit form and resets one leaf with null', async () => {
 		rows = [{ ...model('image', { override_mode: 'leaf', token_rates: { image: { output_per_million: '31' } } }), provider_family: 'native',
 			input_price_per_million: null, cache_read_price_per_million: null, catalog_entry: catalogEntry }];

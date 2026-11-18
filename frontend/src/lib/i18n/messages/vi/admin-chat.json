@@ -558,7 +558,6 @@
 	"pricing.imageTokenReadiness": "Tạo ảnh cần đơn giá đầu vào văn bản và đầu ra hình ảnh. Chỉnh sửa ảnh còn cần đơn giá đầu vào hình ảnh. Giá bộ nhớ đệm là tùy chọn.",
 	"pricing.imageCachedInputHelp": "Images API kết nối trực tiếp hiện không báo riêng số token hình ảnh đã lưu trong bộ nhớ đệm. Chỉ áp dụng đơn giá này khi nhà cung cấp báo riêng số token đó.",
 	"pricing.imageDerivedReservation": "USD · Tùy chọn. Để trống để Lumen tính mức giữ tiền tối đa cho từng yêu cầu OpenAI.",
-	"pricing.imageUnitVariantHelp": "Đặt giá cơ sở cho mỗi ảnh hoặc đơn giá theo tổ hợp size:quality cụ thể.",
 	"pricing.imageUnitClearsReservation": "Lưu cách tính phí theo ảnh sẽ xóa mức giữ tiền tối đa cho token.",
 	"pricing.imageUnitCatalogReservation": "Mức giữ tiền chính thức yêu cầu tính phí theo token. Hãy khôi phục cách tính phí chính thức.",
 	"pricing.imageLegacyManual": "Giá thủ công (toàn bộ bảng giá đa phương tiện)",
