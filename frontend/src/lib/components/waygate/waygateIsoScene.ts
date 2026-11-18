@@ -80,7 +80,8 @@ export function buildWaygateIsoScene({ server, clients, attachments, networks, n
 		const rows = collapsed ? 1 : Math.ceil(observed.length / columns);
 		const w = columns * 1.1 + 0.4;
 		const h = rows * 1.1 + 0.4;
-		const x = -w - 0.55, y = -h - 0.55;
+		// Leave a full label band between the client slab and the raised gateway block.
+		const x = -w - 1.28, y = -h - 0.66;
 		scene.platforms.push({ id: peersId, label: peersLabel, x, y, w, h, tone: 'info', style: 'slab' });
 		targets.set(peersId, { kind: 'peers' });
 		if (collapsed) {

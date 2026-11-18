@@ -62,6 +62,21 @@ describe('buildInstanceIsoScene', () => {
 		expect(details.get(egress.to)).toMatchObject({ kind: 'rules', rules: [{ ethertype: 'IPv4', protocol: null, remote: { value: '0.0.0.0/0' } }] });
 	});
 
+	it('uses one stable remote source for disjoint ingress rules of the same IP version', () => {
+		const inbound = [rule('ssh'), rule('https', { port_range_min: 443, port_range_max: 443 }),
+			rule('ssh-v6', { ethertype: 'IPv6', remote_ip_prefix: '::/0' })];
+		const policy = { groups: [{ id: 'web', name: 'web', rules: inbound }], groupIds: ['web'] };
+		const { scene, details } = buildInstanceIsoScene({ ...input, policy });
+		const ingress = scene.edges.filter(edge => edge.kind === 'ingress');
+		expect(ingress).toHaveLength(2);
+		const ipv4 = ingress.find(edge => edge.label === t('network.iso.rulesCount', { count: 2 }))!;
+		expect(details.get(ipv4.from)).toMatchObject({ kind: 'rules', rules: [
+			{ ethertype: 'IPv4', portRangeMin: 22 }, { ethertype: 'IPv4', portRangeMin: 443 },
+		] });
+		const withoutHttps = buildInstanceIsoScene({ ...input, policy: { ...policy, groups: [{ ...policy.groups[0], rules: [inbound[0]] }] } });
+		expect(withoutHttps.scene.edges.find(edge => edge.kind === 'ingress')).toMatchObject({ from: ipv4.from, label: 'TCP 22' });
+	});
+
 	it('collapses long egress lists into a count without losing inspector rules', () => {
 		const rules = Array.from({ length: 4 }, (_, i) => rule(`out-${i}`, { direction: 'egress', remote_ip_prefix: `192.0.2.${i}/32` }));
 		const { scene, details } = buildInstanceIsoScene({ ...input, policy: { groups: [{ id: 'x', name: 'x', rules }], groupIds: ['x'] } });

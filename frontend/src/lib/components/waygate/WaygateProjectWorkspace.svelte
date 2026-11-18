@@ -1509,7 +1509,7 @@
 			{#if vpnGrid}
 				<div class="mb-6 min-w-0">
 					<IsoGridView scene={vpnGrid.scene} label={t('project.iso.label')} caption={t('project.iso.caption')}
-						height="clamp(17rem, 46dvh, 28rem)" fitKey={selectedServer.id} onselect={revealVpnTarget} />
+						height="clamp(20rem, 56dvh, 30.5rem)" fitKey={selectedServer.id} onselect={revealVpnTarget} />
 					{#if clientsError}<Alert flat tone="danger" class="mt-3">{clientsError}</Alert>{/if}
 					{#if attachmentsError}<Alert flat tone="danger" class="mt-3">{attachmentsError}</Alert>{/if}
 					{#if (clientsLoading && !clientsLoaded) || (attachmentsLoading && !attachmentsLoaded)}
