@@ -435,15 +435,18 @@ describe("admin media model registration", () => {
     await fireEvent.click(screen.getByText("+ variant 추가"));
     await fireEvent.input(screen.getByLabelText("이미지 variant 이름"), { target: { value: "1024x1024:high" } });
     await fireEvent.input(screen.getByLabelText("이미지 variant 단가"), { target: { value: "0.08" } });
+    post.mockResolvedValue({ id: 31, image_pricing_readiness: { ready: true, reason: null, executable_variants: ["1024x1024:high"], unsupported_variants: [], supported_variants: ["1024x1024:high"] } });
     await fireEvent.click(within(screen.getByRole('dialog', { name: '+ 모델 추가' })).getByRole('button', { name: '+ 모델 추가' }));
 
-    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(patch).toHaveBeenCalledWith("/api/v1/chat/admin/models/31", { is_active: true }, expect.anything(), expect.anything()));
+    expect(post).toHaveBeenCalledTimes(1);
     expect(JSON.parse(JSON.stringify(post.mock.calls[0][1]))).toStrictEqual({
       provider_id: 2,
       model_name: "gpt-image-1",
       display_name: null,
       model_kind: "image",
       media_pricing: { override_mode: "leaf", billing_basis: "unit", image_variants: { "1024x1024:high": "0.08" } },
+      is_active: false,
     });
   });
 

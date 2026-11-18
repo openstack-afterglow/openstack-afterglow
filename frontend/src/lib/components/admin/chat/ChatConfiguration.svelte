@@ -1291,18 +1291,26 @@
 			...(mKind === 'image' ? imagePricingPayload(mImagePricing, false) : {
 				...(mKind === 'text' ? prices : Object.fromEntries(Object.entries(prices).filter(([, value]) => value !== null))), ...presentCachePrices(cache.values),
 				...(pricing ? { media_pricing: pricing } : {})
-			})
+			}),
+			// Lumen creates rows active by default; image rows activate only after readiness.
+			...(mKind === 'image' ? { is_active: false } : {})
 		};
 		addingModel = true;
 		try {
-			await api.post('/api/v1/chat/admin/models', body, requestToken, requestProjectId);
+			const created = await api.post<Model>('/api/v1/chat/admin/models', body, requestToken, requestProjectId);
 			invalidateChatModels();
+			if (!isCurrent()) return;
+			const hold = mKind === 'image' ? await activateCreatedImage(created, requestToken, requestProjectId) : null;
 			if (!isCurrent()) return;
 			mName = ''; mDisplay = ''; mInputPrice = ''; mOutputPrice = '';
 			mCachePrices = emptyCachePriceInputs(); mCacheErrors = {}; mPricing = pricingDraft();
 			mImagePricing = imagePricingDraft();
 			await load();
-			if (isCurrent()) { toast.success(t('configuration.modelAdded')); addingModel = false; resetCreation(); }
+			if (isCurrent()) {
+				if (hold) toast.error(`${t('pricing.imageSavedInactive')} ${imageHoldText(hold)}`);
+				else toast.success(t('configuration.modelAdded'));
+				addingModel = false; resetCreation();
+			}
 		} catch (e) {
 			if (isCurrent()) {
 				manualOutcomeUnknown = !knownRegistrationFailure(e);
@@ -1400,7 +1408,10 @@
 			await load();
 			if (!destroyed && scope === accountScopeGeneration && token === requestToken && projectId === requestProjectId) toast.success(t('configuration.modelPricingSaved'));
 		} catch (e) {
-			if (!destroyed && scope === accountScopeGeneration && editingPrice === model && token === requestToken && projectId === requestProjectId) toast.error(e instanceof ApiError ? e.message : t('configuration.couldNotSavePricing'));
+			if (!destroyed && scope === accountScopeGeneration && editingPrice === model && token === requestToken && projectId === requestProjectId) {
+				const hold = imageNotReadyHold(e);
+				toast.error(hold ? imageHoldText(hold) : e instanceof ApiError ? e.message : t('configuration.couldNotSavePricing'));
+			}
 		} finally {
 			if (!destroyed && scope === accountScopeGeneration) priceSaving = false;
 		}
@@ -1596,6 +1607,32 @@
 		return error instanceof ApiError && [400, 401, 403, 404, 409, 422, 429].includes(error.status);
 	}
 
+	interface ImageActivationHold { message: string; unsupported: string[] }
+	/** Lumen's atomic 409 `image_pricing_not_ready` rejection; the row keeps its previous state. */
+	function imageNotReadyHold(error: unknown): ImageActivationHold | null {
+		const rejected = error instanceof ApiError ? error.imagePricingNotReady : undefined;
+		if (!rejected) return null;
+		return {
+			message: imageReadinessMessage({ ready: false, reason: rejected.reason, executable_variants: [], unsupported_variants: rejected.unsupported_variants, supported_variants: [] })!,
+			unsupported: rejected.unsupported_variants
+		};
+	}
+	function imageHoldText(hold: ImageActivationHold): string {
+		return hold.unsupported.length ? `${hold.message} ${t('pricing.imageUnsupportedVariantList', { variants: hold.unsupported.join(', ') })}` : hold.message;
+	}
+	/** Image rows are created inactive; activate only when Lumen reports the saved pricing ready. */
+	async function activateCreatedImage(created: Model, requestToken: string | undefined, requestProjectId: string | undefined): Promise<ImageActivationHold | null> {
+		const readiness = created?.image_pricing_readiness;
+		if (readiness?.ready === false) return { message: imageReadinessMessage(readiness)!, unsupported: readiness.unsupported_variants };
+		try {
+			await api.patch(`/api/v1/chat/admin/models/${created.id}`, { is_active: true }, requestToken, requestProjectId);
+			return null;
+		} catch (error) {
+			return imageNotReadyHold(error)
+				?? { message: knownRegistrationFailure(error) ? t('pricing.imageActivationFailed') : t('configuration.registrationOutcomeUnknown'), unsupported: [] };
+		}
+	}
+
 	async function registerSelected(activate: boolean) {
 		if (!registrationReview || registeringBulk || (registrationMode && registrationMode !== (activate ? 'active' : 'inactive'))) return;
 		const review: RegistrationReview = {
@@ -1649,18 +1686,8 @@
 						review.token,
 						review.projectId
 					);
-					if (holdActivation) {
-						const readiness = created?.image_pricing_readiness;
-						if (readiness?.ready === false) {
-							activationHeld = { ...activationHeld, [entry.name]: { message: imageReadinessMessage(readiness)!, unsupported: readiness.unsupported_variants } };
-						} else {
-							try {
-								await api.patch(`/api/v1/chat/admin/models/${created.id}`, { is_active: true }, review.token, review.projectId);
-							} catch (error) {
-								activationHeld = { ...activationHeld, [entry.name]: { message: knownRegistrationFailure(error) ? t('pricing.imageActivationFailed') : t('configuration.registrationOutcomeUnknown'), unsupported: [] } };
-							}
-						}
-					}
+					const hold = holdActivation ? await activateCreatedImage(created, review.token, review.projectId) : null;
+					if (hold) activationHeld = { ...activationHeld, [entry.name]: hold };
 					ok++;
 					invalidateChatModels();
 					if (registrationIsCurrent(generation, review)) registrationOutcomes = { ...registrationOutcomes, [entry.name]: 'success' };
@@ -1758,7 +1785,7 @@
 		}
 		const readinessMessage = !m.is_active && m.model_kind === 'image' ? imageReadinessMessage(m.image_pricing_readiness) : null;
 		if (readinessMessage) {
-			toast.error(readinessMessage);
+			toast.error(imageHoldText({ message: readinessMessage, unsupported: m.image_pricing_readiness?.unsupported_variants ?? [] }));
 			return;
 		}
 		if ((m.model_kind ?? 'text') === 'text' && !m.is_active && (m.effective_input_price_per_million == null || m.effective_output_price_per_million == null)) {
@@ -1769,8 +1796,9 @@
 			await api.patch(`/api/v1/chat/admin/models/${m.id}`, { is_active: !m.is_active }, token, projectId);
 			invalidateChatModels();
 			await load();
-		} catch {
-			toast.error(t('configuration.changeFailed'));
+		} catch (error) {
+			const hold = imageNotReadyHold(error);
+			toast.error(hold ? imageHoldText(hold) : t('configuration.changeFailed'));
 		}
 	}
 
