@@ -136,6 +136,7 @@
 	"sidebar.summarizingTitle": "Summarizing title",
 	"sidebar.newConversation": "New conversation",
 	"sidebar.history": "Conversation history",
+	"sidebar.domainScope": "Your chat history is shared across projects in this domain. Usage is attributed to the selected project, and cloud tools act there.",
 	"sidebar.closeHistory": "Close conversation history",
 	"sidebar.openHistory": "Open conversation history",
 	"sidebar.newChat": "New chat",

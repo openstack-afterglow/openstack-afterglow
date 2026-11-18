@@ -22,4 +22,4 @@
 
 ## 4. Verification
 
-- [ ] Focused component tests, isolated `npm run test:gate`, desktop/mobile and dark/light browser proof.
+- [x] Focused component tests, isolated `npm run test:gate`, desktop/mobile and dark/light browser proof (released as 1.32.28; see docs/testing.md).

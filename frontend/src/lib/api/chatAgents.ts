@@ -21,6 +21,7 @@ export interface Agent {
 	avatar?: string | null;
 	instructions?: string | null;
 	model_name?: string | null;
+	model_row_id?: number | null;
 	params?: AgentParams | null;
 	mcp_ids: number[];
 	tool_ids: number[];
@@ -45,6 +46,8 @@ export interface AgentForm {
 	avatar: string;
 	instructions: string;
 	model_name: string;
+	/** Undefined is an untouched legacy value; null clears the pinned route. */
+	model_row_id?: number | null;
 	temperature: string;
 	max_tokens: string;
 	mcp_ids: Record<number, boolean>;
@@ -58,7 +61,8 @@ export interface AgentPayload {
 	description?: string;
 	avatar?: string;
 	instructions?: string;
-	model_name?: string;
+	model_name?: string | null;
+	model_row_id?: number | null;
 	params?: AgentParams;
 	mcp_ids: number[];
 	tool_ids: number[];
@@ -102,6 +106,7 @@ export function agentToForm(a: Agent): AgentForm {
 		avatar: a.avatar ?? '',
 		instructions: a.instructions ?? '',
 		model_name: a.model_name ?? '',
+		model_row_id: a.model_row_id ?? undefined,
 		temperature:
 			a.params?.temperature === undefined || a.params?.temperature === null
 				? ''
@@ -140,7 +145,12 @@ export function buildAgentPayload(form: AgentForm): AgentPayload {
 	const instr = form.instructions.trim();
 	if (instr) payload.instructions = instr;
 	const model = form.model_name.trim();
-	if (model) payload.model_name = model;
+	if (form.model_row_id !== undefined) {
+		payload.model_row_id = form.model_row_id;
+		payload.model_name = model || null;
+	} else if (model) {
+		payload.model_name = model;
+	}
 	if (params.temperature !== undefined || params.max_tokens !== undefined) payload.params = params;
 
 	return payload;

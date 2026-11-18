@@ -81,6 +81,7 @@ class _BoundedConnection:
             if remaining <= 0:
                 raise TimeoutError("복구 요청의 OpenStack 조회 시간 제한을 초과했습니다")
             kwargs.update(_NO_RETRY)
+            kwargs["skip_cache"] = True
             kwargs["timeout"] = min(kwargs.get("timeout") or _REQUEST_TIMEOUT_SECONDS, remaining)
             return proxy.request(*args, **kwargs)
 

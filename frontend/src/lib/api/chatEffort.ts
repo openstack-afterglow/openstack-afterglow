@@ -62,19 +62,3 @@ export function normalizeEffort(
 	return effortOptionsFor(caps, noneSupported).includes(selected) ? selected : 'auto';
 }
 
-/**
- * 실제로 실행될 모델 기준으로 effort를 정규화한다. 재생성처럼 composer 모델과 다른 모델로
- * 보내는 경로에서, 그 모델이 지원하지 않는 값(예: gpt-5의 none)을 auto로 바꿔 422를 막는다.
- */
-export function effortForModel(
-	effort: string | null,
-	models: readonly {
-		model_name: string;
-		capabilities?: ModelCapabilities | null;
-		reasoning_none_supported?: boolean;
-	}[],
-	modelName: string | null | undefined
-): string {
-	const target = models.find((m) => m.model_name === modelName);
-	return normalizeEffort(effort, target?.capabilities, target?.reasoning_none_supported);
-}

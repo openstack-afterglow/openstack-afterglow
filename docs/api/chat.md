@@ -13,6 +13,35 @@ Afterglow 백엔드는 독자적인 AI 모델·에이전트 실행 엔진 및 �
 
 직접적인 OpenAI / Anthropic 호환 API 호스팅은 Lumen 서비스가 전담합니다.
 
+## 공급자별 모델 선택
+
+`GET /api/v1/chat/models`의 `id`는 모델 레코드 ID다. 같은 `model_name`을 여러 공급자가 등록할 수 있으므로 dashboard는 `provider_id`로 선택지를 묶고 종류에 맞는 `id`를 보낸다.
+
+- 채팅 완료·재생성·임시 채팅·컨텍스트 미리보기/정리, Decision·이미지·음성·실시간 실행은 기존 선택자에 양의 정수 `model_row_id`를 추가한다. 임베딩은 기존 정수 `model_id`를 그대로 사용한다.
+- 에이전트 생성·수정은 선택한 `model_name`과 `model_row_id`를 저장한다. 변경하지 않은 레거시 모델 이름은 고유한 경우에만 정확한 행으로 이관한다.
+- 저장된 실행 재시도는 실행 이력에 제공된 `execution.model_row_id`를 원래 경로의 확인값으로 전송한다. 레거시 이력에 값이 없으면 빈 요청을 보내고 Lumen이 스냅샷으로 판단한다.
+- BFF는 기존 세션과 선택 프로젝트를 전달하며 Lumen이 활성 상태, 모델 종류, 기존 선택자 일치 및 실행 가능 여부를 검증한다.
+
+## Agent Vault
+
+채팅 설정의 **Agent Vault**는 대시보드 로그인 세션 전용이다. 같은 사용자의 도메인 노트는 해당 도메인의 프로젝트 간에 공유되며 전역 노트는 사용자의 다른 도메인에서도 보인다. 메모리는 대시보드 채팅에서만 사용하며 API 키와 외부 MCP로 조회할 수 없다.
+
+아래 경로 앞에 `/api/v1/chat`을 붙인다. BFF는 기존 Keystone token과 현재 프로젝트를 사용해 각각 Lumen `/v1/vault/*`로 전달한다. 조회는 `lumen-history_reader`, 수정은 `lumen-history_editor`를 요구하며 결과는 `Cache-Control: no-store`다.
+
+| 메서드 · 경로 | 동작 |
+| --- | --- |
+| `GET /vault/notes`, `GET /vault/search?query=…` | 유형·범위·프로젝트 키·역할로 거르고 `limit`/`before`로 페이지를 이동한다. |
+| `GET /vault/document` | Lumen이 생성한 `memory.md`의 `filename`, `content_type`, `content`를 반환한다. |
+| `POST /vault/notes` | 수동 메모리를 `user_note`로 만든다. Append-only 유형은 별도 새 기록을 추가한다. |
+| `GET /vault/notes/{id}`, `GET /vault/notes/{id}/revisions` | 노트 또는 읽기 전용 버전 기록을 조회한다. |
+| `PATCH /vault/notes/{id}` | `expectedHash`가 최신일 때만 내용과 선택적 제목을 교체한다. |
+| `GET\|PUT /vault/profile`, `/vault/coding-standards`, `/vault/short-term` | 프로필·코딩 규칙·단기 메모리를 읽거나 쓴다. 기존 노트 수정에는 `expectedHash`가 필요하다. |
+| 채팅 프로젝트 노트 | 목록·검색·상세·수정·버전 조회에 `workspace_id` 쿼리를 추가한다. `POST /vault/notes`에서는 JSON 본문에 넣고 `kind=user_note`, `scope=domain`을 사용한다. |
+
+선택 가능한 채팅 프로젝트는 `GET /api/v1/chat/workspaces`에서 읽는다. Lumen이 현재 사용자와 도메인의 프로젝트임을 확인한다. 채팅 프로젝트를 선택하지 않으면 workspace-private 노트는 목록·검색·`memory.md`에 포함되지 않는다. 쓰기 요청은 `chat_vault_note` 감사 유형으로 기록한다. 노트 본문, 제목, 응답과 쿼리는 감사 데이터에 포함하지 않는다.
+
+`409 hash_mismatch`에서는 원본을 다시 읽고 초안을 비교한다. `422 secret_detected`에서는 비밀번호·토큰·키를 제거한 뒤 다시 저장한다. 실패한 쓰기는 자동 재전송하지 않는다.
+
 ## MCP 개인·조직 연결
 
 브라우저의 `/api/v1/chat/mcp-settings`는 Lumen `/v1/mcp-settings`로 전달된다. 브라우저 access JWT는 Afterglow가 검증하고 실제 Lumen 요청에는 검증된 native identity와 프로젝트를 전달한다. 클라이언트가 보낸 domain/manager 표시는 권위가 아니다.
@@ -21,6 +50,7 @@ Afterglow 백엔드는 독자적인 AI 모델·에이전트 실행 엔진 및 �
 - `POST /mcp-connections`, `PATCH|DELETE /mcp-connections/{id}`: 본인 템플릿 연결을 관리한다.
 - `/domains/{domain_id}/mcp-connections`: 해당 domain 구성원은 비밀 없이 조회하고 본인의 활성화만 변경한다. 조직 연결 생성·수정·삭제와 공유 OAuth 관리는 exact-domain manager 또는 unrestricted human system admin만 가능하다. 프로젝트 admin 역할만으로 허용하지 않는다.
 - 기존 `/mcp-servers/{id}/activation` 및 OAuth 흐름은 유지된다. Catalog 설치와 조직 연결은 `implicit_selection=false`이며 활성화한 정확한 `config_version`과 현재 membership을 실행 전 재검증한다.
+- `GET /archived-connections`, `POST /archived-connections/{archive_id}/restore`: 현재 사용자의 도메인에서 보관된 중복 MCP 연결과 HTTP 도구를 조회·복원한다. `GET`은 `limit`(기본 100, 최대 200) 및 `before_id`를 받는다. 관리자는 `/domains/{domain_id}/archived-connections`의 동일 경로로 조직 소유 항목만 관리한다. Lumen이 현재 멤버십과 조직 관리자 권한을 다시 확인하며 BFF는 선택한 프로젝트의 인증 정보만 전달한다. 응답에는 연결 비밀이 없으며 캐시하지 않는다.
 - Playwright·Markitdown은 HTTPS 연결을 허위 생성하지 않는다. 검증된 실행별 sandbox profile이 있어야 사용 가능하고 미설정 상태에서는 그 이유를 표시한다.
 
 클라우드 VM 생성은 별도의 Afterglow MCP `manage` 동의와 프로토콜 v2가 필요하다. 모델은 실제 이미지·flavor·네트워크·부팅 볼륨 크기·사용자 SSH 키·보안그룹을 명시하고 사용자가 기존 승인 카드에서 확인한 뒤에만 변경 도구를 실행한다. API 요청 수락은 guest readiness가 아니다.
@@ -248,6 +278,8 @@ When advertised, `image_moderation_options` permits `moderation`, and an SVG gen
 ### 실시간 음성 browser session
 
 `GET /api/v1/chat/models?model_kind=realtime`와 `GET /api/v1/chat/capabilities?model_id=<id>&model_kind=realtime`의 양방향 오디오 gate, 정확한 USD 가격, voice·sample-rate readiness를 먼저 확인합니다. 사용자가 **음성 세션 시작**을 누를 때에만 `getUserMedia` permission을 요청하고, `POST /api/v1/chat/realtime/sessions`에 `{model_id:"<id>",voice:"alloy",max_duration_seconds:300}` 및 UUID `Idempotency-Key`를 보냅니다. BFF는 Lumen의 provider key나 `connect_token`을 반환하지 않고 `{session_id,status,model_name,provider_type,expires_in_seconds,expires_at,ticket,websocket_path:"/api/v1/chat/realtime/ws",realtime_image_input}`만 반환합니다. `realtime_image_input`은 Lumen이 2 MiB 프레임을 승인한 conversation에서만 `true`입니다. `ticket`은 Redis 60초, project-scoped, 단일 소비이며 일반 auth token을 WebSocket URL에 넣지 않습니다.
+
+`model_row_id`는 선택된 카탈로그 행을 가리키는 JSON 정수(1–2⁶³−1)입니다. Studio는 기존 `model_id` 문자열과 함께 이 값을 보냅니다. API는 두 필드 중 하나 이상을 요구하며, BFF는 두 값이 있으면 그대로 전달합니다. Lumen이 두 선택 및 `provider_id`의 일치 여부를 검증합니다. BFF는 `model_id`나 `model_row_id`가 생략되거나 `null`이면 해당 필드를 전달하지 않습니다. `model_row_id`를 보내려면 이 필드를 지원하는 Lumen이 필요합니다.
 
 브라우저는 반환된 경로에 ticket으로 WSS 연결하고 `session.ready`의 `input_sample_rate_hz`(Gemini 16 kHz/OpenAI 24 kHz)에 맞춰 mono PCM16 worklet을 시작합니다. `audio.input.append`의 base64 chunk, `audio.output.delta`의 24 kHz playback, 자막 delta, `session.interrupted`, `response.cancel`을 처리합니다. 브라우저 프로젝트/사용자 변경·로그아웃·세션 종료 시 microphone track, AudioContext, playback, socket과 표시 자막을 즉시 정리합니다. 원본 오디오는 Afterglow→Lumen→선택 provider로 전송되며 Afterglow/Lumen은 원본 PCM·실시간 자막을 DB/S3에 보존하지 않습니다. Provider의 데이터 처리 정책은 별도로 확인해야 합니다. 생성 이미지·유한 오디오의 durable run/asset·usage는 **Lumen**이 소유합니다. 장애 시 upstream usage가 확정되지 않으면 Lumen hold가 unknown으로 남으며 BFF는 이를 임의 정산하지 않습니다.
 

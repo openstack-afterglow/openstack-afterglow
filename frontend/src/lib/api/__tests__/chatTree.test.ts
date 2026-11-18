@@ -31,7 +31,7 @@ describe('lastAssistantModel', () => {
 			msg('u2', 'user', 'a1', '2026-01-01T00:00:02Z'),
 			withModel(msg('a2', 'assistant', 'u2', '2026-01-01T00:00:03Z'), 'claude-sonnet-5')
 		];
-		expect(lastAssistantModel(path)).toBe('claude-sonnet-5');
+		expect(lastAssistantModel(path)).toBe(path[3]);
 	});
 
 	it('뒤에 tool 메시지가 붙어도 마지막 assistant 를 찾음', () => {
@@ -39,7 +39,7 @@ describe('lastAssistantModel', () => {
 			withModel(msg('a1', 'assistant', null, '2026-01-01T00:00:01Z'), 'gpt-4o'),
 			msg('t1', 'tool', 'a1', '2026-01-01T00:00:02Z')
 		];
-		expect(lastAssistantModel(path)).toBe('gpt-4o');
+		expect(lastAssistantModel(path)).toBe(path[0]);
 	});
 
 	it('assistant 가 없거나 model_name 이 없으면 null', () => {
@@ -47,6 +47,11 @@ describe('lastAssistantModel', () => {
 		expect(
 			lastAssistantModel([withModel(msg('a1', 'assistant', null, '2026-01-01T00:00:01Z'), null)])
 		).toBeNull();
+	});
+
+	it('preserves an exact row even if the legacy name is absent', () => {
+		const reply = { ...msg('a1', 'assistant', null, '2026-01-01T00:00:01Z'), execution: { model_row_id: 17 } };
+		expect(lastAssistantModel([reply])?.execution?.model_row_id).toBe(17);
 	});
 });
 

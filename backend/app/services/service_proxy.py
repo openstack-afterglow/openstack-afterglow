@@ -221,6 +221,9 @@ async def _forward(
         if service_type == "lumen" and upstream_path.startswith("/v1/admin/providers"):
             # Private URLs and transport exception text can contain credentials.
             _logger.warning("Upstream proxy request to lumen provider administration failed")
+        elif service_type == "lumen" and upstream_path.startswith("/v1/vault/"):
+            # Vault query parameters and transport exception text can contain private note data.
+            _logger.warning("Upstream proxy request to private Lumen route failed")
         elif sensitive:
             _logger.warning("Upstream proxy request to %s private route failed", service_type)
         else:

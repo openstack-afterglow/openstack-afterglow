@@ -43,6 +43,23 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('Embedding Studio', () => {
+	it('embeds with the exact row from a different provider with the same model name', async () => {
+		calls.models.mockResolvedValue([model, { ...model, id: 8, provider_id: 2, provider: 'Second OpenAI account' }]);
+		calls.embed.mockResolvedValue({ ...embedded, model_id: 8, embeddings: [embedded.embeddings[0]] });
+		render(EmbeddingStudio);
+		await screen.findByText(t('embeddingStudio.ready'));
+		await fireEvent.input(input(1), { target: { value: 'provider-specific vector' } });
+		const select = screen.getByRole('combobox', { name: t('embeddingStudio.model') });
+		await fireEvent.change(screen.getByRole('combobox', { name: t('modelPicker.providers') }), { target: { value: '2' } });
+		expect(select).toHaveProperty('value', '');
+		expect(embedButton()).toHaveProperty('disabled', true);
+		await fireEvent.change(select, { target: { value: '8' } });
+		await screen.findByText(t('embeddingStudio.ready'));
+		await fireEvent.click(embedButton());
+		expect(calls.capabilities).toHaveBeenLastCalledWith(8, expect.anything(), expect.any(AbortSignal));
+		expect(calls.embed).toHaveBeenCalledWith({ model_id: 8, input: ['provider-specific vector'] }, expect.anything(), expect.any(AbortSignal));
+	});
+
 	it('uses published allowed dimensions as choices and sends only the explicit selection', async () => {
 		calls.capabilities.mockResolvedValue(capability({ default_dimensions: 768, min_dimensions: 256, max_dimensions: 768, allowed_dimensions: [256, 768] }));
 		render(EmbeddingStudio);

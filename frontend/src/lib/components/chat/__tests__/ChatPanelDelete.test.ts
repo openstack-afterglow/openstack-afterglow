@@ -1,7 +1,6 @@
-import { grantLumen } from './lumenPermissionFixture';
+import { grantLumen, setVerifiedLumenActor } from './lumenPermissionFixture';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { auth } from '$lib/stores/auth';
 import ChatPanel from '../ChatPanel.svelte';
 
 const mocks = vi.hoisted(() => ({
@@ -59,7 +58,7 @@ vi.mock('$lib/api/chatStream', () => ({
 }));
 beforeEach(() => {
 	vi.clearAllMocks();
-	auth.set({
+	setVerifiedLumenActor({
 		token: 'test-token',
 		refreshToken: null,
 		accessExpiresAt: null,

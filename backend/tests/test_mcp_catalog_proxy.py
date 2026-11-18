@@ -128,6 +128,10 @@ def assert_private(response):
         ("POST", "mcp-servers/12/oauth/start", None, 200),
         ("GET", "mcp-servers/12/oauth", None, 200),
         ("DELETE", "mcp-servers/12/oauth", None, 204),
+        ("GET", "archived-connections", None, 200),
+        ("GET", "domains/domain-a/archived-connections", None, 200),
+        ("POST", "archived-connections/17/restore", None, 200),
+        ("POST", "domains/domain-a/archived-connections/17/restore", None, 200),
     ],
 )
 async def test_catalog_routes_preserve_method_query_body_and_native_member(

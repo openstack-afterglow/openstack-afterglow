@@ -65,6 +65,7 @@ export interface ImageCapabilities {
 }
 export interface ImageRequest {
 	model_id: string;
+	model_row_id?: number;
 	prompt: string;
 	size: string;
 	quality: string;

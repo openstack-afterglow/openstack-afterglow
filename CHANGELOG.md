@@ -13,6 +13,14 @@
 - Lumen CLI installers embed the deployment's public Lumen URL at Afterglow startup. Codex and Claude Code setup commands take no URL options and stay hidden when no public URL is configured.
 - Lumen 개인 키는 프로젝트에 묶이지 않는다. 도메인 매니저는 서비스 키와 선불 풀 한도를 관리하고, 시스템 관리자는 도메인 풀을 충전하고 서비스 키를 조회한다.
 - Lumen personal keys are project-independent. Domain managers manage service keys and pool limits; system administrators top up domain pools and inspect service keys.
+- 채팅 기록, 에이전트, 메모리 및 도구 연결은 같은 도메인의 프로젝트 전환 시 유지된다. 사용량 기록과 클라우드 도구는 선택한 프로젝트를 사용한다. 연결 관리에서 보관된 개인 연결과 도구를 복원할 수 있으며, 조직 항목은 권한을 확인한 관리자가 복원한다.
+- Chat history, agents, memory and tool connections persist across project switches in a domain. Usage attribution and cloud tools follow the selected project. Manage connections can restore archived personal duplicates; authorized managers can restore organization duplicates.
+- 채팅·에이전트·Studio에서 공급자를 먼저 선택하고 등록 모델을 고른다. 공급자가 다른 동명 모델은 별도 선택지로 표시하며 실행에서도 정확한 등록 모델을 사용한다.
+- Chat, agents, and Studios select a provider before a registered model. Same-name models from different providers stay distinct during selection and execution.
+- 채팅 설정의 메모리를 Agent Vault로 교체했다. 도메인·전역 노트 검색, 버전 확인, 충돌을 보호하는 편집, 추가 전용 기록과 `memory.md` 내보내기를 지원한다. 대시보드 로그인 세션과 Vault를 지원하는 Lumen이 필요하다.
+- Agent Vault replaces chat memory settings with scoped note search, revision history, conflict-safe editing, append-only records, and `memory.md` export. Requires a dashboard session and a Vault-capable Lumen deployment.
+- Agent Vault에서 채팅 프로젝트를 선택해 해당 프로젝트의 메모리를 검색·조회·수정하거나 새 노트를 만들 수 있다.
+- Agent Vault can search, read, edit, and create notes restricted to one chat project.
 
 ## [1.32.28] - 2026-11-18
 

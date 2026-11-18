@@ -103,6 +103,7 @@ export const realtimeVoiceApi = {
 			method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
 			body: JSON.stringify({
 				model_id: String(modelId),
+				model_row_id: modelId,
 				...(kind !== 'conversation' ? { kind } : {}),
 				...(kind === 'conversation' || kind === 'live' ? { voice } : {}),
 				...(options?.output_language ? { output_language: options.output_language } : {}),

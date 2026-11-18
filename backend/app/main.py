@@ -346,6 +346,8 @@ _AUDIT_PREFIX_MAP: list[tuple[str, str]] = [
     ("/api/v1/chat/agents", "chat_agent"),
     ("/api/v1/chat/workspaces", "chat_workspace"),
     ("/api/v1/chat/memories", "chat_memory"),
+    ("/api/v1/chat/vault/notes", "chat_vault_note"),
+    ("/api/v1/chat/vault", "chat_vault_note"),
     ("/api/v1/chat/conversations", "chat_conversation"),
     ("/api/v1/chat/mcp-servers", "chat_mcp_server"),
     ("/api/v1/chat/mcp-connections", "chat_mcp_connection"),
@@ -428,6 +430,14 @@ def _resource_for_path(path: str) -> tuple[str, str | None] | None:
         if path.startswith(prefix):
             rest = path[len(prefix) :].lstrip("/")
             rid = rest.split("/")[0] if rest else None
+            if rtype == "chat_vault_note":
+                if path != prefix and not path.startswith(f"{prefix}/"):
+                    continue
+                if prefix.endswith("/notes"):
+                    if rid and (len(rid) > 20 or not (rid.isascii() and rid.isdecimal())):
+                        rid = None
+                elif rest not in {"profile", "coding-standards", "short-term"}:
+                    rid = None
             return (rtype, rid or None)
     return None
 

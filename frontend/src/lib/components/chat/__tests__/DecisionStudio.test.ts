@@ -6,6 +6,7 @@ import { MAX_DECISION_IMAGE_BYTES, parseGeminiDecisionResult } from '$lib/api/de
 import { api, ApiError } from '$lib/api/client';
 import DecisionStudio from '../DecisionStudio.svelte';
 import { t } from '$lib/i18n/ns/decision-studio';
+import { t as studioT } from '$lib/i18n/ns/chat-studio';
 import { projectSwitching } from '$lib/stores/auth';
 import { tick } from 'svelte';
 
@@ -28,6 +29,7 @@ const result = (request?: DecisionModule.DecisionRequest): DecisionModule.Decisi
 const user = (projectId = 'project-1') => ({ token: 'token', refreshToken: null, accessExpiresAt: null, sessionId: 'session', userId: 'owner', username: 'tester', projectId, projectName: projectId, availableProjects: [], roles: [], isSystemAdmin: false, federated: false, domainId: 'domain-1', domainName: 'Domain', identityDomainId: 'domain-1', identityDomainName: 'Domain', isDomainManager: false });
 const run = () => screen.getByRole('button', { name: t('decisions.run') });
 const questionAt = (index = 0) => screen.getAllByTestId('decision-question')[index];
+const chooseProvider = (id: number) => fireEvent.change(screen.getByRole('combobox', { name: studioT('modelPicker.providers') }), { target: { value: String(id) } });
 async function fillPredicate() {
 	await screen.findByText(t('decisions.ready'));
 	await fireEvent.input(screen.getByRole('textbox', { name: t('decisions.content') }), { target: { value: 'A damaged parcel arrived.' } });
@@ -67,13 +69,20 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('Decision Studio', () => {
-	it('submits the registered model name, one predicate and scope, then shows probability, usage and cost', async () => {
+	it('submits the selected row and legacy name, then shows probability, usage and cost', async () => {
+		calls.models.mockResolvedValue([model, { ...model, id: 10, provider_id: 2, provider: 'Second OpenAI account' }]);
 		render(DecisionStudio); await fillPredicate();
+		const select = screen.getByRole('combobox', { name: t('decisions.model') });
+		await chooseProvider(2);
+		expect(select).toHaveProperty('value', '');
+		expect(run()).toHaveProperty('disabled', true);
+		await fireEvent.change(select, { target: { value: '10' } });
+		await screen.findByText(t('decisions.ready'));
 		await fireEvent.input(within(questionAt()).getByLabelText(t('decisions.name')), { target: { value: 'refund' } });
 		await fireEvent.click(run());
 		await screen.findByTestId('decision-results');
 		expect(calls.decide).toHaveBeenCalledTimes(1);
-		expect(calls.decide).toHaveBeenCalledWith({ model: 'registered-luna', input: 'A damaged parcel arrived.', questions: [{ type: 'predicate', name: 'refund', instructions: 'Does it need a refund?' }] }, { token: 'token', projectId: 'project-1' }, expect.any(AbortSignal));
+		expect(calls.decide).toHaveBeenCalledWith({ model: 'registered-luna', model_row_id: 10, input: 'A damaged parcel arrived.', questions: [{ type: 'predicate', name: 'refund', instructions: 'Does it need a refund?' }] }, { token: 'token', projectId: 'project-1' }, expect.any(AbortSignal));
 		expect(screen.getByRole('heading', { name: 'refund' })).toBeTruthy();
 		expect(screen.getByText(new RegExp(`^${t('decisions.probability')}:`))).toBeTruthy();
 		for (const key of ['inputTokens', 'cachedTokens', 'cacheWriteTokens', 'outputTokens', 'reasoningTokens', 'totalTokens', 'cost', 'creditedCost', 'usageLog'] as const) expect(screen.getByText(t(`decisions.${key}`), { selector: 'dt' })).toBeTruthy();
@@ -359,6 +368,7 @@ async function selectGeminiModel(entry = geminiModel) {
 	calls.models.mockResolvedValue([model, entry]);
 	calls.capabilities.mockImplementation(async (id: number, _scope, _signal, kind) => ({ ...capability(id), model_kind: kind }));
 	render(DecisionStudio); await fillPredicate();
+	await chooseProvider(entry.provider_id);
 	await fireEvent.change(screen.getByRole('combobox', { name: t('decisions.model') }), { target: { value: String(entry.id) } });
 	await screen.findByText(t('decisions.ready'));
 }
@@ -370,6 +380,7 @@ describe('Gemini Decision Studio', () => {
 		expect(calls.capabilities).toHaveBeenLastCalledWith(19, expect.anything(), expect.any(AbortSignal), 'decision');
 		expect(screen.queryByLabelText(t('decisions.inputType'))).toBeNull();
 		await fillInput(geminiInput(), 'Gemini draft');
+		await chooseProvider(model.provider_id);
 		await fireEvent.change(screen.getByRole('combobox', { name: t('decisions.model') }), { target: { value: '9' } });
 		await screen.findByText(t('decisions.ready'));
 		expect(screen.queryByLabelText(t('gemini.images'))).toBeNull();
@@ -389,11 +400,13 @@ describe('Gemini Decision Studio', () => {
 		calls.models.mockResolvedValue([model, geminiModel]);
 		calls.capabilities.mockImplementation(actual.decisionStudioApi.capabilities);
 		render(DecisionStudio); await fillPredicate();
+		await chooseProvider(geminiModel.provider_id);
 		await fireEvent.change(screen.getByRole('combobox', { name: t('decisions.model') }), { target: { value: '19' } });
 		await screen.findByText(t('gemini.lumenUpdate'));
 		expect(get).toHaveBeenLastCalledWith('/api/v1/chat/capabilities?model_id=19&model_kind=decision', 'token', 'project-1', expect.objectContaining({ signal: expect.any(AbortSignal) }));
 		expect((run() as HTMLButtonElement).disabled).toBe(true);
 		expect(calls.decideGemini).not.toHaveBeenCalled();
+		await chooseProvider(model.provider_id);
 		await fireEvent.change(screen.getByRole('combobox', { name: t('decisions.model') }), { target: { value: '9' } });
 		await screen.findByText(t('decisions.ready'));
 		expect((run() as HTMLButtonElement).disabled).toBe(false);
@@ -482,7 +495,7 @@ describe('Gemini Decision Studio', () => {
 		expect(calls.decideGemini).toHaveBeenCalledWith(expect.objectContaining({ body: expect.any(String) }), geminiModel.model_name, { token: 'token', projectId: 'project-1' }, expect.any(AbortSignal));
 		const sent = calls.decideGemini.mock.calls[0][0] as DecisionModule.PreparedGeminiDecision;
 		expect(JSON.parse(sent.body)).toEqual({
-			model: 'lumen/14/19', input: [{ type: 'text', text: 'Cracked mug' }, { type: 'text', text: '{"id":9007199254740993}' },
+			model: 'lumen/14/19', model_row_id: 19, input: [{ type: 'text', text: 'Cracked mug' }, { type: 'text', text: '{"id":9007199254740993}' },
 				{ type: 'image', data: 'bXVn', mime_type: 'image/heic', resolution: 'high' }],
 			questions: {
 				is_defect: { type: 'noul', instructions: 'Is the mug cracked?', criteria: { true_description: 'Visible crack' } },

@@ -10,27 +10,26 @@ import {
 } from './chatToolActivity';
 import type { RunActivityItem } from './chatRunReducer';
 
+import type { ModelCatalogRow } from './modelCatalog';
 /** Shared presentation contracts for bounded active-path message pages. */
 
 export type ChatRole = 'user' | 'assistant' | 'tool';
 
 
 /** 채팅에서 선택 가능한 모델. 백엔드 GET /chat/models 응답 형태. */
-export interface AvailableModel {
-	id: number;
+export interface AvailableModel extends ModelCatalogRow {
 	provider_id: number;
 	/** Connection protocol, distinct from the public API provider qualifier. */
 	provider_type: string;
 	/** Lumen orders the catalog by provider rank/ID, then model rank/ID. */
 	provider_sort_order: number;
 	sort_order: number;
-	model_name: string;
+	model_kind?: string;
 	/** External compatibility API model ID. Falls back to model_name during rolling upgrades. */
 	api_model_name?: string;
 	/** Stable external compatibility API provider selector. */
 	api_provider?: string;
-	display_name: string;
-	provider?: string;
+	provider_api_key_configured?: boolean;
 	capabilities?: ModelCapabilities | null;
 	context_limit?: number | null;
 	/** Lumen admission이 reasoning_effort="none"을 받는지(없으면 false로 취급). */
@@ -73,6 +72,7 @@ export interface ChatMessage {
 	status?: 'streaming' | 'complete' | 'failed' | 'canceled' | null;
 	execution?: {
 		run_id?: string;
+		model_row_id?: number | null;
 		/** Actual UTC run.started journal time, independent of message/reload time. */
 		started_at?: string | null;
 		/** Actual observed journal cursor; never a temporary message position. */
@@ -161,13 +161,12 @@ export function projectMessagesForDisplay(path: readonly ChatMessage[]): ChatMes
 }
 
 /**
- * 활성 경로에서 가장 마지막 assistant 메시지의 model_name 을 반환한다.
- * (마지막 메시지가 아니라 마지막 assistant 를 찾는다 — 뒤에 tool 메시지가 붙을 수 있다.)
- * 이어서 질문할 때 그 모델을 유지하기 위한 용도. 없으면 null.
+ * Preserve the latest assistant route; legacy messages may only have a model name.
  */
-export function lastAssistantModel(path: readonly ChatMessage[]): string | null {
+export function lastAssistantModel(path: readonly ChatMessage[]): ChatMessage | null {
 	for (let i = path.length - 1; i >= 0; i--) {
-		if (path[i].role === 'assistant' && path[i].model_name) return path[i].model_name ?? null;
+		const message = path[i];
+		if (message.role === 'assistant' && (message.execution?.model_row_id != null || message.model_name)) return message;
 	}
 	return null;
 }
