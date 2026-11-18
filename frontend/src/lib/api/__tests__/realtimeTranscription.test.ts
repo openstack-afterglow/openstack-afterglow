@@ -36,5 +36,7 @@ describe('native realtime transcription contract', () => {
 		expect(items[0].text).toHaveLength(4096);
 		expect(items.every((item) => item.state === 'partial')).toBe(true);
 	});
-	it('uses a localized unsupported-mode explanation', () => expect(realtimeReadiness(model, { ...caps, realtime_kind: 'translation' })).toBe(t('realtimeTranscription.unsupported')));
+	it.each([null, 'future-mode'])('uses a localized unsupported-mode explanation for %s', (kind) => {
+		expect(realtimeReadiness(model, { ...caps, realtime_kind: kind })).toBe(t('realtimeTranscription.unsupported'));
+	});
 });
