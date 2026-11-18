@@ -641,6 +641,8 @@ Nova 서버의 `hypervisor_hostname`과 실패 레코드의 `source_node`가 일
 
 응답 유실이나 일부 `5xx`로 쓰기 수락을 알 수 없으면 단계 상태를 `unconfirmed`로 반환하고 재전송하지 않습니다. `unconfirmed_action`과 `requested_at`이 후속 읽기 범위를 정하며 `observed_acceptance`는 응답 또는 새로운 Nova 작업/이력에서 수락이 확인됐음을 뜻합니다. 최신 조회에서 실행 중·idle `ACTIVE`가 보이고 다른 계획 단계가 누락되지 않았을 때만 `recovered=true`입니다(`observation_may_recover=false`면 이후 조회도 성공으로 보지 않습니다). `recovery-status`는 POST의 시간과 불확실성 조건을 사용해 단건 읽기만 수행합니다. Nova 성공은 게스트 앱 헬스 증명이 아닙니다. 활동 기록에는 fingerprint, 단계, 불확실성 및 관찰 상태가 남습니다.
 
+Nova의 초 단위 타임스탬프만으로 같은 초 안에서 요청 전후 순서를 확인할 수 없으면 해당 fault나 action을 새 증거로 사용하지 않습니다. 관찰된 하드 리부트 작업은 별도 수락 증거입니다.
+
 `migration-status`의 `migration.status=error`는 실패 레코드이며 `type`, `source`, `dest`, `created_at`, `updated_at`을 포함합니다. 기존 `error` 필드는 Nova fault 메시지일 뿐 실패 원인과 연결하지 않습니다. 예를 들어 콘솔이 없는 게스트에 대한 최근 `404` fault는 이전 마이그레이션 실패와 별개입니다.
 
 **운영 예시:** `dms-compute12 → dms-compute6` 라이브 마이그레이션은 Nova API가 아닌 `nova-compute` 로그에서 대상 CPU의 `pdcm`, `hle`, `rtm` 누락을 확인했습니다. 재발을 방지하려면 대상 컴퓨트들이 지원하는 공통 CPU 모델을 검증해 Nova/libvirt에 적용하세요. 이 복구 기능은 하이퍼바이저 CPU 설정을 바꾸지 않습니다.
