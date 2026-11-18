@@ -28,8 +28,8 @@
 
 ### Deployment
 
-- Lumen 0.6.20을 먼저 배포해야 한다. 새 DB migration은 없다.
-- Deploy Lumen 0.6.20 first. No new DB migration.
+- DMS Lab 컨트롤러 3대에 Lumen 0.6.20을 먼저 배포한 뒤 Afterglow 1.32.27을 11:32:07–11:34:00 UTC에 반영했다. 새 DB migration은 없다. [한영 릴리즈 노트](https://github.com/openstack-afterglow/openstack-afterglow/releases/tag/1.32.27) 및 [`docs/testing.md`](docs/testing.md)에 수신증을 기록했다.
+- Deployed Afterglow 1.32.27 to three DMS Lab controllers at 11:32:07–11:34:00 UTC after Lumen 0.6.20. No new DB migration. See the [bilingual release](https://github.com/openstack-afterglow/openstack-afterglow/releases/tag/1.32.27) and [`docs/testing.md`](docs/testing.md) for receipts.
 
 ## [1.32.26] - 2026-11-18
 
