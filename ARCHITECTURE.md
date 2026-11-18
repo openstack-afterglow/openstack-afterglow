@@ -2289,9 +2289,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "31ae8cd99b0314ab552d176758bc38c2d8e2efd40e10244fe5cde9d3cc7fdad4",
-  "reviewed_at": "2026-11-18T11:35:45Z",
-  "summary": "Record Afterglow 1.32.27 publication and DMS Lab rollout after Lumen 0.6.20; docs only."
+  "source_sha256": "f83d4c6070a8e6af0bd49cf6f18d44ca4a562adc9038b5b2216204954a29473e",
+  "reviewed_at": "2026-11-18T14:32:17Z",
+  "summary": "Prepare Afterglow 1.32.28 with the MCP and tools connections workspace, read-only isometric grid views for topology, instance networking and Waygate, and verified live-migration rollback instance recovery. No schema, configuration or Lumen requirement changes."
 }
 ```
 <!-- architecture-review:end -->
