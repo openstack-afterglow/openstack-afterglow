@@ -43,10 +43,23 @@ export interface RecoveryStep {
 }
 
 export interface RecoveryAnalysis {
-	server: { id: string; name: string; status: string; compute_host: string | null; fault: { message: string | null; code: number | null; created: string | null } | null };
-	last_error_migration: { migration_type: string; source_compute: string | null; dest_compute: string | null; created_at: string | null } | null;
-	volumes: { volume_id: string; device: string | null; status: string; bootable: boolean }[];
-	ports: { id: string; status: string; binding_vif_type: string | null }[];
+	server: {
+		id: string;
+		name: string;
+		status: string;
+		compute_host: string | null;
+		power_state: number | null;
+		fault: { message: string | null; code: number | null; created: string | null } | null;
+	};
+	last_error_migration: {
+		migration_type: string;
+		source_compute: string | null;
+		dest_compute: string | null;
+		created_at: string | null;
+		updated_at: string | null;
+	} | null;
+	volumes: { volume_id: string; device: string | null; status: string; bootable: boolean }[] | null;
+	ports: { id: string; status: string; binding_vif_type: string | null }[] | null;
 	checks: RecoveryCheck[];
 	scenario: string;
 	scenario_description: string;
@@ -55,8 +68,14 @@ export interface RecoveryAnalysis {
 	placement_note: string | null;
 }
 
+export interface RecoveryRequest {
+	expected_guest_restart?: boolean;
+}
+
 export interface RecoveryResult {
 	executed: boolean;
+	observed_status: string;
+	recovered: boolean;
 	scenario: string;
 	steps: RecoveryStep[];
 }

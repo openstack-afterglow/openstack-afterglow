@@ -53,9 +53,12 @@ interface MigrationInfo {
 	status: string | null;
 	type: string | null;
 	memory_percent: number | null;
+	created_at?: string | null;
+	updated_at?: string | null;
 }
 
 interface MigrationStatus {
+	server_id?: string;
 	host: string | null;
 	migration: MigrationInfo | null;
 	error: string | null;

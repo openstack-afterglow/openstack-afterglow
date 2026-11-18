@@ -597,19 +597,41 @@ Manila의 `/v2/{project}` URL prefix도 논리 Personal이 아닌 실제 인증 
 | `POST` | `/api/v1/admin/instances/{server_id}/live-migrate/force-complete` | 라이브 마이그레이션 강제 완료 | - |
 | `POST` | `/api/v1/admin/instances/{server_id}/cold-migrate` | 콜드 마이그레이션 (`host` 지정 시 해당 호스트로) | `host` (선택) |
 | `POST` | `/api/v1/admin/instances/{server_id}/evacuate` | 다운된 호스트에서 인스턴스 대피 | `host` (선택) |
-| `GET` | `/api/v1/admin/instances/{server_id}/migration-status` | 마이그레이션 진행 상태 조회 | - |
+| `GET` | `/api/v1/admin/instances/{server_id}/migration-status` | 진행 중 마이그레이션 또는 최신 실패 레코드 조회 | - |
 | `PUT` | `/api/v1/admin/instances/{server_id}/name` | 전원 상태와 무관한 표시 이름 변경; caller 연결·fresh admin·실제 target owner 확인 | `name` (1–63자 정규화) |
 | `POST` | `/api/v1/admin/instances/{server_id}/resize` | 인스턴스 리사이즈 시작 (`VERIFY_RESIZE`로 전이) | `new_flavor` |
 | `POST` | `/api/v1/admin/instances/{server_id}/confirm-resize` | 리사이즈 확정 | - |
 | `POST` | `/api/v1/admin/instances/{server_id}/revert-resize` | 리사이즈 되돌리기 | - |
-| `GET` | `/api/v1/admin/instances/{server_id}/recovery-analysis` | 오류/멈춤 인스턴스 복구 분석 | - |
-| `POST` | `/api/v1/admin/instances/{server_id}/recover` | 분석 결과 기반 인스턴스 복구 수행 | - |
+| `GET` | `/api/v1/admin/instances/{server_id}/recovery-analysis` | ERROR 인스턴스의 복구 안전 점검 및 계획 | - |
+| `POST` | `/api/v1/admin/instances/{server_id}/recover` | 재진단 후 복구 실행 및 Nova 상태 관찰 | `expected_guest_restart` (선택, boolean) |
 | `GET` | `/api/v1/admin/instances/health` | 전체 인스턴스 헬스 스냅샷 | - |
 | `POST` | `/api/v1/admin/instances/bulk-action` | 다수 인스턴스 일괄 제어 | `instance_ids[]`, `action`, `snapshot_name` (선택) |
 
 **bulk-action 제한**: `action`은 시작/정지/재부팅/스냅샷 등 허용된 값이어야 하며, 각 인스턴스별 결과가 개별 집계됩니다. 일부 실패해도 나머지는 계속 진행됩니다.
 
 이름 변경은 [공용 인스턴스 이름 변경 계약](instances.md#put-apiv1instancesinstance_idname)을 따릅니다. Native name-only update 뒤 ID·이름·소유 프로젝트를 재조회하여 일치한 경우만 성공하며 guest hostname·전원 상태는 바꾸지 않습니다. 사용자 경로의 관리자 소유권 우회를 허용하는 대신 이 명시적 관리자 경로를 사용합니다. 기존 관리자·사용자 크기 변경 화면은 `SHUTOFF`에서만 노출되며 이 작업으로 변경하지 않습니다.
+
+### ERROR 인스턴스 복구
+
+두 복구 경로는 관리자 전용입니다. `recovery-analysis`는 서버가 ERROR가 아니거나 필요한 OpenStack 조회가 실패해도 진단 결과(`auto_executable: false`)를 반환합니다.
+
+| 진단 응답 필드 | 의미 |
+|----------------|------|
+| `server.power_state` | Nova 전원 상태 코드. 미확인은 `null`. |
+| `server.fault` | 최신 Nova fault(`message`, `code`, `created`) 또는 `null`. 실패한 마이그레이션의 원인을 뜻하지 않습니다. |
+| `last_error_migration` | 실패 레코드(`id`, `status`, `migration_type`, `source_compute`, `dest_compute`, `created_at`, `updated_at`) 또는 `null`. |
+| `volumes`, `ports` | Nova/Cinder 연결 및 Neutron 바인딩 정보. 조회 실패는 `null`, 읽어서 없음을 확인한 경우는 `[]`. |
+| `checks[]` | 안정적인 `key`와 표시용 `label`, `passed`, `detail`. |
+| `scenario`, `scenario_description`, `steps[]` | 진단 및 순서가 있는 계획. 각 단계는 `action`, `params`, `description`을 포함합니다. `auto_executable`이 `true`일 때만 실행할 수 있습니다. |
+| `placement_note` | 레거시 마이그레이션에 대해 수동 할당 확인이 필요할 수 있다는 참고 정보 또는 `null`. |
+
+라이브 롤백은 소스 호스트, 실패 시각과 연결된 대상 호스트 롤백 성공 이벤트, 소스에만 남은 포트·볼륨 연결, 단일 Placement 공급자, 진행 중 작업 없음이 모두 확인되어야 합니다. 조회 불가·모호한 이력·복수 공급자는 자동 실행을 차단합니다. `live_migration_rolled_back`에서 `power_state=1`이면 `reset_server_state(active)`만 수행합니다. `SHUTDOWN`(`4`)과 `CRASHED`(`6`)는 게스트가 실행 중이지 않다는 명시적 상태이므로 재설정 뒤 `hard_reboot`를 수행합니다. `NOSTATE`(`0`)는 정지 증거가 아닙니다. 전원 상태를 알 수 없거나 다른 코드이면 수동 확인이 필요합니다.
+
+`recover`는 클라이언트 단계를 받지 않고 관리자 연결로 재진단합니다. 안전 조건이 부족하거나, 전달된 `expected_guest_restart`와 다시 만든 계획이 다르면 쓰기 없이 `409`를 반환합니다. 응답의 `executed`와 `steps[].status=success`는 단계별 요청 수락을 뜻합니다. 마지막 관찰은 최대 약 55초 동안 확인하며, `observed_status`에는 `ACTIVE`, `HARD_REBOOT`, `REBOOT`, `ERROR` 등 마지막 Nova 상태 또는 조회하지 못한 경우 `UNKNOWN`을 반환합니다. `recovered`는 모든 단계가 수락되고 Nova가 작업 없는 `ACTIVE` 및 실행 중인 전원 상태를 반환한 경우만 `true`입니다. 이것은 게스트 서비스 헬스 확인이 아닙니다. 활동 기록은 실행 단계와 관찰 상태를 함께 보존합니다.
+
+`migration-status`의 `migration.status=error`는 실패 레코드이며 `type`, `source`, `dest`, `created_at`, `updated_at`을 포함합니다. 기존 `error` 필드는 Nova fault 메시지일 뿐 실패 원인과 연결하지 않습니다. 예를 들어 콘솔이 없는 게스트에 대한 최근 `404` fault는 이전 마이그레이션 실패와 별개입니다.
+
+**운영 예시:** `dms-compute12 → dms-compute6` 라이브 마이그레이션은 Nova API가 아닌 `nova-compute` 로그에서 대상 CPU의 `pdcm`, `hle`, `rtm` 누락을 확인했습니다. 재발을 방지하려면 대상 컴퓨트들이 지원하는 공통 CPU 모델을 검증해 Nova/libvirt에 적용하세요. 이 복구 기능은 하이퍼바이저 CPU 설정을 바꾸지 않습니다.
 
 ### 관리자 인스턴스 생성 (대리 프로비저닝)
 

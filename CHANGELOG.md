@@ -7,6 +7,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- 관리자는 롤백이 확인된 라이브 마이그레이션의 ERROR 인스턴스를 안전 점검 뒤 복구할 수 있다. 실행 중인 게스트는 재시작하지 않으며 Nova에서 관찰한 결과를 표시한다.
+- Admins can recover ERROR instances after verified live migration rollback. Running guests are not restarted, and the result shows the observed Nova state.
+
 ## [1.32.27] - 2026-11-18
 
 ### Added

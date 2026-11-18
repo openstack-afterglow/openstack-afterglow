@@ -807,13 +807,16 @@ def get_server_migration_status(conn: openstack.connection.Connection, server_id
     """인스턴스의 현재 호스트 + 진행 중 마이그레이션 상태를 반환한다.
 
     MIGRATING 중이면 source→dest·메모리 진행률을 포함한다.
-    진행 중이 아니고 최근 마이그레이션이 error 상태였다면 실패 사유를 반환한다.
-    예외는 fail-soft(빈 결과)로 처리해 폴링을 안전하게 유지한다.
+    진행 중이 아니면 최근 실패 마이그레이션의 레코드를 반환한다.
+    기존 error 필드는 Nova fault이며 마이그레이션 실패 원인이 아니다.
     """
-    result: dict = {"host": None, "migration": None, "error": None}
+    result: dict = {"server_id": server_id, "host": None, "migration": None, "error": None}
     try:
         srv = conn.compute.get_server(server_id)
         result["host"] = getattr(srv, "compute_host", None)
+        fault = getattr(srv, "fault", None)
+        if isinstance(fault, dict) and fault.get("message"):
+            result["error"] = str(fault["message"])
     except Exception:
         pass
 
@@ -834,38 +837,27 @@ def get_server_migration_status(conn: openstack.connection.Connection, server_id
                 "type": getattr(m, "migration_type", None),
                 "memory_percent": memory_percent,
             }
+            result["error"] = None
             return result
-    except Exception:
-        pass
-
-    # 진행 중이 아닌 경우 — 최근 실패 사유 회수
-    try:
-        fault = getattr(conn.compute.get_server(server_id), "fault", None)
-        if fault:
-            msg = fault.get("message") if isinstance(fault, dict) else getattr(fault, "message", None)
-            if msg:
-                result["error"] = str(msg)
-                return result
     except Exception:
         pass
 
     try:
         # os-migrations에서 최근 error 항목 확인
-        migs = list(conn.compute.migrations(instance_uuid=server_id))
-        # 최신 순으로 정렬 후 error 상태 탐색
+        migs = list(conn.compute.migrations(server_id=server_id))
         migs.sort(key=lambda x: getattr(x, "created_at", "") or "", reverse=True)
-        for mg in migs[:3]:
+        for mg in migs:
             if (getattr(mg, "status", "") or "").lower() == "error":
-                dest = getattr(mg, "dest_compute", None)
-                if dest:
-                    result["migration"] = {
-                        "id": getattr(mg, "id", None),
-                        "source": getattr(mg, "source_compute", None),
-                        "dest": dest,
-                        "status": "error",
-                        "type": getattr(mg, "migration_type", None),
-                        "memory_percent": None,
-                    }
+                result["migration"] = {
+                    "id": mg.id,
+                    "source": mg.source_compute,
+                    "dest": mg.dest_compute,
+                    "status": "error",
+                    "type": mg.migration_type,
+                    "memory_percent": None,
+                    "created_at": mg.created_at,
+                    "updated_at": mg.updated_at,
+                }
                 break
     except Exception:
         pass
