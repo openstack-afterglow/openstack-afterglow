@@ -1,4 +1,9 @@
 {
+	"project.iso.label": "Peta VPN",
+	"project.iso.caption": "Pilih pelayan, klien atau rangkaian tersambung untuk melihat butiran dalam senarai.",
+	"project.iso.encrypted": "Terowong disulitkan",
+	"project.iso.reportedPeers": "{count} rakan setara dilaporkan",
+	"project.iso.profileCount": "{count} profil klien",
 	"project.permission.denied": "Anda tidak mempunyai kebenaran untuk melakukan tindakan ini dalam projek semasa.",
 	"project.client.owner": "ID pengguna pemilik",
 	"project.client.ownerHelp": "Masukkan ID pengguna ahli projek. Hanya klien yang belum ditetapkan boleh diberikan pemilik; pemilikan yang telah ditetapkan tidak boleh diubah atau dikosongkan. Hanya pemilik dengan kebenaran menyambung boleh memuat turun profil klien yang didayakan.",

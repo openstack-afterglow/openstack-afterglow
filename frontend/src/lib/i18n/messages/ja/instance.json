@@ -1,4 +1,11 @@
 {
+	"network.iso.label": "インスタンスのネットワークマップ",
+	"network.iso.caption": "表示される接続とルールは設定情報であり、到達可能性を保証しません。",
+	"network.iso.managed": "Waygate 管理下",
+	"network.iso.policyUnknown": "セキュリティグループの情報を確認できません",
+	"network.iso.port": "ポート",
+	"network.iso.internet": "インターネット",
+	"network.iso.rulesCount": "ルール {count} 件",
 	"list.titleWithCount": "インスタンス（{count}）",
 	"list.summary": "全 {total} · 実行中 {active} · エラー {errors}",
 	"list.search": "名前または UUID で検索",

@@ -589,6 +589,12 @@ Waygate clients keep a fixed download → QR → settings icon trio before the e
 파일 스토리지는 rule/association state, type/target/level, export/share network와 수동 guest 연결 경계를 표시한다. Mount 경로/자동 실행 명령 대신 NFS exact fixed IP와 UUID-bound CephX identity를 사용한다. 명시적 키 조회는 transient disclosure이고 close/actor/project/target/permission 전환에서 지운다. 닫기는 provider 회수가 아니다. Attached root/data 행은 기존 `VolumeExtendModal`로 확장하고 모든 연결 VM의 정지와 guest 파티션/파일시스템 별도 작업을 안내한다. 동일 scope polling은 draft/busy/error를 유지하고 실제 scope/state 변화는 invalidate한다. Windows 초기화는 약20–30분이며 API 완료는 login 성공이 아니다.
 
 
+### Instance and Waygate isometric grid views
+
+The instance slide-over fits the VM security-group zone, port slabs, floating IPs and directional rule paths to the panel, not the page viewport. On narrow panels, reduce inset spacing rather than adding horizontal scrolling. Selecting a map element opens a compact inspector with full addresses, group names or rules. Unavailable policy has distinct text and no rule edges. The Waygate-managed badge reflects the same lock as the list controls.
+
+Waygate uses small client devices on a shared slab, a VPN gateway block on its tunnel-CIDR slab, and separate slabs for attached networks. Render reported status and handshake time as text, keep unverified tunnel paths muted, and collapse larger client inventories into a count without inferring online totals. Selection reveals the existing list detail, and the list alone offers resource mutations. In both views, moving dots mean configured paths, never observed traffic or proven reachability.
+
 ## Dashboard chart standard
 
 Use actual Bklit UI registry components through `charts/BklitChart.svelte` for every Afterglow-owned numerical chart, distribution, gauge, ring and country choropleth. Reuse existing domain components (`UsageBar`/`QuotaBar`/`CapacityBar`, `UsageRing`/`Donut`/`QuotaDonut`, `Spark`, `TimeSeriesChart`, `TrafficArea`/`TrafficSparkline`) before composing a new typed `ChartSpec`. These components own presentation/ARIA; native Bklit owns plotting, axes and tooltips. Do not restore bespoke SVG/CSS geometry or LayerChart POCs. See `frontend/README.md` for the surface inventory and upstream procedure.

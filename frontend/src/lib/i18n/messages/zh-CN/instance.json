@@ -1,4 +1,11 @@
 {
+	"network.iso.label": "实例网络图",
+	"network.iso.caption": "已配置的连接和规则不代表实际可达。",
+	"network.iso.managed": "由 Waygate 管理",
+	"network.iso.policyUnknown": "无法获取安全组信息",
+	"network.iso.port": "端口",
+	"network.iso.internet": "互联网",
+	"network.iso.rulesCount": "{count} 条规则",
 	"list.titleWithCount": "实例（{count}）",
 	"list.summary": "共 {total} · 运行中 {active} · 错误 {errors}",
 	"list.search": "搜索名称或 UUID",

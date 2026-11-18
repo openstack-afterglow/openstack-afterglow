@@ -1,4 +1,9 @@
 {
+	"project.iso.label": "Ramani ya VPN",
+	"project.iso.caption": "Chagua seva, kiteja au mtandao uliounganishwa ili kuona maelezo katika orodha.",
+	"project.iso.encrypted": "Handaki lililosimbwa",
+	"project.iso.reportedPeers": "Vifaa rika vilivyoripotiwa: {count}",
+	"project.iso.profileCount": "Wasifu wa viteja: {count}",
 	"project.permission.denied": "Huna ruhusa ya kutekeleza kitendo hiki katika mradi wa sasa.",
 	"project.client.owner": "ID ya mtumiaji mmiliki",
 	"project.client.ownerHelp": "Weka ID ya mtumiaji ambaye ni mwanachama wa mradi. Ni wateja ambao hawajapangiwa mmiliki pekee wanaoweza kupewa mmiliki; umiliki uliopangwa hauwezi kubadilishwa au kuondolewa. Ni mmiliki mwenye ruhusa ya kuunganisha pekee anayeweza kupakua wasifu wa mteja aliyewezeshwa.",

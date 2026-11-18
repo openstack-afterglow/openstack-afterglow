@@ -1,4 +1,11 @@
 {
+	"network.iso.label": "Sơ đồ mạng của máy ảo",
+	"network.iso.caption": "Liên kết và quy tắc đã cấu hình không xác nhận khả năng truy cập.",
+	"network.iso.managed": "Do Waygate quản lý",
+	"network.iso.policyUnknown": "Không có dữ liệu nhóm bảo mật",
+	"network.iso.port": "Cổng",
+	"network.iso.internet": "Internet",
+	"network.iso.rulesCount": "{count} quy tắc",
 	"list.titleWithCount": "Phiên bản máy ({count})",
 	"list.summary": "Tổng {total} · Đang chạy {active} · Lỗi {errors}",
 	"list.search": "Tìm tên hoặc UUID",

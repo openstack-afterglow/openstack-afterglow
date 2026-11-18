@@ -69,6 +69,10 @@
 	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 	import { t as commonText } from '$lib/i18n/ns/common';
 	import { createWaygateViewState, type WaygateViewState } from '$lib/utils/waygateView.svelte';
+	import IsoGridView from '$lib/components/iso/IsoGridView.svelte';
+	import IsoViewToggle from '$lib/components/iso/IsoViewToggle.svelte';
+	import type { IsoViewMode } from '$lib/components/iso/types';
+	import { buildWaygateIsoScene, waygatePeerStatus, type WaygatePeerStatus } from './waygateIsoScene';
 
 	let { scope, admin = false, viewState }: { scope: WaygateProjectScope; admin?: boolean; viewState?: WaygateViewState } = $props();
 	const display = untrack(() => viewState ?? createWaygateViewState());
@@ -236,6 +240,30 @@
 	// 상세 패널
 	let selectedServerId = $state<string | null>(null);
 	const selectedServer = $derived(servers.find((s) => s.id === selectedServerId) ?? null);
+	const isoTargetPrefix = $props.id();
+	let preferredView = $state<IsoViewMode>('grid');
+	let revealedFromGrid = $state<string | null>(null);
+	const detailView = $derived(revealedFromGrid ? 'list' : preferredView);
+
+	async function revealVpnTarget(id: string) {
+		const target = vpnGrid?.targets.get(id);
+		const owner = selectedServerId;
+		if (!target || !owner) return;
+		let key: string = target.kind;
+		if (target.kind === 'peer') {
+			key = `peer-${target.id}`;
+			if (!clientView.rows.some(client => client.id === target.id)) { display.clients.search = ''; clientView.reset(); }
+		} else if (target.kind === 'attachment') {
+			key = `attachment-${target.id}`;
+			if (!attachmentView.rows.some(attachment => attachment.id === target.id)) { display.attachments.search = ''; attachmentView.reset(); }
+		}
+		revealedFromGrid = id;
+		await tick();
+		if (owner !== selectedServerId || !isCurrent()) return;
+		const element = document.getElementById(`${isoTargetPrefix}-${key}`);
+		element?.focus({ preventScroll: true });
+		element?.scrollIntoView?.({ block: 'nearest' });
+	}
 
 	let serverRequest = 0;
 	let serverInFlight: Promise<WaygateServer[]> | null = null;
@@ -409,6 +437,7 @@
 		detailRevision += 1;
 		clientRequest += 1;
 		mutatingClientIds = [];
+		revealedFromGrid = null;
 		attachmentRequest += 1;
 		clients = [];
 		trafficHistories = {};
@@ -1261,13 +1290,8 @@
 		}
 	}
 
-	function clientStatusKey(client: WaygateClient): 'disabled' | 'unknown' | 'delayed' | 'online' | 'offline' {
-		if (!client.enabled) return 'disabled';
-		if (!client.last_reported_at || client.online === null) return 'unknown';
-		const reportedAt = Date.parse(client.last_reported_at);
-		const freshness = waygateTrafficFreshnessMs(client.report_interval_seconds, peerAr.intervalSeconds);
-		if (!Number.isFinite(reportedAt) || trafficNow - reportedAt > freshness) return 'delayed';
-		return client.online ? 'online' : 'offline';
+	function clientStatusKey(client: WaygateClient): WaygatePeerStatus {
+		return waygatePeerStatus(client, trafficNow, peerAr.intervalSeconds);
 	}
 	function clientStatusLabel(client: WaygateClient): string {
 		return t(`project.status.${clientStatusKey(client)}`);
@@ -1281,6 +1305,10 @@
 			return iso;
 		}
 	}
+	const vpnGrid = $derived(detailView === 'grid' && selectedServer ? buildWaygateIsoScene({
+		server: selectedServer, clients, attachments, networks: visibleNetworks,
+		now: trafficNow, pollSeconds: peerAr.intervalSeconds, locale: intlLocale(),
+	}) : null);
 </script>
 
 <FormModal
@@ -1433,7 +1461,7 @@
 
 {#if selectedServer}
 	<SlidePanel onClose={closePanel} ariaLabel={t('project.server.details')} dataTour="waygate-detail" width="w-full md:w-[70vw] max-w-3xl" storageKey="slidePanel.waygate-detail.width">
-		<div class="p-6">
+		<div class="min-w-0 p-4 @md/panel:p-6">
 			<div class="mb-5 flex flex-wrap items-center justify-between gap-3" role="group" aria-label={t('project.refresh.serverNetworks')}>
 				<!-- 닫기 버튼은 SlidePanel 이 제공한다(`[data-slide-panel-close]`) -->
 				<AutoRefreshControl
@@ -1444,13 +1472,27 @@
 					onManualRefresh={() => { if (selectedServerId) { clientRequest += 1; void Promise.all([panelAr.refresh(), peerAr.refresh(), fetchNetworks()]); } }}
 				/>
 			</div>
+			<div class="mb-4 flex min-w-0 flex-wrap items-center gap-2 [&_.auto-refresh-control]:min-w-0 [&_.auto-refresh-control]:max-w-full [&_.auto-refresh-control]:flex-wrap [&_.toggle-group]:max-w-full [&_.toggle-group]:flex-wrap" role="group" aria-label={t('project.refresh.clients')}>
+				<span class="text-xs text-ink-2">{t('project.client.status')}</span>
+				<AutoRefreshControl
+					bind:active={peerAr.active}
+					bind:intervalSeconds={peerAr.intervalSeconds}
+					intervalOptions={peerAr.intervalOptions}
+					refreshing={clientsLoading}
+					onManualRefresh={() => { if (selectedServerId) void fetchClients(selectedServerId, true); }}
+				/>
+			</div>
 
-			<div class="flex flex-wrap items-start justify-between gap-3 mb-6">
+			<div class="mb-4 flex flex-wrap items-start justify-between gap-3">
 				<div>
-					<h2 class="text-xl font-semibold text-[var(--color-ink-0)]">{selectedServer.name}</h2>
+					<h2 id={`${isoTargetPrefix}-server`} tabindex="-1" class="break-words text-xl font-semibold text-ink-0">{selectedServer.name}</h2>
 					<div class="mt-1"><StatusChip status={selectedServer.status} /></div>
 				</div>
-				<div class="flex flex-wrap gap-2">
+				<IsoViewToggle value={detailView} storageKey="waygate.view"
+					onchange={mode => { preferredView = mode; revealedFromGrid = null; }} />
+			</div>
+			{#if detailView === 'list' && (can.createGateway || can.deleteGateway)}
+				<div class="mb-4 flex flex-wrap gap-2">
 					{#if can.createGateway}
 					<Button onclick={openDefaultsModal} variant="secondary" size="sm">{t('project.server.defaults')}</Button>
 					{/if}
@@ -1458,12 +1500,23 @@
 					<Button onclick={() => deleteServer(selectedServer)} variant="danger-outline" size="sm">{t('project.actions.deleteServer')}</Button>
 					{/if}
 				</div>
-			</div>
+			{/if}
 
 			{#if selectedServer.status_reason}
 				<Alert tone="warning" class="mb-4">{selectedServer.status_reason}</Alert>
 			{/if}
 
+			{#if vpnGrid}
+				<div class="mb-6 min-w-0">
+					<IsoGridView scene={vpnGrid.scene} label={t('project.iso.label')} caption={t('project.iso.caption')}
+						height="clamp(17rem, 46dvh, 28rem)" fitKey={selectedServer.id} onselect={revealVpnTarget} />
+					{#if clientsError}<Alert flat tone="danger" class="mt-3">{clientsError}</Alert>{/if}
+					{#if attachmentsError}<Alert flat tone="danger" class="mt-3">{attachmentsError}</Alert>{/if}
+					{#if (clientsLoading && !clientsLoaded) || (attachmentsLoading && !attachmentsLoaded)}
+						<LoadingState variant="section" />
+					{/if}
+				</div>
+			{:else}
 			<dl class="grid grid-cols-1 gap-3 text-sm mb-8 bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-xl p-4 xl:grid-cols-2 xl:gap-x-6">
 				<div>
 					<dt class="text-xs text-[var(--color-ink-3)] uppercase tracking-wide">{t('project.server.endpoint')}</dt>
@@ -1502,13 +1555,15 @@
 					<dd class="text-[var(--color-ink-1)]">{selectedServer.flavor_tier ? t(`project.server.tier.${selectedServer.flavor_tier}`) : '-'}</dd>
 				</div>
 			</dl>
+			{/if}
 
 			{#key selectedServer.id}
 				<WaygateAgentDiagnostics bind:this={agentDiagnostics} serverId={selectedServer.id} serverVmId={selectedServer.server_vm_id} {token} {projectId} {isCurrent} />
 			{/key}
+			{#if detailView === 'list'}
 
 			<div class="flex items-center justify-between mb-3">
-				<h3 class="text-sm font-medium text-[var(--color-ink-1)]">{t('project.client.heading')}</h3>
+				<h3 id={`${isoTargetPrefix}-peers`} tabindex="-1" class="text-sm font-medium text-ink-1">{t('project.client.heading')}</h3>
 				{#if can.editClients}
 				<Button
 					onclick={openClientModal}
@@ -1520,16 +1575,6 @@
 				{/if}
 			</div>
 
-			<div class="mb-4 flex min-w-0 flex-wrap items-center gap-2 [&_.auto-refresh-control]:min-w-0 [&_.auto-refresh-control]:max-w-full [&_.auto-refresh-control]:flex-wrap [&_.toggle-group]:max-w-full [&_.toggle-group]:flex-wrap" role="group" aria-label={t('project.refresh.clients')}>
-				<span class="text-xs text-ink-2">{t('project.client.status')}</span>
-				<AutoRefreshControl
-					bind:active={peerAr.active}
-					bind:intervalSeconds={peerAr.intervalSeconds}
-					intervalOptions={peerAr.intervalOptions}
-					refreshing={clientsLoading}
-					onManualRefresh={() => { if (selectedServerId) void fetchClients(selectedServerId, true); }}
-				/>
-			</div>
 			<RegexSearch id="waygate-client-regex" bind:value={display.clients.search} />
 			<TableViewControls view={clientView} class="" />
 			{#if clients.length && !clientView.rows.length}<p class="text-sm text-ink-2">{commonText('table.noMatches')}</p>{/if}
@@ -1551,7 +1596,7 @@
 							<div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
 								<div class="min-w-0">
 									<div class="flex flex-wrap items-center gap-2">
-										<span class="font-medium text-[var(--color-ink-0)] break-all">{client.name}</span>
+										<span id={`${isoTargetPrefix}-peer-${client.id}`} tabindex="-1" class="break-all font-medium text-ink-0">{client.name}</span>
 										<StatusChip status={clientStatusLabel(client)} />
 									</div>
 									<dl class="mt-3 grid grid-cols-1 gap-2 text-xs lg:grid-cols-3">
@@ -1673,7 +1718,7 @@
 								<dl class="grid min-w-0 flex-1 grid-cols-1 gap-2 text-xs lg:grid-cols-3">
 									<div>
 										<dt class="text-[var(--color-ink-3)]">{t('project.network.label')}</dt>
-										<dd class="mt-0.5 text-[var(--color-ink-1)] break-words">{attachmentNetworkName(att.network_id)}</dd>
+										<dd id={`${isoTargetPrefix}-attachment-${att.id}`} tabindex="-1" class="mt-0.5 break-words text-ink-1">{attachmentNetworkName(att.network_id)}</dd>
 										<dd class="mt-0.5 font-mono text-[var(--color-ink-3)] break-all" title={att.network_id}>{att.network_id}</dd>
 									</div>
 									<div>
@@ -1722,6 +1767,7 @@
 				<RichText segments={t.rich('project.backup.help')} />
 			</p>
 			{#if exportNotice}<Alert tone="info">{exportNotice}</Alert>{/if}
+			{/if}
 			{/if}
 		</div>
 	</SlidePanel>

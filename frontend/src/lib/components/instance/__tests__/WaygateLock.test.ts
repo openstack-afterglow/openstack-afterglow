@@ -51,6 +51,7 @@ function button(name: string) {
 }
 
 beforeEach(() => {
+	localStorage.setItem('instance.network.view', 'list');
 	initLocale('ko');
 	vi.clearAllMocks();
 	waygateManaged = true;
@@ -58,7 +59,7 @@ beforeEach(() => {
 	vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn() })));
 	installApi();
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); localStorage.removeItem('instance.network.view'); vi.unstubAllGlobals(); });
 
 const lockedButtons = () => [
 	t('rename.title'), t('header.shelve'), t('header.delete'), t('header.resize'),

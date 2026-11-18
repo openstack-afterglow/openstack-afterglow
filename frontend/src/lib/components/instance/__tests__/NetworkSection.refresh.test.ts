@@ -67,10 +67,14 @@ async function renderDetail(id: string) {
 }
 
 beforeEach(() => {
+	localStorage.setItem('instance.network.view', 'list');
 	mockFetch.mockReset();
 	vi.stubGlobal('fetch', mockFetch);
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+	localStorage.removeItem('instance.network.view');
+	vi.unstubAllGlobals();
+});
 
 describe('NetworkSection with the real request broker', () => {
 	it('keeps the saved policy when a pre-save poll completes after the mutation', async () => {
