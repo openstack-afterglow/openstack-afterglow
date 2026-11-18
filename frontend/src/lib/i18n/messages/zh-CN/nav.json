@@ -72,6 +72,8 @@
 	"items.clusterTemplates": "集群模板",
 	"items.chatStats": "对话统计",
 	"items.userQuotas": "用户配额",
+	"items.lumenDomainPools": "域额度池",
+	"items.lumenServiceKeys": "服务密钥清单",
 	"items.modelSettings": "模型设置",
 	"items.providerSettings": "提供商设置",
 	"items.toolSettings": "工具设置",

@@ -11,6 +11,8 @@
 
 - Lumen CLI 설치기는 Afterglow 시작 시 배포의 공개 Lumen 주소를 포함한다. Codex·Claude Code 자동 설정 명령에는 URL 옵션이 없으며, 공개 주소가 없으면 명령을 표시하지 않는다.
 - Lumen CLI installers embed the deployment's public Lumen URL at Afterglow startup. Codex and Claude Code setup commands take no URL options and stay hidden when no public URL is configured.
+- Lumen 개인 키는 프로젝트에 묶이지 않는다. 도메인 매니저는 서비스 키와 선불 풀 한도를 관리하고, 시스템 관리자는 도메인 풀을 충전하고 서비스 키를 조회한다.
+- Lumen personal keys are project-independent. Domain managers manage service keys and pool limits; system administrators top up domain pools and inspect service keys.
 
 ## [1.32.28] - 2026-11-18
 

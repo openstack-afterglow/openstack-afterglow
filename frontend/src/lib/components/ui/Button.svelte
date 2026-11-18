@@ -23,6 +23,7 @@
 		variant?: ButtonVariant;
 		size?: ButtonSize;
 		type?: 'button' | 'submit' | 'reset';
+		form?: string;
 		disabled?: boolean;
 		onclick?: (e: MouseEvent) => void;
 		onintent?: () => void;
@@ -45,6 +46,7 @@
 		variant = 'primary',
 		size = 'md',
 		type = 'button',
+		form,
 		disabled = false,
 		onclick,
 		onintent,
@@ -96,7 +98,7 @@
 		{@render children()}
 	</a>
 {:else}
-	<button use:experiencePresentation={{ context: experience, message: experienceMessage, state: disabled ? 'disabled' : ariaBusy ? 'loading' : 'ready' }} {type} {disabled} aria-label={ariaLabel} aria-pressed={ariaPressed} aria-expanded={ariaExpanded} aria-busy={ariaBusy} data-tour={dataTour} {title} {onclick} onpointerenter={handleIntent} onfocus={handleIntent} class="btn btn-{variant} btn-{size} {className}">
+	<button use:experiencePresentation={{ context: experience, message: experienceMessage, state: disabled ? 'disabled' : ariaBusy ? 'loading' : 'ready' }} {type} {form} {disabled} aria-label={ariaLabel} aria-pressed={ariaPressed} aria-expanded={ariaExpanded} aria-busy={ariaBusy} data-tour={dataTour} {title} {onclick} onpointerenter={handleIntent} onfocus={handleIntent} class="btn btn-{variant} btn-{size} {className}">
 		{@render children()}
 	</button>
 {/if}

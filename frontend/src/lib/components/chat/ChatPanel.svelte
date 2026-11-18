@@ -15,6 +15,7 @@
 	} from '$lib/stores/managedSandboxTools';
 	import { t as mcpT } from '$lib/i18n/ns/mcp-gallery';
 	import { api, ApiError } from '$lib/api/client';
+	import { domainBillingErrorMessage } from '$lib/api/chatDomainBilling';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
 	import { t } from '$lib/i18n/ns/chat-panel';
@@ -2235,6 +2236,8 @@
 	}
 
 	function chatFailureMessage(caught: unknown, fallback: string): string {
+		const billingMessage = domainBillingErrorMessage(caught);
+		if (billingMessage) return billingMessage;
 		if (caught instanceof ManagedSandboxSelectionError) return managedSandboxIssueMessage(caught.code, caught.names);
 		if (caught instanceof ChatHttpError) return sandboxNativeErrorMessage(caught.message.trim()) ?? t('panel.errors.httpFailure', { status: caught.status, detail: caught.message });
 		if (caught instanceof ApiError) return t('panel.errors.httpFailure', { status: caught.status, detail: fallback });
@@ -2242,7 +2245,7 @@
 	}
 
 	function runFailureMessage(payload: { error_code: string; safe_message: string }, runId: string): string {
-		const sandboxMessage = sandboxNativeErrorMessage(payload.error_code);
+		const sandboxMessage = domainBillingErrorMessage(payload.error_code) ?? sandboxNativeErrorMessage(payload.error_code);
 		if (sandboxMessage) return sandboxMessage;
 		const code = /^[\w.-]{1,80}$/.test(payload.error_code) ? payload.error_code : 'run_failed';
 		const detail = payload.safe_message.trim();

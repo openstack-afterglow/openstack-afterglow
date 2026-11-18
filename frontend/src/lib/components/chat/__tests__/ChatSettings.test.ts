@@ -2,6 +2,7 @@ import './lumenPermissionFixture';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { auth } from '$lib/stores/auth';
+import { t } from '$lib/i18n/ns/chat-settings';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), goto: vi.fn() }));
 vi.mock('$lib/api/client', () => ({
@@ -45,6 +46,19 @@ describe('ChatSettings', () => {
 			if (path.endsWith('/memories')) return Promise.resolve([]);
 			return Promise.resolve([]);
 		});
+	});
+
+	it('shows a member their current domain prepaid balance and insufficient credits', async () => {
+		mocks.get.mockImplementation(async (path: string) => path === '/api/v1/chat/usage' ? {
+			billing_scope: 'domain', payer_domain_id: 'domain-1', balance_credits: '3', reserved_credits: '3',
+			quota_used: 2, quota_max: 10, by_source: []
+		} : {});
+		render(ChatSettings);
+		await screen.findByRole('heading', { name: t('domainBilling.title') });
+		expect(screen.getByText(t('domainBilling.balance'))).toBeTruthy();
+		expect(screen.getByText(t('domainBilling.reserved'))).toBeTruthy();
+		expect(screen.getByText(t('domainBilling.insufficient'))).toBeTruthy();
+		expect(mocks.get.mock.calls.some(([path]) => path.endsWith('/domain-pool'))).toBe(false);
 	});
 
 	it('renders all settings sections as a dedicated page and updates its deep link', async () => {

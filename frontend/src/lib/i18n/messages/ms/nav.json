@@ -72,6 +72,8 @@
 	"items.clusterTemplates": "Templat kluster",
 	"items.chatStats": "Statistik sembang",
 	"items.userQuotas": "Kuota pengguna",
+	"items.lumenDomainPools": "Kumpulan kredit domain",
+	"items.lumenServiceKeys": "Inventori kunci perkhidmatan",
 	"items.modelSettings": "Tetapan model",
 	"items.providerSettings": "Tetapan penyedia",
 	"items.toolSettings": "Tetapan alat",
