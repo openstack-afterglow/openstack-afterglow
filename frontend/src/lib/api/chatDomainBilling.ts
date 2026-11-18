@@ -34,12 +34,13 @@ export async function readKeyIssuancePolicy(token: string, projectId: string): P
 }
 
 /** Manager-only: scopes service-key creation accepts, independent of the manager's own project role. */
-export async function readServiceKeyIssuanceScopes(token: string, projectId: string): Promise<string[]> {
-	const policy = await api.get<{ allowed_scopes: unknown }>(`${lumenBrowserPath}/service-keys/issuance-policy`, token, projectId, { refresh: true });
-	if (!Array.isArray(policy?.allowed_scopes) || policy.allowed_scopes.some((scope) => typeof scope !== 'string')) {
-		throw new Error('Invalid service key scope policy');
-	}
-	return policy.allowed_scopes;
+export async function readServiceKeyIssuancePolicy(token: string, projectId: string): Promise<{ allowed: string[]; defaults: string[] }> {
+	const policy = await api.get<{ allowed_scopes: unknown; default_scopes?: unknown }>(`${lumenBrowserPath}/service-keys/issuance-policy`, token, projectId, { refresh: true });
+	const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every((scope) => typeof scope === 'string');
+	if (!strings(policy?.allowed_scopes)) throw new Error('Invalid service key scope policy');
+	const allowed = policy.allowed_scopes;
+	// Defaults are a suggestion; never preselect a scope creation would reject.
+	return { allowed, defaults: strings(policy.default_scopes) ? policy.default_scopes.filter((scope) => allowed.includes(scope)) : [] };
 }
 
 export interface ServiceKey extends ApiKey {

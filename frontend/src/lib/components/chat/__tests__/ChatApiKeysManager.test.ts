@@ -79,7 +79,10 @@ function policy(grants = issuanceGrants, monthly: string | null = '1000', weekly
 
 function response(path: string, _project?: string) {
 	if (path === policyPath) return policy();
-	if (path === servicePolicyPath) return { allowed_scopes: policy().allowed_scopes };
+	if (path === servicePolicyPath) return {
+		domain_id: 'domain-1', allowed_scopes: policy().allowed_scopes,
+		default_scopes: ['models:read', 'compat:completions:write'], scope_routes: {}
+	};
 	if (path.endsWith('/compat')) return discovery;
 	if (path.endsWith('/api-keys')) return [apiKey];
 	throw new Error(`Unexpected GET ${path}`);
@@ -344,7 +347,8 @@ describe('ChatApiKeysManager', () => {
 		mocks.get.mockImplementation(async (path: string) => {
 			if (path.endsWith('/service-keys')) return [];
 			if (path.endsWith('/domain-pool')) return pool;
-			if (path === servicePolicyPath) return { allowed_scopes: ['models:read', 'embeddings:write'] };
+			// Defaults outside allowed_scopes are never preselected.
+			if (path === servicePolicyPath) return { allowed_scopes: ['models:read', 'embeddings:write'], default_scopes: ['models:read', 'compat:completions:write'] };
 			if (path === policyPath) return { ...policy(), allowed_scopes: ['compat:completions:write'] };
 			return response(path);
 		});
