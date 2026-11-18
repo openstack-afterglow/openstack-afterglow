@@ -510,7 +510,7 @@ Administrator Object Storage partial inventory keeps verified bucket rows and pl
 
 ### Chat connections workspace
 
-MCP settings use a compact header with one primary add menu and a segmented Browse / Connected / Manage tablist. Arrow keys move focus without changing the panel or URL; Enter or Space activates a tab. The `connections` URL parameter preserves the selected tab, and the Connected count reflects visible, filtered rows.
+MCP settings use a compact header with one primary add menu and a segmented Browse / Connected / Manage tablist. Arrow keys move focus without changing the panel or URL; Enter or Space activates a tab. The `connections` URL parameter preserves the selected tab. The Connected badge counts the filtered rows on Connected and the full inventory elsewhere.
 
 Browse lists featured services, built-in sandbox tools and the server-paged catalogue in a two-column grid that collapses to one column on narrow screens. Give each entry a deterministic monogram, a small access badge and one right-aligned action. Keep registry metadata and long help in a disclosure. Show unavailable reasons without offering a connect action. Connected and HTTP tools share the `ResponsiveTable` desktop/tablet contract: thin row dividers, named columns and equivalent labelled cards below the table breakpoint. Each status has both a distinct mark and a localized label.
 
