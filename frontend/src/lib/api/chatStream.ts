@@ -256,7 +256,7 @@ function takeFrames(buffer: string): { frames: SseFrame[]; rest: string } {
 	return { frames, rest: buffer };
 }
 
-async function* decodeFrames(body: ReadableStream<Uint8Array>): AsyncGenerator<SseFrame> {
+export async function* decodeFrames(body: ReadableStream<Uint8Array>): AsyncGenerator<SseFrame> {
 	const reader = body.getReader();
 	const decoder = new TextDecoder();
 	let buffer = '';

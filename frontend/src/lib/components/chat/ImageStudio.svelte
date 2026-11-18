@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
-	import { imageStudioApi, imageModelReadiness, type ImageModel, type ImageRun, type ImageApiScope, type ImageCapabilities } from '$lib/api/imageStudio';
+	import { imageStudioApi, imageModelReadiness, type ImageModel, type ImageRun, type ImageUsage, type ImageApiScope, type ImageCapabilities } from '$lib/api/imageStudio';
 	import { isChatImageMime } from '$lib/api/chatAttachments';
 	import { ApiError } from '$lib/api/client';
-	import { Alert, Button, Field, PageShell, SelectInput, TextareaInput } from '$lib/components/ui';
+	import { Alert, Button, Field, PageShell, SelectInput, TextareaInput, TextInput } from '$lib/components/ui';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { IMAGE_STUDIO_STYLES, composeImagePrompt, imageRequestAspectRatio, type ImageStudioStyleId } from './imageStudioStyles';
+	import { estimateImageOutputTokens, imageAssetExtension, imageDimensions, imageInteger, validCustomImageSize } from './imageStudioOptions';
 	import { t } from '$lib/i18n/ns/chat-studio';
 	import { serviceCapabilities, serviceDenials } from '$lib/stores/servicePermissions';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
@@ -31,6 +33,15 @@
 	let size = $state('1024x1024');
 	let quality = $state('high');
 	let count = $state('1');
+	let customSize = $state('');
+	let customSizeField = $state<HTMLInputElement | null>(null);
+	let customSizeChecked = $state(false);
+	let background = $state('');
+	let outputFormat = $state('');
+	let compression = $state('');
+	let complexity = $state('');
+	let frameCount = $state('');
+	let frameDuration = $state('');
 	let inputAssetId = $state('');
 	let inputFileName = $state('');
 	let inputPreviewUrl = $state('');
@@ -42,6 +53,7 @@
 	let runIds = $state<string[]>([]);
 	let selectedRunId = $state<string | null>(null);
 	let currentRun = $state<ImageRun | null>(null);
+	let usage = $state<ImageUsage | null>(null);
 	interface RunContext { size: string | null; startedAt: number; submitted: boolean }
 	const runContexts = new Map<string, RunContext>();
 	const revealedOutputs = new Set<string>();
@@ -56,6 +68,7 @@
 	let uploadAbort: AbortController | null = null;
 	let submitAbort: AbortController | null = null;
 	let downloadAbort: AbortController | null = null;
+	let usageAbort: AbortController | null = null;
 	let activeScopeKey = '';
 	let activeCapabilityKey = '';
 	let pendingIntent: { fingerprint: string; key: string } | null = null;
@@ -71,11 +84,44 @@
 		return { size: variantSize, quality: variantQuality };
 	}).filter(({ size: variantSize, quality: variantQuality }) => Boolean(variantSize && variantQuality)));
 	const sizes = $derived([...new Set(variants.map((variant) => variant.size))]);
-	const qualities = $derived([...new Set(variants.filter((variant) => variant.size === size).map((variant) => variant.quality))]);
-	const maxCount = $derived(Math.min(capabilities?.max_image_count ?? 1, 10));
-	const variantReady = $derived(Boolean(variants.some((variant) => variant.size === size && variant.quality === quality) && Number(count) >= 1 && Number(count) <= maxCount));
-	const requestFingerprint = $derived(JSON.stringify({ project: storageKey, modelId, prompt: composedPrompt, style: styleId, size, quality, count, inputAssetId }));
+	const customLimits = $derived(capabilities?.image_custom_size);
+	const custom = $derived(size === 'custom' && !!customLimits);
+	const customSizeValid = $derived(!custom || validCustomImageSize(customSize, customLimits!));
+	const requestedSize = $derived(custom ? customSize.trim().toLowerCase() : size);
+	const qualities = $derived([...new Set(variants.filter((variant) => custom || variant.size === size).map((variant) => variant.quality))]);
+	const gif = $derived(capabilities?.image_gif);
+	const formats = $derived((capabilities?.image_output_formats ?? []).filter((value) => (value !== 'svg' || !hasInput) && (value !== 'gif' || gif)));
+	const format = $derived(formats.includes(outputFormat) ? outputFormat : '');
+	const backgrounds = $derived((capabilities?.image_backgrounds ?? []).filter((value) => value !== 'transparent' || ['', 'png', 'webp'].includes(format)));
+	const selectedBackground = $derived(backgrounds.includes(background) ? background : '');
+	const compressed = $derived(format === 'jpeg' || format === 'webp');
+	const maxCount = $derived(format === 'svg' ? 1 : Math.min(capabilities?.max_image_count ?? 1, 10));
+	const variantReady = $derived(qualities.includes(quality) && imageInteger(count, 1, maxCount) !== undefined);
+	const compressionValue = $derived(compressed ? imageInteger(compression, 0, 100) : undefined);
+	const frames = $derived(format === 'gif' && gif ? imageInteger(frameCount, gif.min_frame_count, gif.max_frame_count) : undefined);
+	const duration = $derived(format === 'gif' && gif ? imageInteger(frameDuration, gif.min_frame_duration_ms, gif.max_frame_duration_ms) : undefined);
+	const dimensions = $derived(imageDimensions(requestedSize));
+	const gifBudgetExceeded = $derived(format === 'gif' && !!gif && !!dimensions && frames !== undefined &&
+		dimensions[0] * dimensions[1] * frames * Number(count) > gif.max_total_pixels);
+	const optionalFields = $derived({
+		...(selectedBackground ? { background: selectedBackground } : {}),
+		...(format ? { output_format: format } : {}),
+		...(compressionValue !== undefined ? { output_compression: compressionValue } : {}),
+		...(capabilities?.image_complexities?.includes(complexity) ? { complexity } : {}),
+		...(frames !== undefined ? { frame_count: frames } : {}),
+		...(duration !== undefined ? { frame_duration_ms: duration } : {})
+	});
+	const imageRequest = $derived({ model_id: modelId, prompt: composedPrompt, size: requestedSize, quality, n: Number(count), ...optionalFields });
+	const requestFingerprint = $derived(JSON.stringify([storageKey, imageRequest, inputAssetId]));
 	const canSubmit = $derived(imagesAllowed && !readiness && !modelsLoading && !capabilitiesLoading && variantReady && !busy && Boolean(composedPrompt) && (!hasInput || Boolean(inputAssetId)));
+	const estimate = $derived.by(() => {
+		const rate = capabilities?.image_output_price_per_million;
+		if (!rate || !chosenModel || !variantReady || !customSizeValid || format === 'gif' || format === 'svg') return null;
+		const tokens = estimateImageOutputTokens(chosenModel.api_model_name ?? chosenModel.model_name, requestedSize, quality, Number(count));
+		const usd = Number(rate);
+		return tokens !== null && Number.isFinite(usd) && usd >= 0 ? { tokens, usd: tokens * usd / 1_000_000 } : null;
+	});
+	const currency = $derived(new Intl.NumberFormat(intlLocale(), { style: 'currency', currency: 'USD', maximumFractionDigits: 8 }));
 	const developingRatio = $derived(imageRequestAspectRatio(runContext?.size) ?? '1 / 1');
 	$effect(() => {
 		const active = runActive;
@@ -115,6 +161,14 @@
 			size = first?.[0] ?? '';
 			quality = first?.[1] ?? '';
 			count = '1';
+			customSize = '';
+			customSizeChecked = false;
+			background = '';
+			outputFormat = '';
+			compression = '';
+			complexity = '';
+			frameCount = loaded.image_gif ? String(loaded.image_gif.default_frame_count) : '';
+			frameDuration = loaded.image_gif ? String(loaded.image_gif.default_frame_duration_ms) : '';
 			experienceState(requestScope.experience, 'ready', 1);
 			void experienceApplied(requestScope.experience, {}, () => generation === capabilityRequest && canPublish(requestScope));
 		} catch (cause) {
@@ -148,6 +202,11 @@
 	$effect(() => {
 		if (qualities.length && !qualities.includes(quality)) quality = qualities[0];
 	});
+	$effect(() => {
+		if (outputFormat && format !== outputFormat) outputFormat = '';
+		if (background && selectedBackground !== background) background = '';
+		if (format === 'svg' && count !== '1') count = '1';
+	});
 
 	function clearTimer() {
 		if (timer) clearTimeout(timer);
@@ -158,6 +217,9 @@
 		downloadAbort = null;
 		for (const url of Object.values(previewUrls)) URL.revokeObjectURL(url);
 		previewUrls = {};
+		usageAbort?.abort();
+		usageAbort = null;
+		usage = null;
 	}
 	function clearInput() {
 		inputGeneration += 1;
@@ -196,6 +258,8 @@
 		switch (value) {
 			case 'auto': return t('imageStudio.quality.auto');
 			case 'high': return t('imageStudio.quality.high');
+			case 'xhigh': return t('imageStudio.quality.xhigh');
+			case 'max': return t('imageStudio.quality.max');
 			case 'medium': return t('imageStudio.quality.medium');
 			case 'low': return t('imageStudio.quality.low');
 			case 'standard': return t('imageStudio.quality.standard');
@@ -256,7 +320,10 @@
 				void experienceApplied(requestScope.experience, {}, () => generation === operation && selectedRunId === id && canPublish(requestScope) && currentRun?.status === run.status && currentRun?.terminal === run.terminal);
 			}
 			if (run.terminal) {
-				if (run.status === 'completed' && firstCompletion) void loadPreviews(run, requestScope, generation);
+				if (run.status === 'completed' && firstCompletion) {
+					void loadPreviews(run, requestScope, generation);
+					void loadUsage(id, requestScope, generation);
+				}
 			} else {
 				clearTimer();
 				timer = setTimeout(() => { void loadRun(id, requestScope, generation); }, 2000);
@@ -269,6 +336,21 @@
 			}
 		}
 	}
+	async function loadUsage(id: string, requestScope: ImageApiScope, generation: number) {
+		const controller = new AbortController();
+		usageAbort?.abort();
+		usageAbort = controller;
+		const timer = setTimeout(() => controller.abort(), 15_000);
+		try {
+			const result = await imageStudioApi.usage(id, requestScope, controller.signal);
+			if (!controller.signal.aborted && generation === operation && selectedRunId === id && canPublish(requestScope)) usage = result;
+		} catch {
+			// Older or expired journals can omit usage. Do not invent a charge or hide images.
+		} finally {
+			clearTimeout(timer);
+			if (usageAbort === controller) usageAbort = null;
+		}
+	}
 	async function loadPreviews(run: ImageRun, requestScope: ImageApiScope, generation: number) {
 		if (!canPublish(requestScope)) return;
 		const controller = new AbortController();
@@ -279,7 +361,7 @@
 			try {
 				const blob = await imageStudioApi.download(asset.asset_id, { ...scope, experience: requestScope.experience }, controller.signal);
 				if (generation !== operation || controller.signal.aborted || !canPublish(requestScope)) { experienceDiscarded(requestScope.experience, 'stale'); return; }
-				if (asset.mime_type.startsWith('image/')) {
+				if (imageAssetExtension(asset.mime_type) && blob.type === asset.mime_type) {
 					previewUrls = { ...previewUrls, [asset.asset_id]: URL.createObjectURL(blob) };
 					void experienceApplied(requestScope.experience, {}, () => generation === operation && !controller.signal.aborted && canPublish(requestScope));
 				}
@@ -410,6 +492,13 @@
 	}
 	async function submit() {
 		if (!canSubmit || !scope || !canPublish(scope)) return;
+		if (!customSizeValid) {
+			customSizeChecked = true;
+			customSizeField?.focus();
+			return;
+		}
+		if (gifBudgetExceeded || (format === 'gif' && (frames === undefined || duration === undefined)) ||
+			(compressed && compression != null && compression !== '' && compressionValue === undefined)) return;
 		const requestScope = { ...scope, experience: beginExperienceAction('lumen', 'submit', 'shared.stream') };
 		experienceState(requestScope.experience, 'loading', 2);
 		const generation = ++operation;
@@ -420,12 +509,12 @@
 		currentRun = null;
 		selectedRunId = null;
 		liveRunId = null;
-		const context: RunContext = { size, startedAt: Date.now(), submitted: true };
+		const context: RunContext = { size: requestedSize, startedAt: Date.now(), submitted: true };
 		runContext = context;
 		error = '';
 		submitting = true;
 		try {
-			const request = { model_id: modelId, prompt: composedPrompt, size, quality, n: Number(count) };
+			const request = imageRequest;
 			const fingerprint = requestFingerprint;
 			const idempotencyKey = pendingIntent?.fingerprint === fingerprint ? pendingIntent.key : crypto.randomUUID();
 			pendingIntent = { fingerprint, key: idempotencyKey };
@@ -516,14 +605,48 @@
 					<Field label={t('imageStudio.model')} for="studio-model" class="option-model">
 						<SelectInput id="studio-model" value={modelId} onchange={selectModel} disabled={!imagesAllowed || modelsLoading || busy || models.length === 0}><option value="">{t('imageStudio.selectModel')}</option>{#each models as model (model.id)}<option value={String(model.id)}>{model.display_name}</option>{/each}</SelectInput>
 					</Field>
-					<Field label={t('imageStudio.size')} for="studio-size"><SelectInput id="studio-size" bind:value={size} disabled={!imagesAllowed || busy || capabilitiesLoading || sizes.length === 0}>{#each sizes as option (option)}<option value={option}>{option === 'auto' ? t('imageStudio.autoSize') : option.replace('x', ' × ')}</option>{/each}</SelectInput></Field>
+					<Field label={t('imageStudio.size')} for="studio-size"><SelectInput id="studio-size" bind:value={size} disabled={!imagesAllowed || busy || capabilitiesLoading || sizes.length === 0}>{#each sizes as option (option)}<option value={option}>{option === 'auto' ? t('imageStudio.autoSize') : option.replace('x', ' × ')}</option>{/each}{#if customLimits}<option value="custom">{t('imageStudio.options.custom')}</option>{/if}</SelectInput></Field>
 					<Field label={t('imageStudio.qualityLabel')} for="studio-quality"><SelectInput id="studio-quality" bind:value={quality} disabled={!imagesAllowed || busy || capabilitiesLoading || qualities.length === 0}>{#each qualities as option (option)}<option value={option}>{displayQuality(option)}</option>{/each}</SelectInput></Field>
 					<Field label={t('imageStudio.imageCount')} for="studio-count"><SelectInput id="studio-count" bind:value={count} disabled={!imagesAllowed || busy || capabilitiesLoading || maxCount < 1}>{#each Array.from({ length: maxCount }, (_, index) => index + 1) as option (option)}<option value={String(option)}>{option}</option>{/each}</SelectInput></Field>
 				</div>
+				{#if formats.length || backgrounds.length || capabilities?.image_complexities?.length || custom}
+					<fieldset class="advanced-options" disabled={!imagesAllowed || busy || capabilitiesLoading}>
+						<legend class="muted">{t('imageStudio.options.title')}</legend>
+						{#if custom}
+							<div class="custom-size" onfocusout={() => { if (customSize) customSizeChecked = true; }}>
+								<Field label={t('imageStudio.options.custom')} for="studio-custom-size" help={t('imageStudio.options.sizeHelp')} error={customSizeChecked && !customSizeValid ? t('imageStudio.options.badSize') : undefined}>
+									<TextInput id="studio-custom-size" bind:value={customSize} bind:element={customSizeField} placeholder="1024x1024" maxlength={9} ariaInvalid={customSizeChecked && !customSizeValid} />
+								</Field>
+							</div>
+						{/if}
+						{#if capabilities?.image_complexities?.length}
+							<Field label={t('imageStudio.options.complexity')} for="studio-complexity"><SelectInput id="studio-complexity" bind:value={complexity}><option value="">{t('imageStudio.options.default')}</option>{#each capabilities.image_complexities as value (value)}<option {value}>{displayQuality(value)}</option>{/each}</SelectInput></Field>
+						{/if}
+						{#if formats.length}
+							<Field label={t('imageStudio.options.format')} for="studio-format"><SelectInput id="studio-format" bind:value={outputFormat}><option value="">{t('imageStudio.options.default')}</option>{#each formats as value (value)}<option {value}>{value.toUpperCase()}</option>{/each}</SelectInput></Field>
+						{/if}
+						{#if backgrounds.length}
+							<Field label={t('imageStudio.options.background')} for="studio-background"><SelectInput id="studio-background" bind:value={background}><option value="">{t('imageStudio.options.default')}</option>{#each backgrounds as value (value)}<option {value}>{value === 'transparent' ? t('imageStudio.options.transparent') : value === 'opaque' ? t('imageStudio.options.opaque') : displayQuality(value)}</option>{/each}</SelectInput></Field>
+						{/if}
+						{#if compressed}
+							<Field label={t('imageStudio.options.compression')} for="studio-compression" help={t('imageStudio.options.compressionHelp')}>
+								<TextInput id="studio-compression" type="number" min={0} max={100} step={1} bind:value={compression} />
+							</Field>
+						{/if}
+						{#if format === 'gif' && gif}
+							<Field label={t('imageStudio.options.frames')} for="studio-frames"><SelectInput id="studio-frames" bind:value={frameCount}>{#each Array.from({ length: gif.max_frame_count - gif.min_frame_count + 1 }, (_, index) => gif!.min_frame_count + index) as value (value)}<option value={String(value)}>{value}</option>{/each}</SelectInput></Field>
+							<Field label={t('imageStudio.options.frameDuration')} for="studio-frame-duration" help={t('imageStudio.options.durationHelp', { min: gif.min_frame_duration_ms, max: gif.max_frame_duration_ms })}>
+								<TextInput id="studio-frame-duration" type="number" min={gif.min_frame_duration_ms} max={gif.max_frame_duration_ms} step={1} required bind:value={frameDuration} />
+							</Field>
+							{#if gifBudgetExceeded}<p class="custom-size muted" role="status">{t('imageStudio.options.gifBudget')}</p>{/if}
+						{/if}
+					</fieldset>
+				{/if}
+				{#if estimate}<p class="muted">{t('imageStudio.options.estimate', { tokens: estimate.tokens, cost: currency.format(estimate.usd) })}</p>{/if}
 				<div class="composer-actions">
 					<Button variant="secondary" onclick={() => assetsAllowed && fileInput?.click()} disabled={busy || !assetsAllowed}>{inputPreviewUrl ? t('imageStudio.replaceImage') : t('imageStudio.attachImage')}</Button>
 					<input bind:this={fileInput} type="file" accept="image/png,image/jpeg,image/webp" class="sr-only" tabindex="-1" aria-label={t('imageStudio.inputImage')} onchange={selectFile} disabled={busy || !assetsAllowed} />
-					<Button type="submit" variant="primary" size="lg" class="composer-submit" disabled={!canSubmit}>{#if submitting}<LoadingState variant="control" label={t('imageStudio.submitting')} />{:else}{t('imageStudio.createImage')}{/if}</Button>
+					<Button type="submit" variant="primary" size="lg" class="composer-submit" disabled={!canSubmit || gifBudgetExceeded}>{#if submitting}<LoadingState variant="control" label={t('imageStudio.submitting')} />{:else}{t('imageStudio.createImage')}{/if}</Button>
 				</div>
 			</div>
 			<div class="composer-status">
@@ -577,6 +700,9 @@
 					{#if currentRun?.status === 'failed'}<Alert tone="danger" title={t('imageStudio.jobFailedTitle')}>{t('imageStudio.jobFailed')}</Alert>{/if}
 					{#if currentRun?.status === 'canceled'}<Alert tone="neutral">{t('imageStudio.jobCanceled')}</Alert>{/if}
 					{#if currentRun?.status === 'completed'}
+						{#if usage}
+							<p class="muted">{t('imageStudio.options.usage', { input: usage.prompt_tokens, output: usage.completion_tokens, cost: currency.format(Number(usage.raw_cost)) })}</p>
+						{/if}
 						{#if currentRun.output_assets?.length}
 							<div class="gallery">
 								{#each currentRun.output_assets as asset (asset.asset_id)}
@@ -586,7 +712,7 @@
 												<img src={previewUrls[asset.asset_id]} alt={t('imageStudio.generatedImage')} use:revealLiveResult={asset.asset_id} />
 											{:else}<LoadingState variant="section" label={t('imageStudio.loadingImage')} />{/if}
 										</div>
-										<figcaption><span>{t('imageStudio.imageMime', { mime: asset.mime_type })}</span><Button variant="secondary" onclick={() => download(asset.asset_id, `image-${asset.asset_id}.${asset.mime_type.split('/')[1] ?? 'png'}`)}>{t('imageStudio.download')}</Button></figcaption>
+										<figcaption><span>{t('imageStudio.imageMime', { mime: asset.mime_type })}</span><Button variant="secondary" onclick={() => download(asset.asset_id, `image-${asset.asset_id}.${imageAssetExtension(asset.mime_type) ?? 'bin'}`)}>{t('imageStudio.download')}</Button></figcaption>
 									</figure>
 								{/each}
 							</div>
@@ -625,6 +751,9 @@
 	/* Selects keep a readable minimum ("1024 × 1024") and at most three per row; the model name gets its own row until four columns fit. */
 	.composer-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, max(9rem, calc((100% - 1.5rem) / 3))), 1fr)); gap: 0.75rem; min-width: 0; }
 	.composer-options :global(.option-model) { grid-column: 1 / -1; }
+	.advanced-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: 0.75rem; min-width: 0; margin: 0; padding: 0; border: 0; }
+	.advanced-options legend { padding: 0 0 0.5rem; font-weight: 600; }
+	.custom-size { grid-column: 1 / -1; }
 	.composer-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 	.composer :global(.composer-submit) { width: 100%; }
 

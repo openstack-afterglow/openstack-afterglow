@@ -2,7 +2,7 @@ import type { ModelCapabilities } from './chatContracts';
 import type { BillingBasis, ModelKind, TimeUnit } from '$lib/components/admin/chat/modelPricing';
 
 export type ProviderFamily = 'native' | 'compatible';
-export type PriceOrigin = 'manual' | 'native_catalog' | null;
+export type PriceOrigin = 'manual' | 'native_catalog' | 'catalog' | null;
 export interface NativeCatalogSummary {
 	id: string;
 	kind?: ModelKind;

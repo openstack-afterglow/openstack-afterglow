@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
-	import { realtimeVoiceApi, realtimeReadiness, realtimeMode, applyTranscriptionFrame, pcm16Base64, decodePcm16, type RealtimeModel, type RealtimeCapabilities, type RealtimeScope, type RealtimeMode, type RealtimeTranscript } from '$lib/api/realtimeVoice';
+	import { realtimeVoiceApi, realtimeReadiness, realtimeMode, applyTranscriptionFrame, pcm16Base64, decodePcm16, REALTIME_OUTPUT_LANGUAGE, type RealtimeModel, type RealtimeCapabilities, type RealtimeScope, type RealtimeMode, type RealtimeTranscript } from '$lib/api/realtimeVoice';
 	import { ApiError } from '$lib/api/client';
-	import { Alert, Button, Card, Field, PageShell, SelectInput } from '$lib/components/ui';
+	import { Alert, Button, Card, Field, PageShell, SelectInput, TextareaInput, TextInput } from '$lib/components/ui';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/chat-studio';
 	import { serviceCapabilities, serviceDenials } from '$lib/stores/servicePermissions';
@@ -20,6 +20,8 @@
 	let selected = $state('');
 	let capabilities = $state<RealtimeCapabilities | null>(null);
 	let voice = $state('');
+	let outputLanguage = $state('');
+	let instructions = $state('');
 	let loading = $state(false);
 	let capabilityLoading = $state(false);
 	let connecting = $state(false);
@@ -53,7 +55,18 @@
 	const readiness = $derived(realtimeReadiness(model, capabilities));
 	const mode = $derived(realtimeMode(capabilities));
 	const transcription = $derived(mode === 'transcription');
-	const fingerprint = $derived(JSON.stringify([ownerKey, selected, voice, mode]));
+	const translation = $derived(mode === 'translation');
+	const showVoice = $derived(mode === 'conversation' || mode === 'live');
+	const showInstructions = $derived(showVoice && capabilities?.realtime_session_fields?.includes('instructions'));
+	const languageValid = $derived(!translation || REALTIME_OUTPUT_LANGUAGE.test(outputLanguage.trim()));
+	const modeLabel = $derived(
+		mode === 'translation' ? t('realtimeModes.translation')
+			: mode === 'live' ? t('realtimeModes.live')
+			: mode === 'transcription' ? t('realtimeTranscription.transcription')
+			: mode === 'conversation' ? t('realtimeTranscription.conversation')
+			: t('realtimeTranscription.unsupported')
+	);
+	const fingerprint = $derived(JSON.stringify([ownerKey, selected, mode, showVoice ? voice : '', translation ? outputLanguage.trim() : '', showInstructions ? instructions.trim() : '']));
 	$effect(() => {
 		const current = fingerprint;
 		untrack(() => { if (pendingIntent?.fingerprint !== current) pendingIntent = null; });
@@ -68,6 +81,9 @@
 	function toggleMute() {
 		if (!connected || (muted && !canPublish(generation))) return;
 		muted = !muted;
+		if (activeMode === 'live' && canPublish(generation) && socket?.readyState === WebSocket.OPEN) {
+			socket.send(JSON.stringify({ type: muted ? 'audio.input.mute' : 'audio.input.unmute' }));
+		}
 		pauseMicrophone();
 	}
 	function flushPlayback() {
@@ -77,7 +93,7 @@
 		playback = [];
 		nextPlayback = context?.currentTime ?? 0;
 	}
-	function releaseAudio() {
+	function releaseMicrophone() {
 		if (pendingFlush) { clearTimeout(pendingFlush.timer); pendingFlush.reject(new Error('capture stopped')); pendingFlush = null; }
 		capture?.disconnect();
 		capture = null;
@@ -85,11 +101,14 @@
 		microphone = null;
 		media?.getTracks().forEach((track) => track.stop());
 		media = null;
+	}
+	function releaseAudio() {
+		releaseMicrophone();
 		flushPlayback();
 		if (context) void context.close().catch(() => {});
 		context = null;
 	}
-	function stop(clearError = true, preserveIntent = false, preserveTranscription = false) {
+	function stop(clearError = true, preserveIntent = false, preserveResults = false) {
 		const wasConnected = connected;
 		generation++;
 		if (closeTimer) clearTimeout(closeTimer);
@@ -108,9 +127,12 @@
 		ending = false;
 		commitBusy = false;
 		pendingAudio = false;
-		inputTranscript = '';
-		outputTranscript = '';
-		if (!preserveTranscription) { segments = []; ended = false; }
+		if (!preserveResults) {
+			inputTranscript = '';
+			outputTranscript = '';
+			segments = [];
+			ended = false;
+		}
 		activeProvider = '';
 		if (!preserveIntent) pendingIntent = null;
 		if (clearError) error = '';
@@ -136,10 +158,10 @@
 		try {
 			await flushAudio();
 			if (!canPublish(epoch) || socket?.readyState !== WebSocket.OPEN) return;
-			if (pendingAudio) { socket.send(JSON.stringify({ type: 'audio.input.commit' })); pendingAudio = false; }
+			if (pendingAudio && activeMode === 'transcription') { socket.send(JSON.stringify({ type: 'audio.input.commit' })); pendingAudio = false; }
 			if (closeAfter) {
 				ending = true;
-				releaseAudio();
+				releaseMicrophone();
 				socket.send(JSON.stringify({ type: 'session.close' }));
 				closeTimer = setTimeout(() => {
 					if (epoch === generation && ending) { error = t('realtimeVoice.connectionClosed'); stop(false, false, true); }
@@ -150,8 +172,23 @@
 		} finally { if (epoch === generation) commitBusy = false; }
 	}
 	function endSession() {
-		if (activeMode === 'transcription' && connected && audioAllowed) void commitSegment(true);
+		if (activeMode !== 'conversation' && connected && audioAllowed) void commitSegment(true);
 		else stop();
+	}
+	function finishSession(epoch: number) {
+		if (socket) socket.onclose = null;
+		if (closeTimer) clearTimeout(closeTimer);
+		closeTimer = null;
+		ending = true;
+		releaseMicrophone();
+		const finish = () => {
+			if (epoch !== generation) return;
+			stop(true, false, true);
+			ended = true;
+		};
+		const remaining = nextPlayback - (context?.currentTime ?? nextPlayback);
+		if (playback.length && remaining > 0) closeTimer = setTimeout(finish, Math.min(remaining * 1000, 30_000));
+		else finish();
 	}
 	async function loadModels(requestScope: RealtimeScope, epoch: number) {
 		if (!audioAllowed || activeOwner !== ownerKey) return;
@@ -183,6 +220,12 @@
 			if (!canPublish(epoch) || selected !== String(current.id) || ticket !== capabilityTicket) { experienceDiscarded(requestScope.experience, 'stale'); return; }
 			capabilities = response;
 			voice = response.available_voices?.includes(voice) ? voice : (response.default_voice ?? '');
+			outputLanguage = '';
+			instructions = '';
+			inputTranscript = '';
+			outputTranscript = '';
+			segments = [];
+			ended = false;
 			experienceState(requestScope.experience, 'ready', 1);
 			const appliedCapabilities = capabilities;
 			void experienceApplied(requestScope.experience, {}, () => canPublish(epoch) && selected === String(current.id) && capabilities === appliedCapabilities);
@@ -304,7 +347,7 @@
 					if (connected || context) break;
 					if (media && (packet.realtime_kind ?? 'conversation') === activeMode &&
 						[16000, 24000].includes(packet.input_sample_rate_hz) &&
-						(activeMode !== 'transcription' || packet.input_sample_rate_hz === capabilities?.input_sample_rate_hz) &&
+						(activeMode === 'conversation' || packet.input_sample_rate_hz === capabilities?.input_sample_rate_hz) &&
 						packet.output_sample_rate_hz === (activeMode === 'transcription' ? 0 : 24000)) {
 						void captureAudio(media, packet.input_sample_rate_hz, epoch, experience).catch(() => { if (epoch === generation && activeOwner === ownerKey && scope) { error = t('realtimeVoice.microphoneStreamFailed'); experienceState(experience, 'error', 5); stop(false, false, activeMode === 'transcription'); } });
 					} else { error = t('realtimeVoice.sessionFormatMismatch'); stop(false); }
@@ -323,7 +366,7 @@
 				case 'transcript.output.delta': if (audioAllowed && activeMode !== 'transcription' && typeof packet.delta === 'string') outputTranscript = (outputTranscript + packet.delta).slice(-4096); break;
 				case 'session.interrupted': flushPlayback(); break;
 				case 'session.closed':
-					if (activeMode === 'transcription') { stop(true, false, true); ended = true; }
+					if (activeMode !== 'conversation') finishSession(epoch);
 					else stop();
 					break;
 				case 'error': error = t('realtimeVoice.providerFailed'); experienceState(experience, 'error', 5); stop(false, false, activeMode === 'transcription'); break;
@@ -334,7 +377,8 @@
 		}
 	}
 	async function start() {
-		if (!canPublish(generation) || !scope || !model || !capabilities || !mode || readiness || connecting || connected || (mode === 'conversation' && !capabilities.available_voices.includes(voice))) return;
+		if (!canPublish(generation) || !scope || !model || !capabilities || !mode || readiness || connecting || connected ||
+			!languageValid || (showVoice && !capabilities.available_voices.includes(voice))) return;
 		if (!navigator.mediaDevices?.getUserMedia || typeof AudioWorkletNode === 'undefined') {
 			error = t('realtimeVoice.streamingUnsupported');
 			return;
@@ -343,9 +387,17 @@
 		error = '';
 		activeMode = mode;
 		segments = [];
+		inputTranscript = '';
+		outputTranscript = '';
 		ended = false;
 		const epoch = generation;
 		const currentFingerprint = fingerprint;
+		const sessionVoice = showVoice ? voice : null;
+		const sessionOptions = {
+			...(translation ? { output_language: outputLanguage.trim() } : {}),
+			...(showInstructions && instructions.trim() ? { instructions: instructions.trim() } : {}),
+			max_duration_seconds: Math.min(capabilities.default_duration_seconds ?? 300, capabilities.max_duration_seconds)
+		};
 		const experience = beginExperienceAction('lumen', 'start', 'shared.stream');
 		connectionExperience = experience;
 		experienceState(experience, 'loading', 2);
@@ -358,9 +410,7 @@
 			pendingIntent = { fingerprint: currentFingerprint, key };
 			pendingRequest = new AbortController();
 			if (!audioAllowed || !scope) { stop(true, true); return; }
-			const session = activeMode === 'transcription'
-				? await realtimeVoiceApi.createSession(model.id, null, { ...scope, experience }, key, pendingRequest.signal, 'transcription')
-				: await realtimeVoiceApi.createSession(model.id, voice, { ...scope, experience }, key, pendingRequest.signal);
+			const session = await realtimeVoiceApi.createSession(model.id, sessionVoice, { ...scope, experience }, key, pendingRequest.signal, mode, sessionOptions);
 			if (!canPublish(epoch)) { experienceDiscarded(experience, 'stale'); if (epoch === generation) stop(true, true); return; }
 			activeProvider = session.provider_type;
 			socket = realtimeVoiceApi.connect(session);
@@ -375,8 +425,6 @@
 			experienceState(experience, 'error', 5);
 			if (!(cause instanceof DOMException && cause.name === 'NotAllowedError') && !(cause instanceof ApiError && cause.status >= 400 && cause.status < 500)) experienceDiscarded(experience, 'unknown');
 			stop(false, !(cause instanceof ApiError && cause.status >= 400 && cause.status < 500));
-		} finally {
-			if (epoch === generation) connecting = false;
 		}
 	}
 	function interrupt() {
@@ -396,17 +444,25 @@
 		<header class="header"><div><p class="muted">{t('realtimeVoice.breadcrumb')}</p><h1>{t('realtimeTranscription.title')}</h1><p class="muted">{t('realtimeTranscription.description')}</p></div><Button href="/dashboard/chat" variant="secondary">{t('realtimeVoice.textChat')}</Button></header>
 		<Card><div class="controls">
 			<Field label={t('realtimeVoice.model')} for="realtime-model"><SelectInput id="realtime-model" bind:value={selected} disabled={!audioAllowed || connecting || connected || loading}><option value="">{t('realtimeVoice.selectModel')}</option>{#each models as item (item.id)}<option value={String(item.id)}>{item.display_name}</option>{/each}</SelectInput></Field>
-			{#if capabilities}<p class="muted">{t('realtimeTranscription.mode')}: {transcription ? t('realtimeTranscription.transcription') : mode ? t('realtimeTranscription.conversation') : t('realtimeTranscription.unsupported')}</p>{/if}
-			{#if !transcription}
+			{#if capabilities}<p class="muted">{t('realtimeTranscription.mode')}: {modeLabel}</p>{/if}
+			{#if showVoice}
 				<Field label={t('realtimeVoice.voice')} for="realtime-voice"><SelectInput id="realtime-voice" bind:value={voice} disabled={!audioAllowed || connecting || connected || capabilityLoading}>{#each capabilities?.available_voices ?? [] as option (option)}<option value={option}>{option}</option>{/each}</SelectInput></Field>
+			{/if}
+			{#if translation}
+				<Field label={t('realtimeModes.outputLanguage')} for="realtime-language" help={t('realtimeModes.languageHelp')} error={outputLanguage && !languageValid ? t('realtimeModes.invalidLanguage') : undefined}>
+					<TextInput id="realtime-language" bind:value={outputLanguage} maxlength={12} placeholder="es" ariaInvalid={Boolean(outputLanguage && !languageValid)} disabled={!audioAllowed || connecting || connected || capabilityLoading} />
+				</Field>
+			{/if}
+			{#if showInstructions}
+				<Field label={t('realtimeModes.instructions')} for="realtime-instructions"><TextareaInput id="realtime-instructions" bind:value={instructions} maxlength={4096} rows={2} disabled={!audioAllowed || connecting || connected || capabilityLoading} /></Field>
 			{/if}
 			{#if error}<Alert tone="danger">{error}</Alert>{:else if loading || capabilityLoading}<LoadingState variant="inline" label={t('realtimeVoice.checking')} />{:else if readiness}<Alert tone="warning">{readiness}</Alert>{:else if audioAllowed}<Alert tone="success">{transcription ? t('realtimeTranscription.ready') : t('realtimeVoice.ready')}</Alert>{/if}
 			<div class="actions">
-				<Button disabled={!audioAllowed || Boolean(readiness) || loading || capabilityLoading || connecting || connected} onclick={() => void start()}>{#if connecting}<LoadingState variant="control" label={t('realtimeVoice.connecting')} />{:else}{transcription ? t('realtimeTranscription.start') : t('realtimeVoice.startSession')}{/if}</Button>
+				<Button disabled={!audioAllowed || !languageValid || Boolean(readiness) || loading || capabilityLoading || connecting || connected} onclick={() => void start()}>{#if connecting}<LoadingState variant="control" label={t('realtimeVoice.connecting')} />{:else}{transcription ? t('realtimeTranscription.start') : t('realtimeVoice.startSession')}{/if}</Button>
 				<Button variant="secondary" disabled={!connected || ending || (!audioAllowed && muted)} onclick={toggleMute}>{muted ? t('realtimeVoice.microphoneOn') : t('realtimeVoice.microphoneOff')}</Button>
 				{#if transcription}
 					<Button variant="secondary" disabled={!connected || !audioAllowed || ending || commitBusy} onclick={() => void commitSegment()}>{t('realtimeTranscription.commit')}</Button>
-				{:else}
+				{:else if mode === 'conversation'}
 					<Button variant="secondary" disabled={!connected} onclick={interrupt}>{activeProvider === 'gemini' ? t('realtimeVoice.interruptAndEnd') : t('realtimeVoice.interrupt')}</Button>
 				{/if}
 				<Button variant="danger-outline" disabled={(!connected && !connecting) || ending || commitBusy} onclick={endSession}>{t('realtimeVoice.endSession')}</Button>
@@ -424,8 +480,8 @@
 				{/each}
 				{#if segments.some((segment) => segment.state !== 'final')}<p class="muted">{t('realtimeTranscription.unfinished')}</p>{/if}
 			</Card>
-		{:else if connected && audioAllowed}
-			<div class="transcripts"><Card><h2>{t('realtimeVoice.mySpeech')}</h2><p class="transcript">{inputTranscript || t('realtimeVoice.waitingInputTranscript')}</p></Card><Card><h2>{t('realtimeVoice.response')}</h2><p class="transcript">{outputTranscript || t('realtimeVoice.waitingOutputTranscript')}</p></Card></div>
+		{:else if (connected || ended) && audioAllowed}
+			<div class="transcripts"><Card><h2>{t('realtimeVoice.mySpeech')}</h2><p class="transcript">{inputTranscript || t('realtimeVoice.waitingInputTranscript')}</p></Card><Card><h2>{translation ? t('realtimeModes.translation') : t('realtimeVoice.response')}</h2><p class="transcript">{outputTranscript || t('realtimeVoice.waitingOutputTranscript')}</p></Card></div>
 		{/if}
 	</div>
 </PageShell>

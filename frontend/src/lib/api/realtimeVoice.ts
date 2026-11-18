@@ -4,7 +4,8 @@ import { requireLumenCapability } from './lumenAccess';
 import type { AvailableModel } from './chatTree';
 import type { ExperienceContext } from '$lib/utils/experience';
 
-export type RealtimeMode = 'conversation' | 'transcription';
+export type RealtimeMode = 'conversation' | 'transcription' | 'translation' | 'live';
+export const REALTIME_OUTPUT_LANGUAGE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/;
 export interface RealtimeTranscript {
 	id: string;
 	text: string;
@@ -24,7 +25,9 @@ export interface RealtimeCapabilities {
 	input_sample_rate_hz: number;
 	output_sample_rate_hz: number;
 	max_duration_seconds: number;
-	realtime_kind?: string;
+	default_duration_seconds?: number;
+	realtime_kind?: string | null;
+	realtime_session_fields?: ('voice' | 'instructions' | 'output_language')[];
 }
 export interface RealtimeSession {
 	session_id: string;
@@ -37,8 +40,9 @@ export interface RealtimeSession {
 }
 
 export function realtimeMode(capabilities: RealtimeCapabilities | null): RealtimeMode | null {
-	const kind = capabilities?.realtime_kind ?? 'conversation';
-	return kind === 'conversation' || kind === 'transcription' ? kind : null;
+	const kind = capabilities?.realtime_kind;
+	if (kind === undefined) return capabilities ? 'conversation' : null;
+	return kind === 'conversation' || kind === 'transcription' || kind === 'translation' || kind === 'live' ? kind : null;
 }
 
 /** Ephemeral bounded item-correlated text; final events replace deltas, never append them twice. */
@@ -74,8 +78,11 @@ export function realtimeReadiness(model: RealtimeModel | undefined, current: Rea
 	}
 	if (mode === 'transcription') {
 		if (current.input_sample_rate_hz !== 24000 || current.output_sample_rate_hz !== 0 || current.max_duration_seconds < 10) return t('realtimeVoiceApi.streamFormatUnverified');
+	} else if (mode === 'translation') {
+		if (current.input_sample_rate_hz !== 24000 || current.output_sample_rate_hz !== 24000 ||
+			!current.realtime_session_fields?.includes('output_language')) return t('realtimeVoiceApi.streamFormatUnverified');
 	} else if (!current.available_voices?.length || !current.default_voice || !current.available_voices.includes(current.default_voice) ||
-		![16000, 24000].includes(current.input_sample_rate_hz) || current.output_sample_rate_hz !== 24000 || current.max_duration_seconds < 10) {
+		!(mode === 'live' ? [24000] : [16000, 24000]).includes(current.input_sample_rate_hz) || current.output_sample_rate_hz !== 24000) {
 		return t('realtimeVoiceApi.streamFormatUnverified');
 	}
 	return null;
@@ -84,11 +91,18 @@ export function realtimeReadiness(model: RealtimeModel | undefined, current: Rea
 export const realtimeVoiceApi = {
 	models: (scope: RealtimeScope) => api.get<RealtimeModel[]>('/api/v1/chat/models?model_kind=realtime', scope.token, scope.projectId, { refresh: true, experience: scope.experience }),
 	capabilities: (id: number, scope: RealtimeScope) => api.get<RealtimeCapabilities>(`/api/v1/chat/capabilities?model_id=${id}&model_kind=realtime`, scope.token, scope.projectId, { refresh: true, experience: scope.experience }),
-	async createSession(modelId: number, voice: string | null, scope: RealtimeScope, key: string, signal: AbortSignal, kind: RealtimeMode = 'conversation'): Promise<RealtimeSession> {
+	async createSession(modelId: number, voice: string | null, scope: RealtimeScope, key: string, signal: AbortSignal, kind: RealtimeMode = 'conversation', options?: { output_language?: string; instructions?: string; max_duration_seconds?: number }): Promise<RealtimeSession> {
 		requireLumenCapability('lumen-audio_user', scope.token, scope.projectId);
 		const response = await fetchWithAuth('/api/v1/chat/realtime/sessions', {
 			method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
-			body: JSON.stringify({ model_id: String(modelId), ...(kind === 'transcription' ? { kind, voice: null } : { voice }), max_duration_seconds: 300 }), signal
+			body: JSON.stringify({
+				model_id: String(modelId),
+				...(kind !== 'conversation' ? { kind } : {}),
+				...(kind === 'conversation' || kind === 'live' ? { voice } : {}),
+				...(options?.output_language ? { output_language: options.output_language } : {}),
+				...(options?.instructions ? { instructions: options.instructions } : {}),
+				max_duration_seconds: options?.max_duration_seconds ?? 300
+			}), signal
 		}, scope.token, scope.projectId, { experience: scope.experience });
 		if (!response.ok) {
 			const payload = await response.json().catch(() => null);

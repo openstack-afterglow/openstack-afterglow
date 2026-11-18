@@ -106,6 +106,19 @@ describe('native catalog registry', () => {
 		expect(calls.patch).not.toHaveBeenCalled();
 	});
 
+	it('reports ready catalog-priced token images without creating manual rates', async () => {
+		serve([model({
+			model_name: 'gpt-image-2.6-sunburst', model_kind: 'image', price_origin: 'catalog', media_pricing: null,
+			effective_media_pricing: { billing_basis: 'tokens', reservation_usd: '0.8', token_rates: { image: { input_per_million: '8', output_per_million: '30' } } },
+			effective_capabilities: { feature_gates: { image_output: { available: true, mode: 'native', pricing_available: true } } }
+		})]);
+		render(ChatConfiguration, { section: 'models' });
+		await screen.findByText(t('price.nativeCatalog'));
+		expect(screen.queryByText(t('price.unpriced'))).toBeNull();
+		expect(screen.getByTestId('model-media-prices').textContent).toContain('30');
+		expect(calls.patch).not.toHaveBeenCalled();
+	});
+
 	it('treats an explicit null effective media price as unpriced rather than showing stored rates', async () => {
 		serve([model({ model_kind: 'image', media_pricing: { image_per_unit: '0.04' }, effective_media_pricing: null })]);
 		render(ChatConfiguration, { section: 'models' });

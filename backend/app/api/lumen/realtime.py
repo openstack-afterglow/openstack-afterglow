@@ -12,7 +12,7 @@ from uuid import UUID
 import httpx
 import websockets
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from websockets.exceptions import ConnectionClosed
 
 from app.api.cloud_shell import _origin_allowed
@@ -29,10 +29,20 @@ class SessionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     model_id: str = Field(min_length=1, max_length=190)
     provider_id: int | str | None = None
-    kind: Literal["conversation", "transcription"] = "conversation"
+    kind: Literal["conversation", "transcription", "translation", "live"] = "conversation"
     voice: str | None = Field(default=None, max_length=100)
     instructions: str | None = Field(default=None, max_length=4096)
+    output_language: str | None = Field(default=None, pattern=r"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$")
     max_duration_seconds: int = Field(default=300, ge=10, le=900)
+
+    @model_validator(mode="after")
+    def validate_mode_fields(self) -> SessionRequest:
+        if self.kind == "translation":
+            if self.output_language is None or self.voice is not None or self.instructions is not None:
+                raise ValueError("Translation requires only an output language")
+        elif self.output_language is not None:
+            raise ValueError("Only translation accepts an output language")
+        return self
 
 
 @router.post("/realtime/sessions", status_code=201)
@@ -65,7 +75,9 @@ async def create_session(
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(20.0, connect=5.0), verify=get_settings().ssl_verify
         ) as client:
-            response = await client.post(url, headers=headers, json=payload.model_dump())
+            # Older Lumen versions forbid unknown keys, including a null output_language.
+            body = payload.model_dump(exclude={"output_language"} if payload.output_language is None else None)
+            response = await client.post(url, headers=headers, json=body)
     except httpx.RequestError as exc:
         raise HTTPException(status_code=503, detail="Realtime service unavailable") from exc
     if response.status_code >= 400:

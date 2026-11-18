@@ -81,6 +81,54 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('Realtime Voice', () => {
+	it.each(['translation', 'live'] as const)('admits and drains %s without conversation-only commands', async (kind) => {
+		const track = { stop: vi.fn(), enabled: true };
+		const getUserMedia = vi.fn().mockResolvedValue({ getTracks: () => [track] });
+		vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia } });
+		calls.capabilities.mockResolvedValue({
+			...capability(), realtime_kind: kind,
+			...(kind === 'translation' ? { available_voices: [], default_voice: null, realtime_session_fields: ['output_language'] } :
+				{ available_voices: ['marin'], default_voice: 'marin', realtime_session_fields: ['voice', 'instructions'] })
+		});
+		render(RealtimeVoice);
+		await screen.findByText(`${t('realtimeTranscription.mode')}: ${t(kind === 'translation' ? 'realtimeModes.translation' : 'realtimeModes.live')}`);
+		const start = screen.getByRole('button', { name: t('realtimeVoice.startSession') });
+		if (kind === 'translation') {
+			await fireEvent.click(start);
+			expect(getUserMedia).not.toHaveBeenCalled();
+			expect(screen.queryByLabelText(t('realtimeVoice.voice'))).toBeNull();
+			await fireEvent.input(screen.getByLabelText(t('realtimeModes.outputLanguage')), { target: { value: 'es' } });
+		} else {
+			await fireEvent.input(screen.getByLabelText(t('realtimeModes.instructions')), { target: { value: 'Speak slowly' } });
+		}
+		await fireEvent.click(start);
+		await waitFor(() => expect(Socket.instances).toHaveLength(1));
+		const call = calls.createSession.mock.calls[0];
+		expect([call[1], call[5], call[6]]).toEqual(kind === 'translation'
+			? [null, kind, { output_language: 'es', max_duration_seconds: 300 }]
+			: ['marin', kind, { instructions: 'Speak slowly', max_duration_seconds: 300 }]);
+		const socket = Socket.instances[0];
+		socket.open();
+		socket.message({ type: 'session.ready', realtime_kind: kind, input_sample_rate_hz: 24000, output_sample_rate_hz: 24000 });
+		await screen.findByText(t('realtimeVoice.connectedMicrophoneOn'));
+		expect(screen.queryByRole('button', { name: t('realtimeVoice.interrupt') })).toBeNull();
+		expect(screen.queryByRole('button', { name: t('realtimeTranscription.commit') })).toBeNull();
+		Capture.current?.port.onmessage?.({ data: new Int16Array([1, 2]).buffer } as MessageEvent<ArrayBuffer>);
+		if (kind === 'live') {
+			await fireEvent.click(screen.getByRole('button', { name: t('realtimeVoice.microphoneOff') }));
+			await fireEvent.click(screen.getByRole('button', { name: t('realtimeVoice.microphoneOn') }));
+		}
+		await fireEvent.click(screen.getByRole('button', { name: t('realtimeVoice.endSession') }));
+		await waitFor(() => expect(socket.sent.map((value) => JSON.parse(value).type)).toEqual([
+			'audio.input.append', ...(kind === 'live' ? ['audio.input.mute', 'audio.input.unmute'] : []), 'session.close'
+		]));
+		expect(track.stop).toHaveBeenCalled();
+		expect(socket.closed).toBe(false);
+		socket.message({ type: 'transcript.output.delta', delta: 'Final words' });
+		socket.message({ type: 'session.closed' });
+		expect(await screen.findByText('Final words')).toBeTruthy();
+		expect(socket.closed).toBe(true);
+	});
 	it('does not acquire a microphone or create a session with chat-only authority', async () => {
 		grantLumen('lumen-chat_user');
 		const microphone = vi.fn();
@@ -268,7 +316,7 @@ describe('Realtime Voice', () => {
 		expect(getUserMedia).not.toHaveBeenCalled();
 		await fireEvent.click(screen.getByRole('button', { name: '음성 세션 시작' }));
 		await waitFor(() => expect(calls.createSession).toHaveBeenCalledWith(17, 'alloy',
-			{ token: 'token', projectId: 'project-1' }, expect.any(String), expect.any(AbortSignal)));
+			{ token: 'token', projectId: 'project-1' }, expect.any(String), expect.any(AbortSignal), 'conversation', { max_duration_seconds: 300 }));
 		const socket = Socket.instances[0];
 		socket.open();
 		socket.message({ type: 'session.ready', session_id: 'session-1', input_sample_rate_hz: 24000,
@@ -364,7 +412,7 @@ describe('Realtime Voice', () => {
 		expect(screen.queryByRole('combobox', { name: t('realtimeVoice.voice') })).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: t('realtimeTranscription.start') }));
 		await waitFor(() => expect(Socket.instances).toHaveLength(1));
-		expect(calls.createSession).toHaveBeenCalledWith(17, null, expect.anything(), expect.any(String), expect.any(AbortSignal), 'transcription');
+		expect(calls.createSession).toHaveBeenCalledWith(17, null, expect.anything(), expect.any(String), expect.any(AbortSignal), 'transcription', { max_duration_seconds: 300 });
 		const socket = Socket.instances[0];
 		socket.open();
 		socket.message({ type: 'session.ready', realtime_kind: 'transcription', input_sample_rate_hz: 24000, output_sample_rate_hz: 0 });

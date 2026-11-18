@@ -205,6 +205,8 @@ Lumen migration `021-provider-identity-catalog-order`를 먼저 적용한 API/wo
 
 수동 등록은 `model_kind=text|image|tts|stt|realtime|embedding`를 항상 명시합니다. 후보·등록 목록의 종류 필터는 저장된 종류를 사용하며 이름·이미지 입력 단가로 재분류하지 않습니다. Embedding은 직접 OpenAI/Gemini API-key route만 등록할 수 있고 input-token 가격만 사용합니다(출력 토큰 단가와 media reservation 불필요). 등록 카드의 **모델 종류 수정**은 기존 `PATCH /api/v1/chat/admin/models/{model_id}`에 종류와 `is_active=false`를 함께 보냅니다. 모델 ID, 텍스트·공유 token 단가는 보존하고 이전 종류 전용 media 단가와 미디어에서 지원하지 않는 cache-write는 명시적으로 제거합니다. 새 종류의 가격과 실행 경로 검토 뒤 재활성화는 별도입니다. 제목 요약·메모리 지정 모델은 먼저 지정을 해제해야 미디어로 변경할 수 있으며 active-run mutation fence도 유지됩니다. 운영 데이터의 자동 일괄 재분류는 하지 않습니다.
 
+Image model inventory uses Lumen's effective `media_pricing` and `price_origin` (`native_catalog` or `catalog` for catalog defaults). Catalog rates never prefill administrator overrides. Availability and credential/pricing/asset gates remain separate from the price source. Chat uses the declared `reasoning_options` and explicit `reasoning_none_supported` flag, so GPT‑6.2 Sol/Astra do not offer an explicit `none` effort.
+
 ### 여러 provider 키와 명시적 연결 검사
 
 Account-capable native provider의 **계정·인증 정보 관리**에서 같은 provider account 아래 여러 키를 추가·수정·비활성화할 수 있습니다. 선택 정책·model/operation 제한과 credential generation은 Lumen이 소유합니다. 키의 저장 여부는 실제 연결 성공과 별개입니다.
@@ -223,6 +225,14 @@ Account-capable native provider의 **계정·인증 정보 관리**에서 같은
 
 채팅 응답의 **TTFT**는 브라우저가 전송을 수락한 시점부터 첫 비어 있지 않은 **답변 텍스트를 수신**할 때까지의 시간입니다. 새 대화 생성, 최신 기록 조회, run 접수, 큐·네트워크 대기를 포함하며 추론(reasoning), 상태·도구 이벤트는 제외합니다. `part.delta` 없이 `part.completed`로 텍스트가 처음 도착해도 측정합니다. 첫 수신 뒤 값은 고정되고 기존 tok/s·생성 시간과 별도로 표시됩니다. 일반/임시 채팅·재생성·재시도는 각 요청에서 새로 측정합니다. 시작을 관측하지 않은 과거 기록·재접속 resume와 텍스트 없는 실패/취소에는 값을 만들지 않습니다. 이 값은 화면의 일시 계측이며 서버/DB에 저장되는 provider TTFT나 첫 화면 paint 시간은 아닙니다.
 
+### 이미지 Studio의 모델별 출력 옵션
+
+`GET /api/v1/chat/capabilities?model_kind=image&model_id=<id>` exposes `available_image_variants`, `max_image_count` and optional `image_custom_size`, `image_backgrounds`, `image_output_formats`, `image_complexities`, `image_gif`, and `image_output_price_per_million`. Missing optional capabilities mean unsupported. Image Studio forwards the supported opt-ins `complexity`, `background`, `output_format`, `output_compression`, `frame_count` and `frame_duration_ms` unchanged via `POST /api/v1/chat/images/generations|edits`; the BFF does not own their validation or prices.
+
+Custom `size` uses `WxH`: positive multiples of 16, longest edge 3840, ratio at most 3:1, and 655,360–8,294,400 pixels. Transparent output requires PNG or WebP. Compression is an integer 0–100 for JPEG/WebP only. GIF uses advertised frame limits and Lumen's explicit-size total-pixel guard. SVG is generation only, one output. GIF and SVG require a route that advertises them; the Studio previews them as owned `blob:` image resources, never inline markup.
+
+The estimate uses the published OpenAI raster output formula with explicit size/quality and the model's effective output price. It excludes prompt and reference-image input, and is neither a hold nor a charge. Completed runs display `usage.updated` token counts and `raw_cost` when the journal supplies them. No usage is inferred from missing or expired journal data.
+
 ### 실시간 음성 browser session
 
 `GET /api/v1/chat/models?model_kind=realtime`와 `GET /api/v1/chat/capabilities?model_id=<id>&model_kind=realtime`의 양방향 오디오 gate, 정확한 USD 가격, voice·sample-rate readiness를 먼저 확인합니다. 사용자가 **음성 세션 시작**을 누를 때에만 `getUserMedia` permission을 요청하고, `POST /api/v1/chat/realtime/sessions`에 `{model_id:"<id>",voice:"alloy",max_duration_seconds:300}` 및 UUID `Idempotency-Key`를 보냅니다. BFF는 Lumen의 provider key나 `connect_token`을 반환하지 않고 `{session_id,status,model_name,provider_type,expires_in_seconds,expires_at,ticket,websocket_path:"/api/v1/chat/realtime/ws"}`만 반환합니다. `ticket`은 Redis 60초, project-scoped, 단일 소비이며 일반 auth token을 WebSocket URL에 넣지 않습니다.
@@ -230,6 +240,8 @@ Account-capable native provider의 **계정·인증 정보 관리**에서 같은
 브라우저는 반환된 경로에 ticket으로 WSS 연결하고 `session.ready`의 `input_sample_rate_hz`(Gemini 16 kHz/OpenAI 24 kHz)에 맞춰 mono PCM16 worklet을 시작합니다. `audio.input.append`의 base64 chunk, `audio.output.delta`의 24 kHz playback, 자막 delta, `session.interrupted`, `response.cancel`을 처리합니다. 브라우저 프로젝트/사용자 변경·로그아웃·세션 종료 시 microphone track, AudioContext, playback, socket과 표시 자막을 즉시 정리합니다. 원본 오디오는 Afterglow→Lumen→선택 provider로 전송되며 Afterglow/Lumen은 원본 PCM·실시간 자막을 DB/S3에 보존하지 않습니다. Provider의 데이터 처리 정책은 별도로 확인해야 합니다. 생성 이미지·유한 오디오의 durable run/asset·usage는 **Lumen**이 소유합니다. 장애 시 upstream usage가 확정되지 않으면 Lumen hold가 unknown으로 남으며 BFF는 이를 임의 정산하지 않습니다.
 
 OpenAI의 **응답 끊기**는 `response.cancel`로 세션을 유지하지만 Gemini Live에는 동일한 wire 명령이 없어 버튼을 **응답 끊기 · 세션 종료**로 표시하고 microphone/WS를 종료합니다. Gemini의 대화 중 자동 barge-in은 provider VAD가 담당합니다.
+
+Models advertising `realtime_kind=translation` accept `kind:"translation"` and required `output_language` (for example `es` or `pt-BR`), without voice or instructions. `realtime_kind=live` accepts `kind:"live"`, optional voice and instructions, but no delegation or tools. Both keep the same ticket and normalized PCM16 frames. GPT-Live supports `audio.input.mute`/`audio.input.unmute`. These modes do not send `response.cancel` or `audio.input.commit`. The explicit stop stops capture and waits for `session.closed`; final transcripts remain in the current view only, never stored. Missing terminal confirmation is a connection error, not successful settlement.
 
 관리자 provider 화면의 **사용량 키 설정**은 direct OpenAI API와 Anthropic API에만 표시됩니다. 이 키는 Lumen이 inference key와 다른 AES-GCM/HKDF domain으로 암호화해 저장하며 organization cost/usage report에만 사용합니다. 브라우저와 API read 응답에는 키 값 대신 설정 여부만 반환됩니다. OpenAI는 현재 UTC 일·주·월 공식 비용·요청·토큰, Anthropic은 공식 비용·토큰을 표시합니다. Anthropic 공식 report에 없는 요청 수와 현재 달 범위로 계산할 수 없는 누적값은 `—`로 표시합니다. 두 provider의 공식 organization API는 현재 선불 잔액이나 구매 충전액을 반환하지 않으므로 UI는 비용에서 잔액을 역산하지 않고 공식 결제 console을 정본으로 안내합니다.
 

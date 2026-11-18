@@ -25,7 +25,7 @@ async def _authenticated(request: Request):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("kind", [None, "conversation", "transcription"])
+@pytest.mark.parametrize("kind", [None, "conversation", "transcription", "translation", "live"])
 async def test_realtime_admission_returns_only_project_bound_browser_ticket(monkeypatch, kind):
     app = FastAPI()
     app.include_router(router, prefix="/api/v1/chat")
@@ -60,7 +60,9 @@ async def test_realtime_admission_returns_only_project_bound_browser_ticket(monk
             "/api/v1/chat/realtime/sessions",
             json={
                 "model_id": "12",
-                **({"voice": "alloy"} if kind != "transcription" else {}),
+                **({"voice": "alloy"} if kind not in {"transcription", "translation"} else {}),
+                **({"output_language": "pt-BR"} if kind == "translation" else {}),
+                **({"instructions": "Speak slowly"} if kind == "live" else {}),
                 **({"kind": kind} if kind is not None else {}),
             },
             headers={"Idempotency-Key": key},
@@ -79,7 +81,12 @@ async def test_realtime_admission_returns_only_project_bound_browser_ticket(monk
     assert upstream[0].headers["Idempotency-Key"] == key
     payload = json.loads(upstream[0].content)
     assert payload["kind"] == (kind or "conversation")
-    assert payload["voice"] == (None if kind == "transcription" else "alloy")
+    assert payload["voice"] == (None if kind in {"transcription", "translation"} else "alloy")
+    if kind == "translation":
+        assert payload["output_language"] == "pt-BR"
+    else:
+        assert "output_language" not in payload
+    assert payload["instructions"] == ("Speak slowly" if kind == "live" else None)
     issue.assert_awaited_once_with(
         "chat-realtime",
         {
@@ -91,6 +98,34 @@ async def test_realtime_admission_returns_only_project_bound_browser_ticket(monk
         ttl_seconds=60,
         revoke_scope="owned-project",
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"kind": "translation"},
+        {"kind": "translation", "output_language": "Spanish"},
+        {"kind": "translation", "output_language": "es", "voice": "alloy"},
+        {"kind": "translation", "output_language": "es", "instructions": "Speak slowly"},
+        {"kind": "live", "output_language": "es"},
+        {"kind": "live", "delegation": {"type": "responses"}},
+    ],
+)
+async def test_realtime_rejects_fields_outside_the_mode_contract(monkeypatch, payload):
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1/chat")
+    app.dependency_overrides[get_token_info] = _authenticated
+    authorize = AsyncMock()
+    monkeypatch.setattr("app.api.lumen.realtime.authorize_service_request", authorize)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as browser:
+        response = await browser.post(
+            "/api/v1/chat/realtime/sessions",
+            json={"model_id": "12", **payload},
+            headers={"Idempotency-Key": str(uuid4())},
+        )
+    assert response.status_code == 422
+    authorize.assert_not_awaited()
 
 
 def test_realtime_ws_rejects_origin_and_relay_preserves_audio_frames(monkeypatch):
@@ -158,7 +193,7 @@ def test_realtime_ws_rejects_origin_and_relay_preserves_audio_frames(monkeypatch
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("kind", ["translation", "live", "", None])
+@pytest.mark.parametrize("kind", ["voice", "unknown", "", None])
 async def test_realtime_admission_rejects_invalid_kind_before_native_request(monkeypatch, kind):
     app = FastAPI()
     app.include_router(router, prefix="/api/v1/chat")
