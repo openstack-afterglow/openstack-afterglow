@@ -627,6 +627,8 @@ Manila의 `/v2/{project}` URL prefix도 논리 Personal이 아닌 실제 인증 
 
 라이브 롤백은 소스 호스트, 실패 시각과 연결된 대상 호스트 롤백 성공 이벤트, 소스에만 남은 포트·볼륨 연결, 단일 Placement 공급자, 진행 중 작업 없음이 모두 확인되어야 합니다. 조회 불가·모호한 이력·복수 공급자는 자동 실행을 차단합니다. `live_migration_rolled_back`에서 `power_state=1`이면 `reset_server_state(active)`만 수행합니다. `SHUTDOWN`(`4`)과 `CRASHED`(`6`)는 게스트가 실행 중이지 않다는 명시적 상태이므로 재설정 뒤 `hard_reboot`를 수행합니다. `NOSTATE`(`0`)는 정지 증거가 아닙니다. 전원 상태를 알 수 없거나 다른 코드이면 수동 확인이 필요합니다.
 
+`recover`는 서버별 공유 Redis 잠금을 획득한 뒤 재진단합니다. 같은 서버에서 다른 복구가 진행 중이면 `409`, 잠금 저장소에 접근할 수 없으면 `503`이며 잠금 없이 실행하지 않습니다. 소유 토큰을 확인해 쓰기 전 잠금을 갱신하고 Nova 관찰이 끝난 뒤 자신이 보유한 잠금만 해제합니다.
+
 `recover`는 클라이언트 단계를 받지 않고 관리자 연결로 재진단합니다. 안전 조건이 부족하거나, 전달된 `expected_guest_restart`와 다시 만든 계획이 다르면 쓰기 없이 `409`를 반환합니다. 응답의 `executed`와 `steps[].status=success`는 단계별 요청 수락을 뜻합니다. 마지막 관찰은 최대 약 55초 동안 확인하며, `observed_status`에는 `ACTIVE`, `HARD_REBOOT`, `REBOOT`, `ERROR` 등 마지막 Nova 상태 또는 조회하지 못한 경우 `UNKNOWN`을 반환합니다. `recovered`는 모든 단계가 수락되고 Nova가 작업 없는 `ACTIVE` 및 실행 중인 전원 상태를 반환한 경우만 `true`입니다. 이것은 게스트 서비스 헬스 확인이 아닙니다. 활동 기록은 실행 단계와 관찰 상태를 함께 보존합니다.
 
 `migration-status`의 `migration.status=error`는 실패 레코드이며 `type`, `source`, `dest`, `created_at`, `updated_at`을 포함합니다. 기존 `error` 필드는 Nova fault 메시지일 뿐 실패 원인과 연결하지 않습니다. 예를 들어 콘솔이 없는 게스트에 대한 최근 `404` fault는 이전 마이그레이션 실패와 별개입니다.

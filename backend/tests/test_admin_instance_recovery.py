@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from itertools import count
+from threading import Event
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call
 
@@ -155,6 +157,12 @@ def _configure_recovery(conn, scenario):
             "consumer_generation": 7,
         }
     return conn
+
+
+@pytest.fixture(autouse=True)
+def _recovery_redis(monkeypatch, _fake_redis_global):
+    monkeypatch.setattr("app.api.identity.admin._get_redis", AsyncMock(return_value=_fake_redis_global))
+    return _fake_redis_global
 
 
 @pytest.fixture(autouse=True)
@@ -539,6 +547,57 @@ async def test_recover_requires_admin(client):
     """일반 사용자 recover → 403."""
     resp = await client.post(f"{_INSTANCE_URL}/recover", json={"expected_guest_restart": True})
     assert resp.status_code == 403
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("replace_owner", [False, True], ids=["same-server", "expired-owner"])
+async def test_recover_serializes_concurrent_posts(admin_client, live_conn, _recovery_redis, replace_owner):
+    started = Event()
+    finish_analysis = Event()
+    server = live_conn.compute.get_server.return_value
+    lock_key = f"afterglow:instance-recovery:lock:{_SERVER_ID}"
+
+    def get_server(_server_id):
+        started.set()
+        assert finish_analysis.wait(timeout=5)
+        return server
+
+    live_conn.compute.get_server.side_effect = get_server
+    first = asyncio.create_task(admin_client.post(f"{_INSTANCE_URL}/recover", json={"expected_guest_restart": True}))
+    try:
+        assert await asyncio.to_thread(started.wait, 5)
+        second = await admin_client.post(f"{_INSTANCE_URL}/recover", json={"expected_guest_restart": True})
+        assert second.status_code == 409
+        assert "이미 진행 중" in second.json()["detail"]
+        live_conn.compute.get_server.assert_called_once()
+        _assert_no_mutations(live_conn)
+        if replace_owner:
+            await _recovery_redis.set(lock_key, "new-owner", ex=600)
+    finally:
+        finish_analysis.set()
+        result = await first
+
+    if replace_owner:
+        assert result.status_code == 409
+        assert await _recovery_redis.get(lock_key) == "new-owner"
+        _assert_no_mutations(live_conn)
+    else:
+        assert result.status_code == 200
+        assert result.json()["observed_status"] == "ACTIVE"
+        live_conn.compute.reset_server_state.assert_called_once_with(_SERVER_ID, "active")
+        live_conn.compute.reboot_server.assert_called_once_with(_SERVER_ID, "HARD")
+        live_conn.block_storage.reset_volume_status.assert_not_called()
+        assert await _recovery_redis.get(lock_key) is None
+
+
+@pytest.mark.anyio
+async def test_recover_requires_shared_redis_before_reanalysis(admin_client, live_conn, monkeypatch):
+    monkeypatch.setattr("app.api.identity.admin._get_redis", AsyncMock(side_effect=ConnectionError("Redis unavailable")))
+    response = await admin_client.post(f"{_INSTANCE_URL}/recover", json={"expected_guest_restart": True})
+
+    assert response.status_code == 503
+    live_conn.compute.get_server.assert_not_called()
+    _assert_no_mutations(live_conn)
 
 
 @pytest.mark.anyio

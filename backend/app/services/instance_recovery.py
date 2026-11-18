@@ -19,6 +19,8 @@ from urllib.parse import quote
 from openstack.compute.v2.server import Server
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     import openstack
 
 from app.services import cinder, nova
@@ -711,6 +713,7 @@ def execute_recovery(
     server_id: str,
     *,
     expected_guest_restart: bool | None = None,
+    before_write: Callable[[], None] | None = None,
 ) -> dict:
     """복구를 실행한다.
 
@@ -738,7 +741,11 @@ def execute_recovery(
         params = step.get("params", {})
         description = step.get("description", action)
 
+        if before_write is not None and not executed_steps:
+            before_write()
         try:
+            if before_write is not None and executed_steps:
+                before_write()
             if action == "reset_volume_state":
                 volume_id = params["volume_id"]
                 status = params.get("status", "in-use")

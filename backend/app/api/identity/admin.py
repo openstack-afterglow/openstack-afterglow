@@ -6,12 +6,15 @@ import math
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from functools import partial
 from typing import TYPE_CHECKING, Literal
+from uuid import uuid4
 
 import httpx
 from anyio import CancelScope
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from redis.exceptions import LockNotOwnedError
 
 from app.api.common.activity_recorder import rec
 from app.api.common.admin_resource_scope import (
@@ -2729,6 +2732,9 @@ class RecoverInstanceRequest(BaseModel):
     expected_guest_restart: bool | None = None
 
 
+_INSTANCE_RECOVERY_LOCK_SECONDS = 600
+
+
 @router.post("/instances/{server_id}/recover", dependencies=[Depends(require_admin)])
 async def recover_instance(
     server_id: str,
@@ -2742,18 +2748,55 @@ async def recover_instance(
     auto_executable=False이면 409를 반환하고 아무 작업도 수행하지 않는다.
     요청 수락과 Nova에서 관찰한 복구 결과를 구분하여 활동 기록에 남긴다.
     """
+    lock_key = f"afterglow:instance-recovery:lock:{server_id.lower()}"
     try:
-        result = await asyncio.to_thread(
-            instance_recovery.execute_recovery,
-            conn,
-            server_id,
-            expected_guest_restart=request.expected_guest_restart if request else None,
+        redis = await _get_redis()
+        lock = redis.lock(lock_key, timeout=_INSTANCE_RECOVERY_LOCK_SECONDS, blocking=False)
+        acquired = await lock.acquire(token=uuid4().hex)
+    except Exception:
+        raise HTTPException(status_code=503, detail="인스턴스 복구 잠금을 확보할 수 없습니다") from None
+    if not acquired:
+        raise HTTPException(status_code=409, detail="인스턴스 복구가 이미 진행 중입니다")
+
+    async def renew_lock() -> None:
+        try:
+            await lock.reacquire()
+        except LockNotOwnedError:
+            raise HTTPException(status_code=409, detail="인스턴스 복구 잠금이 만료되었습니다. 다시 점검하세요") from None
+        except Exception:
+            raise HTTPException(status_code=503, detail="인스턴스 복구 잠금을 확인할 수 없습니다") from None
+
+    loop = asyncio.get_running_loop()
+
+    def before_write() -> None:
+        # The SDK work runs in a thread; Redis stays on the request event loop.
+        asyncio.run_coroutine_threadsafe(renew_lock(), loop).result()
+
+    try:
+        # Keep the lease until the SDK thread finishes, even on client cancellation.
+        result = await hypervisor_review.host_work(
+            partial(
+                instance_recovery.execute_recovery,
+                conn,
+                server_id,
+                expected_guest_restart=request.expected_guest_restart if request else None,
+                before_write=before_write,
+            )
         )
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         _logger.warning("복구 실행 실패: %s", e)
         raise HTTPException(status_code=500, detail="복구 실행 중 오류가 발생했습니다")
+    finally:
+        with CancelScope(shield=True):
+            try:
+                # Redis Lock releases atomically only if this owner still holds it.
+                await lock.release()
+            except Exception:
+                _logger.warning("인스턴스 복구 잠금 해제 실패: %s", server_id)
 
     if result["recovered"]:
         status = "success"
