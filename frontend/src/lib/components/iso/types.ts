@@ -97,9 +97,11 @@ export interface IsoEdge {
 	/** Draw an arrowhead at `to` (and at `from` when bidirectional). */
 	directed?: boolean;
 	bidirectional?: boolean;
-	/** Animate packets along the edge (suppressed under reduced motion). Default true for flow/tunnel/ingress/egress. */
+	/** Animate a configured path (default true for every edge, subject to motion preferences). */
 	flow?: boolean;
 	dashed?: boolean;
+	/** Dashed/muted presentation for a reported inactive path. Does not disable configured-path motion. */
+	inactive?: boolean;
 }
 
 export interface IsoLegendItem {
