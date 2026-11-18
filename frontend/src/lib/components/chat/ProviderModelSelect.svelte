@@ -1,6 +1,7 @@
 <script lang="ts" generics="T extends ModelCatalogRow">
 	import type { Snippet } from 'svelte';
 	import { groupModelProviders, modelProviderKey, type ModelCatalogRow, type ModelProvider } from '$lib/api/modelCatalog';
+	import { modelBillingReady, modelBillingReason } from '$lib/api/modelDomainBilling';
 	import { Field, SelectInput } from '$lib/components/ui';
 	import { t } from '$lib/i18n/ns/chat-studio';
 	import { t as adminT } from '$lib/i18n/ns/admin-chat';
@@ -33,7 +34,8 @@
 
 	function changeModel(event: Event) {
 		const id = (event.currentTarget as HTMLSelectElement).value;
-		onSelect(available.find((row) => String(row.id) === id) ?? null);
+		const row = available.find((row) => String(row.id) === id);
+		onSelect(row && modelBillingReady(row) ? row : null);
 	}
 </script>
 
@@ -53,7 +55,10 @@
 			<SelectInput id={modelId} value={selected ? String(selected.id) : ''} disabled={disabled || available.length === 0} onchange={changeModel}>
 				<option value="">{placeholder ?? t('modelSelector.select')}</option>
 				{#each available as row (row.id)}
-					<option value={String(row.id)}>{row.display_name}</option>
+					{@const reason = modelBillingReason(row)}
+					<option value={String(row.id)} disabled={reason !== null}>
+						{reason === null ? row.display_name : t('modelBilling.option', { name: row.display_name, reason })}
+					</option>
 				{/each}
 			</SelectInput>
 		</Field>

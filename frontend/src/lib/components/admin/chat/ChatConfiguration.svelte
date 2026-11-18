@@ -25,6 +25,9 @@
 	import ModelCapabilityBadges from '$lib/components/chat/ModelCapabilityBadges.svelte';
 	import type { ModelCapabilities } from '$lib/api/chatContracts';
 	import { mediaGateReadiness, mediaReadyLabel } from '$lib/api/mediaReadiness';
+	import { modelBillingReason } from '$lib/api/modelDomainBilling';
+	import type { DomainBillingReadiness } from '$lib/api/modelCatalog';
+	import { t as studioT } from '$lib/i18n/ns/chat-studio';
 	import ModelMediaPricingEditor from './ModelMediaPricingEditor.svelte';
 	import ModelKindEditor from './ModelKindEditor.svelte';
 	import NativeCatalogPanel from './NativeCatalogPanel.svelte';
@@ -220,6 +223,8 @@
 		effective_capabilities?: ModelCapabilities | null;
 		capability_source?: string | null;
 		effective_capability_source?: string | null;
+		/** Lumen 0.6.21+: whether domain-billed dashboard chat can admit this text model. */
+		domain_billing?: DomainBillingReadiness | null;
 	}
 
 	type CachePriceKey =
@@ -2314,12 +2319,28 @@
 								</Pill>
 								<Pill tone={capabilityState(m) === 'unknown' ? 'neutral' : 'accent'} size="xs">{capabilityStatus(m)}</Pill>
 								<ModelCapabilityBadges caps={m.capabilities || m.effective_capabilities} size="xs" />
+								{#if m.domain_billing}
+									{@const billingBlock = modelBillingReason(m)}
+									<Pill tone={billingBlock ? 'warning' : 'success'} size="xs">{billingBlock ? studioT('modelBilling.statusBlocked', { reason: billingBlock }) : studioT('modelBilling.statusReady')}</Pill>
+								{/if}
 							{:else}
 								{@const configured = inputTokenOnly(m.model_kind) ? m.effective_input_price_per_million != null : hasMediaPrices(effectiveMediaPricing(m))}
 								<Pill tone={configured ? 'accent' : 'warning'} size="xs">{configured ? t('configuration.mediaRatesConfigured') : t('configuration.mediaRatesUnset')}</Pill>
 								<Pill tone={mediaBlockReason(m) ? 'warning' : 'success'} size="xs">{mediaBlockReason(m) ?? mediaReadyLabel()}</Pill>
 							{/if}
 							</div>
+							{#if (m.model_kind ?? 'text') === 'text' && m.domain_billing?.ready === false}
+								<div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--color-ink-2)]" data-testid="model-domain-billing-hint">
+									{#if m.domain_billing.reason_code === 'context_limit_unknown'}
+										<span>{studioT('modelBilling.contextHint')}</span>
+										<Button variant="ghost" size="xs" disabled={modelOrderSaving} onclick={() => openCapabilityEditor(m)}>{studioT('modelBilling.contextAction')}</Button>
+									{:else if m.domain_billing.reason_code === 'pricing_unavailable'}
+										<Button variant="ghost" size="xs" disabled={modelOrderSaving} onclick={() => openPriceEditor(m)}>{studioT('modelBilling.pricingAction')}</Button>
+									{:else if m.domain_billing.reason_code === 'output_budget_unenforced'}
+										<span>{studioT('modelBilling.outputHint')}</span>
+									{/if}
+								</div>
+							{/if}
 							<div class="mt-0.5 text-xs text-[var(--color-ink-3)]">
 								<div class="break-all"><RichText segments={t.rich('pricing.apiIdentity', { id: publicModelName(m), provider: m.api_provider })} /></div>
 								{#if m.model_name !== publicModelName(m)}

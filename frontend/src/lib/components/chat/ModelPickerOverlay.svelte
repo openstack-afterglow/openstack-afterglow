@@ -11,6 +11,8 @@
 	import { t as commonT } from '$lib/i18n/ns/common';
 	import { compileRegexSearch, matchesRegexSearch } from '$lib/utils/regexSearch';
 	import ProviderModelSelect from './ProviderModelSelect.svelte';
+	import { modelBillingReason } from '$lib/api/modelDomainBilling';
+	const uid = $props.id();
 
 	interface Props {
 		open: boolean;
@@ -47,7 +49,7 @@
 	}
 
 	function pick(m: AvailableModel | null) {
-		if (!m) return;
+		if (!m || modelBillingReason(m) !== null) return;
 		onSelect(m);
 		onClose();
 	}
@@ -143,18 +145,24 @@
 					{#each grouped as g (g.key)}
 						<div class="group-label">{providerLabel(g.label)}</div>
 						{#each g.models as m (m.id)}
-							<div class="model-row" class:active={m.id === value}>
+							{@const reason = modelBillingReason(m)}
+							<div class="model-row" class:active={m.id === value} class:unready={reason !== null}>
 								<button
 									type="button"
 									class="model-select"
 									aria-label={t('modelPicker.selectModel', { name: m.display_name })}
 									aria-pressed={m.id === value}
+									aria-disabled={reason !== null}
+									aria-describedby={reason === null ? undefined : `${uid}-billing-${m.id}`}
 									onclick={() => select(m)}
 								>
 									<span class="model-main">
 										<span class="model-name" title={m.display_name}>{m.display_name}</span>
 										<span class="model-id"><RichText segments={t.rich('modelPicker.apiId', { id: apiModelName(m) })} /></span>
 										<span class="model-provider"><RichText segments={t.rich('modelPicker.apiProvider', { provider: apiProvider(m) })} /></span>
+										{#if reason !== null}
+											<span class="model-billing" id={`${uid}-billing-${m.id}`}>{reason}</span>
+										{/if}
 									</span>
 									<span class="model-caps"><ModelCapabilityBadges caps={m.capabilities} size="xs" /></span>
 									{#if m.id === value}
@@ -415,6 +423,17 @@
 	}
 	.model-provider :global(code) {
 		font-family: var(--font-mono);
+	}
+	.model-billing {
+		font-size: 0.72rem;
+		color: var(--color-state-warning);
+		overflow-wrap: anywhere;
+	}
+	.model-row.unready .model-select {
+		cursor: not-allowed;
+	}
+	.model-row.unready .model-name {
+		color: var(--color-ink-2);
 	}
 	.check {
 		grid-column: 2;

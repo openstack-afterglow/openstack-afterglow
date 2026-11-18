@@ -43,6 +43,15 @@
 	import { aggregateCitations } from '$lib/api/chatCitations';
 	import { normalizeEffort } from '$lib/api/chatEffort';
 	import { persistChatModel, resolveCatalogModel, restoreChatModel } from '$lib/api/modelCatalog';
+	import {
+		agentModelBlockedMessage,
+		domainBillingAdmissionMessage,
+		modelBillingFallbackNotice,
+		modelBillingReady,
+		modelBillingReason,
+		noReadyModelsGuidance,
+		resolveReadySelection
+	} from '$lib/api/modelDomainBilling';
 	import { createChatRevealBuffer } from '$lib/api/chatRevealBuffer';
 	import { createChatRunAttachment } from '$lib/api/chatRunAttachment';
 	import { taskLabelForStage, taskLabelForTool } from '$lib/api/chatTaskLabels';
@@ -188,6 +197,8 @@
 	let modelsError = $state('');
 	let modelRequestGeneration = 0;
 	let selectedModelId = $state<number | null>(null);
+	/** Explains why a remembered or conversation model was replaced (domain billing not ready). */
+	let modelNotice = $state<string | null>(null);
 	let effort = $state('auto'); // auto=provider 기본, none=명시적 비활성.
 	let searchEnabled = $state(false);
 	let attachments = $state<ChatAttachment[]>([]); // 입력창 첨부(업로드 진행/완료)
@@ -359,6 +370,8 @@
 	const selectedModelObj = $derived(activeAgent && (activeAgent.model_row_id != null || activeAgent.model_name)
 		? resolveCatalogModel(models, activeAgent.model_row_id, activeAgent.model_name)
 		: resolveCatalogModel(models, selectedModelId));
+	const agentModelBlock = $derived(activeAgent && selectedModelObj ? agentModelBlockedMessage(selectedModelObj) : null);
+	const noReadyModels = $derived(models.length > 0 && !models.some(modelBillingReady));
 	const activeModelName = $derived(selectedModelObj?.model_name ?? activeAgent?.model_name ?? '');
 	const modelLabel = $derived.by(() => {
 		const model = selectedModelObj;
@@ -386,12 +399,25 @@
 	});
 
 	function chooseModel(model: AvailableModel) {
+		if (!modelBillingReady(model)) return;
 		selectedModelId = model.id;
+		modelNotice = null;
 		try {
 			if (typeof localStorage !== 'undefined') persistChatModel(localStorage, model.id);
 		} catch {
 			/* localStorage 불가 환경 무시 */
 		}
+	}
+
+	/** Applies a candidate selection, never keeping a model Lumen would refuse for domain billing. */
+	function selectReadyModel(candidate: AvailableModel | null | undefined) {
+		const { model, displaced } = resolveReadySelection(models, candidate);
+		selectedModelId = model?.id ?? null;
+		modelNotice = displaced ? modelBillingFallbackNotice(displaced, model) : null;
+	}
+
+	function modelBlockedError(model: AvailableModel): string | null {
+		return activeAgent ? agentModelBlockedMessage(model) : modelBillingReason(model);
 	}
 
 	// Compact layouts keep the history control inside the chat header; desktop keeps the sidebar inline.
@@ -1164,15 +1190,18 @@
 			const loaded = await api.withExperience(experience).get<AvailableModel[]>('/api/v1/chat/models', requestToken, requestProject);
 			if (!current()) { experienceDiscarded(experience, 'stale'); return; }
 			models = loaded.filter((model) => model.model_kind === undefined || model.model_kind === 'text');
-			if (selectedModelId === null || !resolveCatalogModel(models, selectedModelId)) {
+			const selected = resolveCatalogModel(models, selectedModelId);
+			if (selectedModelId === null || !selected) {
 				let saved: AvailableModel | null | undefined;
 				try {
 					if (typeof localStorage !== 'undefined') saved = restoreChatModel(models, localStorage);
 				} catch {
 					// Browser storage is optional.
 				}
-				selectedModelId = (saved === undefined ? models[0] : saved)?.id ?? null;
+				selectReadyModel(saved);
 				syncSelectedModel();
+			} else if (!modelBillingReady(selected)) {
+				selectReadyModel(selected);
 			}
 			experienceState(experience, models.length ? 'ready' : 'empty', 0);
 			void experienceApplied(experience, {}, current);
@@ -1345,7 +1374,7 @@
 		const message = lastAssistantModel(allMessages);
 		const legacyName = message?.model_name ?? activeConv?.model_name;
 		const rowId = message?.execution?.model_row_id;
-		if (rowId != null || legacyName) selectedModelId = resolveCatalogModel(models, rowId, legacyName)?.id ?? null;
+		if (rowId != null || legacyName) selectReadyModel(resolveCatalogModel(models, rowId, legacyName) ?? null);
 	}
 
 	async function loadUsage() {
@@ -1776,6 +1805,11 @@
 		if (!hasScope) return;
 		const model = selectedModelObj;
 		if (!model) return;
+		const blocked = modelBlockedError(model);
+		if (blocked) {
+			contextError = blocked;
+			return;
+		}
 		const prepared = await prepareRunTools(model.id);
 		if (!prepared || !ownsRunTools(prepared)) return;
 
@@ -2245,7 +2279,7 @@
 	}
 
 	function chatFailureMessage(caught: unknown, fallback: string): string {
-		const billingMessage = domainBillingErrorMessage(caught);
+		const billingMessage = domainBillingErrorMessage(caught) ?? domainBillingAdmissionMessage(caught);
 		if (billingMessage) return billingMessage;
 		if (caught instanceof ManagedSandboxSelectionError) return managedSandboxIssueMessage(caught.code, caught.names);
 		if (caught instanceof ChatHttpError) return sandboxNativeErrorMessage(caught.message.trim()) ?? t('panel.errors.httpFailure', { status: caught.status, detail: caught.message });
@@ -2503,7 +2537,12 @@
 		if (!text || streaming || preparingRun || !token || !projectId) return;
 		const model = selectedModelObj;
 		if (!model) {
-			error = t('panel.errors.noModels');
+			error = noReadyModels ? noReadyModelsGuidance() : t('panel.errors.noModels');
+			return;
+		}
+		const blocked = modelBlockedError(model);
+		if (blocked) {
+			error = blocked;
 			return;
 		}
 		error = null;
@@ -2721,6 +2760,11 @@
 		const submittedAtMs = performance.now();
 		const model = choice ?? selectedModelObj;
 		if (!model) return;
+		const blocked = modelBlockedError(model);
+		if (blocked) {
+			error = blocked;
+			return;
+		}
 		const prepared = await prepareRunTools(model.id);
 		if (!prepared || !ownsRunTools(prepared)) return;
 		invalidateContextPreview();
@@ -3168,6 +3212,17 @@
 				{#if modelLocked}
 					<span class="model-lock-hint">{t('panel.model.agentControls')}</span>
 				{/if}
+				<!-- Persistent status region so inserted billing notices are announced. -->
+				<div class="model-billing-notices" role="status">
+					{#if agentModelBlock}
+						<p>{agentModelBlock}</p>
+					{:else if !activeAgent && modelNotice}
+						<p>{modelNotice}</p>
+					{/if}
+					{#if noReadyModels}
+						<p>{noReadyModelsGuidance()}</p>
+					{/if}
+				</div>
 			</div>
 			<div class="head-right">
 					{@render historyToggle()}
@@ -3498,6 +3553,16 @@
 	.model-lock-hint {
 		font-size: 0.66rem;
 		color: var(--color-ink-2);
+	}
+	.model-billing-notices {
+		display: grid;
+		gap: 0.15rem;
+		max-width: 40rem;
+		font-size: 0.72rem;
+		color: var(--color-state-warning);
+	}
+	.model-billing-notices p {
+		margin: 0;
 	}
 	.chat-workspace {
 		display: flex;

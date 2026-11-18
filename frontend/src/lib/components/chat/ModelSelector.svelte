@@ -7,6 +7,7 @@
 	import ProviderModelSelect from './ProviderModelSelect.svelte';
 	import { t as commonT } from '$lib/i18n/ns/common';
 	import { compileRegexSearch, matchesRegexSearch } from '$lib/utils/regexSearch';
+	import { modelBillingReady } from '$lib/api/modelDomainBilling';
 	const uid = $props.id();
 
 	interface Props {
@@ -54,7 +55,7 @@
 			model.api_provider ?? '', model.provider ?? ''
 		])
 	));
-	const draft = $derived(filtered.find((model) => model.id === draftId));
+	const draft = $derived(filtered.find((model) => model.id === draftId && modelBillingReady(model)));
 
 	function toggle() {
 		if (disabled || models.length === 0) return;
