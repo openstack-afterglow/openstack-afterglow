@@ -733,6 +733,11 @@ base without `/v1`, for example `https://lumen.dmslab.re.kr`. Operator TOML
 `[services] lumen_external_url` can override the Kolla default. An empty value
 disables automatic setup; the internal and Keystone endpoints are not fallbacks.
 
+The public `/install/lumen.sh` and `/install/lumen.ps1` downloads reach the
+frontend through Kolla's default router branch. That route forwards only to the
+backend's `/api/v1/install/*` endpoints through `BACKEND_INTERNAL_ORIGIN`, so no
+HAProxy rule is needed.
+
 ### Lumen PostgreSQL Mode
 
 `lumen_postgres_mode` is an explicit mutually exclusive choice for Lumen's LangGraph checkpointer:

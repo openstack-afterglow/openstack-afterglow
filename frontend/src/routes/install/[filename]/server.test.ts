@@ -22,7 +22,7 @@ describe('public Lumen downloads', () => {
 			'if-none-match': '"old"', cookie: 'local-session', authorization: 'Bearer ignored', host: 'ignored.example',
 		} }));
 		const [[url, options]] = fetch.mock.calls;
-		expect(url.href).toBe(`http://backend.test:8000/install/${filename}`);
+		expect(url.href).toBe(`http://backend.test:8000/api/v1/install/${filename}`);
 		expect(options.redirect).toBe('error');
 		expect([...options.headers]).toEqual([['if-none-match', '"old"']]);
 		expect(response.status).toBe(200);
