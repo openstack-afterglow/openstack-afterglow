@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 from fastapi import FastAPI, HTTPException, Request
+from pydantic import SecretStr
 
 from app.api.deps import get_token_info
 from app.api.lumen.proxy import router
@@ -69,7 +70,8 @@ async def catalog_proxy(monkeypatch):
     )
     monkeypatch.setattr(identity_roles, "_trusted_catalog", lambda: catalog)
     monkeypatch.setattr(service_proxy, "_get_internal_endpoint", endpoint)
-    monkeypatch.setattr(service_proxy, "get_settings", lambda: SimpleNamespace(ssl_verify=True))
+    settings = SimpleNamespace(ssl_verify=True, service_lumen_ingress_secret=SecretStr(""))
+    monkeypatch.setattr(service_proxy, "get_settings", lambda: settings)
     monkeypatch.setattr(domain_scope, "domain_context", lambda *args, **kwargs: {})
     monkeypatch.setattr(domain_scope, "assert_token_context", lambda *args, **kwargs: None)
     monkeypatch.setattr(keystone, "validate_token", lambda *args, **kwargs: {"roles": ["member"]})

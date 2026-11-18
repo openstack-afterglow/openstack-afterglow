@@ -195,6 +195,7 @@ _SENSITIVE_EXACT: frozenset[str] = frozenset(
         "report_token",
         "monitoring_sd_token",
         "x_auth_token",
+        "x_lumen_ingress",
         "ticket",
         "key",
         "cephx_key",

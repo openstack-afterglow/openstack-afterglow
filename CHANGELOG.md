@@ -19,6 +19,8 @@
 - Agent Vault replaces chat memory settings with scoped note search, revision history, conflict-safe editing, append-only records, and `memory.md` export. Requires a dashboard session and a Vault-capable Lumen deployment.
 - Agent Vault에서 채팅 프로젝트를 선택해 해당 프로젝트의 메모리를 검색·조회·수정하거나 새 노트를 만들 수 있다.
 - Agent Vault can search, read, edit, and create notes restricted to one chat project.
+- Agent Vault는 Afterglow와 Lumen 사이의 서명된 인증 요청만 허용한다. 두 서비스에 같은 비공개 ingress 키를 설정해야 한다.
+- Agent Vault requires signed Afterglow-to-Lumen requests. Configure the same private ingress key on both services.
 
 ## [1.32.28] - 2026-11-18
 

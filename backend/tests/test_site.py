@@ -2,6 +2,7 @@
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from pydantic import SecretStr
 
 from app.config import get_settings
 from app.main import app
@@ -11,6 +12,7 @@ from app.main import app
 @pytest.mark.parametrize("enabled", [False, True])
 async def test_public_site_config_exposes_only_experience_opt_in(monkeypatch, enabled):
     secret = "private-operator-policy-canary"
+    ingress_secret = "synthetic-site-configuration-ingress-value"
     settings = get_settings().model_copy(
         update={
             "experience_enabled": enabled,
@@ -18,6 +20,7 @@ async def test_public_site_config_exposes_only_experience_opt_in(monkeypatch, en
             "experience_detail_retention_days": 31,
             "experience_aggregate_retention_days": 99,
             "secret_key": secret,
+            "service_lumen_ingress_secret": SecretStr(ingress_secret),
             "service_mcp_enabled": True,
         }
     )
@@ -32,3 +35,5 @@ async def test_public_site_config_exposes_only_experience_opt_in(monkeypatch, en
     assert "experience_detail_retention_days" not in data
     assert "experience_aggregate_retention_days" not in data
     assert secret not in response.text
+    assert "lumen_ingress_secret" not in response.text
+    assert ingress_secret not in response.text

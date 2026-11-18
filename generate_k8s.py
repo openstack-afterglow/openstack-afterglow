@@ -466,6 +466,7 @@ def render_secret(cfg: dict, namespace: str = "afterglow") -> str:
     mon = cfg.get("monitoring", {})
     notion = cfg.get("notion", {})
     builder = cfg.get("builder", {})
+    svc = cfg.get("services", {})
     mcp = cfg.get("mcp", {})
 
     secret_key = app.get("secret_key", "")
@@ -522,6 +523,9 @@ def render_secret(cfg: dict, namespace: str = "afterglow") -> str:
             "",
             "  # Lumen 내부 MCP bridge workload credential",
             f"  LUMEN_MCP_SERVICE_TOKEN: {_yaml_str(mcp.get('lumen_service_token', ''))}",
+            "",
+            "  # Optional Afterglow-to-Lumen ingress signing secret",
+            f"  SERVICE_LUMEN_INGRESS_SECRET: {_yaml_str(svc.get('lumen_ingress_secret', ''))}",
         ]
     )
 

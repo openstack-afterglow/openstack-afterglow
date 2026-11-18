@@ -19,6 +19,7 @@ from app.api.cloud_shell import _origin_allowed
 from app.api.deps import get_token_info
 from app.config import get_settings
 from app.services import service_proxy, ws_ticket
+from app.services.lumen_ingress import attach_lumen_ingress
 from app.services.service_authorization import authorize_service_request
 
 router = APIRouter()
@@ -87,9 +88,11 @@ async def create_session(
     }
     if logical_project != connection_project:
         headers["x-target-project-id"] = logical_project
+    settings = get_settings()
+    attach_lumen_ingress(headers, secret=settings.service_lumen_ingress_secret, method="POST", url=url)
     try:
         async with httpx.AsyncClient(
-            timeout=httpx.Timeout(20.0, connect=5.0), verify=get_settings().ssl_verify
+            timeout=httpx.Timeout(20.0, connect=5.0), verify=settings.ssl_verify
         ) as client:
             # Older Lumen versions forbid newer optional keys even when null.
             optional = {"model_id", "model_row_id", "output_language", "reasoning_effort"}

@@ -1010,6 +1010,16 @@ Coverage: LLDP/traceroute 도구와 진단 allowlist는 미설정이므로 물�
 
 보호된 복구 지점은 operator `/etc/kolla/.afterglow-observation-backups/activate-observation-20261014T143303Z`의 original inputs·controller별 generated tar·container census·Kolla logs입니다. Observer installer receipts/runtime pin은 operator `~/.local/share/afterglow-host-observer/`에 있고, storage의 original executable/marker는 각 노드 `/var/lib/afterglow-host-observer-backups/activate-observation-20261014T143303Z`에 있습니다. Rollback은 observer를 먼저 disable/stop한 뒤 보호된 original operator inputs를 복원하고 같은 Afterglow-only canonical sequence로 설정을 재적용합니다. 원 executable만 복구하려면 해당 runtime pin/marker도 함께 복원해야 하며 system Python·공유 data/volume을 삭제하지 않습니다. 공개 operation 기록은 OpenSpec archive, 비밀 없는 상세 proof는 `~/.local/share/afterglow-proofs/activate-observation-20261014T143303Z/`에 보존합니다.
 
+### Agent Vault dashboard ingress
+
+Set one private, random secret of at least 32 UTF-8 bytes on both APIs. Afterglow reads `[services] lumen_ingress_secret` from private TOML or `SERVICE_LUMEN_INGRESS_SECRET` from the process environment. Lumen reads the same value from `LUMEN_AFTERGLOW_INGRESS_SECRET`.
+
+- Compose dev and prod take `SERVICE_LUMEN_INGRESS_SECRET` from the Compose shell or private environment file and give both APIs the same value. Minimal Compose runs only Afterglow; set the corresponding value on the externally deployed Lumen API.
+- Generated Kubernetes manifests and Helm `secrets.lumenIngressSecret` set `SERVICE_LUMEN_INGRESS_SECRET` through a Kubernetes Secret, never a ConfigMap. Keep private generated values and manifests out of version control. Supply the same key through the separately deployed Lumen API's Secret.
+- Kolla shares `lumen_afterglow_ingress_secret` through the private plugin `secrets.yml`; see [Kolla configuration setup](../deploy/kolla/README.md#configuration-setup). Do not print the value or overwrite an existing secret during rollout.
+
+The internal Lumen endpoint must preserve the raw path and use synchronized clocks; Lumen verifies proof freshness within 120 seconds. Roll out matching settings to both APIs. With signing unset or mismatched, Lumen refuses Vault access rather than allowing direct Keystone credentials to stand in for dashboard ingress.
+
 ### 2. 기본 서비스 시작
 
 ```bash

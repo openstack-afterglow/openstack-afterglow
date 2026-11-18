@@ -38,7 +38,10 @@ def cfg():
             "oauth_consent_url": "https://web.example.test/oauth/mcp/authorize",
             "lumen_service_token": "private-lumen",
         },
-        "services": {"mcp": True},
+        "services": {
+            "mcp": True,
+            "lumen_ingress_secret": "private-ingress-fixture-0123456789abcdef",
+        },
         "auth": {
             "providers": {
                 "gitlab": {
@@ -98,6 +101,7 @@ def test_public_values_exclude_all_private_fields(cfg):
     assert "private-" not in rendered
     assert "secrets" not in values
     assert values["app"]["trustedProxies"] == "10.24.0.0/16"
+    assert values["services"] == {"mcp": True}
     assert values["mcp"]["publicUrl"] == cfg["mcp"]["public_url"]
     assert values["mcp"]["oauthConsentUrl"] == cfg["mcp"]["oauth_consent_url"]
     assert values["logging"] == {"logLevel": "WARNING"}
@@ -128,6 +132,7 @@ def test_normal_renderer_keeps_credentials_only_in_secrets(cfg, trailing):
     secret_values = values.pop("secrets")
     assert "private-" not in config2helm.render_yaml(values)
     assert secret_values["lumenMcpServiceToken"] == "private-lumen"
+    assert secret_values["lumenIngressSecret"] == cfg["services"]["lumen_ingress_secret"]
     assert secret_values["cephRbdKeyring"] == cfg["ceph"]["rbd_keyring"]
     assert secret_values["k3sGpuAdmissionToken"] == "private-gpu-admission"
     assert secret_values["infrastructureTopologyObservers"] == cfg["monitoring"]["infrastructure_topology_observers"]
@@ -276,7 +281,10 @@ def test_render_failure_does_not_initialize_base_or_publish_values(tmp_path, mon
 
 def test_cli_no_secrets_preserves_existing_source_and_writes_private_output(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    original = '# preserve bytes\n[app]\nsecret_key="private-source"\n'
+    original = (
+        '# preserve bytes\n[app]\nsecret_key="private-source"\n'
+        '[services]\nlumen_ingress_secret="private-ingress-fixture-0123456789abcdef"\n'
+    )
     base = tmp_path / "afterglow.conf"
     base.write_text(original, encoding="utf-8")
     output = tmp_path / "values.yaml"
@@ -286,7 +294,9 @@ def test_cli_no_secrets_preserves_existing_source_and_writes_private_output(tmp_
     config2helm.main()
     assert base.read_text(encoding="utf-8") == original
     assert output.stat().st_mode & 0o777 == 0o600
-    assert "private-source" not in output.read_text(encoding="utf-8")
+    rendered = output.read_text(encoding="utf-8")
+    assert "private-" not in rendered
+    assert "secrets" not in yaml.safe_load(rendered)
 
 
 @pytest.mark.parametrize("devices", [[], [{"vendor_id": "10DE", "device_id": "1234", "name": "Chart GPU"}]])
@@ -321,6 +331,7 @@ def test_canonical_values_render_actual_chart_with_private_boundary(tmp_path, cf
     assert toml["app"]["trusted_proxies"] == cfg["app"]["trusted_proxies"]
     assert toml["mcp"]["public_url"] == cfg["mcp"]["public_url"]
     assert toml["mcp"]["oauth_consent_url"] == cfg["mcp"]["oauth_consent_url"]
+    assert "lumen_ingress_secret" not in toml["services"]
     assert toml["cloud_shell"]["image"] == "ghcr.io/openstack-afterglow/openstack-client:slim"
     assert toml["cloud_shell"]["image_pull_policy"] == ""
     assert toml["cloud_shell"]["registry_id"] == ""
@@ -330,17 +341,56 @@ def test_canonical_values_render_actual_chart_with_private_boundary(tmp_path, cf
     )
     assert configmap["data"]["ceph.conf"] == cfg["ceph"]["rbd_conf_content"]
     assert secret["stringData"]["LUMEN_MCP_SERVICE_TOKEN"] == "private-lumen"
+    env_key = "SERVICE_LUMEN_INGRESS_SECRET"
+    assert secret["stringData"][env_key] == cfg["services"]["lumen_ingress_secret"]
     assert secret["stringData"]["CEPH_RBD_KEYRING"] == cfg["ceph"]["rbd_keyring"]
     container = backend["spec"]["template"]["spec"]["containers"][0]
     env = {item["name"]: item for item in container["env"]}
     assert env["FORWARDED_ALLOW_IPS"]["value"] == cfg["app"]["trusted_proxies"]
     assert env["LUMEN_MCP_SERVICE_TOKEN"]["valueFrom"]["secretKeyRef"]["key"] == "LUMEN_MCP_SERVICE_TOKEN"
+    assert env[env_key]["valueFrom"]["secretKeyRef"] == {
+        "name": "afterglow-secrets",
+        "key": env_key,
+        "optional": True,
+    }
     for probe in ("startupProbe", "livenessProbe", "readinessProbe"):
         assert container[probe]["httpGet"]["path"] == "/api/v1/health"
     deployment_names = {doc["metadata"]["name"] for doc in documents if doc["kind"] == "Deployment"}
     assert "notion-worker" in deployment_names
     assert "drover" not in deployment_names
+    assert "lumen" not in deployment_names
     assert set(toml["worker_runtime"]["workers"]) == {"notion_worker"}
+
+
+@pytest.mark.parametrize("include_secrets", [True, False], ids=["managed-empty", "external"])
+def test_chart_lumen_ingress_reference_remains_optional_without_a_secret(tmp_path, cfg, include_secrets):
+    helm = shutil.which("helm")
+    if helm is None:
+        pytest.skip("Helm is required to render the actual chart")
+    if include_secrets:
+        cfg["services"]["lumen_ingress_secret"] = ""
+    override = tmp_path / "values.yaml"
+    override.write_text(config2helm.render_values(cfg, include_secrets=include_secrets), encoding="utf-8")
+    rendered = subprocess.run(
+        [helm, "template", "afterglow", str(ROOT / "helm/afterglow"), "-f", str(override)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "private-ingress-fixture-" not in rendered.stdout
+    documents = [doc for doc in yaml.safe_load_all(rendered.stdout) if doc]
+    env_key = "SERVICE_LUMEN_INGRESS_SECRET"
+    secrets = [doc for doc in documents if doc["kind"] == "Secret" and doc["metadata"]["name"] == "afterglow-secrets"]
+    if include_secrets:
+        assert len(secrets) == 1
+        assert secrets[0]["stringData"][env_key] == ""
+    else:
+        assert not secrets
+    backend = next(doc for doc in documents if doc["kind"] == "Deployment" and doc["metadata"]["name"] == "backend")
+    env = backend["spec"]["template"]["spec"]["containers"][0]["env"]
+    assert [entry["valueFrom"]["secretKeyRef"] for entry in env if entry["name"] == env_key] == [
+        {"name": "afterglow-secrets", "key": env_key, "optional": True}
+    ]
 
 
 @pytest.mark.parametrize("default_allowlist", [None, [], ["gitlab"]])
