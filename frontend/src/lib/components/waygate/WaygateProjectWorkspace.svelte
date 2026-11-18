@@ -1488,7 +1488,7 @@
 					<h2 id={`${isoTargetPrefix}-server`} tabindex="-1" class="break-words text-xl font-semibold text-ink-0">{selectedServer.name}</h2>
 					<div class="mt-1"><StatusChip status={selectedServer.status} /></div>
 				</div>
-				<IsoViewToggle value={detailView} storageKey="waygate.view"
+				<IsoViewToggle value={detailView} storageKey={workspaceContext ? 'admin-waygate.view' : 'waygate.view'}
 					onchange={mode => { preferredView = mode; revealedFromGrid = null; }} />
 			</div>
 			{#if detailView === 'list' && (can.createGateway || can.deleteGateway)}

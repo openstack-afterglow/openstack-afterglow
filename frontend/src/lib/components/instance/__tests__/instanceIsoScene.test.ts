@@ -41,11 +41,21 @@ describe('buildInstanceIsoScene', () => {
 		expect(scene.platforms[0]).toMatchObject({ style: 'zone', sublabel: 'infra, SSH' });
 		expect(scene.nodes[0]).toMatchObject({ id: 'instance:vm', platformId: 'policy', badges: [{ text: t('network.iso.managed') }] });
 		expect(scene.nodes.find(node => node.id === 'port:port-a')).toMatchObject({ sublabel: '192.0.2.4, 2001:db8::4', platformId: 'network:lan', status: 'ok' });
-		expect(scene.nodes.find(node => node.id === 'port:port-b')).toMatchObject({ platformId: 'network:data', status: 'off' });
+		expect(scene.nodes.find(node => node.id === 'port:port-b')).toMatchObject({
+			platformId: 'network:data', status: undefined, badges: [{ text: 'DOWN' }],
+		});
 		expect(scene.edges).toContainEqual(expect.objectContaining({ from: 'port:port-a', to: 'floating:external', label: '203.0.113.9' }));
 		expect(scene.edges.some(edge => edge.label === '203.0.113.10')).toBe(false);
 		expect(details.get('network:data')).toMatchObject({ kind: 'network', ports: [second] });
 		expect(buildInstanceIsoScene({ ...input, ports: [second, first] }).scene).toEqual(scene);
+	});
+
+	it('keeps floating-IP Internet beyond the slab containing three ports', () => {
+		const ports = [first, { ...first, id: 'port-b' }, { ...first, id: 'port-c' }];
+		const { scene } = buildInstanceIsoScene({ ...input, ports });
+		const slab = scene.platforms.find(platform => platform.id === 'network:lan')!;
+		const internet = scene.nodes.find(node => node.id === 'floating:external')!;
+		expect(internet.x + internet.y).toBeGreaterThan(slab.x + slab.w + slab.y + slab.h);
 	});
 
 	it('shows open internet SSH, a remote group, IPv6 and egress-all using the saved rule union', () => {
@@ -75,6 +85,20 @@ describe('buildInstanceIsoScene', () => {
 		] });
 		const withoutHttps = buildInstanceIsoScene({ ...input, policy: { ...policy, groups: [{ ...policy.groups[0], rules: [inbound[0]] }] } });
 		expect(withoutHttps.scene.edges.find(edge => edge.kind === 'ingress')).toMatchObject({ from: ipv4.from, label: 'TCP 22' });
+	});
+
+	it('distinguishes IPv4 and IPv6 sources from the same named remote group', () => {
+		const remote = { remote_group_id: 'trusted', remote_ip_prefix: null };
+		const rules = [rule('v4', remote), rule('v6', { ...remote, ethertype: 'IPv6' })];
+		const policy = {
+			groups: [{ id: 'web', name: 'web', rules }, { id: 'trusted', name: 'default', rules: [] }],
+			groupIds: ['web'],
+		};
+		const { scene } = buildInstanceIsoScene({ ...input, policy });
+		expect(scene.nodes.filter(node => node.kind === 'security-group')).toEqual([
+			expect.objectContaining({ label: 'default', sublabel: 'IPv4' }),
+			expect.objectContaining({ label: 'default', sublabel: 'IPv6' }),
+		]);
 	});
 
 	it('collapses long egress lists into a count without losing inspector rules', () => {

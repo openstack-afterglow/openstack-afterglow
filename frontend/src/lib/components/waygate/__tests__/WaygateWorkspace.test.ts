@@ -95,6 +95,7 @@ async function settle() {
 const originalAnimate = Object.getOwnPropertyDescriptor(Element.prototype, 'animate');
 beforeEach(() => {
 	localStorage.setItem('waygate.view', 'list');
+	localStorage.setItem('admin-waygate.view', 'list');
 	vi.resetAllMocks();
 	mocks.refresh.length = 0;
 	auth.update((value) => ({ ...value, token: 'token-a', projectId: 'project-a', userId: 'user-a', isSystemAdmin: false, roles: ['member'] }));
@@ -121,6 +122,7 @@ beforeEach(() => {
 afterEach(() => {
 	cleanup();
 	localStorage.removeItem('waygate.view');
+	localStorage.removeItem('admin-waygate.view');
 	vi.unstubAllGlobals();
 	initLocale(originalLocale);
 	if (originalAnimate) Object.defineProperty(Element.prototype, 'animate', originalAnimate);
@@ -145,6 +147,23 @@ it('defaults to a read-only VPN map, opens a focused client row, and persists ex
 	render(WaygateWorkspace);
 	await openDetail();
 	expect(screen.queryByLabelText(t('project.iso.label'))).toBeNull();
+});
+
+it('keeps admin and project map preferences independent', async () => {
+	localStorage.removeItem('admin-waygate.view');
+	const admin = render(WaygateWorkspace, { admin: true });
+	await fireEvent.click(await screen.findByText('gateway-a'));
+	const panel = within(await screen.findByRole('dialog', { name: t('project.server.details') }));
+	await panel.findByRole('figure', { name: t('project.iso.label') });
+	await fireEvent.click(panel.getByRole('button', { name: '목록' }));
+	expect(localStorage.getItem('admin-waygate.view')).toBe('list');
+	await fireEvent.click(panel.getByRole('button', { name: '그리드' }));
+	expect(localStorage.getItem('admin-waygate.view')).toBe('grid');
+	expect(localStorage.getItem('waygate.view')).toBe('list');
+	admin.unmount();
+	render(WaygateWorkspace);
+	await openDetail();
+	expect(screen.queryByRole('figure', { name: t('project.iso.label') })).toBeNull();
 });
 
 	it('prunes hidden selections so bulk actions and visible selection share one set', async () => {

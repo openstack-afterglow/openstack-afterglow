@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { t } from '$lib/i18n/ns/waygate';
+import { getStatusLabel } from '$lib/config/statusColors';
 import type { WaygateClient, WaygateNetworkAttachment, WaygateServer } from '$lib/types/waygate';
 import { buildWaygateIsoScene } from '../waygateIsoScene';
 
@@ -35,8 +36,8 @@ describe('buildWaygateIsoScene', () => {
 			{ text: t('project.status.online') }, { text: new Date(report).toLocaleString(input.locale, { dateStyle: 'short', timeStyle: 'short' }) },
 		] });
 		expect(edge('online')).toMatchObject({ kind: 'tunnel', inactive: false, bidirectional: true, to: 'server:gw' });
-		expect(peer('offline')).toMatchObject({ status: 'off', badges: [{ text: t('project.status.offline') }, expect.anything()] });
-		expect(peer('disabled')?.status).toBe('off');
+		expect(peer('offline')).toMatchObject({ status: undefined, badges: [{ text: t('project.status.offline') }, expect.anything()] });
+		expect(peer('disabled')).toMatchObject({ status: undefined, badges: [{ text: t('project.status.disabled') }, expect.anything()] });
 		expect(peer('stale')?.status).toBe('warning');
 		expect(peer('unknown')).toMatchObject({ status: 'unknown', badges: [{ text: t('project.status.unknown') }] });
 		expect(peer('no-handshake')?.badges).toHaveLength(1);
@@ -61,6 +62,12 @@ describe('buildWaygateIsoScene', () => {
 		]);
 		expect(scene.edges.map(edge => edge.label)).toEqual(['snat', 'none']);
 		expect(targets.get('attachment:12')).toEqual({ kind: 'attachment', id: 12 });
+	});
+
+	it.each(['CREATING', 'ERROR', 'DELETING'])('shows reported %s attachment status as text', (status) => {
+		const { scene } = buildWaygateIsoScene({ ...input, attachments: [{ ...attachment(7, 'private', 'snat'), status }] });
+		expect(scene.platforms.find(platform => platform.id === 'attachment:7')?.sublabel).toBe(`192.0.2.0/24 · ${getStatusLabel(status)}`);
+		expect(scene.edges[0]).toMatchObject({ label: 'snat', inactive: true });
 	});
 
 	it('collapses many peers by profile count, not the server-reported count', () => {

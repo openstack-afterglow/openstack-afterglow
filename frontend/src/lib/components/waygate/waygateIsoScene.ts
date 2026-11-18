@@ -33,12 +33,12 @@ export function waygatePeerStatus(client: WaygateClient, now: number, pollSecond
 }
 
 const PEER_LIMIT = 6;
-const PEER_MARK: Record<WaygatePeerStatus, { status: IsoStatus; tone: IsoTone }> = {
-	disabled: { status: 'off', tone: 'neutral' },
+const PEER_MARK: Record<WaygatePeerStatus, { status?: IsoStatus; tone: IsoTone }> = {
+	disabled: { tone: 'neutral' },
 	unknown: { status: 'unknown', tone: 'neutral' },
 	delayed: { status: 'warning', tone: 'warning' },
 	online: { status: 'ok', tone: 'success' },
-	offline: { status: 'off', tone: 'neutral' },
+	offline: { tone: 'neutral' },
 };
 
 export function buildWaygateIsoScene({ server, clients, attachments, networks, now, pollSeconds, locale }: WaygateIsoInput) {
@@ -121,7 +121,9 @@ export function buildWaygateIsoScene({ server, clients, attachments, networks, n
 		const tone: IsoTone = network?.is_external ? 'external' : network?.is_shared ? 'shared' : 'internal';
 		const depth = Math.floor(index / 2) * 1.45;
 		const right = index % 2 === 0;
-		scene.platforms.push({ id, label: network?.name || attachment.network_id, sublabel: attachment.cidr || undefined,
+		const sublabel = [attachment.cidr, attachment.status !== 'ACTIVE' ? getStatusLabel(attachment.status) : undefined]
+			.filter(Boolean).join(' · ') || undefined;
+		scene.platforms.push({ id, label: network?.name || attachment.network_id, sublabel,
 			x: depth + (right ? 1.28 : -0.08), y: depth + (right ? -0.08 : 1.28), w: 1.33, h: 1.33, style: 'slab', tone });
 		targets.set(id, { kind: 'attachment', id: attachment.id });
 		const edge: IsoEdge = { id: `link:${id}`, from: serverId, to: id, kind: 'link', tone,
