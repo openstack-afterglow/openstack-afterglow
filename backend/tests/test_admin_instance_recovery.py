@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import UTC, datetime, timedelta
 from itertools import count
 from threading import Event
@@ -10,7 +11,11 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
+from keystoneauth1.session import Session
+from keystoneauth1.token_endpoint import Token
+from openstack.compute.v2._proxy import Proxy as ComputeProxy
 from openstack.compute.v2.server import Server
+from requests import Response
 from requests.exceptions import ReadTimeout
 
 from app.api.identity import admin
@@ -968,6 +973,16 @@ def test_recovery_waits_for_idle_error_and_reports_only_fresh_fault(live_conn, m
     assert live_conn.compute.get.call_count == 2
 
 
+def test_second_precision_nova_record_does_not_prove_it_followed_dispatch(live_conn):
+    requested_at = datetime.fromisoformat("2026-01-07T13:29:41.900000+00:00")
+    old_or_new = _observed_server("ERROR", power_state=4)["server"]
+    old_or_new["fault"] = {"message": "May predate the request", "created": _FAULT_CREATED, "code": 404}
+    live_conn.compute.server_actions.return_value.append(SimpleNamespace(action="reboot", start_time=_FAULT_CREATED))
+
+    assert instance_recovery._new_fault(old_or_new, requested_at) is None
+    assert not instance_recovery._nova_action_observed(live_conn, _SERVER_ID, "hard_reboot", requested_at, old_or_new)
+
+
 @pytest.mark.parametrize("outcome", ["commit", "action", "no-commit", "refused"])
 def test_ambiguous_reboot_is_never_replayed(live_conn, monkeypatch, outcome):
     if outcome in ("commit", "action"):
@@ -1008,6 +1023,52 @@ def test_ambiguous_reboot_is_never_replayed(live_conn, monkeypatch, outcome):
     assert result["unconfirmed_action"] == (None if outcome == "refused" else "hard_reboot")
     live_conn.compute.reboot_server.assert_called_once_with(_SERVER_ID, "HARD")
     live_conn.compute.reset_server_state.assert_not_called()
+
+
+def test_sdk_executes_exactly_one_hard_reboot_http_request_after_read_timeout(live_conn, monkeypatch):
+    """Use the real OpenStack/Keystone adapter over a fake HTTP transport."""
+    analysis = instance_recovery.analyze_error_instance(live_conn, _SERVER_ID)
+    monkeypatch.setattr(instance_recovery, "analyze_error_instance", lambda *_: analysis)
+    native_error = _observed_server("ERROR", power_state=4)["server"]
+    native_error.update({"OS-EXT-SRV-ATTR:host": _SOURCE, "OS-EXT-SRV-ATTR:hypervisor_hostname": _SOURCE_NODE})
+    wire = MagicMock()
+    endpoint = "https://nova.example.test/v2.1"
+
+    def request(method, url, **_kwargs):
+        if method == "POST":
+            raise ReadTimeout("Nova response lost")
+        assert method == "GET"
+        response = Response()
+        response.status_code = 200
+        response.url = url
+        response._content = json.dumps({"server": native_error}).encode()
+        return response
+
+    wire.request.side_effect = request
+    auth_session = Session(auth=Token(endpoint, "synthetic"), session=wire)
+    authentic_request = MagicMock(wraps=auth_session.request)
+    monkeypatch.setattr(auth_session, "request", authentic_request)
+    proxy = ComputeProxy(auth_session, service_type="compute", endpoint_override=endpoint, default_microversion="2.89")
+    proxy._connection = SimpleNamespace(
+        _global_request_id=None,
+        cache_enabled=True,
+        _api_cache_keys=set(),
+        _cache=MagicMock(),
+        current_location=None,
+        _get_current_location=lambda **_: None,
+    )
+    live_conn.compute = proxy
+
+    result = instance_recovery.execute_recovery(live_conn, _SERVER_ID, plan_fingerprint=analysis["plan_fingerprint"])
+    assert result["steps"][0]["status"] == "unconfirmed", result["steps"]
+    proxy._connection._cache.get_or_create.assert_not_called()
+
+    [dispatch] = [entry for entry in authentic_request.call_args_list if entry.args[1] == "POST"]
+    assert dispatch.kwargs["connect_retries"] == dispatch.kwargs["status_code_retries"] == 0
+    assert dispatch.kwargs["timeout"] <= 5
+    [sent] = [entry for entry in wire.request.call_args_list if entry.args[0] == "POST"]
+    assert sent.args[1] == f"{endpoint}/servers/{_SERVER_ID}/action"
+    assert json.loads(sent.kwargs["data"]) == {"reboot": {"type": "HARD"}}
 
 
 def test_ambiguous_running_reset_is_observed_without_restarting(live_conn):
