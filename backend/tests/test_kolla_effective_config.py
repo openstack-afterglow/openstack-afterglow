@@ -2,15 +2,23 @@
 
 import importlib.util
 import json
+import re
+import stat
 import subprocess
 import sys
 import tomllib
 from pathlib import Path
 
 import pytest
+import yaml
 
-_FILES = Path(__file__).resolve().parents[2] / "deploy/kolla/ansible/roles/afterglow/files"
+_KOLLA = Path(__file__).resolve().parents[2] / "deploy/kolla"
+_ROLE = _KOLLA / "ansible/roles/afterglow"
+_FILES = _ROLE / "files"
 _HELPER_PATH = _FILES / "render_effective_config.py"
+_INGRESS_GENERATOR = _KOLLA / "operator/afterglow_kolla_operator/generate_ingress_secret.py"
+_INGRESS_VAR = "lumen_afterglow_ingress_secret"
+_INGRESS_TOML = "lumen_ingress_secret"
 
 
 @pytest.fixture
@@ -235,17 +243,13 @@ def test_render_cli_emits_toml_without_creating_files(tmp_path: Path) -> None:
     assert list(tmp_path.iterdir()) == []
 
 
-@pytest.mark.parametrize("operator_enabled", [None, False, True])
-def test_instance_usage_scheduler_native_default_and_sparse_operator_override(effective_config, operator_enabled):
+def _render_backend_template(**overrides: object) -> str:
     from jinja2 import Environment, StrictUndefined, meta
 
-    root = Path(__file__).resolve().parents[2]
     environment = Environment(undefined=StrictUndefined)
     environment.filters.update(bool=bool, to_json=json.dumps)
-    template = environment.parse(
-        (root / "deploy/kolla/ansible/roles/afterglow/templates/afterglow.conf.j2").read_text()
-    )
-    context = dict.fromkeys(meta.find_undeclared_variables(template), "")
+    template = environment.parse((_ROLE / "templates/afterglow.conf.j2").read_text(encoding="utf-8"))
+    context = dict.fromkeys(meta.find_undeclared_variables(template) - {_INGRESS_VAR}, "")
     for key in (
         "backend_port",
         "frontend_port",
@@ -259,7 +263,12 @@ def test_instance_usage_scheduler_native_default_and_sparse_operator_override(ef
     ):
         context["afterglow_" + key] = 1
     context["afterglow_rbd_volume_pools"] = {}
-    native = environment.from_string(template).render(context)
+    return environment.from_string(template).render(context | overrides)
+
+
+@pytest.mark.parametrize("operator_enabled", [None, False, True])
+def test_instance_usage_scheduler_native_default_and_sparse_operator_override(effective_config, operator_enabled):
+    native = _render_backend_template()
     assert tomllib.loads(native)["instance_usage"]["scheduler_enabled"] is False
     operator = '[app]\nsite_name = "Preserved operator"\n'
     if operator_enabled is not None:
@@ -267,3 +276,106 @@ def test_instance_usage_scheduler_native_default_and_sparse_operator_override(ef
     effective = tomllib.loads(effective_config.render_toml(effective_config.merge_config(native, operator)))
     assert effective["instance_usage"]["scheduler_enabled"] is bool(operator_enabled)
     assert effective["app"]["site_name"] == "Preserved operator"
+
+
+@pytest.mark.parametrize(
+    ("variables", "expected"),
+    [
+        ({}, ""),
+        ({_INGRESS_VAR: None}, ""),
+        ({_INGRESS_VAR: ""}, ""),
+        ({_INGRESS_VAR: "🙂" * 8}, "🙂" * 8),
+    ],
+    ids=["absent", "null", "disabled", "exact-32-utf8-bytes"],
+)
+def test_kolla_ingress_secret_stays_in_private_config(effective_config, variables, expected):
+    native = _render_backend_template(**variables)
+    merged = effective_config.merge_config(native, "[services]\nchat = true\n")
+    private = tomllib.loads(effective_config.render_toml(merged))
+    assert private["services"][_INGRESS_TOML] == expected
+    public = subprocess.run(
+        [sys.executable, str(_FILES / "render_frontend_config.py"), "--project-json"],
+        input=json.dumps({"config": merged}), capture_output=True, text=True, check=True,
+    )
+    projected = json.loads(public.stdout)
+    assert _INGRESS_TOML not in projected["config"]["services"]
+    assert _INGRESS_TOML not in projected["toml"]
+    assert not expected or expected not in projected["toml"]
+    assert projected["config"]["services"]["chat"] is True
+
+
+@pytest.mark.parametrize(
+    ("secret", "override"),
+    [("é" * 15 + "x", ""), (32, ""), ("configured" * 4, '[services]\nlumen_ingress_secret = ""\n')],
+    ids=["short-utf8", "not-a-string", "conflicting-operator-override"],
+)
+def test_kolla_ingress_secret_failures_disclose_no_config(secret, override):
+    result = subprocess.run(
+        [sys.executable, str(_HELPER_PATH)],
+        input=json.dumps({"base": _render_backend_template(**{_INGRESS_VAR: secret}), "operator": override}),
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert result.stderr == "Cannot render effective Afterglow configuration; check protected inputs\n"
+
+
+@pytest.mark.parametrize("source", ["sample", "missing", "explicit-empty", "existing"])
+def test_kolla_ingress_generator_preserves_existing_values(tmp_path, source):
+    path = tmp_path / "secrets.yml"
+    if source == "sample":
+        original = (_KOLLA / "passwords.afterglow.additions.yml").read_text(encoding="utf-8")
+        assert _INGRESS_VAR in yaml.safe_load(original)
+        assert yaml.safe_load(original)[_INGRESS_VAR] is None
+    else:
+        original = 'afterglow_secret_key: "unrelated existing value"\nlumen_encryption_key: "preserve this"\n'
+        if source == "explicit-empty":
+            original += f'{_INGRESS_VAR}: ""\n'
+        elif source == "existing":
+            original += f'{_INGRESS_VAR}: "{"é" * 16}"\n'
+    path.write_text(original, encoding="utf-8")
+    path.chmod(0o600)
+    command = [sys.executable, str(_INGRESS_GENERATOR), str(path)]
+    result = subprocess.run(command, capture_output=True, check=False)
+    assert (result.returncode, result.stdout, result.stderr) == (0, b"", b"")
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    updated = path.read_text(encoding="utf-8")
+    if source in {"sample", "missing"}:
+        before = yaml.safe_load(original)
+        after = yaml.safe_load(updated)
+        assert re.fullmatch("[a-f0-9]{64}", after.pop(_INGRESS_VAR))
+        before.pop(_INGRESS_VAR, None)
+        assert after == before
+    else:
+        assert updated == original
+    repeated = subprocess.run(command, capture_output=True, check=False)
+    assert (repeated.returncode, repeated.stdout, repeated.stderr) == (0, b"", b"")
+    assert path.read_text(encoding="utf-8") == updated
+    assert list(tmp_path.iterdir()) == [path]
+
+
+@pytest.mark.parametrize("failure", ["unsafe-mode", "symlink", "invalid-yaml", "short-key"])
+def test_kolla_ingress_generator_rejects_unsafe_input_without_disclosing_values(tmp_path, failure):
+    path = tmp_path / "secrets.yml"
+    original = 'afterglow_secret_key: "unrelated private material"\n'
+    if failure == "invalid-yaml":
+        original += f"{_INGRESS_VAR}: [SECRET WITHOUT CLOSING BRACKET"
+    elif failure == "short-key":
+        original += f'{_INGRESS_VAR}: "{"é" * 15}"\n'
+    path.write_text(original, encoding="utf-8")
+    path.chmod(0o640 if failure == "unsafe-mode" else 0o600)
+    input_path = path
+    if failure == "symlink":
+        input_path = tmp_path / "linked-secrets.yml"
+        input_path.symlink_to(path)
+    result = subprocess.run(
+        [sys.executable, str(_INGRESS_GENERATOR), str(input_path)],
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert "unrelated private material" not in result.stderr
+    assert "SECRET WITHOUT CLOSING BRACKET" not in result.stderr
+    assert "é" not in result.stderr
+    assert path.read_text(encoding="utf-8") == original
+    assert set(tmp_path.iterdir()) == {path, input_path}

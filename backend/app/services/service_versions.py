@@ -19,6 +19,7 @@ import httpx
 from pydantic import BaseModel
 
 from app.config import get_settings
+from app.services.lumen_ingress import attach_lumen_ingress
 
 ServiceName = Literal["nova", "neutron", "palimpsest", "drover", "lumen", "waygate"]
 
@@ -160,6 +161,12 @@ async def observe_service_versions(conn, token_info: dict, *, native_access=None
                     if not endpoint:
                         return unavailable
                     url = _discovery_url(endpoint, service)
+                    outgoing_headers = headers
+                    if service == "lumen":
+                        outgoing_headers = headers.copy()
+                        attach_lumen_ingress(
+                            outgoing_headers, secret=settings.service_lumen_ingress_secret, method="GET", url=url
+                        )
                     verify = settings.ssl_verify
                     if service == "palimpsest":
                         verify = ssl.create_default_context(cafile=settings.os_cacert or None)
@@ -172,7 +179,7 @@ async def observe_service_versions(conn, token_info: dict, *, native_access=None
                             follow_redirects=False,
                             trust_env=False,
                         ) as client,
-                        client.stream("GET", url, headers=headers) as response,
+                        client.stream("GET", url, headers=outgoing_headers) as response,
                     ):
                         if response.status_code not in {200, 300}:
                             return unavailable

@@ -25,6 +25,8 @@ services:
       SERVICE_WAYGATE_INTERNAL_URL:
       SERVICE_DROVER_INTERNAL_URL:
       SERVICE_LUMEN_INTERNAL_URL:
+      SERVICE_LUMEN_INGRESS_SECRET:
+      LUMEN_AFTERGLOW_INGRESS_SECRET: ""
       SERVICE_PALIMPSEST_INTERNAL_URL:
     command: uvicorn app.middleware.traffic_address:create_app --factory --host 0.0.0.0 --port 8000 --no-proxy-headers
     depends_on:

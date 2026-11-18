@@ -263,3 +263,48 @@ test("supported Compose deployments finish canonical SQL108 bootstrap before Aft
 		}
 	});
 });
+
+test("Compose supplies one ingress signing input only to services that consume it", async (t) => {
+	await withProject(async (projectDir) => {
+		const dotenvPath = path.join(projectDir, ".env");
+		const privatePath = path.join(projectDir, ".private.env");
+		const shared = "SERVICE_LUMEN_INGRESS_SECRET";
+		const receiver = "LUMEN_AFTERGLOW_INGRESS_SECRET";
+		const required = {
+			...externalEnvironment("ingress"),
+			SECRET_KEY: "synthetic-ingress-app-secret",
+			OS_PASSWORD: "synthetic-ingress-keystone-password",
+			ORIGIN: "https://frontend.invalid",
+			PUBLIC_API_BASE: "https://api.invalid",
+			TLS_CERTS_DIR: path.join(projectDir, "tls"),
+			[receiver]: "independent-Lumen-side-value-is-ignored",
+		};
+		const dotenvKey = "synthetic-dotenv-ingress-value".repeat(2);
+		const privateKey = "synthetic-private-ingress-value".repeat(2);
+		const shellKey = "synthetic-shell-ingress-value".repeat(2);
+		writeEnvironment(privatePath, { ...required, [shared]: privateKey });
+		for (const manifest of manifestNames) {
+			const standalone = manifest === "docker-compose.yml";
+			const writers = new Set(manifest === "docker-compose.dev.yml" ? ["backend"] : ["backend", "schema-bootstrap"]);
+			const cases = [
+				["unset", {}, null, {}, ""],
+				["default .env", { [shared]: dotenvKey }, null, {}, dotenvKey],
+				["selected env file", { [shared]: dotenvKey }, privatePath, {}, privateKey],
+				["shell precedence", { [shared]: dotenvKey }, privatePath, { [shared]: shellKey }, shellKey],
+				["explicit shell disable", { [shared]: dotenvKey }, privatePath, { [shared]: "" }, ""],
+			];
+			for (const [label, dotenv, envFile, shell, expected] of cases) {
+				await t.test(`${manifest}: ${label}`, () => {
+					writeEnvironment(dotenvPath, { ...required, ...dotenv });
+					const { services } = composeConfig(projectDir, { manifest, envFile, shell });
+					assert.equal(Object.hasOwn(services, "lumen-api"), !standalone);
+					for (const [name, service] of Object.entries(services)) {
+						const env = service.environment ?? {};
+						assert.ok((env[shared] ?? "") === (writers.has(name) ? expected : ""), `${name}: unexpected signing input (value withheld)`);
+						assert.ok((env[receiver] ?? "") === (name === "lumen-api" ? expected : ""), `${name}: unexpected verifier input (value withheld)`);
+					}
+				});
+			}
+		}
+	});
+});

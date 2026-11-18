@@ -15,6 +15,7 @@ from generate_k8s import (  # noqa: E402
     _render_toml_for_k8s,
     load_config,
     main,
+    render_artifacts,
     render_configmap,
     render_grafana_deployment,
     render_ingress,
@@ -338,6 +339,7 @@ def test_generator_cli_dry_run_includes_ingress_without_writing(tmp_path, monkey
     config_path.write_text(
         '[app]\nsecret_key = "0123456789abcdef0123456789abcdef"\n'
         "[services]\nmcp = true\n"
+        'lumen_ingress_secret = "synthetic-ingress-private-0123456789abcdef"\n'
         '[mcp]\npublic_url = "https://mcp.example.test/"\n',
         encoding="utf-8",
     )
@@ -352,6 +354,8 @@ def test_generator_cli_dry_run_includes_ingress_without_writing(tmp_path, monkey
     # Only public documents are previewed; no Secret or private deployment.
     ingress = [doc for doc in yaml.safe_load_all(output) if doc["kind"] == "Ingress"]
     assert "0123456789abcdef0123456789abcdef" not in output
+    assert "synthetic-ingress-private-0123456789abcdef" not in output
+    assert "SERVICE_LUMEN_INGRESS_SECRET" not in output
     _assert_generated_service(ingress, "mcp.example.test", "/", "backend", 8000)
     assert _generated_service(ingress, "mcp.example.test", "/api/v1/auth/login") is None
     assert not output_dir.exists()
@@ -367,6 +371,50 @@ def test_render_mcp_lumen_bridge_credential_only_in_secret():
     assert credential not in _render_toml_for_k8s(cfg)
     secret = yaml.safe_load(render_secret(cfg))
     assert secret["stringData"]["LUMEN_MCP_SERVICE_TOKEN"] == credential
+
+
+@pytest.mark.parametrize(
+    "services",
+    [
+        {},
+        {"lumen_ingress_secret": ""},
+        {"lumen_ingress_secret": 'synthetic-ingress-한글-"\\-0123456789abcdef'},
+    ],
+    ids=["missing", "disabled", "configured"],
+)
+def test_lumen_ingress_secret_only_in_secret_and_optional_backend_reference(services):
+    env_key = "SERVICE_LUMEN_INGRESS_SECRET"
+    value = services.get("lumen_ingress_secret", "")
+    artifacts = render_artifacts(
+        {
+            "app": {"secret_key": "application-secret-key-sentinel-0123456789abcdef"},
+            "services": services,
+        }
+    )
+    secret = yaml.safe_load(artifacts["secret.yaml"])
+    assert secret["stringData"][env_key] == value
+
+    configmap = yaml.safe_load(artifacts["configmap.yaml"])
+    assert "lumen_ingress_secret" not in tomllib.loads(configmap["data"]["afterglow.conf"])["services"]
+    assert env_key not in artifacts["configmap.yaml"]
+    assert all(
+        "synthetic-ingress-" not in content for path, content in artifacts.items() if path != "secret.yaml"
+    )
+
+    deployment = yaml.safe_load(artifacts["base/backend/deployment.yaml"])
+    env = deployment["spec"]["template"]["spec"]["containers"][0]["env"]
+    assert [entry for entry in env if entry["name"] == env_key] == [
+        {
+            "name": env_key,
+            "valueFrom": {
+                "secretKeyRef": {
+                    "name": secret["metadata"]["name"],
+                    "key": env_key,
+                    "optional": True,
+                }
+            },
+        }
+    ]
 
 
 def test_render_k3s_gpu_admission_credential_only_in_secret():
@@ -697,8 +745,6 @@ def test_auth_renderers_reconstruct_runtime_providers_and_selection(
     import os
     from unittest.mock import patch
 
-    from generate_k8s import render_artifacts
-
     from app import config as app_config
 
     cfg = _auth_generation_config()
@@ -861,8 +907,6 @@ def test_native_mapping_projection_rejects_incompatible_providers(incompatible):
 
 
 def test_auth_absent_adds_no_secret_keys_or_workload_patches():
-    from generate_k8s import render_artifacts
-
     cfg = {"app": {"secret_key": "0123456789abcdef0123456789abcdef"}}
     artifacts = render_artifacts(cfg)
     configmap = yaml.safe_load(artifacts["configmap.yaml"])

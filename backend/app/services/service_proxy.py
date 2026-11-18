@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from app.config import get_settings
 from app.services import keystone
+from app.services.lumen_ingress import attach_lumen_ingress
 from app.services.service_authorization import authorize_service_request
 
 if TYPE_CHECKING:
@@ -33,6 +34,7 @@ EXCLUDED_RESPONSE_HEADERS: set[str] = {
     "te",
     "trailers",
     "upgrade",
+    "x-lumen-ingress",
 }
 
 FORWARDED_REQUEST_HEADERS: tuple[str, ...] = (
@@ -205,6 +207,10 @@ async def _forward(
     if content is None and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
         content = request.stream()
     settings = get_settings()
+    if service_type == "lumen" and "x-auth-token" in headers:
+        attach_lumen_ingress(
+            headers, secret=settings.service_lumen_ingress_secret, method=request.method, url=upstream_url
+        )
     client = httpx.AsyncClient(
         timeout=httpx.Timeout(30.0, connect=5.0, read=read_timeout if read_timeout is not None else 30.0),
         verify=settings.ssl_verify,
@@ -221,9 +227,9 @@ async def _forward(
         if service_type == "lumen" and upstream_path.startswith("/v1/admin/providers"):
             # Private URLs and transport exception text can contain credentials.
             _logger.warning("Upstream proxy request to lumen provider administration failed")
-        elif service_type == "lumen" and upstream_path.startswith("/v1/vault/"):
-            # Vault query parameters and transport exception text can contain private note data.
-            _logger.warning("Upstream proxy request to private Lumen route failed")
+        elif service_type == "lumen":
+            # Paths, queries, and transport errors can contain private note data or ingress proof.
+            _logger.warning("Upstream proxy request to Lumen failed")
         elif sensitive:
             _logger.warning("Upstream proxy request to %s private route failed", service_type)
         else:
@@ -319,6 +325,8 @@ async def get_json(service_type: str, request: Request, upstream_path: str) -> A
     if logical_project_id != connection_project_id:
         headers["x-target-project-id"] = logical_project_id
     settings = get_settings()
+    if service_type == "lumen":
+        attach_lumen_ingress(headers, secret=settings.service_lumen_ingress_secret, method="GET", url=upstream_url)
     try:
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(30.0, connect=5.0),
@@ -326,7 +334,10 @@ async def get_json(service_type: str, request: Request, upstream_path: str) -> A
         ) as client:
             response = await client.get(upstream_url, headers=headers)
     except Exception as exc:
-        _logger.warning("Upstream JSON request to %s failed: %s", upstream_url, exc)
+        if service_type == "lumen":
+            _logger.warning("Upstream JSON request to Lumen failed")
+        else:
+            _logger.warning("Upstream JSON request to %s failed: %s", upstream_url, exc)
         raise HTTPException(status_code=503, detail=f"{service_type} 서비스를 사용할 수 없습니다") from exc
 
     if response.status_code >= 400:
@@ -398,6 +409,8 @@ async def get_policy_capabilities(service_type: str, token_info: dict, *, timeou
     headers = {"x-auth-token": token, "x-project-id": connection_project, "accept": "application/json"}
     if connection_project != project_id:
         headers["x-target-project-id"] = project_id
+    if service_type == "lumen":
+        attach_lumen_ingress(headers, secret=settings.service_lumen_ingress_secret, method="GET", url=url)
     try:
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(timeout if timeout is not None else 30.0, connect=min(timeout or 5.0, 5.0)),

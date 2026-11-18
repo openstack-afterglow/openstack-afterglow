@@ -28,6 +28,8 @@ Afterglow 백엔드는 독자적인 AI 모델·에이전트 실행 엔진 및 �
 
 아래 경로 앞에 `/api/v1/chat`을 붙인다. BFF는 기존 Keystone token과 현재 프로젝트를 사용해 각각 Lumen `/v1/vault/*`로 전달한다. 조회는 `lumen-history_reader`, 수정은 `lumen-history_editor`를 요구하며 결과는 `Cache-Control: no-store`다.
 
+`X-Lumen-Ingress` is private to Afterglow and Lumen. Afterglow drops browser-supplied values and signs the exact forwarded method, encoded path (without query), Keystone token fingerprint, connection project and optional target project. Lumen requires valid proof for Vault; a matching private key on both services is required in addition to normal dashboard authorization.
+
 | 메서드 · 경로 | 동작 |
 | --- | --- |
 | `GET /vault/notes`, `GET /vault/search?query=…` | 유형·범위·프로젝트 키·역할로 거르고 `limit`/`before`로 페이지를 이동한다. |

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 from fastapi import FastAPI, HTTPException
+from pydantic import SecretStr
 from starlette.requests import Request
 
 from app.api.deps import get_token_info
@@ -458,9 +459,8 @@ async def test_policy_capabilities_preserve_exact_native_verdict_and_original_su
         observed.append(request)
         return httpx.Response(200, json=payload)
 
-    monkeypatch.setattr(
-        "app.services.service_proxy.get_settings", lambda: SimpleNamespace(ssl_verify=True, os_cacert="")
-    )
+    settings = SimpleNamespace(ssl_verify=True, os_cacert="", service_lumen_ingress_secret=SecretStr(""))
+    monkeypatch.setattr("app.services.service_proxy.get_settings", lambda: settings)
     monkeypatch.setattr("app.services.service_proxy._configured_internal_endpoint", lambda _: "https://native.test/v1")
     client_type = httpx.AsyncClient
     client = client_type(transport=httpx.MockTransport(upstream))
@@ -542,9 +542,8 @@ async def test_policy_capabilities_reject_malformed_or_unregistered_native_respo
     response = (
         httpx.Response(200, content=b"{invalid") if invalid == "invalid-json" else httpx.Response(200, json=payload)
     )
-    monkeypatch.setattr(
-        "app.services.service_proxy.get_settings", lambda: SimpleNamespace(ssl_verify=True, os_cacert="")
-    )
+    settings = SimpleNamespace(ssl_verify=True, os_cacert="", service_lumen_ingress_secret=SecretStr(""))
+    monkeypatch.setattr("app.services.service_proxy.get_settings", lambda: settings)
     monkeypatch.setattr("app.services.service_proxy._get_internal_endpoint", lambda *_: "https://native.test/v1")
     monkeypatch.setattr("app.services.service_proxy._configured_internal_endpoint", lambda _: "https://native.test/v1")
     client_type = httpx.AsyncClient
@@ -570,9 +569,8 @@ async def test_policy_capabilities_reject_malformed_or_unregistered_native_respo
 
 @pytest.mark.parametrize("status", [301, 401, 403, 404, 500])
 async def test_policy_capability_http_failure_never_uses_standard_roles_or_cached_projection(monkeypatch, status):
-    monkeypatch.setattr(
-        "app.services.service_proxy.get_settings", lambda: SimpleNamespace(ssl_verify=True, os_cacert="")
-    )
+    settings = SimpleNamespace(ssl_verify=True, os_cacert="", service_lumen_ingress_secret=SecretStr(""))
+    monkeypatch.setattr("app.services.service_proxy.get_settings", lambda: settings)
     monkeypatch.setattr("app.services.service_proxy._get_internal_endpoint", lambda *_: "https://native.test/v1")
     observed, clients = [], []
     payload = {"service": "lumen", "capabilities": ["lumen-chat_user"], "actions": ["chat:create"]}

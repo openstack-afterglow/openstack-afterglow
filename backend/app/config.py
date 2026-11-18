@@ -30,7 +30,7 @@ from app.models.traffic_analytics import TrafficAnalyticsSettings
 from app.services.cloud_shell_security import MANDATORY_BLOCKED_CIDRS, canonical_blocked_cidrs
 
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
-_EMPTY_ENV_TOML_FALLBACK_KEYS = frozenset({"K3S_GPU_ADMISSION_TOKEN"})
+_EMPTY_ENV_TOML_FALLBACK_KEYS = frozenset({"K3S_GPU_ADMISSION_TOKEN", "SERVICE_LUMEN_INGRESS_SECRET"})
 
 
 def is_development_loopback_http_url(value: str) -> bool:
@@ -196,6 +196,7 @@ def _load_toml() -> dict:
     flat["service_drover_internal_url"] = svc.get("drover_internal_url", "")
     flat["service_lumen_internal_url"] = svc.get("lumen_internal_url", "")
     flat["service_lumen_external_url"] = svc.get("lumen_external_url", "")
+    flat["service_lumen_ingress_secret"] = svc.get("lumen_ingress_secret", "")
     flat["service_palimpsest_internal_url"] = svc.get("palimpsest_internal_url", "")
 
     cloud_shell = data.get("cloud_shell", {})
@@ -653,6 +654,7 @@ class Settings(BaseSettings):
     service_waygate_internal_url: str = ""
     service_drover_internal_url: str = ""
     service_lumen_internal_url: str = ""
+    service_lumen_ingress_secret: SecretStr = Field(default=SecretStr(""), exclude=True, repr=False)
     service_palimpsest_internal_url: str = ""
     # Public base for the CLI installers, not an internal BFF override.
     service_lumen_external_url: str = ""
@@ -923,6 +925,14 @@ class Settings(BaseSettings):
         from app.services._endpoint import normalize_endpoint
 
         return normalize_endpoint(v)
+
+    @field_validator("service_lumen_ingress_secret")
+    @classmethod
+    def _validate_lumen_ingress_secret(cls, secret: SecretStr) -> SecretStr:
+        value = secret.get_secret_value()
+        if value and len(value.encode("utf-8")) < 32:
+            raise ValueError("[services] lumen_ingress_secret must contain at least 32 UTF-8 bytes")
+        return secret
 
     @field_validator("service_lumen_external_url")
     @classmethod

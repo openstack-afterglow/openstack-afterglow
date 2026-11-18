@@ -1562,6 +1562,8 @@ Chat Settings의 Agent Vault는 `ChatVault`에서 현재 로그인과 working do
 
 Agent Vault의 채팅 프로젝트 필터는 기존 `/api/v1/chat/workspaces`의 현재 도메인 목록을 사용한다. 선택하면 해당 `workspace_id`를 note 조회·검색·교체·버전 기록 및 새 `user_note`에만 전달한다. 기본 목록과 `memory.md`는 workspace-private 노트를 제외한다. Lumen이 workspace 소유권 및 도메인을 검사한다. Afterglow는 변경 요청을 `chat_vault_note`로 기록하되 note ID 또는 고정 slot 이름 외에 query·본문·응답을 감사 이벤트에 넣지 않는다.
 
+Afterglow signs Keystone-authenticated Lumen requests when a private ingress secret is configured. The HMAC covers the outbound method and raw, version-joined path without its query, the Keystone token hash, and the two forwarded project headers. The browser cannot set or receive the proof. Lumen uses it to distinguish dashboard ingress from direct native/API-key access; Keystone identity, workspace/domain ownership and native action policy are still required. The internal catalog endpoint uses Lumen's own port without path rewriting. Custom internal endpoints must preserve the raw path Lumen receives.
+
 Image Studio는 선택 모델의 capability에서만 사용자 지정 크기·복잡도·배경·출력 형식과 GIF 설정을 노출한다. Browser validation은 입력 보조이며 Lumen이 허용 여부와 토큰 정산을 결정한다. 명시 크기/품질의 raster 출력 참고 견적은 해당 route의 유효 USD 단가와 OpenAI 계산식을 사용하고 입력/애니메이션/SVG 비용을 추정하지 않는다. 완료한 owned run의 `usage.updated`를 재생하여 실제 사용량과 provider 비용을 별도로 표시한다. GIF·SVG asset은 blob URL을 참조하는 `<img>`로만 표시하고 scope/선택 변경 시 URL을 해제한다. 관리자 registry는 카탈로그 가격 출처·유효 media rates·실행 gate를 분리한다. Text chat은 native `reasoning_options`/`reasoning_none_supported`를 그대로 적용한다.
 
 Image Studio consumes Lumen's advanced image capability metadata for ordered multiple sources, one primary-image mask/markup, fidelity, moderation and authorized SVG author/effort. Input and auxiliary assets use the existing owned upload path and participate in the same request fingerprint; incompatible attached assets block submission instead of being discarded.
@@ -2300,9 +2302,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "ab0c344197d70dcfecd54147467488f361ef9544df975afef9c081e2bf1f92e8",
-  "reviewed_at": "2026-11-18T15:36:49Z",
-  "summary": "Dashboard model pickers select exact Lumen catalog rows by provider and kind; native requests retain route identity, including agent pins and frozen retry assertions."
+  "source_sha256": "ea6a3dde6693495559c0015254b783041fb97e1097df66e297dd06273b4272f4",
+  "reviewed_at": "2026-11-18T16:13:43Z",
+  "summary": "Signed Lumen ingress binds the outbound raw path, Keystone token fingerprint and both project assertions. Compose, Helm, Kubernetes and Kolla keep the matched key private."
 }
 ```
 <!-- architecture-review:end -->

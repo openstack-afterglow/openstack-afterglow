@@ -106,6 +106,7 @@ secrets:
   k3sKubeconfigEncryptionKey: ""
   k3sGpuAdmissionToken: ""
   lumenMcpServiceToken: ""
+  lumenIngressSecret: ""
   cephRbdKeyring: ""
   databaseUrl: ""
   prometheusPassword: ""
