@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { t } from '$lib/i18n/ns/iso-view';
 	import { toneVars } from './appearance';
-	import { CELL_X, CELL_Y, isoLabel, layoutScene, pillWidth, type Point } from './layout';
+	import { placeCaptions } from './captionLayout';
+	import IsoCaption from './IsoCaption.svelte';
+	import { CELL_X, CELL_Y, layoutScene, type Point } from './layout';
 	import IsoNodeBlock from './IsoNodeBlock.svelte';
 	import IsoPlatform from './IsoPlatform.svelte';
 	import type { IsoScene } from './types';
@@ -46,14 +47,32 @@
 	const bounds = $derived(layout.bounds);
 	const rawFit = $derived(Math.min(1.2, (width - 20) / bounds.w, (viewHeight - 20) / bounds.h));
 	const fitScale = $derived(Math.max(0.02, rawFit));
-	const fitPose = $derived({ k: fitScale, x: -(bounds.x + bounds.w / 2) * fitScale, y: -(bounds.y + bounds.h / 2) * fitScale });
-	const camera = $derived(pose ?? fitPose);
+	function centeredCamera(k: number): Camera {
+		return { k, x: -(bounds.x + bounds.w / 2) * k, y: -(bounds.y + bounds.h / 2) * k };
+	}
+	const fitPose = $derived(centeredCamera(fitScale));
+	const readableScale = $derived(width < 768 && layout.items.length <= 48 ? Math.max(fitScale, 0.62) : fitScale);
+	const camera = $derived(pose ?? centeredCamera(readableScale));
+	const captionZoom = $derived(Math.min(0.8, Math.round(camera.k * 20) / 20));
+	const captions = $derived(placeCaptions(layout.nodes, layout.platforms, layout.edges, captionZoom, (status) => t(`status.${status}`)));
 	const translateX = $derived(width / 2 + camera.x);
 	const translateY = $derived(viewHeight / 2 + camera.y);
 	const stageTransform = $derived(`translate(${translateX}px, ${translateY}px) scale(${camera.k})`);
 	const activeIds = $derived(new Set([selectedId, focusedId, hoveredId].filter(Boolean)));
+	const relatedPlatforms = $derived.by(() => {
+		const related = new Set(activeIds);
+		for (const id of activeIds) {
+			const platformId = id ? layout.nodesById.get(id)?.platformId : undefined;
+			if (platformId) related.add(platformId);
+		}
+		return related;
+	});
 	const relatedIds = $derived.by(() => {
 		const related = new Set(activeIds);
+		if (!activeIds.size) return related;
+		for (const { node } of layout.nodes) {
+			if (node.platformId && activeIds.has(node.platformId)) related.add(node.id);
+		}
 		for (const { edge } of layout.edges) {
 			if (activeIds.has(edge.from) || activeIds.has(edge.to)) {
 				related.add(edge.from);
@@ -68,13 +87,10 @@
 	const interactive = $derived(onselect ? layout.items.filter(({ id }) => (layout.nodesById.get(id) ?? layout.platformsById.get(id))?.interactive !== false) : []);
 
 	let fittedKey: string | undefined;
-	let hasFit = false;
 	$effect(() => {
-		if (!width || !viewHeight || empty) return;
-		if (!hasFit || fittedKey !== fitKey) {
-			pose = untrack(() => fitPose);
+		if (fittedKey !== fitKey) {
 			fittedKey = fitKey;
-			hasFit = true;
+			pose = undefined;
 		}
 	});
 
@@ -231,7 +247,7 @@
 			{/if}
 		</div>
 		<!-- The focusable diagram supports keyboard pan/zoom as an alternative to pointer gestures. -->
-		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+		<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 		<div class="viewport" class:dragging style:--diagram-height={height} role="group" aria-label={label}
 			tabindex="0" bind:this={viewport} bind:clientWidth={width} bind:clientHeight={viewHeight}
 			onkeydown={keys} onpointerdown={pointerDown} onpointermove={pointerMove} onpointerup={pointerEnd}
@@ -254,10 +270,11 @@
 				<rect width="100%" height="100%" fill="url(#{uid}-major)" />
 				<g transform="translate({translateX} {translateY}) scale({camera.k})">
 					{#each layout.platforms as placed (placed.platform.id)}
-						<IsoPlatform {placed} active={activeIds.has(placed.platform.id)} />
+						<IsoPlatform {placed} active={relatedPlatforms.has(placed.platform.id)} />
 					{/each}
-					{#each layout.edges as { edge, path, label: anchor, length }, index (edge.id)}
+					{#each layout.edges as { edge, path, length }, index (edge.id)}
 						{@const active = activeIds.has(edge.from) || activeIds.has(edge.to)}
+						{@const edgeLabel = captions.edgeLabels.get(edge.id)}
 						<g class="edge" class:active class:inactive={edge.inactive} class:muted={!!activeIds.size && !active} style:--tone={toneVars[edge.tone]}>
 							<path class="route" class:dashed={edge.dashed || edge.inactive || edge.kind === 'denied' || edge.kind === 'tunnel'}
 								d={path} marker-start={edge.bidirectional ? `url(#${uid}-arrow)` : undefined}
@@ -267,34 +284,36 @@
 									<animateMotion {path} begin="{-((index % 11) * 0.21)}s" dur="{Math.max(2.4, Math.min(14, length / 62))}s" repeatCount="indefinite" />
 								</circle>
 							{/if}
-							{#if edge.label}
-								{@const text = isoLabel(edge.label, 25)}
-								{@const pill = pillWidth(text)}
-								<g class="edge-label" transform="translate({anchor.x} {anchor.y})">
+							{#if edgeLabel}
+								<g class="edge-label" transform="translate({edgeLabel.point.x} {edgeLabel.point.y}) scale({edgeLabel.scale})">
 									<title>{edge.label}</title>
-									<rect x={-pill / 2} y="-10" width={pill} height="20" rx="5" />
-									<text y="4">{text}</text>
+									<rect x={-edgeLabel.width / 2} y="-10.5" width={edgeLabel.width} height="21" rx="5" />
+									<text y="4">{edgeLabel.text}</text>
 								</g>
 							{/if}
 						</g>
 					{/each}
-					{#each layout.platforms as placed (placed.platform.id)}
-						<IsoPlatform {placed} active={activeIds.has(placed.platform.id)} labels />
-					{/each}
 					{#each layout.nodes as placed (placed.node.id)}
 						<IsoNodeBlock {placed} active={activeIds.has(placed.node.id)} dimmed={!!activeIds.size && !relatedIds.has(placed.node.id)} />
 					{/each}
+					{#each layout.items as { id } (id)}
+						{@const caption = captions.items.get(id)}
+						{#if caption && (camera.k >= 0.38 || activeIds.has(id))}
+							<IsoCaption {caption} active={relatedPlatforms.has(id)} status={layout.nodesById.get(id)?.status} />
+						{/if}
+					{/each}
 				</g>
 			</svg>
-			<div class="targets" style:transform={stageTransform}>
+			<div class="targets" style:transform={stageTransform} style:--zoom={camera.k}>
 				{#each interactive as { id, point } (id)}
 					{@const node = layout.nodesById.get(id)}
-					{@const slab = layout.platformsById.get(id)}
-					{@const lift = node ? -10 : slab?.style === 'zone' ? 0 : 15}
+					{@const caption = captions.items.get(id)}
+					{@const at = !node && caption && camera.k >= 0.38 ? caption.position : point}
+					{@const lift = node ? -10 : caption && camera.k >= 0.38 ? caption.height * caption.scale / 2 : 0}
 					<button type="button" class="target" class:node={!!node} aria-label={itemName(id)} title={itemName(id)}
-						aria-pressed={selectedId === id} style:left="{point.x}px" style:top="{point.y + lift}px"
-						style:--hit-width="{Math.max(80, pillWidth(isoLabel(node?.label ?? slab?.label ?? '', node ? 20 : 26)))}px"
-						onfocus={(event) => focusItem(event, id, point, lift)} onblur={() => { focusedId = undefined; oncancelintent?.(); }}
+						aria-pressed={selectedId === id} style:left="{at.x}px" style:top="{at.y + lift}px"
+						style:--hit-width="{node ? 96 : Math.max(80, (caption?.width ?? 80) * (caption?.scale ?? 1))}px"
+						onfocus={(event) => focusItem(event, id, at, lift)} onblur={() => { focusedId = undefined; oncancelintent?.(); }}
 						onpointerenter={() => { if (!dragging) { hoveredId = id; onintent?.(id); } }}
 						onpointerleave={() => { hoveredId = undefined; oncancelintent?.(); }}
 						onclick={(event) => { if (!dragged || event.detail === 0) onselect?.(id); }}></button>
@@ -302,21 +321,6 @@
 			</div>
 		</div>
 	{/if}
-	<figcaption id="{uid}-description" class="description">
-		{#if caption}<p>{caption}</p>{/if}
-		{#if !empty}
-			<div class="legend" role="group" aria-label={t('diagram.legend')}>
-				{#if scene.legend?.some(({ kind }) => kind !== 'packet')}
-					<ul role="list" class="legend-items">
-						{#each scene.legend.filter(({ kind }) => kind !== 'packet') as item}
-							<li><span class="swatch {item.kind}" style:--tone={toneVars[item.tone]} aria-hidden="true"></span>{item.label}</li>
-						{/each}
-					</ul>
-				{/if}
-				<p class="packet-note"><span class="swatch packet-key" aria-hidden="true"></span>{t('diagram.packet')}</p>
-			</div>
-		{/if}
-	</figcaption>
 	{#if !empty}
 		<div class="sr-only">
 			<ul aria-label={t('diagram.items')}>
@@ -331,14 +335,32 @@
 			{/if}
 		</div>
 	{/if}
+	<figcaption id="{uid}-description" class="description">
+		{#if caption}<p>{caption}</p>{/if}
+		{#if !empty}
+			<div class="legend" role="group" aria-label={t('diagram.legend')}>
+				<p class="packet-note"><span class="swatch packet-key" aria-hidden="true"></span>{t('diagram.packet')}</p>
+				{#if scene.legend?.some(({ kind }) => kind !== 'packet')}
+					<details open>
+						<summary>{t('diagram.legend')}</summary>
+						<ul role="list" class="legend-items">
+							{#each scene.legend.filter(({ kind }) => kind !== 'packet') as item}
+								<li><span class="swatch {item.kind}" style:--tone={toneVars[item.tone]} aria-hidden="true"></span>{item.label}</li>
+							{/each}
+						</ul>
+					</details>
+				{/if}
+			</div>
+		{/if}
+	</figcaption>
 </figure>
 
 <style>
-	.diagram { min-inline-size: 0; margin: 0; position: relative; }
+	.diagram { container-type: inline-size; min-inline-size: 0; margin: 0; position: relative; }
 	.controls { display: flex; align-items: center; justify-content: flex-end; gap: .375rem; margin-block-end: .5rem; }
 	.controls svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; width: 1.125rem; height: 1.125rem; }
 	.controls output { min-inline-size: 3.25rem; text-align: center; font-size: var(--type-identifier); color: var(--color-ink-2); font-variant-numeric: tabular-nums; }
-	.viewport { position: relative; isolation: isolate; overflow: clip; inline-size: 100%; block-size: var(--diagram-height, clamp(19rem, 60svh, 39rem)); border: 1px solid var(--color-line); border-radius: var(--radius-lg); background: var(--color-surface-canvas); cursor: grab; touch-action: none; user-select: none; }
+	.viewport { position: relative; isolation: isolate; overflow: clip; inline-size: 100%; block-size: var(--diagram-height, clamp(14rem, min(60svh, 72cqi), 39rem)); border: 1px solid var(--color-line); border-radius: var(--radius-lg); background: var(--color-surface-canvas); cursor: grab; touch-action: none; user-select: none; }
 	.viewport.dragging { cursor: grabbing; }
 	.viewport:focus-visible { outline: 2px solid var(--color-line-2); outline-offset: 2px; }
 	.world, .targets { position: absolute; inset: 0; pointer-events: none; }
@@ -346,25 +368,27 @@
 	.targets { transform-origin: 0 0; }
 	.target { position: absolute; translate: -50% -50%; pointer-events: auto; inline-size: var(--hit-width); block-size: 44px; padding: 0; border: 0; background: transparent; border-radius: var(--radius-lg); cursor: pointer; }
 	.target.node { block-size: 110px; }
-	.target:focus-visible { outline: 2px solid var(--color-ink-0); outline-offset: 3px; }
+	.target:focus-visible { outline: calc(2px / var(--zoom)) solid var(--color-ink-0); outline-offset: calc(2px / var(--zoom)); }
 	.dragging .target { cursor: grabbing; }
 	.minor, .major { fill: none; stroke-width: .02; }
 	.minor { stroke: var(--color-topology-grid-minor); }
 	.major { stroke: var(--color-topology-grid-major); }
-	.route { fill: none; stroke: color-mix(in oklab, var(--tone) 68%, var(--color-ink-2)); stroke-width: 2; stroke-linecap: round; }
+	.route { fill: none; stroke: color-mix(in oklab, var(--edge-ink, var(--tone)) 68%, var(--color-ink-2)); stroke-width: 2; stroke-linecap: round; }
 	.route.dashed { stroke-dasharray: 5 5; }
 	.edge.muted { opacity: .30; }
-	.edge.inactive { --tone: var(--color-ink-2); opacity: .63; }
+	.edge.inactive { --edge-ink: var(--color-ink-2); opacity: .63; }
 	.edge.inactive.muted { opacity: .26; }
 	.edge.active .route { stroke: var(--color-ink-0); stroke-width: 2.45; }
 	.arrow { fill: var(--color-ink-2); fill: context-stroke; }
-	.packet { fill: var(--tone); stroke: var(--color-ink-0); stroke-width: 1.1; }
+	.packet { fill: var(--edge-ink, var(--tone)); stroke: var(--color-ink-0); stroke-width: 1.1; }
 	.edge-label rect { fill: var(--color-surface-base); stroke: var(--color-line-2); }
 	.edge-label text { fill: var(--color-ink-1); text-anchor: middle; font-size: 11px; font-variant-numeric: tabular-nums; }
 	.empty { display: grid; place-content: center; min-block-size: 9rem; color: var(--color-ink-2); text-align: center; }
 	.description { color: var(--color-ink-2); font-size: var(--type-support); }
 	.description p { margin-block: .5rem 0; }
-	.legend-items { display: flex; flex-wrap: wrap; column-gap: 1rem; row-gap: .375rem; margin-block: .75rem 0; padding: 0; list-style: none; }
+	.legend { padding-block-start: .625rem; }
+	.legend summary { cursor: pointer; min-block-size: var(--control-height); align-content: center; inline-size: fit-content; }
+	.legend-items { display: flex; flex-wrap: wrap; column-gap: 1rem; row-gap: .375rem; margin: 0; padding: 0; list-style: none; }
 	.legend-items li, .packet-note { display: flex; align-items: baseline; gap: .4rem; }
 	.swatch { display: inline-block; flex: none; inline-size: .6rem; block-size: .6rem; background: var(--tone); border-radius: .15rem; }
 	.swatch.platform { inline-size: .75rem; block-size: .5rem; transform: skewY(-16deg); }

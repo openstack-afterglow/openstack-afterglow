@@ -68,6 +68,7 @@ const testTopologyData: TopologyData = {
 describe('Topology page cable connect flow', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		localStorage.setItem('topology.view', 'canvas');
 		mocks.get.mockImplementation(async (url: string) => {
 			if (url === '/api/v1/networks/topology') return testTopologyData;
 			if (url === '/api/v1/networks/topology/traffic') return { networks: {}, instances: {}, load_balancers: {} };
