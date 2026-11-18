@@ -21,7 +21,7 @@
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 	import { formatCredit, isCreditInput } from '$lib/api/chatQuotas';
 	import type { ApiKey, ApiKeyIssuancePolicy } from '$lib/api/chatUsage';
-	import { modelKeyScopes } from '$lib/api/chatDomainBilling';
+	import { modelKeyScopeLabel, readKeyIssuancePolicy } from '$lib/api/chatDomainBilling';
 	import IssuedLumenKey from './IssuedLumenKey.svelte';
 	import { t } from '$lib/i18n/ns/chat-settings';
 	import RichText from '$lib/i18n/RichText.svelte';
@@ -42,8 +42,8 @@
 	let createMonthlyError = $state('');
 	let showAll = $state(false);
 	const policyReady = $derived(!policyLoading && !policyError && !!policy);
-	const allowedScopes = $derived(policy?.allowed_scopes.filter((scope) => Object.hasOwn(modelKeyScopes, scope)
-		&& policy!.scope_capabilities[scope]?.some((leaf) => $serviceCapabilities(leaf))) ?? []);
+	const allowedScopes = $derived(policy?.allowed_scopes.filter((scope) =>
+		policy!.scope_capabilities[scope]?.some((leaf) => $serviceCapabilities(leaf))) ?? []);
 	const requestedScopes = $derived(permissionMode === 'all' ? allowedScopes : permissionMode === 'read-only'
 		? allowedScopes.filter((scope) => scope.endsWith(':read')) : selectedScopes.filter((scope) => allowedScopes.includes(scope)));
 	const canIssue = $derived(!!token && !!projectId && !$logoutInProgress && !$projectSwitching
@@ -264,11 +264,8 @@ claude` : '');
 		if (!token || !projectId) return;
 		policyLoading = true;
 		try {
-			const result = await api.get<ApiKeyIssuancePolicy>('/api/v1/chat/api-keys/issuance-policy', token, projectId, { refresh: true });
+			const result = await readKeyIssuancePolicy(token, projectId);
 			if (generation !== targetGeneration || boundary !== boundaryGeneration) return;
-			if (result.monthly_credit_limit !== null && !isCreditInput(result.monthly_credit_limit)) throw new Error('Invalid credit limit');
-			if (!Array.isArray(result.allowed_scopes) || !result.scope_capabilities ||
-				result.allowed_scopes.some((scope) => !Array.isArray(result.scope_capabilities[scope]))) throw new Error('Invalid scope policy');
 			policy = result;
 		} catch {
 			if (generation === targetGeneration && boundary === boundaryGeneration) policyError = t('apiKeys.policyFailed');
@@ -804,10 +801,11 @@ claude` : '');
 						<input type="checkbox" checked={requestedScopes.includes(scope)} disabled={creating || permissionMode !== 'restricted' || !policyReady} onchange={(event) => {
 							selectedScopes = event.currentTarget.checked ? [...selectedScopes, scope] : selectedScopes.filter((value) => value !== scope);
 						}} />
-						<span>{t(modelKeyScopes[scope as keyof typeof modelKeyScopes])}<code class="block text-xs">{scope}</code></span>
+						<span>{modelKeyScopeLabel(scope)}<code class="block text-xs">{scope}</code></span>
 					</label>
 				{/each}
 			</fieldset>
+			<p class="text-xs text-ink-2">{t('apiKeys.toolsNotice')}</p>
 		</div>
 		<Field label={t('apiKeys.monthlyLimit')} for="api-key-create-monthly" help={t('apiKeys.monthlyLimitHelp')} error={createMonthlyError}>
 			<TextInput id="api-key-create-monthly" bind:value={createMonthlyDraft} inputmode="decimal" disabled={creating || !policyReady} ariaInvalid={!!createMonthlyError} />

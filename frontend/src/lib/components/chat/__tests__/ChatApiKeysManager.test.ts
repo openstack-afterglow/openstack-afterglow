@@ -67,8 +67,7 @@ function policy(grants = issuanceGrants, monthly: string | null = '1000', weekly
 		'compat:audio:write': ['lumen-audio_user'],
 		'compat:realtime:write': ['lumen-audio_user'],
 		'embeddings:write': ['lumen-chat_user'],
-		'decisions:write': ['lumen-chat_user'],
-		'native:tools:execute': ['lumen-tools_user']
+		'decisions:write': ['lumen-chat_user']
 	};
 	return {
 		monthly_credit_limit: monthly, weekly_credit_limit: weekly,
@@ -163,7 +162,7 @@ describe('ChatApiKeysManager', () => {
 		render(ChatApiKeysManager);
 		const dialog = await openCreation();
 		const submit = await readyToCreate(dialog);
-		expect(within(dialog).queryByLabelText(t('apiKeys.project'))).toBeNull();
+		expect(within(dialog).queryByText(/project-2|Target/)).toBeNull();
 		expect(screen.queryByRole('heading', { name: t('apiKeys.serviceTitle') })).toBeNull();
 		expect(mocks.get.mock.calls.some(([path]) => path === permissionsPath || path.endsWith('/service-keys') || path.endsWith('/domain-pool'))).toBe(false);
 		const monthly = within(dialog).getByLabelText(t('apiKeys.monthlyLimit'));
@@ -235,7 +234,8 @@ describe('ChatApiKeysManager', () => {
 		await within(manager).findByText(t('apiKeys.serviceEmpty'));
 		await fireEvent.click(within(manager).getByRole('button', { name: t('apiKeys.newServiceKey') }));
 		const dialog = await screen.findByRole('dialog', { name: t('apiKeys.newServiceKey') });
-		expect(within(dialog).queryByLabelText(/native:tools:execute/)).toBeNull();
+		await within(dialog).findByRole('checkbox', { name: /decisions:write/ });
+		expect(within(dialog).getByText(t('apiKeys.toolsNotice'))).toBeTruthy();
 		await fireEvent.input(within(dialog).getByLabelText(t('apiKeys.nameLabel')), { target: { value: 'Nightly job' } });
 		await fireEvent.click(within(dialog).getByRole('checkbox', { name: /decisions:write/ }));
 		await fireEvent.click(within(dialog).getByRole('button', { name: t('apiKeys.create') }));
@@ -308,12 +308,6 @@ describe('ChatApiKeysManager', () => {
 	});
 
 	it('issues read-only scopes without retaining write grants', async () => {
-		mocks.get.mockImplementation((path: string, _token: string, project: string) => Promise.resolve(
-			path === policyPath ? {
-				...policy(), allowed_scopes: ['models:read', 'usage:read', 'compat:completions:write'],
-				scope_capabilities: { ...policy().scope_capabilities, 'usage:read': ['lumen-inventory_reader'] }
-			} : response(path, project)
-		));
 		render(ChatApiKeysManager);
 		const dialog = await openCreation();
 		await readyToCreate(dialog);
@@ -322,6 +316,47 @@ describe('ChatApiKeysManager', () => {
 		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/chat/api-keys', {
 			name: '', scopes: ['models:read'], expires_at: null, monthly_credit_limit: null
 		}, 'browser-token', 'project-1', noReplay));
+	});
+
+	it('offers exactly the scopes in the Lumen issuance policy, including unlabelled new model scopes', async () => {
+		mocks.get.mockImplementation((path: string) => Promise.resolve(path === policyPath ? {
+			monthly_credit_limit: null, weekly_credit_limit: null,
+			allowed_scopes: ['models:read', 'decisions:write', 'native:audio:write', 'future:model:write'],
+			scope_capabilities: {
+				'models:read': ['lumen-inventory_reader'], 'decisions:write': ['lumen-chat_user'],
+				'native:audio:write': ['lumen-audio_user'], 'future:model:write': ['lumen-chat_user']
+			}
+		} : response(path)));
+		render(ChatApiKeysManager);
+		const dialog = await openCreation();
+		await readyToCreate(dialog);
+		await fireEvent.click(within(dialog).getByRole('button', { name: t('apiKeys.permissions.restricted') }));
+		const offered = within(dialog).getAllByRole('checkbox').map((box) => box.closest('label')?.querySelector('code')?.textContent);
+		expect(offered).toEqual(['models:read', 'decisions:write', 'native:audio:write', 'future:model:write']);
+		expect(within(dialog).queryByText('compat:images:write')).toBeNull();
+		expect(within(dialog).getByText(t('apiKeys.toolsNotice'))).toBeTruthy();
+	});
+
+	it('offers service-key scopes from the issuance policy only', async () => {
+		setVerifiedLumenActor({ ...get(auth), isDomainManager: true });
+		mocks.get.mockImplementation(async (path: string) => {
+			if (path.endsWith('/service-keys')) return [];
+			if (path.endsWith('/domain-pool')) return pool;
+			if (path === policyPath) return { ...policy(), allowed_scopes: ['models:read', 'embeddings:write'] };
+			return response(path);
+		});
+		render(ChatApiKeysManager);
+		const manager = await screen.findByRole('region', { name: t('apiKeys.serviceTitle') });
+		await fireEvent.click(within(manager).getByRole('button', { name: t('apiKeys.newServiceKey') }));
+		const dialog = await screen.findByRole('dialog', { name: t('apiKeys.newServiceKey') });
+		await within(dialog).findByRole('checkbox', { name: /embeddings:write/ });
+		expect(within(dialog).getAllByRole('checkbox')).toHaveLength(2);
+		expect(within(dialog).queryByText('compat:completions:write')).toBeNull();
+		await fireEvent.input(within(dialog).getByLabelText(t('apiKeys.nameLabel')), { target: { value: 'Embedder' } });
+		await fireEvent.click(within(dialog).getByRole('button', { name: t('apiKeys.create') }));
+		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/chat/service-keys', {
+			name: 'Embedder', scopes: ['models:read']
+		}, 'browser-token', 'project-1', expect.objectContaining(noReplay)));
 	});
 
 	it('never expands issuance beyond the policy scope ceiling even when project grants are broader', async () => {

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onDestroy, tick } from 'svelte';
 	import { api, ApiError } from '$lib/api/client';
-	import { currentBillingSession, domainBillingErrorMessage, exceedsDomainCeiling, lumenBrowserPath, modelKeyScopes, validDomainCredit, type DomainPool, type ModelKeyScope, type ServiceKey } from '$lib/api/chatDomainBilling';
+	import { currentBillingSession, domainBillingErrorMessage, exceedsDomainCeiling, lumenBrowserPath, modelKeyScopeLabel, readKeyIssuancePolicy, validDomainCredit, type DomainPool, type ServiceKey } from '$lib/api/chatDomainBilling';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
@@ -20,7 +20,10 @@
 	const id = $props.id();
 	const keysPath = `${lumenBrowserPath}/service-keys`;
 	const poolPath = `${lumenBrowserPath}/domain-pool`;
-	const scopes = Object.keys(modelKeyScopes) as ModelKeyScope[];
+	// Lumen's issuance policy is the only source of offered model-key scopes.
+	let scopes = $state<string[] | null>(null);
+	let scopesError = $state('');
+	let policyRequest = 0;
 	let alive = true;
 	onDestroy(() => { alive = false; });
 	let denied = $state(false);
@@ -32,7 +35,7 @@
 	let formOpen = $state(false);
 	let issued = $state<string | null>(null);
 	let name = $state('');
-	let selected = $state<ModelKeyScope[]>([]);
+	let selected = $state<string[]>([]);
 	let busy = $state<'create' | 'revoke' | 'limit' | null>(null);
 	let managerLimit = $state('');
 	let limitError = $state('');
@@ -87,17 +90,30 @@
 
 	$effect(() => { void loadKeys(); void loadPool(); });
 
-	function openCreate() {
+	async function openCreate() {
+		const owner = session();
+		if (!owner) return;
+		const request = ++policyRequest;
 		name = '';
-		selected = ['models:read', 'compat:completions:write'];
+		selected = [];
+		scopes = null;
+		scopesError = '';
 		createError = '';
 		formOpen = true;
+		try {
+			const policy = await readKeyIssuancePolicy(owner.token, owner.projectId);
+			if (!session() || denied || request !== policyRequest || !formOpen) return;
+			scopes = policy.allowed_scopes;
+			selected = ['models:read', 'compat:completions:write'].filter((scope) => scopes!.includes(scope));
+		} catch (cause) {
+			if (session() && request === policyRequest && !lostAccess(cause)) scopesError = t('apiKeys.policyFailed');
+		}
 	}
 
 	async function create(event: SubmitEvent) {
 		event.preventDefault();
 		const owner = session();
-		if (!owner || busy || denied || !formOpen) return;
+		if (!owner || busy || denied || !formOpen || !scopes) return;
 		if (!name.trim() || !selected.length) {
 			createError = !name.trim() ? t('apiKeys.validation.nameRequired') : t('apiKeys.target.noScopes');
 			return;
@@ -105,7 +121,7 @@
 		busy = 'create';
 		createError = '';
 		try {
-			const result = await api.post<{ key: string }>(keysPath, { name: name.trim(), scopes: [...selected] }, owner.token, owner.projectId, mutation);
+			const result = await api.post<{ key: string }>(keysPath, { name: name.trim(), scopes: selected.filter((scope) => scopes!.includes(scope)) }, owner.token, owner.projectId, mutation);
 			if (!session() || denied) return;
 			formOpen = false;
 			issued = result.key;
@@ -214,20 +230,26 @@
 			<Field for={`${id}-name`} label={t('apiKeys.nameLabel')}>
 				<TextInput id={`${id}-name`} maxlength={100} required bind:value={name} disabled={busy === 'create'} />
 			</Field>
-			<fieldset class="space-y-1" disabled={busy === 'create'}>
-				<legend class="mb-1 text-sm font-medium text-ink-1">{t('apiKeys.scopes')}</legend>
-				{#each scopes as scope (scope)}
-					<label class="flex min-h-11 items-center gap-2 text-xs text-ink-2">
-						<input type="checkbox" value={scope} bind:group={selected} />
-						<span>{t(modelKeyScopes[scope])}<code class="block break-all">{scope}</code></span>
-					</label>
-				{/each}
-			</fieldset>
+			{#if scopesError}<Alert flat tone="danger">{scopesError}</Alert>
+			{:else if !scopes}<LoadingState variant="inline" label={t('apiKeys.policyLoading')} />
+			{:else}
+				<fieldset class="space-y-1" disabled={busy === 'create'}>
+					<legend class="mb-1 text-sm font-medium text-ink-1">{t('apiKeys.scopes')}</legend>
+					{#each scopes as scope (scope)}
+						<label class="flex min-h-11 items-center gap-2 text-xs text-ink-2">
+							<input type="checkbox" value={scope} bind:group={selected} />
+							<span>{modelKeyScopeLabel(scope)}<code class="block break-all">{scope}</code></span>
+						</label>
+					{/each}
+				</fieldset>
+				{#if scopes.length === 0}<Alert flat tone="warning">{t('apiKeys.target.noScopes')}</Alert>{/if}
+			{/if}
+			<p class="text-xs text-ink-2">{t('apiKeys.toolsNotice')}</p>
 			{#if createError}<Alert flat tone="danger">{createError}</Alert>{/if}
 		</form>
 		{#snippet actions()}
 			<Button variant="secondary" onclick={() => { formOpen = false; }} disabled={busy === 'create'}>{t('apiKeys.cancel')}</Button>
-			<Button type="submit" form={`${id}-create`} disabled={busy === 'create'} ariaBusy={busy === 'create'}>{t('apiKeys.create')}</Button>
+			<Button type="submit" form={`${id}-create`} disabled={busy === 'create' || !scopes} ariaBusy={busy === 'create'}>{t('apiKeys.create')}</Button>
 		{/snippet}
 	</FormModal>
 

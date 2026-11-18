@@ -335,6 +335,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 # 등록되지 않은 경로는 자동 로깅 제외 (allowlist 방식 — denylist 누락 위험 없음).
 _AUDIT_PREFIX_MAP: list[tuple[str, str]] = [
     ("/api/v1/chat/admin/providers", "llm_provider"),
+    ("/api/v1/chat/admin/domain-pools", "chat_domain_pool"),
     ("/api/v1/chat/admin/title-model", "llm_model"),
     ("/api/v1/chat/admin/memory-model", "llm_model"),
     ("/api/v1/chat/admin/models", "llm_model"),
@@ -353,6 +354,8 @@ _AUDIT_PREFIX_MAP: list[tuple[str, str]] = [
     ("/api/v1/chat/mcp-connections", "chat_mcp_connection"),
     ("/api/v1/chat/domains", "chat_mcp_connection"),
     ("/api/v1/chat/custom-tools", "chat_custom_tool"),
+    ("/api/v1/chat/service-keys", "chat_service_key"),
+    ("/api/v1/chat/domain-pool", "chat_domain_pool"),
     ("/api/v1/chat/api-keys", "chat_api_key"),
     ("/api/v1/chat/runs", "chat_run"),
     ("/api/v1/chat/assets", "chat_asset"),
@@ -655,6 +658,7 @@ async def activity_audit_middleware(request: Request, call_next):
             "secret_order",
             "chat_git_credential",
             "chat_api_key",
+            "chat_service_key",
             "application_credential",
             "user_credential",
             "palimpsest_package_key",
