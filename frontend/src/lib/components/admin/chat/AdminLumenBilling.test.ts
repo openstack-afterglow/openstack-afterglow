@@ -22,17 +22,26 @@ const pool = {
 const domain = { id: 'domain-a', name: 'Research lab', enabled: true };
 const unfundedDomain = { id: 'domain-b', name: 'New lab', enabled: true };
 
-function login(isSystemAdmin: boolean) {
+function login(isSystemAdmin: boolean, userId = 'admin-fixture') {
 	setVerifiedLumenActor({
 		token: 'session-token', refreshToken: null, accessExpiresAt: null,
-		userId: 'admin-fixture', username: 'admin', projectId: 'project-1', projectName: 'Project',
+		userId, username: 'admin', projectId: 'project-1', projectName: 'Project',
 		availableProjects: [], roles: [], isSystemAdmin, federated: false,
 		domainId: 'default', domainName: 'Default', isDomainManager: false,
 	});
 }
 
+function card(name: string): HTMLElement {
+	return screen.getByRole('heading', { name }).closest('.card') as HTMLElement;
+}
+
+function pendingKeys(): string[] {
+	return Object.keys(localStorage).filter((name) => name.startsWith('afterglow:lumen-topup:v1:'));
+}
+
 beforeEach(() => {
 	vi.resetAllMocks();
+	localStorage.clear();
 	initLocale('en');
 	login(true);
 	mocks.get.mockImplementation(async (path: string) => {
@@ -51,14 +60,13 @@ it('never requests admin inventory for a non-admin', () => {
 	expect(mocks.get).not.toHaveBeenCalled();
 });
 
-it('confirms exact top-up intent, funds an unconfigured domain, and reuses the key on an uncertain retry', async () => {
+it('confirms exact intent, persists a lost reply, and retries after remount with the original key', async () => {
 	mocks.confirm.mockResolvedValueOnce(false).mockResolvedValue(true);
 	mocks.post.mockRejectedValueOnce(new ApiError(503, 'unknown from native service'))
 		.mockResolvedValueOnce({ ...pool, domain_id: 'domain-b', balance_credits: '40.125' });
-	render(AdminDomainPoolsPage);
+	const first = render(AdminDomainPoolsPage);
 	await screen.findByText('New lab');
-	const cards = screen.getAllByRole('button', { name: t('domainBilling.topup') });
-	await fireEvent.click(cards[1]);
+	await fireEvent.click(within(card('New lab')).getByRole('button', { name: t('domainBilling.topup') }));
 	const dialog = await screen.findByRole('dialog', { name: t('domainBilling.topup') });
 	const amount = within(dialog).getByLabelText(t('domainBilling.amount'));
 	await fireEvent.input(amount, { target: { value: '0' } });
@@ -75,17 +83,73 @@ it('confirms exact top-up intent, funds an unconfigured domain, and reuses the k
 	);
 	expect(mocks.post).not.toHaveBeenCalled();
 	await fireEvent.click(review);
-	await within(dialog).findByText(t('domainBilling.topupUnconfirmed'));
-	expect(amount.hasAttribute('disabled')).toBe(true);
+	await within(card('New lab')).findByText(t('domainBilling.pendingTopupTitle'));
 	const [path, body, token, project, request] = mocks.post.mock.calls[0];
 	expect([path, body, token, project]).toEqual([
 		`${base}/domain-pools/domain-b/topups`, { amount_credits: '40.125', note: 'Lab allocation' }, 'session-token', 'project-1',
 	]);
 	expect(request).toMatchObject({ idempotencyKey: expect.stringMatching(/^[\w-]{36}$/), replayOnUnauthorized: false });
-	await fireEvent.click(within(dialog).getByRole('button', { name: t('domainBilling.resumeTopup') }));
-	await screen.findByText('40.125');
+	expect(pendingKeys()).toHaveLength(1);
+
+	// Reload: a fresh component must recover the recorded operation, not mint a new key.
+	first.unmount();
+	render(AdminDomainPoolsPage);
+	const recovered = await screen.findByText(t('domainBilling.pendingTopupTitle'));
+	const row = recovered.closest('.card') as HTMLElement;
+	expect(within(row).getByRole('heading', { name: 'New lab' })).toBeTruthy();
+	expect(within(row).getByText(/40\.125/)).toBeTruthy();
+	expect((within(row).getByRole('button', { name: t('domainBilling.topup') }) as HTMLButtonElement).disabled).toBe(true);
+	expect(mocks.post).toHaveBeenCalledTimes(1);
+	await fireEvent.click(within(row).getByRole('button', { name: t('domainBilling.resumeTopup') }));
+	await waitFor(() => expect(within(card('New lab')).queryByText(t('domainBilling.pendingTopupTitle'))).toBeNull());
 	expect(mocks.post).toHaveBeenCalledTimes(2);
-	expect(mocks.post.mock.calls[1]).toEqual(mocks.post.mock.calls[0]);
+	// The remounted component owns a new dispatch guard; the operation identity must not change.
+	expect(mocks.post.mock.calls[1].slice(0, 4)).toEqual(mocks.post.mock.calls[0].slice(0, 4));
+	expect(mocks.post.mock.calls[1][4]).toMatchObject({ idempotencyKey: request.idempotencyKey, replayOnUnauthorized: false });
+	expect(pendingKeys()).toEqual([]);
+});
+
+it('shows a pending top-up only to the same admin on the same domain', async () => {
+	mocks.post.mockRejectedValueOnce(new ApiError(504, 'gateway timeout'));
+	mocks.confirm.mockResolvedValue(true);
+	const first = render(AdminDomainPoolsPage);
+	await screen.findByText('Research lab');
+	await fireEvent.click(within(card('Research lab')).getByRole('button', { name: t('domainBilling.topup') }));
+	const dialog = await screen.findByRole('dialog', { name: t('domainBilling.topup') });
+	await fireEvent.input(within(dialog).getByLabelText(t('domainBilling.amount')), { target: { value: '7' } });
+	await fireEvent.click(within(dialog).getByRole('button', { name: t('domainBilling.reviewTopup') }));
+	await within(card('Research lab')).findByText(t('domainBilling.pendingTopupTitle'));
+	expect(within(card('New lab')).queryByText(t('domainBilling.pendingTopupTitle'))).toBeNull();
+	expect((within(card('New lab')).getByRole('button', { name: t('domainBilling.topup') }) as HTMLButtonElement).disabled).toBe(false);
+	first.unmount();
+
+	login(true, 'other-admin');
+	render(AdminDomainPoolsPage);
+	await screen.findByText('Research lab');
+	expect(screen.queryByText(t('domainBilling.pendingTopupTitle'))).toBeNull();
+	expect((within(card('Research lab')).getByRole('button', { name: t('domainBilling.topup') }) as HTMLButtonElement).disabled).toBe(false);
+	expect(pendingKeys()).toHaveLength(1);
+	expect(mocks.post).toHaveBeenCalledTimes(1);
+});
+
+it('allows discarding a pending top-up only after an explicit re-check', async () => {
+	localStorage.setItem('afterglow:lumen-topup:v1:admin-fixture:domain-a', JSON.stringify({
+		v: 1, userId: 'admin-fixture', domainId: 'domain-a', key: 'recorded-key', amount_credits: '3', note: null, created_at: '2026-11-18T00:00:00Z',
+	}));
+	mocks.confirm.mockResolvedValue(true);
+	render(AdminDomainPoolsPage);
+	const row = (await screen.findByText(t('domainBilling.pendingTopupTitle'))).closest('.card') as HTMLElement;
+	const discard = within(row).getByRole('button', { name: t('domainBilling.discardPending') }) as HTMLButtonElement;
+	expect(discard.disabled).toBe(true);
+	const reads = mocks.get.mock.calls.length;
+	await fireEvent.click(within(row).getByRole('button', { name: t('domainBilling.recheck') }));
+	await within(card('Research lab')).findByText(t('domainBilling.recheckHint'));
+	expect(mocks.get.mock.calls.length).toBeGreaterThan(reads);
+	await fireEvent.click(within(card('Research lab')).getByRole('button', { name: t('domainBilling.discardPending') }));
+	await waitFor(() => expect(screen.queryByText(t('domainBilling.pendingTopupTitle'))).toBeNull());
+	expect(mocks.confirm).toHaveBeenCalledWith(t('domainBilling.discardConfirm'), { confirmLabel: t('domainBilling.discardPending') });
+	expect(mocks.post).not.toHaveBeenCalled();
+	expect(pendingKeys()).toEqual([]);
 });
 
 it('edits admin ceiling and active state on the exact domain', async () => {
