@@ -388,6 +388,7 @@ master key (k3s_kubeconfig_encryption_key, 64 hex)
 - **백엔드 CORS**: `cors_origin_list` allowlist (wildcard 금지)
 - **RGW 버킷 CORS**: `s3.py:_put_bucket_cors` 가 `cors_origin_list` 와 동기화. allowlist 가 비어있으면 CORS rule 자체 삭제 (cross-origin 차단)
  - **프런트엔드 CSP 미디어**: `media-src 'self' blob:`만 허용합니다. Audio Studio는 `fetchWithAuth`로 받은 생성 음성 응답이나 사용자가 고른 로컬 파일로 만든 object URL만 재생하며, 원격 미디어 origin과 API origin의 직접 재생은 허용하지 않습니다.
+- **브라우저 마이크 권한**: 프런트엔드 문서의 `Permissions-Policy`는 `camera=(), microphone=(self), geolocation=()`입니다. SPA에서 로그인 후 Audio/Realtime Studio로 이동해도 same-origin 마이크 권한 요청이 가능하며, 명시적 사용자 동작·브라우저 동의·현재 프로젝트 권한을 계속 요구합니다. Camera·geolocation 및 framing은 허용하지 않습니다. FastAPI 자체 응답의 마이크 정책은 변경하지 않습니다. 저장소 `haproxy/haproxy.cfg` 변경은 standalone 배포용이며 Kolla의 HAProxy 구성을 바꾸지 않습니다.
 - **프런트엔드 CSP 폰트**: `'self'`와 `https://fonts.gstatic.com` 외에, Markdown 수식 렌더러(KaTeX)가 사용하는 인라인 woff2 글꼴 로드를 위해 `font-src`에 `data:` 스킴을 허용합니다.
 
 ---

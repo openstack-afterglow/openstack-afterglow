@@ -6,6 +6,7 @@ import type * as ImageStudioModule from '$lib/api/imageStudio';
 import { ApiError } from '$lib/api/client';
 import ImageStudio from '../ImageStudio.svelte';
 import { IMAGE_STUDIO_STYLES, imageRequestAspectRatio } from '../imageStudioStyles';
+import { estimateImageOutputTokens, imageInteger, validCustomImageSize } from '../imageStudioOptions';
 import { t } from '$lib/i18n/ns/chat-studio';
 import { initLocale } from '$lib/i18n/runtime.svelte';
 import * as experience from '$lib/utils/experience';
@@ -13,7 +14,7 @@ import { tick } from 'svelte';
 import { captureFlowExperience, type CapturedFlowExperience } from '$lib/stores/__tests__/experienceFlowHarness';
 
 const api = vi.hoisted(() => ({
-	models: vi.fn(), capabilities: vi.fn(), submit: vi.fn(), run: vi.fn(), cancel: vi.fn(), upload: vi.fn(), download: vi.fn()
+	models: vi.fn(), capabilities: vi.fn(), submit: vi.fn(), run: vi.fn(), usage: vi.fn(), cancel: vi.fn(), upload: vi.fn(), download: vi.fn()
 }));
 vi.mock('$lib/api/client', () => ({
 	ApiError: class ApiError extends Error {
@@ -47,6 +48,7 @@ beforeEach(() => {
 	api.capabilities.mockResolvedValue({ available_image_variants: ['1024x1024:high', '1024x1024:medium'], max_image_count: 4 });
 	api.submit.mockResolvedValue({ run_id: 'run-1', status: 'queued' });
 	api.run.mockResolvedValue({ run_id: 'run-1', status: 'completed', terminal: true, output_assets: [{ asset_id: 'asset-1', size_bytes: 5, download_url: '/v1/assets/asset-1/download', mime_type: 'image/png' }] });
+	api.usage.mockResolvedValue(null);
 	api.cancel.mockResolvedValue({});
 	api.upload.mockResolvedValue({ id: 'input-1', name: 'source.png', mime_type: 'image/png' });
 	api.download.mockResolvedValue(new Blob(['image'], { type: 'image/png' }));
@@ -58,6 +60,212 @@ beforeEach(() => {
 afterEach(() => { cleanup(); initLocale('ko'); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('Image Studio', () => {
+	const limits = { min_pixels: 655360, max_pixels: 8294400, dimension_multiple: 16, max_edge: 3840, max_aspect_ratio: 3 };
+	const openaiCapabilities = {
+		available_image_variants: ['1024x1024:high', '1024x1024:xhigh', '1024x1024:max'], max_image_count: 10,
+		image_custom_size: limits, image_output_price_per_million: '30',
+		image_backgrounds: ['auto', 'opaque', 'transparent'], image_output_formats: ['png', 'jpeg', 'webp', 'gif', 'svg'],
+		image_complexities: ['low', 'medium', 'high'],
+		image_gif: { min_frame_count: 2, max_frame_count: 16, default_frame_count: 9, min_frame_duration_ms: 20, max_frame_duration_ms: 2000, default_frame_duration_ms: 200, max_total_pixels: 132710400 }
+	};
+
+	it.each([
+		['1024x640', true], ['3840x2160', true], ['2880x2880', true], ['1025x1024', false],
+		['3856x2160', false], ['3072x1008', false], ['2880x2896', false], ['1024x624', false], ['auto', false]
+	] as const)('validates custom dimensions %s', (size, valid) => {
+		expect(validCustomImageSize(size, limits)).toBe(valid);
+	});
+
+	it('preserves a blank numeric option without treating it as zero', () => {
+		expect(imageInteger(null, 0, 100)).toBeUndefined();
+		expect(imageInteger('', 0, 100)).toBeUndefined();
+		expect(imageInteger(0, 0, 100)).toBe(0);
+	});
+
+	it('estimates output-only tokens with the published family-specific calculator', () => {
+		expect(estimateImageOutputTokens('gpt-image-2.6-sunburst', '1024x1024', 'max', 2)).toBe(14048);
+		expect(estimateImageOutputTokens('gpt-image-2.6-flare', '1024x1024', 'low', 1)).toBe(823);
+		expect(estimateImageOutputTokens('gpt-image-2.5-flare', '1024x1536', 'xhigh', 1)).toBe(2459);
+		expect(estimateImageOutputTokens('gpt-image-2.6-sunburst', '944x1536', 'high', 1)).toBe(1242);
+		expect(estimateImageOutputTokens('gpt-image-2.6-sunburst', '784x2048', 'xhigh', 1)).toBe(1385);
+		expect(estimateImageOutputTokens('gpt-image-2', '1024x1024', 'xhigh', 1)).toBeNull();
+		expect(estimateImageOutputTokens('gpt-image-2', 'auto', 'high', 1)).toBeNull();
+	});
+
+	it('validates a custom size, submits matching advanced options, and displays provider usage', async () => {
+		api.models.mockResolvedValue([{ ...ready, api_model_name: 'gpt-image-2.6-sunburst' }]);
+		api.capabilities.mockResolvedValue(openaiCapabilities);
+		api.usage.mockResolvedValue({ prompt_tokens: 123, completion_tokens: 7024, raw_cost: '0.211335', credited_cost: '0.24', components: [] });
+		render(ImageStudio);
+		await screen.findByRole('option', { name: t('imageStudio.quality.xhigh') });
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.size')), { target: { value: 'custom' } });
+		await fireEvent.input(screen.getByLabelText(t('imageStudio.prompt')), { target: { value: 'Forest' } });
+		const custom = screen.getByRole('textbox', { name: t('imageStudio.options.custom') });
+		await fireEvent.input(custom, { target: { value: '1025x1024' } });
+		const create = screen.getByRole('button', { name: t('imageStudio.createImage') });
+		await fireEvent.click(create);
+		const help = t('imageStudio.options.sizeHelp', { multiple: '16', edge: '3,840', ratio: '3', min: '655,360', max: '8,294,400' });
+		expect(await screen.findByText(t('imageStudio.options.badSize', { limits: help }))).toBeTruthy();
+		expect(api.submit).not.toHaveBeenCalled();
+		await fireEvent.input(custom, { target: { value: '1024X1024' } });
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.qualityLabel')), { target: { value: 'max' } });
+		expect(screen.getByText(/7024/).textContent).toContain('0.21072');
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.options.background')), { target: { value: 'transparent' } });
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.options.format')), { target: { value: 'jpeg' } });
+		expect(screen.queryByRole('option', { name: t('imageStudio.options.transparent') })).toBeNull();
+		await fireEvent.input(screen.getByLabelText(t('imageStudio.options.compression')), { target: { value: '0' } });
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.options.complexity')), { target: { value: 'high' } });
+		await fireEvent.click(create);
+		await waitFor(() => expect(api.submit.mock.calls[0]?.slice(0, 2)).toEqual(['generations', {
+			model_id: '1', prompt: 'Forest', size: '1024x1024', quality: 'max', n: 1, output_format: 'jpeg', output_compression: 0, complexity: 'high'
+		}]));
+		expect(await screen.findByText(/0.211335/)).toBeTruthy();
+	});
+
+	it('shows billed image units rather than token placeholders for a unit-priced completed run', async () => {
+		initLocale('en');
+		api.run.mockResolvedValue({
+			run_id: 'run-1', status: 'completed', terminal: true,
+			output_assets: ['asset-1', 'asset-2'].map((asset_id) => ({
+				asset_id, mime_type: 'image/png', size_bytes: 5, download_url: `/v1/assets/${asset_id}/download`
+			}))
+		} satisfies ImageStudioModule.ImageRun);
+		api.usage.mockResolvedValue({
+			prompt_tokens: 0, completion_tokens: 0, raw_cost: '0.08', credited_cost: '0.1',
+			components: [{ kind: 'image_units', quantity: '2', unit: 'image', unit_price_usd: '0.04', cost_usd: '0.08',
+				segment_id: 'image', source: 'media', model_name: 'image-model', metadata: { size: '1024x1024', quality: 'high' } }]
+		} satisfies ImageStudioModule.ImageUsage);
+		render(ImageStudio);
+		await screen.findByRole('option', { name: t('imageStudio.quality.high') });
+		await fireEvent.input(screen.getByLabelText(t('imageStudio.prompt')), { target: { value: 'A tree' } });
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.imageCount')), { target: { value: '2' } });
+		await fireEvent.click(screen.getByRole('button', { name: t('imageStudio.createImage') }));
+		expect(await screen.findByText(t('imageStudio.options.unitUsage', { count: '2', cost: '$0.08' }))).toBeTruthy();
+		expect(screen.queryByText(/0 input tokens/)).toBeNull();
+	});
+
+	it.each(['gif', 'svg'] as const)('sends format-specific fields and displays %s only as an image', async (format) => {
+		const mime = format === 'gif' ? 'image/gif' : 'image/svg+xml';
+		api.capabilities.mockResolvedValue(openaiCapabilities);
+		api.run.mockResolvedValue({ run_id: 'run-1', status: 'completed', terminal: true,
+			output_assets: [{ asset_id: 'asset-1', size_bytes: 5, mime_type: mime }] });
+		api.download.mockResolvedValue(new Blob(['fixture'], { type: mime }));
+		const { container } = render(ImageStudio);
+		await screen.findByRole('option', { name: format.toUpperCase() });
+		await fireEvent.input(screen.getByLabelText(t('imageStudio.prompt')), { target: { value: 'Forest' } });
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.imageCount')), { target: { value: '2' } });
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.options.format')), { target: { value: format } });
+		await fireEvent.click(screen.getByRole('button', { name: t('imageStudio.createImage') }));
+		await waitFor(() => expect(api.submit.mock.calls[0]?.[1]).toEqual({
+			model_id: '1', prompt: 'Forest', size: '1024x1024', quality: 'high', output_format: format,
+			...(format === 'gif' ? { n: 2, frame_count: 9, frame_duration_ms: 200 } : { n: 1 })
+		}));
+		expect((await screen.findByRole('img', { name: t('imageStudio.generatedImage') })).getAttribute('src')).toBe('blob:preview');
+		expect(container.querySelector('.image-frame svg, .image-frame object, .image-frame iframe')).toBeNull();
+	});
+	it('sends a selected SVG author and only one of its advertised reasoning efforts', async () => {
+		api.capabilities.mockResolvedValue({
+			...openaiCapabilities, image_svg_author_models: [{ model: 'gpt-6.2-sol', reasoning_efforts: ['low', 'high'] }]
+		});
+		render(ImageStudio);
+		await screen.findByRole('option', { name: 'SVG' });
+		expect(screen.queryByLabelText(t('imageStudio.advanced.svgAuthor'))).toBeNull();
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.options.format')), { target: { value: 'svg' } });
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.advanced.svgAuthor')), { target: { value: 'gpt-6.2-sol' } });
+		await fireEvent.change(document.querySelector('#studio-svg-effort')!, { target: { value: 'high' } });
+		await fireEvent.input(screen.getByLabelText(t('imageStudio.prompt')), { target: { value: 'A tree' } });
+		await fireEvent.click(screen.getByRole('button', { name: t('imageStudio.createImage') }));
+		await waitFor(() => expect(api.submit.mock.calls[0]?.[1]).toMatchObject({
+			output_format: 'svg', svg_model: 'gpt-6.2-sol', svg_reasoning_effort: 'high', n: 1
+		}));
+	});
+
+	it('formats advertised dimension limits in the current locale, including the Bengali aspect ratio', async () => {
+		initLocale('bn');
+		api.capabilities.mockResolvedValue(openaiCapabilities);
+		render(ImageStudio);
+		await screen.findByRole('option', { name: t('imageStudio.options.custom') });
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.size')), { target: { value: 'custom' } });
+		const note = await screen.findByText(/৩:১/);
+		expect(note.textContent).toContain('৩,৮৪০');
+		expect(note.textContent).toContain('৬,৫৫,৩৬০');
+	});
+
+	it('removes every pending batch attachment on abort and can submit with the completed source', async () => {
+		api.capabilities.mockResolvedValue({ ...openaiCapabilities, max_image_input_count: 3 });
+		const first = { id: 'ready-source', name: 'first.png' };
+		const pending = Promise.withResolvers<{ id: string; name: string }>();
+		api.upload.mockResolvedValueOnce(first).mockReturnValueOnce(pending.promise);
+		vi.mocked(URL.createObjectURL)
+			.mockReturnValueOnce('blob:first')
+			.mockReturnValueOnce('blob:second')
+			.mockReturnValueOnce('blob:third');
+		render(ImageStudio);
+		await screen.findByRole('option', { name: 'PNG' });
+		await fireEvent.input(screen.getByLabelText(t('imageStudio.prompt')), { target: { value: 'A tree' } });
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.inputImage')), {
+			target: { files: ['first.png', 'second.png', 'third.png'].map((name) => new File(['pixels'], name, { type: 'image/png' })) }
+		});
+		await screen.findByText(t('imageStudio.uploadComplete', { name: first.name }));
+		await waitFor(() => expect(api.upload).toHaveBeenCalledTimes(2));
+		const signal = api.upload.mock.calls[1][2] as AbortSignal;
+		const create = screen.getByRole('button', { name: t('imageStudio.createImage') });
+		expect(create).toHaveProperty('disabled', true);
+		await fireEvent.click(screen.getByRole('button', { name: t('imageStudio.advanced.remove', { name: 'second.png' }) }));
+		expect(signal.aborted).toBe(true);
+		expect(screen.queryByText('second.png')).toBeNull();
+		expect(screen.queryByText('third.png')).toBeNull();
+		expect(URL.revokeObjectURL).not.toHaveBeenCalledWith('blob:first');
+		expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:second');
+		expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:third');
+		pending.resolve({ id: 'discarded-source', name: 'second.png' });
+		await tick();
+		expect(api.upload).toHaveBeenCalledTimes(2);
+		expect(create).toHaveProperty('disabled', false);
+		await fireEvent.click(create);
+		await waitFor(() => expect(api.submit.mock.calls[0]?.slice(0, 2)).toEqual([
+			'edits', { model_id: '1', prompt: 'A tree', size: '1024x1024', quality: 'high', n: 1, input_asset_id: 'ready-source' }
+		]));
+	});
+
+	it('retains mask incompatibility and submits ordered sources with one replacement markup', async () => {
+		api.capabilities.mockResolvedValue({
+			...openaiCapabilities, available_image_variants: ['auto:high', ...openaiCapabilities.available_image_variants],
+			image_gif: { ...openaiCapabilities.image_gif, size_auto_supported: false, max_total_pixels: 10_485_760 },
+			max_image_input_count: 2, image_mask_supported: true, image_markup_supported: true,
+			image_moderation_options: ['auto', 'low'], image_input_fidelities: ['low', 'high']
+		});
+		api.upload.mockImplementation(async (file: File) => ({ id: file.name, name: file.name }));
+		const file = (name: string) => new File(['pixels'], name, { type: 'image/png' });
+		render(ImageStudio);
+		await screen.findByRole('option', { name: 'GIF' });
+		await fireEvent.input(screen.getByLabelText(t('imageStudio.prompt')), { target: { value: 'A tree' } });
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.inputImage')), { target: { files: [file('first.png'), file('second.png')] } });
+		await screen.findByText(t('imageStudio.uploadComplete', { name: 'second.png' }));
+		expect(screen.queryByRole('option', { name: 'SVG' })).toBeNull();
+		const overlay = screen.getByLabelText(t('imageStudio.advanced.overlayFile'));
+		await fireEvent.click(screen.getByRole('button', { name: t('imageStudio.advanced.mask') }));
+		await fireEvent.change(overlay, { target: { files: [file('mask.png')] } });
+		await screen.findByText(t('imageStudio.uploadComplete', { name: 'mask.png' }));
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.options.format')), { target: { value: 'gif' } });
+		expect(screen.getByLabelText(t('imageStudio.size'))).toHaveProperty('value', '1024x1024');
+		expect(screen.queryByRole('option', { name: t('imageStudio.autoSize') })).toBeNull();
+		expect(await screen.findByText(t('imageStudio.advanced.attachmentConflict'))).toBeTruthy();
+		const create = screen.getByRole('button', { name: t('imageStudio.createImage') });
+		expect(create).toHaveProperty('disabled', true);
+		await fireEvent.click(screen.getByRole('button', { name: t('imageStudio.advanced.markup') }));
+		await fireEvent.change(overlay, { target: { files: [file('markup.png')] } });
+		await screen.findByText(t('imageStudio.uploadComplete', { name: 'markup.png' }));
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.advanced.moderation')), { target: { value: 'low' } });
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.advanced.fidelity')), { target: { value: 'high' } });
+		await fireEvent.click(create);
+		await waitFor(() => expect(api.submit.mock.calls[0]?.[1]).toEqual({
+			model_id: '1', prompt: 'A tree', size: '1024x1024', quality: 'high', n: 1, output_format: 'gif',
+			frame_count: 9, frame_duration_ms: 200, input_asset_ids: ['first.png', 'second.png'],
+			markup_asset_id: 'markup.png', moderation: 'low', input_fidelity: 'high'
+		}));
+	});
+
 	it.each(['models', 'capabilities'] as const)('commits the mounted %s error without serializing raw error or prompt', async (read) => {
 		const pending = Promise.withResolvers<never>();
 		api[read].mockReturnValueOnce(pending.promise);

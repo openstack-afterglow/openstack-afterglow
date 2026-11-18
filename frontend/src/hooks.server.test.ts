@@ -106,6 +106,14 @@ describe('frontend health', () => {
 		);
 	});
 
+	it.each(['/login', '/dashboard/chat/realtime', '/dashboard/chat/audio'])('allows only same-origin microphone access for SPA navigation from %s', async (path) => {
+		const { handle } = await loadHandle();
+		const request = createRequest(`https://frontend.example.com${path}`, { afterglow_session: '1' });
+		const response = await handle({ event: request.event, resolve: request.resolve });
+		expect(response.headers.get('Permissions-Policy')).toBe('camera=(), microphone=(self), geolocation=()');
+		expect(response.headers.get('X-Frame-Options')).toBe('DENY');
+	});
+
 	it('lets audio players load browser-created object URLs without remote media origins', async () => {
 		const { handle } = await loadHandle();
 		const request = createRequest('http://frontend.example.com/login');

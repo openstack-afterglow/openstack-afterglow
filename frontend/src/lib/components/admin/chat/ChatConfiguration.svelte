@@ -147,10 +147,9 @@
 		// Older DTOs omit this field; an explicit null in a current DTO is authoritative.
 		return model.effective_media_pricing === undefined ? model.media_pricing : model.effective_media_pricing;
 	}
-	function mediaPriceSummary(model: Model): string {
-		const pricing = effectiveMediaPricing(model);
-		const rates = Object.entries(pricing ?? {}).filter(([key, value]) => key !== 'token_rates' && key !== 'image_variants' && typeof value === 'string')
-			.map(([key, value]) => `${key}: ${displayPrice(String(value))}`);
+	function mediaPriceSummary(pricing: MediaPricing | null | undefined): string {
+		const rates = Object.entries(pricing ?? {}).filter(([key, value]) => key !== 'billing_basis' && key !== 'token_rates' && key !== 'image_variants' && typeof value === 'string')
+			.map(([key, value]) => `${key === 'reservation_usd' ? t('pricing.reservationCap') : key}: ${displayPrice(String(value))}`);
 		const variants = Object.entries(pricing?.image_variants ?? {}).map(([name, price]) => t('configuration.usdImageAlternate', { v0: name, v1: displayPrice(price) }));
 		const tokens = Object.entries(pricing?.token_rates ?? {}).flatMap(([modality, values]) => Object.entries(values).map(([key, value]) => `${modality === 'image' ? t('configuration.image') : modality === 'audio' ? t('pricing.audio') : modality} ${TOKEN_FIELDS.find((field) => field.key === key)?.label ?? key}: ${displayPrice(String(value))} ${t('configuration.usd1mTokens')}`));
 		return [...rates, ...variants, ...tokens, ...(!hasMediaPrices(pricing) ? [t('configuration.rateUnset')] : [])].join(' · ');
@@ -2169,6 +2168,7 @@
 				{#each visibleModels as m (m.id)}
 					{@const siblings = modelSiblings(m)}
 					{@const siblingIndex = siblings.findIndex((row) => row.id === m.id)}
+					{@const catalogPriced = m.price_origin === 'native_catalog'}
 					<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 					<li
 						class="{cardCls} model-card flex flex-col items-stretch gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
@@ -2198,7 +2198,7 @@
 							<Pill tone={m.is_active ? 'success' : 'neutral'} size="xs">{(m.model_kind ?? 'text') === 'text' ? (m.is_active ? t('configuration.activeSaved') : t('configuration.inactiveSaved')) : (m.is_active ? t('configuration.adminEnabledExecutionSeparate') : t('configuration.adminDisabledSaved'))}</Pill>
 							<Pill tone="neutral" size="xs">{modelKindLabel(m.model_kind ?? 'text')}</Pill>
 							{#if m.provider_family}<Pill tone="neutral" size="xs">{nativeT(m.provider_family === 'native' ? 'family.native' : 'family.compatible')}</Pill>{/if}
-							<Pill tone={m.price_origin === 'manual' ? 'success' : m.price_origin === 'native_catalog' ? 'accent' : 'neutral'} size="xs">{nativeT(m.price_origin === 'manual' ? 'price.manual' : m.price_origin === 'native_catalog' ? 'price.nativeCatalog' : 'price.unpriced')}</Pill>
+							<Pill tone={m.price_origin === 'manual' ? 'success' : catalogPriced ? 'accent' : 'neutral'} size="xs">{nativeT(m.price_origin === 'manual' ? 'price.manual' : catalogPriced ? 'price.nativeCatalog' : 'price.unpriced')}</Pill>
 								{#if m.catalog_version}<span class="text-xs text-ink-2">{nativeT('catalog.version', { version: m.catalog_version })}</span>{/if}
 								{#if m.is_title_model}
 									<span class="rounded bg-[var(--color-accent)]/15 px-1.5 py-0.5 text-xs text-[var(--color-accent)]">
@@ -2249,7 +2249,7 @@
 								</div>
 							{/if}
 							{#if (m.model_kind ?? 'text') !== 'text' || effectiveMediaPricing(m)?.token_rates}
-								<div class="mt-1 break-words text-xs text-[var(--color-ink-2)]" data-testid="model-media-prices">{mediaPriceSummary(m)}</div>
+								<div class="mt-1 break-words text-xs text-[var(--color-ink-2)]" data-testid="model-media-prices">{mediaPriceSummary(effectiveMediaPricing(m))}</div>
 								{#if (m.model_kind ?? 'text') !== 'text'}<div class="mt-0.5 text-xs text-[var(--color-ink-2)]">{t('configuration.mediaCapabilityExecutionWarning', { v0: mediaCapability(m) })}</div>{/if}
 							{/if}
 						</div>
@@ -2304,6 +2304,9 @@
 								<div class="border-t border-line pt-4" data-testid="registration-entry">
 									<p class="break-all font-mono text-sm text-ink-1">{entry.name}</p>
 									<p class="mt-1 text-xs text-ink-2">{t('configuration.registrationReportedLimits', { v0: entry.purpose === 'unknown' ? t('pricing.candidateReadiness', { kind: t('pricing.unknownPurpose') }) : entry.purpose === 'non_chat' ? t('pricing.candidateReadiness', { kind: t('pricing.nonChatPurpose') }) : t('configuration.reviewChatCandidate'), v1: entry.inputTokenLimit == null ? t('configuration.unknown') : formatNumber(entry.inputTokenLimit), v2: entry.outputTokenLimit == null ? t('configuration.unknown') : formatNumber(entry.outputTokenLimit) })}</p>
+									{#if entry.kind === 'image' && catalogCanPrice(entry) && entry.catalogEntry?.media_pricing}
+										<p class="mt-1 text-xs text-ink-2">{nativeT('price.nativeCatalog')} · {mediaPriceSummary(entry.catalogEntry.media_pricing)}</p>
+									{/if}
 									{#if registrationOutcomes[entry.name] === 'success'}
 										<Pill tone="success" size="sm">{t('configuration.registeredNoRepeatRequest')}</Pill>
 									{:else if registrationOutcomes[entry.name] === 'unknown'}

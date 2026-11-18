@@ -5,6 +5,7 @@ import { authReady, projectSwitching } from '$lib/stores/auth';
 import type * as RealtimeModule from '$lib/api/realtimeVoice';
 import RealtimeVoice from '../RealtimeVoice.svelte';
 import { t } from '$lib/i18n/ns/chat-studio';
+import { t as chatT } from '$lib/i18n/ns/chat-panel';
 import * as experience from '$lib/utils/experience';
 
 const calls = vi.hoisted(() => ({ models: vi.fn(), capabilities: vi.fn(), createSession: vi.fn(), connect: vi.fn() }));
@@ -81,6 +82,192 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('Realtime Voice', () => {
+	it.each([
+		['realtime_hold_limit', 'realtimeVoice.quotaInsufficient'],
+		['invalid_function_call_id', 'realtimeVoice.providerFailed'],
+		['upstream_error', 'realtimeVoice.providerFailed']
+	] as const)('shows %s without losing the session before a socket close', async (code, message) => {
+		const track = { stop: vi.fn(), enabled: true };
+		vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [track] }) } });
+		render(RealtimeVoice);
+		await screen.findByText(t('realtimeVoice.ready'));
+		await fireEvent.click(screen.getByRole('button', { name: t('realtimeVoice.startSession') }));
+		await waitFor(() => expect(Socket.instances).toHaveLength(1));
+		const socket = Socket.instances[0];
+		socket.open();
+		socket.message({ type: 'session.ready', realtime_kind: 'conversation', input_sample_rate_hz: 24000, output_sample_rate_hz: 24000 });
+		await screen.findByText(t('realtimeVoice.connectedMicrophoneOn'));
+		socket.message({ type: 'error', code, message: 'Do not expose raw provider text' });
+		await screen.findByText(t(message));
+		expect(track.stop).not.toHaveBeenCalled();
+		expect(socket.closed).toBe(false);
+		expect(socket.sent).toEqual([]);
+		socket.message({ type: 'transcript.output.delta', delta: 'Response continues' });
+		await screen.findByText('Response continues');
+		socket.close();
+		socket.onclose?.();
+		await screen.findByText(t('realtimeVoice.connectionClosed'));
+		expect(track.stop).toHaveBeenCalledTimes(1);
+	});
+
+	it('converts a WebP pick within both wire limits and fences encoding when permissions change', async () => {
+		const webp = new File(['webp fixture'], 'reference.webp', { type: 'image/webp' });
+		const close = vi.fn();
+		const decode = vi.fn().mockResolvedValue({ width: 4096, height: 2048, close });
+		vi.stubGlobal('createImageBitmap', decode);
+		const drawImage = vi.fn();
+		vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage } as unknown as CanvasRenderingContext2D);
+		const encode = vi.spyOn(HTMLCanvasElement.prototype, 'toBlob')
+			.mockImplementationOnce((respond) => respond(new Blob([new Uint8Array(1024 * 1024 + 1)], { type: 'image/png' })))
+			.mockImplementationOnce((respond) => respond(new Blob([new Uint8Array(900 * 1024)], { type: 'image/png' })));
+		const track = { stop: vi.fn(), enabled: true };
+		vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [track] }) } });
+		calls.capabilities.mockResolvedValue({ ...capability(), realtime_image_input: true });
+		calls.createSession.mockResolvedValue({ provider_type: 'openai', realtime_image_input: true });
+		render(RealtimeVoice);
+		const send = await screen.findByRole('button', { name: t('realtimeImage.send') });
+		expect(send).toHaveProperty('disabled', true);
+		await fireEvent.click(screen.getByRole('button', { name: t('realtimeVoice.startSession') }));
+		await waitFor(() => expect(Socket.instances).toHaveLength(1));
+		const socket = Socket.instances[0];
+		socket.open();
+		socket.message({ type: 'session.ready', realtime_kind: 'conversation', input_sample_rate_hz: 24000, output_sample_rate_hz: 24000 });
+		await screen.findByText(t('realtimeVoice.connectedMicrophoneOn'));
+		const input = screen.getByLabelText(t('realtimeImage.send'));
+		await fireEvent.change(input, { target: { files: [webp] } });
+		await waitFor(() => expect(socket.sent).toHaveLength(1));
+		const frame = JSON.parse(socket.sent[0]);
+		expect(frame.type).toBe('conversation.input_image');
+		expect(frame.image_url).toMatch(/^data:image\/png;base64,/);
+		expect(atob(frame.image_url.split(',')[1]).length).toBe(900 * 1024);
+		expect(new TextEncoder().encode(socket.sent[0]).length).toBeLessThan(2 * 1024 * 1024);
+		expect(drawImage.mock.calls.map((call) => call.slice(-2))).toEqual([[2048, 1024], [1024, 512]]);
+		expect(encode).toHaveBeenLastCalledWith(expect.any(Function), 'image/png', 0.86);
+		expect(close).toHaveBeenCalledTimes(1);
+		const pending = Promise.withResolvers<ImageBitmap>();
+		decode.mockReturnValueOnce(pending.promise);
+		encode.mockImplementationOnce((respond) => respond(new Blob(['png'], { type: 'image/png' })));
+		await fireEvent.change(input, { target: { files: [webp] } });
+		pendingLumen();
+		pending.resolve({ width: 10, height: 10, close } as unknown as ImageBitmap);
+		await waitFor(() => expect(close).toHaveBeenCalledTimes(2));
+		expect(socket.sent).toHaveLength(1);
+	});
+
+	it('does not send images when admission omits the capability', async () => {
+		const track = { stop: vi.fn(), enabled: true };
+		vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [track] }) } });
+		calls.capabilities.mockResolvedValue({ ...capability(), realtime_image_input: true });
+		render(RealtimeVoice);
+		await screen.findByText(t('realtimeVoice.ready'));
+		await fireEvent.click(screen.getByRole('button', { name: t('realtimeVoice.startSession') }));
+		await waitFor(() => expect(Socket.instances).toHaveLength(1));
+		const socket = Socket.instances[0];
+		socket.open();
+		socket.message({ type: 'session.ready', realtime_kind: 'conversation', input_sample_rate_hz: 24000, output_sample_rate_hz: 24000 });
+		await screen.findByText(t('realtimeVoice.connectedMicrophoneOn'));
+		expect(screen.getByRole('button', { name: t('realtimeImage.send') })).toHaveProperty('disabled', true);
+		expect(socket.sent).toHaveLength(0);
+	});
+	it.each(['translation', 'live'] as const)('admits and drains %s without conversation-only commands', async (kind) => {
+		const track = { stop: vi.fn(), enabled: true };
+		const getUserMedia = vi.fn().mockResolvedValue({ getTracks: () => [track] });
+		vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia } });
+		calls.capabilities.mockResolvedValue({
+			...capability(), realtime_kind: kind,
+			...(kind === 'translation' ? { available_voices: [], default_voice: null, realtime_session_fields: ['output_language'] } :
+				{ available_voices: ['marin'], default_voice: 'marin', realtime_session_fields: ['voice', 'instructions'] })
+		});
+		render(RealtimeVoice);
+		await screen.findByText(`${t('realtimeTranscription.mode')}: ${t(kind === 'translation' ? 'realtimeModes.translation' : 'realtimeModes.live')}`);
+		const start = screen.getByRole('button', { name: t('realtimeVoice.startSession') });
+		if (kind === 'translation') {
+			await fireEvent.click(start);
+			expect(getUserMedia).not.toHaveBeenCalled();
+			expect(screen.queryByLabelText(t('realtimeVoice.voice'))).toBeNull();
+			await fireEvent.input(screen.getByLabelText(t('realtimeModes.outputLanguage')), { target: { value: 'es' } });
+		} else {
+			await fireEvent.input(screen.getByLabelText(t('realtimeModes.instructions')), { target: { value: 'Speak slowly' } });
+		}
+		await fireEvent.click(start);
+		await waitFor(() => expect(Socket.instances).toHaveLength(1));
+		const call = calls.createSession.mock.calls[0];
+		expect([call[1], call[5], call[6]]).toEqual(kind === 'translation'
+			? [null, kind, { output_language: 'es', max_duration_seconds: 300 }]
+			: ['marin', kind, { instructions: 'Speak slowly', max_duration_seconds: 300 }]);
+		const socket = Socket.instances[0];
+		socket.open();
+		socket.message({ type: 'session.ready', realtime_kind: kind, input_sample_rate_hz: 24000, output_sample_rate_hz: 24000 });
+		await screen.findByText(t('realtimeVoice.connectedMicrophoneOn'));
+		expect(screen.queryByRole('button', { name: t('realtimeVoice.interrupt') })).toBeNull();
+		expect(screen.queryByRole('button', { name: t('realtimeTranscription.commit') })).toBeNull();
+		Capture.current?.port.onmessage?.({ data: new Int16Array([1, 2]).buffer } as MessageEvent<ArrayBuffer>);
+		if (kind === 'live') {
+			await fireEvent.click(screen.getByRole('button', { name: t('realtimeVoice.microphoneOff') }));
+			await fireEvent.click(screen.getByRole('button', { name: t('realtimeVoice.microphoneOn') }));
+		}
+		await fireEvent.click(screen.getByRole('button', { name: t('realtimeVoice.endSession') }));
+		await waitFor(() => expect(socket.sent.map((value) => JSON.parse(value).type)).toEqual([
+			'audio.input.append', ...(kind === 'live' ? ['audio.input.mute', 'audio.input.unmute'] : []), 'session.close'
+		]));
+		expect(track.stop).toHaveBeenCalled();
+		expect(socket.closed).toBe(false);
+		socket.message({ type: 'transcript.output.delta', delta: 'Final words' });
+		socket.message({ type: 'session.closed' });
+		expect(await screen.findByText('Final words')).toBeTruthy();
+		expect(socket.closed).toBe(true);
+	});
+	it.each(['translation', 'live'] as const)('clears %s drafts on a project switch', async (kind) => {
+		calls.capabilities.mockResolvedValue({
+			...capability(), realtime_kind: kind,
+			...(kind === 'translation' ? { available_voices: [], default_voice: null, realtime_session_fields: ['output_language'] } :
+				{ available_voices: ['marin'], default_voice: 'marin', realtime_session_fields: ['voice', 'instructions'] })
+		});
+		const label = t(kind === 'translation' ? 'realtimeModes.outputLanguage' : 'realtimeModes.instructions');
+		render(RealtimeVoice);
+		const input = await screen.findByRole('textbox', { name: label }) as HTMLInputElement;
+		await fireEvent.input(input, { target: { value: kind === 'translation' ? 'es' : 'private session draft' } });
+		const response = Promise.withResolvers<unknown>();
+		calls.capabilities.mockReturnValueOnce(response.promise);
+		setVerifiedLumenActor(user('project-2'));
+		await waitFor(() => expect(screen.queryByRole('textbox', { name: label })).toBeNull());
+		response.resolve({ ...capability(), realtime_kind: kind, realtime_session_fields: ['output_language', 'instructions'] });
+		expect((await screen.findByRole('textbox', { name: label }) as HTMLInputElement).value).toBe('');
+	});
+
+	it('shows only advertised conversation reasoning and forwards the chosen effort', async () => {
+		const track = { stop: vi.fn(), enabled: true };
+		vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [track] }) } });
+		calls.capabilities.mockResolvedValue({
+			...capability(), realtime_kind: 'conversation', realtime_session_fields: ['voice', 'reasoning_effort'],
+			available_reasoning_efforts: ['low', 'xhigh', 'none'], default_reasoning_effort: 'low'
+		});
+		render(RealtimeVoice);
+		const effort = await screen.findByLabelText(chatT('input.reasoningEffort'));
+		expect(Array.from((effort as HTMLSelectElement).options, (option) => option.value)).toEqual(['', 'low', 'xhigh']);
+		await fireEvent.change(effort, { target: { value: 'xhigh' } });
+		await fireEvent.click(screen.getByRole('button', { name: t('realtimeVoice.startSession') }));
+		await waitFor(() => expect(calls.createSession.mock.calls[0]?.[6]).toEqual({ reasoning_effort: 'xhigh', max_duration_seconds: 300 }));
+	});
+
+	it('reports unconfirmed Live usage if the connection closes without a terminal frame', async () => {
+		const track = { stop: vi.fn(), enabled: true };
+		vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [track] }) } });
+		calls.capabilities.mockResolvedValue({ ...capability(), realtime_kind: 'live' });
+		render(RealtimeVoice);
+		await screen.findByText(t('realtimeVoice.ready'));
+		await fireEvent.click(screen.getByRole('button', { name: t('realtimeVoice.startSession') }));
+		await waitFor(() => expect(Socket.instances).toHaveLength(1));
+		const socket = Socket.instances[0];
+		socket.open();
+		socket.message({ type: 'session.ready', realtime_kind: 'live', input_sample_rate_hz: 24000, output_sample_rate_hz: 24000 });
+		await screen.findByText(t('realtimeVoice.connectedMicrophoneOn'));
+		socket.close();
+		socket.onclose?.();
+		expect(await screen.findByText(t('realtimeModes.usageUnconfirmed'))).toBeTruthy();
+		expect(screen.queryByText(t('realtimeTranscription.ended'))).toBeNull();
+		expect(track.stop).toHaveBeenCalled();
+	});
 	it('does not acquire a microphone or create a session with chat-only authority', async () => {
 		grantLumen('lumen-chat_user');
 		const microphone = vi.fn();
@@ -268,7 +455,7 @@ describe('Realtime Voice', () => {
 		expect(getUserMedia).not.toHaveBeenCalled();
 		await fireEvent.click(screen.getByRole('button', { name: '음성 세션 시작' }));
 		await waitFor(() => expect(calls.createSession).toHaveBeenCalledWith(17, 'alloy',
-			{ token: 'token', projectId: 'project-1' }, expect.any(String), expect.any(AbortSignal)));
+			{ token: 'token', projectId: 'project-1' }, expect.any(String), expect.any(AbortSignal), 'conversation', { max_duration_seconds: 300 }));
 		const socket = Socket.instances[0];
 		socket.open();
 		socket.message({ type: 'session.ready', session_id: 'session-1', input_sample_rate_hz: 24000,
@@ -354,17 +541,19 @@ describe('Realtime Voice', () => {
 		} finally { state.mockRestore(); discarded.mockRestore(); applied.mockRestore(); }
 	});
 
-	it('supports transcription-only capture, commits PCM and retains only confirmed final text after terminal close', async () => {
-		calls.models.mockResolvedValue([{ ...model(), model_name: 'gpt-realtime-whisper', display_name: 'Realtime transcription' }]);
+	it.each(['gpt-realtime-whisper', 'gpt-transcribe'])('commits PCM and retains terminal transcription for %s', async (modelName) => {
+		calls.models.mockResolvedValue([{ ...model(), model_name: modelName, display_name: modelName }]);
 		calls.capabilities.mockResolvedValue({ ...capability(), realtime_kind: 'transcription', available_voices: [], default_voice: null, output_sample_rate_hz: 0 });
 		const track = { stop: vi.fn(), enabled: true };
 		vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [track] }) } });
 		render(RealtimeVoice);
 		await screen.findByText(t('realtimeTranscription.ready'));
+		expect(screen.getByRole('option', { name: modelName })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: t('realtimeImage.send') })).toBeNull();
 		expect(screen.queryByRole('combobox', { name: t('realtimeVoice.voice') })).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: t('realtimeTranscription.start') }));
 		await waitFor(() => expect(Socket.instances).toHaveLength(1));
-		expect(calls.createSession).toHaveBeenCalledWith(17, null, expect.anything(), expect.any(String), expect.any(AbortSignal), 'transcription');
+		expect(calls.createSession).toHaveBeenCalledWith(17, null, expect.anything(), expect.any(String), expect.any(AbortSignal), 'transcription', { max_duration_seconds: 300 });
 		const socket = Socket.instances[0];
 		socket.open();
 		socket.message({ type: 'session.ready', realtime_kind: 'transcription', input_sample_rate_hz: 24000, output_sample_rate_hz: 0 });

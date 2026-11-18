@@ -105,6 +105,11 @@ def _configuration(kind, port, backend_port, frontend_port):
     )
 
 
+def test_standalone_mic_policy_matches_frontend_documents():
+    config = _configuration("compose", 8080, 8081, 8082)
+    assert 'http-response set-header Permissions-Policy "camera=(), microphone=(self), geolocation=()"' in config
+
+
 @pytest.fixture(scope="module", params=["compose", "kolla"])
 def proxy(request, tmp_path_factory):
     tmp_path = tmp_path_factory.mktemp(f"haproxy-{request.param}")

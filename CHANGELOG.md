@@ -7,6 +7,30 @@
 
 ## [Unreleased]
 
+## [1.32.27] - 2026-11-18
+
+### Added
+
+- Image Studio가 모델별 크기·품질·배경·압축, GIF/SVG, 여러 참조 이미지, 마스크/마크업 및 출력 비용 견적을 지원한다.
+- Image Studio adds model-specific size, quality, background and compression, GIF/SVG, multiple reference images, masks or markup, and output cost estimates.
+- Realtime Studio에 통역, GPT-Live 및 지원 모델의 대화 중 이미지 입력을 추가했다. 실시간 함수 호출은 Lumen native API에서만 지원한다.
+- Realtime Studio adds translation, GPT-Live, and image input in supported conversations. Realtime function calling is available through the native Lumen API only.
+
+### Security
+
+- 브라우저 마이크 요청은 같은 출처에서만 허용하며 사용자 동의가 필요하다. 카메라와 위치 정보는 계속 차단한다.
+- Browser microphone requests are same-origin only and still require user consent. Camera and geolocation remain denied.
+
+### Changed
+
+- OpenAI 이미지 모델은 Lumen 0.6.20 카탈로그의 공식 토큰 단가로 표시되어 관리자 수동 단가 없이 실행 준비 상태가 된다. GPT-6.2 Sol/Astra 추론 강도 선택지는 Lumen이 제공하는 값만 쓰며 `none`은 표시하지 않는다.
+- OpenAI image models show official token prices from the Lumen 0.6.20 catalog and become ready without manual prices. GPT-6.2 Sol/Astra reasoning choices come from Lumen and never include `none`.
+
+### Deployment
+
+- Lumen 0.6.20을 먼저 배포해야 한다. 새 DB migration은 없다.
+- Deploy Lumen 0.6.20 first. No new DB migration.
+
 ## [1.32.26] - 2026-11-18
 
 ### Added

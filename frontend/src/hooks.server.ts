@@ -149,7 +149,7 @@ function buildSecurityHeaders(siteConfig: PublicSiteConfig): Record<string, stri
 		'X-Frame-Options': 'DENY',
 		'X-Content-Type-Options': 'nosniff',
 		'Referrer-Policy': 'strict-origin-when-cross-origin',
-		'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+		'Permissions-Policy': 'camera=(), microphone=(self), geolocation=()',
 		'X-XSS-Protection': '0',
 		'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
 		// Inline styles support Svelte transitions; scripts require SvelteKit-generated nonces/hashes.

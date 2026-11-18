@@ -12,7 +12,7 @@ from uuid import UUID
 import httpx
 import websockets
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from websockets.exceptions import ConnectionClosed
 
 from app.api.cloud_shell import _origin_allowed
@@ -23,16 +23,39 @@ from app.services.service_authorization import authorize_service_request
 
 router = APIRouter()
 _MAX_FRAME_BYTES = 64 * 1024
+# Native Lumen's UTF-8 JSON message cap for an admitted image session (both directions).
+_MAX_IMAGE_FRAME_BYTES = 2 * 1024 * 1024
+
+
+class _FrameTooLarge(ValueError):
+    pass
+
+
+def _exceeds_frame_limit(frame: str, limit: int) -> bool:
+    return len(frame) > limit or (not frame.isascii() and len(frame.encode("utf-8")) > limit)
 
 
 class SessionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     model_id: str = Field(min_length=1, max_length=190)
     provider_id: int | str | None = None
-    kind: Literal["conversation", "transcription"] = "conversation"
+    kind: Literal["conversation", "transcription", "translation", "live"] = "conversation"
     voice: str | None = Field(default=None, max_length=100)
     instructions: str | None = Field(default=None, max_length=4096)
+    output_language: str | None = Field(default=None, pattern=r"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$")
+    reasoning_effort: Literal["minimal", "low", "medium", "high", "xhigh"] | None = None
     max_duration_seconds: int = Field(default=300, ge=10, le=900)
+
+    @model_validator(mode="after")
+    def validate_mode_fields(self) -> SessionRequest:
+        if self.kind == "translation":
+            if self.output_language is None or self.voice is not None or self.instructions is not None:
+                raise ValueError("Translation requires only an output language")
+        elif self.output_language is not None:
+            raise ValueError("Only translation accepts an output language")
+        if self.kind != "conversation" and self.reasoning_effort is not None:
+            raise ValueError("Only conversation accepts a reasoning effort")
+        return self
 
 
 @router.post("/realtime/sessions", status_code=201)
@@ -65,7 +88,10 @@ async def create_session(
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(20.0, connect=5.0), verify=get_settings().ssl_verify
         ) as client:
-            response = await client.post(url, headers=headers, json=payload.model_dump())
+            # Older Lumen versions forbid unknown keys, including optional null fields.
+            optional = {"output_language", "reasoning_effort"}
+            body = payload.model_dump(exclude={name for name in optional if getattr(payload, name) is None})
+            response = await client.post(url, headers=headers, json=body)
     except httpx.RequestError as exc:
         raise HTTPException(status_code=503, detail="Realtime service unavailable") from exc
     if response.status_code >= 400:
@@ -83,6 +109,11 @@ async def create_session(
         ttl = min(60, int(data["expires_in_seconds"]))
         if ttl <= 0:
             raise ValueError("realtime session expired")
+        image_input = (
+            payload.kind == "conversation"
+            and data.get("realtime_image_input") is True
+            and data.get("max_client_frame_bytes") == _MAX_IMAGE_FRAME_BYTES
+        )
         result = {
             "session_id": session_id,
             "status": data["status"],
@@ -90,6 +121,7 @@ async def create_session(
             "provider_type": data["provider_type"],
             "expires_in_seconds": ttl,
             "expires_at": (datetime.now(UTC) + timedelta(seconds=ttl)).isoformat(),
+            "realtime_image_input": image_input,
         }
         ticket = await ws_ticket.issue_ticket(
             "chat-realtime",
@@ -98,6 +130,7 @@ async def create_session(
                 "connect_token": connect_token,
                 "user_id": principal["user_id"],
                 "project_id": logical_project,
+                "realtime_image_input": image_input,
             },
             ttl_seconds=ttl,
             revoke_scope=logical_project,
@@ -134,6 +167,7 @@ async def relay(websocket: WebSocket):
         if parsed.scheme not in {"http", "https"}:
             raise ValueError
         ws_url = urlunsplit(("wss" if parsed.scheme == "https" else "ws", parsed.netloc, parsed.path, "", ""))
+        frame_limit = _MAX_IMAGE_FRAME_BYTES if payload.get("realtime_image_input") is True else _MAX_FRAME_BYTES
     except (ValueError, KeyError, TypeError):
         await websocket.close(code=1013)
         return
@@ -141,7 +175,9 @@ async def relay(websocket: WebSocket):
         async with websockets.connect(
             ws_url,
             additional_headers={"x-realtime-token": token},
-            max_size=_MAX_FRAME_BYTES,
+            max_size=frame_limit,
+            # Enforce the size limit on the original message, not a truncated decompression result.
+            compression=None,
             open_timeout=10,
             close_timeout=5,
         ) as upstream:
@@ -150,15 +186,22 @@ async def relay(websocket: WebSocket):
             async def browser_to_lumen():
                 while True:
                     frame = await websocket.receive_text()
-                    if len(frame.encode("utf-8")) > _MAX_FRAME_BYTES:
-                        raise ValueError("Realtime frame too large")
+                    if _exceeds_frame_limit(frame, frame_limit):
+                        raise _FrameTooLarge
                     await upstream.send(frame)
 
             async def lumen_to_browser():
-                async for frame in upstream:
-                    if not isinstance(frame, str) or len(frame.encode("utf-8")) > _MAX_FRAME_BYTES:
-                        raise ValueError("Realtime frame too large")
-                    await websocket.send_text(frame)
+                try:
+                    async for frame in upstream:
+                        if not isinstance(frame, str):
+                            raise ValueError("Unexpected binary realtime frame")
+                        if _exceeds_frame_limit(frame, frame_limit):
+                            raise _FrameTooLarge
+                        await websocket.send_text(frame)
+                except ConnectionClosed as exc:
+                    if exc.sent and exc.sent.code == 1009:
+                        raise _FrameTooLarge from exc
+                    raise
 
             tasks = {asyncio.create_task(browser_to_lumen()), asyncio.create_task(lumen_to_browser())}
             try:
@@ -170,6 +213,9 @@ async def relay(websocket: WebSocket):
                 for task in tasks:
                     task.cancel()
                 await asyncio.gather(*tasks, return_exceptions=True)
+    except _FrameTooLarge:
+        with suppress(RuntimeError):
+            await websocket.close(code=1009)
     except (ConnectionClosed, WebSocketDisconnect, asyncio.CancelledError):
         pass
     except Exception:

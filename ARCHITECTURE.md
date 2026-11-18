@@ -23,7 +23,7 @@ Decisions BFF는 Lumen 서비스 권한을 확인한 뒤에만 본문을 읽는�
 **세 번째 시각 정리 (2026-11-16, source/local):** 기존 layout.css semantic text token과 shared embedded/flat/table/card/form 경계를 재사용해 consumer/admin 상세·계정·Lumen 설정의 중첩 외곽선, 제목 단계, 작업 대비와 좁은 상세 header를 수정한다. AuthStudioShell은 기존 resolvedTheme를 SVG color-scheme에 전달하고 보조 글자 크기만 기존 type role로 올린다. 포트 생성창은 기존 localized heading을 dialog 이름으로 연결한다. 자원·credential·권위·API·scope·polling·tutorial 가용성·DB/schema·배포 경계는 바꾸지 않는 presentation-only 변경이다. 실제 렌더·native 조작과 synthetic/redirect 한계는 docs/testing.md에 구분하며 운영 수용으로 승격하지 않는다.
 
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 root/backend/frontend와 Helm 버전은 `1.32.26`이며, 불변 tag `1.32.26`(`ac516031`)을 DMS Lab 컨트롤 plane에 배포했다. Gemini Decision Studio는 먼저 배포한 Lumen `0.6.19` 이상이 필요하다. 발행·배포 수신증과 운영 브라우저 검증 범위는 [`docs/testing.md`](docs/testing.md)에 있다. Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock 버전은 `8.2.2`다. Source·합성 검증과 실제 OpenStack 배포 증거를 구분한다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 root/backend/frontend와 Helm 버전은 `1.32.27`(OpenAI Studio 확장 릴리스 준비)이다. 현재 운영 버전은 불변 tag `1.32.26`(`ac516031`)이며 발행·배포 수신증과 운영 브라우저 검증 범위는 [`docs/testing.md`](docs/testing.md)에 있다. OpenAI Image/Realtime Studio 확장은 Lumen `0.6.20` 이상이 필요하며, Lumen을 먼저 배포한다. Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock 버전은 `8.2.2`다. Source·합성 검증과 실제 OpenStack 배포 증거를 구분한다.
 
 **1.32.11 준비 (2026-11-08, source/local):** `1.32.10` 이후 dev의 도메인 IAM 그룹 관리(`/api/v1/iam/groups*`), 도메인 manager 프로젝트 수정(`PATCH /api/v1/iam/projects/{id}`, 이름·설명만), 프로젝트 표·슬라이드인 화면, manager 전용 프로젝트 생성(`project_creator` 위임 폐기)과 manager 투영의 native `manager` 부여(v1 `reader` 투영 migration, 투영 파생 row의 manager 계산 제외)를 포함한다. 사용자 페이지의 `/api/v1/{chat,k3s,waygate,palimpsest}/*`에서 시스템 관리자 승격을 제거하고 `/admin/*` 하위에만 남긴다. 스키마·SQL 변경과 새 설정 키는 없다. 시스템 관리자 승격을 제거한 `deps._resolve_jwt_session` 경계는 `test_auth_domain_boundaries`로 검증했다. 브라우저 실화면과 실제 Keystone의 reader→manager 투영 migration은 확인하지 않았다. 이 항목은 source/local 준비이며 발행·운영 배포는 별도 기록한다.
 
@@ -1538,6 +1538,14 @@ Local architecture qualification used separate `dev` clones with `HEAD` plus exp
 
 Lumen 브라우저 BFF는 기존 `/v1/{path}` 기본 전달을 유지하되 `/api/v1/chat/audio/speech`, `/audio/transcriptions`, `/embeddings`를 각각 `/v1/chat/audio/speech`, `/v1/chat/audio/transcriptions`, `/v1/chat/embeddings`로 명시 매핑한다. 모델 목록과 이미지 generation/edit도 native `/v1/chat/...` 경로로 매핑한다. `service_proxy.py`의 caller/project-scoped 헤더, 본문·Content-Type, 원본 응답 바이트·Content-Type 스트리밍은 그대로 적용된다. Embedding 요청/응답은 private no-store이고, 벡터/원문 입력은 Afterglow 저장소에 기록하지 않는다.
 
+Image Studio는 선택 모델의 capability에서만 사용자 지정 크기·복잡도·배경·출력 형식과 GIF 설정을 노출한다. Browser validation은 입력 보조이며 Lumen이 허용 여부와 토큰 정산을 결정한다. 명시 크기/품질의 raster 출력 참고 견적은 해당 route의 유효 USD 단가와 OpenAI 계산식을 사용하고 입력/애니메이션/SVG 비용을 추정하지 않는다. 완료한 owned run의 `usage.updated`를 재생하여 실제 사용량과 provider 비용을 별도로 표시한다. GIF·SVG asset은 blob URL을 참조하는 `<img>`로만 표시하고 scope/선택 변경 시 URL을 해제한다. 관리자 registry는 카탈로그 가격 출처·유효 media rates·실행 gate를 분리한다. Text chat은 native `reasoning_options`/`reasoning_none_supported`를 그대로 적용한다.
+
+Image Studio consumes Lumen's advanced image capability metadata for ordered multiple sources, one primary-image mask/markup, fidelity, moderation and authorized SVG author/effort. Input and auxiliary assets use the existing owned upload path and participate in the same request fingerprint; incompatible attached assets block submission instead of being discarded.
+
+Removing an attachment during an upload aborts that batch, discards every unconfirmed attachment, and revokes its local preview. Completed sources not selected for removal remain usable.
+
+Completed Image Studio runs report billed image count and cost for the `image_units` usage component; zero token placeholders are not displayed as provider usage.
+
 Afterglow Embedding Studio is a session-authenticated text-to-vector surface, separate from chat history. It selects only Lumen `model_kind=embedding` routes, checks current `lumen-chat_user` and model `embeddings`/pricing capability gates, limits input to 1–16 texts, and fences late results by request/user/project ownership. It displays dimensions, bounded vector preview, norm, token/cost and pairwise cosine similarity; it does not persist prompt or vector data. Public OpenAI/Gemini API-key embedding compatibility remains owned by Lumen, not the browser BFF.
 
 대시보드 텍스트 채팅은 API-key 기반 OpenAI 호환 `/v1/responses`(Codex 경로)가 아니라 Keystone 사용자/프로젝트가 소유한 `/v1/conversations/{id}/completions`·`/v1/temp-completions`에서 `202` durable run을 만들고 `/v1/runs/{id}/events`를 구독한다. 따라서 호환 API의 성공만으로 native provider worker의 인증·모델 라우팅을 검증하지 않는다. 접수 전 오류는 BFF가 보존한 HTTP 상태와 안전한 detail을 표시하고, 접수 뒤 `run.failed`는 Lumen의 `error_code`·`safe_message`를 별도로 표시한다. Provider 응답 원문·비밀값은 브라우저로 전달하지 않는다.
@@ -1555,9 +1563,17 @@ BFF 경로 `/api/v1/chat/admin/providers/{provider_id}/accounts...`는 `backend/
 이 source는 현재 local native0.6.9에 account/probe API가 없다는 read-only 관측과 구분한다. Unpublished account027은 endpoint inference secret을 옮기는 non-additive cutover이며 published0.6.9의027-kubernetes-sandboxes와 번호도 충돌한다. Repaired shared schema의027 ledger가 matching runtime 수용 증거는 아니고 적용 SQL/checksum을 수정하거나 재실행하지 않는다. Latest native dev와의 별도 migration/release reconciliation, 전체 writer drain·stopped-writer backup/isolated restore 및 matching API/worker/private binary의 승인된 cutover가 선행한다. Afterglow는 새 account DB/schema나 선택/추론/청구 엔진을 만들지 않는다. [`docs/deployment.md`](docs/deployment.md#lumen-provider-account-cutover-unpublished-source)와 native Lumen operations의 배포 차단 조건을 유지하며 source qualification을 운영 수용으로 주장하지 않는다.
 
 
-실시간 음성은 generic proxy가 아니라 `realtime.py`가 Keystone caller/project로 Lumen session을 만들고 Lumen `connect_token`을 응답에서 제거한다. `ws_ticket`의 one-use Redis ticket만 브라우저에 전달한다. `WS /api/v1/chat/realtime/ws`는 허용 Origin·ticket을 확인하고 internal Lumen session WS에 header token을 붙여 bounded text frame을 양방향 relay한다. Model gate와 PCM16/자막은 브라우저의 `RealtimeVoice`에서 처리하며 오디오는 Lumen과 upstream provider로 전송한다. Lumen이 run/lease/pricing/unknown usage의 정본이고 Afterglow는 DB/S3에 realtime audio/transcript를 저장하지 않는다. Close/logout/project switch에서는 microphone·AudioContext·playback·socket·화면 자막을 정리한다. Provider 보존 정책은 별개이며 실제 provider credential 및 브라우저 visual smoke는 아직 검증하지 못했다.
+실시간 음성은 generic proxy가 아니라 `realtime.py`가 Keystone caller/project로 Lumen session을 만들고 Lumen `connect_token`을 응답에서 제거한다. `ws_ticket`의 one-use Redis ticket만 브라우저에 전달한다. `WS /api/v1/chat/realtime/ws`는 허용 Origin·ticket을 확인하고 internal Lumen session WS에 header token을 붙여 bounded text frame을 양방향 relay한다. Lumen이 실행·lease·정산의 정본이고 Afterglow는 DB/S3에 realtime audio/transcript를 저장하지 않는다.
 
-Realtime browser intent key는 user/project/model/voice fingerprint가 같고 admission/WS 준비 실패의 결과가 불확실할 때 재사용한다. 명백한 4xx 또는 scope 변경에는 폐기한다. OpenAI 수동 `response.cancel`은 연결을 유지하고, Gemini Live는 별도의 response cancel wire가 없어 수동 중단 시 세션을 닫는다(자동 barge-in은 Gemini VAD).
+Realtime Studio는 Lumen이 반환한 `realtime_kind`와 `realtime_session_fields`를 사용한다. Translation은 `output_language`, GPT-Live는 voice와 선택 지침을 설정한다. 두 모드는 PCM16과 양방향 자막을 처리하며, conversation의 `response.cancel`이나 transcription의 commit을 보내지 않는다. 정상 종료에서는 서버 `session.closed`까지 수신한 뒤 마이크·playback·socket을 정리하며 자막은 현재 화면 메모리에만 남는다. 사용자·프로젝트·확정 권한 변경은 자막까지 즉시 폐기한다.
+
+Frontend 문서와 standalone HAProxy는 `microphone=(self)`로 SPA 이동 후에도 브라우저의 명시적 권한 요청을 허용한다. Camera/geolocation과 framing은 계속 차단하며 FastAPI 및 Kolla HAProxy 구성을 변경하지 않는다.
+
+Realtime image admission projects Lumen's authoritative image grant into the one-use ticket. The BFF limits each UTF‑8 message in either direction to 2 MiB on those admitted conversations and 64 KiB elsewhere; oversize closes with 1009. Browser image picks are re-encoded as local PNG/JPEG before relay (≤1 MiB, ≤2048 px per side, ≤8 per session) and are never a durable asset. Native function calling is API-only; the browser does not execute tools. A priced `gpt-transcribe` realtime registration follows the existing transcription mode.
+
+The upstream relay disables WebSocket compression so the message limit is measured without decompression truncation. The browser starts audio only after `session.ready`. A normalized operation `error`, including `realtime_hold_limit`, displays localized feedback without closing the socket. `session.closed` or transport close remains authoritative.
+
+Realtime browser intent key는 user/project/model/mode와 해당 모드의 voice·언어·지침이 같고 admission/WS 준비 실패의 결과가 불확실할 때 재사용한다. 명백한 4xx 또는 scope 변경에는 폐기한다. OpenAI conversation의 `response.cancel`은 연결을 유지하고, Gemini Live는 해당 wire 명령을 지원하지 않아 수동 중단 시 세션을 닫는다.
 
 Drover 생성 모달(`K3sCreateClusterModal.svelte`)은 `/api/v1/networks`의 `is_external=true` 항목만 선택지로 노출하고 내부 `Default` 이름 자동 선택과 Tenant/Provider 전환을 제공하지 않는다. 빈 선택은 기존 caller가 `network_id`를 생략하여 Drover의 관리자 외부 provider 기본 정책을 사용하고, 명시 선택은 해당 ID를 그대로 전달한다. 노드는 provider 네트워크에 직접 연결하며 내부 NIC는 생성 후 별도 attach 경로로 추가한다. Stampede 스위치와 노드그룹 생성 모달(`K3sNodegroupCreateModal.svelte`)의 오토스케일 스위치는 기본으로 켜져 있다. `k3sClusterListController`는 생략 시 Stampede를 켜는 Drover 0.4.13 계약 때문에 사용자의 선택을 항상 `stampede_enabled` boolean으로 보내 끈 선택을 명시적 opt-out으로 유지한다. 노드그룹 생성은 기존처럼 boolean과 켜진 경우의 min/max를 보낸다. API admission·guest NIC pin·작업 snapshot·Stampede 동작과 GPU `accelerator` node label의 소유자는 독립 Drover이며 Afterglow는 이를 중복 구현하지 않는다. 상세 계약은 [`docs/api/k3s.md`](docs/api/k3s.md)를 따른다.
 
@@ -2244,9 +2260,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "b078c7460fcb70d62af1ab3fc0e805a0d089f85318003c25b90ba617f38d1f9f",
-  "reviewed_at": "2026-11-18T06:39:47Z",
-  "summary": "Prepare Afterglow 1.32.26 with Gemini Decision Studio; synchronize package and Helm versions. Deploy Lumen 0.6.19 first. No schema or deployment topology changes."
+  "source_sha256": "31ae8cd99b0314ab552d176758bc38c2d8e2efd40e10244fe5cde9d3cc7fdad4",
+  "reviewed_at": "2026-11-18T10:19:12Z",
+  "summary": "Prepare Afterglow 1.32.27 with OpenAI Image and Realtime Studio extensions; synchronize package and Helm versions. Deploy Lumen 0.6.20 first. No schema or deployment topology changes."
 }
 ```
 <!-- architecture-review:end -->

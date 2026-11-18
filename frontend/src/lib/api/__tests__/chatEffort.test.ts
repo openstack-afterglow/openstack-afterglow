@@ -34,6 +34,12 @@ describe('effortOptionsFor', () => {
 		expect(effortOptionsFor(listed)).toEqual(['auto', 'low', 'xhigh', 'max', 'ultra']);
 		expect(effortOptionsFor({ reasoning: true }, undefined)).toEqual(['auto']);
 	});
+	it.each(['gpt-6.2-sol', 'gpt-6.2-astra'])('uses the declared efforts for %s without none', (model_name) => {
+		const model = { model_name, reasoning_none_supported: false,
+			capabilities: { reasoning: true, reasoning_options: [{ type: 'effort', values: ['none', 'low', 'medium', 'high'] }] } };
+		expect(effortOptionsFor(model.capabilities, model.reasoning_none_supported)).toEqual(['auto', 'low', 'medium', 'high']);
+		expect(normalizeEffort('none', model.capabilities, model.reasoning_none_supported)).toBe('auto');
+	});
 	it('reasoning 미지원이면 none 지원 값과 무관하게 빈 배열', () => {
 		expect(effortOptionsFor({ reasoning: false }, true)).toEqual([]);
 	});
