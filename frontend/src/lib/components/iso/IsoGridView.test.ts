@@ -2,10 +2,11 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/sve
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import IsoGridView from './IsoGridView.svelte';
+import { PACKET_COHORT_MS, PACKET_LIMIT } from './packets';
 import type { IsoScene } from './types';
 
 const scene: IsoScene = {
-	platforms: [{ id: 'network', label: 'LAN', tone: 'internal', style: 'slab', x: 0, y: 1, w: 2, h: 2 }],
+	platforms: [{ id: 'network', label: 'LAN', tone: 'internal', style: 'slab', kind: 'internal-network', x: 0, y: 1, w: 2, h: 2 }],
 	nodes: [
 		{ id: 'router', kind: 'router', label: 'Edge router', x: 0, y: 0, tone: 'router', status: 'ok' },
 		{ id: 'vm', kind: 'instance', label: 'GPU node', x: 1, y: 2, tone: 'internal', platformId: 'network' },
@@ -38,10 +39,17 @@ beforeEach(() => {
 	vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(580);
 });
 
+async function touch(target: Element, type: string, id: number, x: number, y = 100) {
+	const event = new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0 });
+	Object.assign(event, { pointerId: id, pointerType: 'touch' });
+	await fireEvent(target, event);
+}
+
 afterEach(() => {
 	cleanup();
 	vi.restoreAllMocks();
 	vi.unstubAllGlobals();
+	vi.useRealTimers();
 });
 
 describe('IsoGridView', () => {
@@ -50,7 +58,7 @@ describe('IsoGridView', () => {
 		render(IsoGridView, { scene, label: 'Diagram', onselect, onclear });
 		const canvas = screen.getByRole('group', { name: 'Diagram' });
 		const targets = within(canvas).getAllByRole('button');
-		expect(targets.map((button) => button.getAttribute('aria-label'))).toEqual(['Edge router, 정상', 'GPU node', 'LAN']);
+		expect(targets.map((button) => button.getAttribute('aria-label'))).toEqual(['라우터, Edge router, 정상', '인스턴스, GPU node', '내부 네트워크, LAN']);
 		expect(targets.every((button) => button instanceof HTMLButtonElement && button.tabIndex === 0)).toBe(true);
 		targets[0].focus();
 		// jsdom does not synthesize the native Enter/Space click; browsers dispatch detail=0.
@@ -58,6 +66,43 @@ describe('IsoGridView', () => {
 		expect(onselect).toHaveBeenCalledWith('router');
 		await fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
 		expect(onclear).toHaveBeenCalledOnce();
+	});
+
+	it('continues touch pan after the node button loses implicit pointer capture', async () => {
+		const onselect = vi.fn();
+		const { container } = render(IsoGridView, { scene, label: 'Diagram', onselect });
+		const canvas = screen.getByRole('group', { name: 'Diagram' });
+		const target = within(canvas).getByRole('button', { name: /Edge router/ });
+		const transform = () => container.querySelector<HTMLElement>('.targets')?.style.transform;
+		await touch(target, 'pointerdown', 1, 100);
+		await touch(target, 'pointermove', 1, 120);
+		const first = transform();
+		await touch(target, 'lostpointercapture', 1, 120);
+		await touch(canvas, 'pointermove', 1, 150);
+		expect(transform()).not.toBe(first);
+		await touch(canvas, 'pointerup', 1, 150);
+		const end = transform();
+		await touch(canvas, 'pointermove', 1, 180);
+		expect(transform()).toBe(end);
+		expect(onselect).not.toHaveBeenCalled();
+	});
+
+	it('continues pinching after the first touch starts on a node button', async () => {
+		const { container } = render(IsoGridView, { scene, label: 'Diagram', onselect: vi.fn() });
+		const canvas = screen.getByRole('group', { name: 'Diagram' });
+		const target = within(canvas).getByRole('button', { name: /Edge router/ });
+		const scale = () => Number.parseFloat(container.querySelector('output')!.textContent!);
+		const initial = scale();
+		await touch(target, 'pointerdown', 1, 100);
+		await touch(canvas, 'pointerdown', 2, 200);
+		await touch(target, 'pointermove', 1, 85);
+		const first = scale();
+		await touch(target, 'lostpointercapture', 1, 85);
+		await touch(canvas, 'pointermove', 1, 65);
+		expect(first).toBeGreaterThan(initial);
+		expect(scale()).toBeGreaterThan(first);
+		await touch(canvas, 'pointerup', 1, 65);
+		await touch(canvas, 'pointerup', 2, 200);
 	});
 
 	it('highlights slab membership and keeps unrelated resources subdued', async () => {
@@ -82,7 +127,7 @@ describe('IsoGridView', () => {
 		intersection([{ isIntersecting: false } as IntersectionObserverEntry], {} as IntersectionObserver);
 		await tick();
 		expect(container.querySelector('.packet')).toBeNull();
-		intersection([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
+		intersection([{ isIntersecting: false }, { isIntersecting: true }] as IntersectionObserverEntry[], {} as IntersectionObserver);
 		await tick();
 		expect(container.querySelectorAll('.packet')).toHaveLength(1);
 	});
@@ -101,6 +146,25 @@ describe('IsoGridView', () => {
 		expect(container.querySelector('.packet')).toBeNull();
 	});
 
+
+	it('rotates the visible cohort without exceeding the budget and stops the clock when paused', async () => {
+		vi.useFakeTimers();
+		const edges = Array.from({ length: PACKET_LIMIT + 4 }, (_, i) => ({ ...scene.edges[0], id: `route-${i}` }));
+		const { container } = render(IsoGridView, { scene: { ...scene, edges }, label: 'Diagram' });
+		await tick();
+		const routes = container.querySelectorAll('.edge');
+		expect(container.querySelectorAll('.packet')).toHaveLength(PACKET_LIMIT);
+		expect(routes[PACKET_LIMIT].querySelector('.packet')).toBeNull();
+		await vi.advanceTimersByTimeAsync(PACKET_COHORT_MS);
+		expect(routes[PACKET_LIMIT].querySelector('.packet')).not.toBeNull();
+		expect(container.querySelectorAll('.packet')).toHaveLength(PACKET_LIMIT);
+		await fireEvent.click(screen.getByRole('button', { name: '경로 애니메이션 일시 정지' }));
+		await vi.advanceTimersByTimeAsync(PACKET_COHORT_MS * 2);
+		expect(container.querySelectorAll('.packet')).toHaveLength(0);
+		await fireEvent.click(screen.getByRole('button', { name: '경로 애니메이션 재생' }));
+		expect(routes[PACKET_LIMIT].querySelector('.packet')).not.toBeNull();
+		expect(routes[PACKET_LIMIT - 2].querySelector('.packet')).toBeNull();
+	});
 	it('keeps user zoom across scene refreshes and refits when the fit key changes', async () => {
 		const { container, rerender } = render(IsoGridView, { scene, label: 'Diagram', fitKey: 'first' });
 		await tick();
@@ -120,6 +184,7 @@ describe('IsoGridView', () => {
 		render(IsoGridView, { scene, label: 'Diagram' });
 		const figure = screen.getByRole('figure', { name: 'Diagram' });
 		expect(within(figure).getByText('움직이는 점은 설정된 경로를 나타냅니다. 실시간 트래픽이나 연결 가능 여부가 아닙니다.').closest('figcaption')).not.toBeNull();
+		expect(within(figure).getByText('비활성 경로').querySelector('.inactive-key')).not.toBeNull();
 		const edges = within(figure).getByRole('list', { name: '설정된 경로' });
 		expect(edges.textContent).toContain('Edge router에서 LAN(으)로 이어지는 설정 경로 · 비활성');
 	});

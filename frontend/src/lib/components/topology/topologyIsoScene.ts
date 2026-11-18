@@ -10,10 +10,13 @@ type ParsedAddress = { bits: 32 | 128; value: bigint };
 function statusOf(status?: string | null): IsoStatus {
 	switch (status) {
 		case 'ACTIVE': case 'ONLINE': return 'ok';
-		case 'BUILD': case 'PENDING_CREATE': case 'PENDING_UPDATE': case 'PENDING_DELETE': case 'REBUILD': case 'REBOOT': return 'pending';
-		case 'DEGRADED': case 'DRAINING': return 'warning';
+		case 'BUILD': case 'PENDING_CREATE': case 'PENDING_UPDATE': case 'PENDING_DELETE':
+		case 'REBUILD': case 'REBOOT': case 'HARD_REBOOT': case 'RESIZE': case 'REVERT_RESIZE':
+		case 'MIGRATING': case 'PASSWORD': return 'pending';
+		case 'DEGRADED': case 'DRAINING': case 'VERIFY_RESIZE': case 'RESCUE': return 'warning';
 		case 'ERROR': return 'error';
-		case 'DOWN': case 'OFFLINE': case 'SHUTOFF': case 'PAUSED': case 'SUSPENDED': case 'INACTIVE': return 'off';
+		case 'DOWN': case 'OFFLINE': case 'SHUTOFF': case 'PAUSED': case 'SUSPENDED': case 'INACTIVE':
+		case 'SHELVED': case 'SHELVED_OFFLOADED': case 'SOFT_DELETED': return 'off';
 		default: return 'unknown';
 	}
 }
@@ -63,7 +66,6 @@ export function topologyIsoScene(data: TopologyData, projectId: string | null, t
 	const edges: IsoEdge[] = [];
 	const routerBlocks: DraftNode[] = [];
 	const detached: DraftNode[] = [];
-	let tenantIndex = 0;
 	for (const net of data.networks) {
 		const group = byName.get(net.name) ?? [];
 		group.push(net);
@@ -72,7 +74,7 @@ export function topologyIsoScene(data: TopologyData, projectId: string | null, t
 	for (const net of networks) {
 		for (const subnet of net.subnet_details) subnetToNet.set(subnet.id, net.id);
 		scopes.set(net.id, []);
-		tones.set(net.id, net.is_external ? 'gateway' : net.is_shared ? 'shared' : tenantIndex++ % 2 ? 'internal-2' : 'internal');
+		tones.set(net.id, net.is_external ? 'gateway' : net.is_shared ? 'shared' : 'internal');
 	}
 	function resolveAddressNetwork(addr: TopologyIpAddress) {
 		if (addr.network_id) return netById.get(addr.network_id);
@@ -233,6 +235,7 @@ export function topologyIsoScene(data: TopologyData, projectId: string | null, t
 			const { x, y } = origins[i];
 			platforms.push({ id: topologyPlatformId(net.id), label: net.name || net.id,
 				sublabel: net.subnet_details.map(({ cidr }) => cidr).join(' · ') || undefined,
+				kind: net.is_external ? 'external-network' : net.is_shared ? 'shared-network' : 'internal-network',
 				tone: tones.get(net.id)!, style: 'slab', x, y, w: pack.w, h: pack.h });
 			scopes.get(net.id)!.forEach((node, index) => nodes.push({ ...node, x: x + pack.positions[index].x, y: y + pack.positions[index].y }));
 		}
