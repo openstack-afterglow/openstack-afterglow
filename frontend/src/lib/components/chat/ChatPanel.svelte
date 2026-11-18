@@ -39,7 +39,8 @@
 	} from '$lib/api/chatMetrics';
 	import type { ToolActivityItem } from '$lib/api/chatToolActivity';
 	import { aggregateCitations } from '$lib/api/chatCitations';
-	import { effortForModel, normalizeEffort } from '$lib/api/chatEffort';
+	import { normalizeEffort } from '$lib/api/chatEffort';
+	import { persistChatModel, resolveCatalogModel, restoreChatModel } from '$lib/api/modelCatalog';
 	import { createChatRevealBuffer } from '$lib/api/chatRevealBuffer';
 	import { createChatRunAttachment } from '$lib/api/chatRunAttachment';
 	import { taskLabelForStage, taskLabelForTool } from '$lib/api/chatTaskLabels';
@@ -184,7 +185,7 @@
 	let modelsError = $state('');
 	let modelRequestGeneration = 0;
 	let modelScope = '';
-	let selectedModel = $state('');
+	let selectedModelId = $state<number | null>(null);
 	let effort = $state('auto'); // auto=provider 기본, none=명시적 비활성.
 	let searchEnabled = $state(false);
 	let attachments = $state<ChatAttachment[]>([]); // 입력창 첨부(업로드 진행/완료)
@@ -250,9 +251,9 @@
 
 	let activeConvId = $state<string | null>(null);
 
-	function selectedFeatureOptions(modelName = activeModelName) {
+	function selectedFeatureOptions(model = selectedModelObj) {
 		const features = defaultChatFeatureOptions();
-		const caps = models.find((model) => model.model_name === modelName)?.capabilities;
+		const caps = model?.capabilities;
 		const searchGate = caps?.feature_gates?.web_search;
 		if (caps?.web_search && searchGate?.mode === 'native' && (caps.web_search_required || (searchEnabled && searchGate.available && searchGate.pricing_available))) {
 			features.web_search.enabled = true;
@@ -360,8 +361,20 @@
 
 
 	// 현재 선택 모델의 능력(배지·게이팅). 에이전트 바인딩 시 에이전트 모델 기준.
-	const activeModelName = $derived(activeAgent?.model_name || selectedModel);
-	const selectedModelObj = $derived(models.find((m) => m.model_name === activeModelName) ?? null);
+	const selectedModelObj = $derived(activeAgent && (activeAgent.model_row_id != null || activeAgent.model_name)
+		? resolveCatalogModel(models, activeAgent.model_row_id, activeAgent.model_name)
+		: resolveCatalogModel(models, selectedModelId));
+	const activeModelName = $derived(selectedModelObj?.model_name ?? activeAgent?.model_name ?? '');
+	const modelLabel = $derived.by(() => {
+		const model = selectedModelObj;
+		if (!model) return activeModelName || t('panel.model.select');
+		const sameLabel = models.some((row) => row.id !== model.id && row.display_name === model.display_name);
+		return sameLabel ? `${model.display_name} · ${model.provider ?? model.provider_type}` : model.display_name;
+	});
+
+	function modelRequest(model: AvailableModel) {
+		return { model_id: model.model_name, model_row_id: model.id };
+	}
 	$effect(() => {
 		const caps = selectedModelObj?.capabilities;
 		if (!caps?.web_search || caps.feature_gates?.web_search?.mode !== 'native') searchEnabled = false;
@@ -377,18 +390,13 @@
 		if (normalized !== effort) effort = normalized;
 	});
 
-	const _LAST_MODEL_KEY = 'chat:lastModel';
-	function persistLastModel(name: string) {
+	function chooseModel(model: AvailableModel) {
+		selectedModelId = model.id;
 		try {
-			if (typeof localStorage !== 'undefined' && name) localStorage.setItem(_LAST_MODEL_KEY, name);
+			if (typeof localStorage !== 'undefined') persistChatModel(localStorage, model.id);
 		} catch {
 			/* localStorage 불가 환경 무시 */
 		}
-	}
-	function chooseModel(name: string) {
-		if (!name) return;
-		selectedModel = name;
-		persistLastModel(name);
 	}
 
 	// Compact layouts keep the history control inside the chat header; desktop keeps the sidebar inline.
@@ -423,8 +431,7 @@
 		path: string;
 		body: unknown;
 		idempotencyKey: string;
-		modelName: string;
-		effectiveModelName: string;
+		model: AvailableModel;
 		sandboxOwnerKey: string;
 	};
 	let failedSubmission = $state<FailedPersistentSubmission | null>(null);
@@ -680,7 +687,7 @@
 	function tempId(): string {
 		return `tmp-${tmpSeq++}`;
 	}
-	function newAssistantDraft(model: string | null, fresh = true): DisplayMessage {
+	function newAssistantDraft(model: string | null, fresh = true, rowId?: number): DisplayMessage {
 		return {
 			id: tempId(),
 			conversation_id: activeConvId ?? '',
@@ -688,6 +695,7 @@
 			parent_id: null,
 			content: '',
 			model_name: model,
+			execution: rowId === undefined ? undefined : { model_row_id: rowId },
 			created_at: null,
 			streaming: true,
 			sessionEntrance: fresh ? freshMessageEntrance() : undefined,
@@ -1152,16 +1160,16 @@
 		try {
 			const loaded = await api.withExperience(experience).get<AvailableModel[]>('/api/v1/chat/models', requestToken, requestProject);
 			if (destroyed || generation !== modelRequestGeneration || token !== requestToken || projectId !== requestProject) { experienceDiscarded(experience, 'stale'); return; }
-			models = loaded;
-			if (!models.some((model) => model.model_name === selectedModel)) {
-				let last: string | null = null;
+			models = loaded.filter((model) => model.model_kind === undefined || model.model_kind === 'text');
+			if (selectedModelId === null || !resolveCatalogModel(models, selectedModelId)) {
+				let saved: AvailableModel | null | undefined;
 				try {
-					last = typeof localStorage !== 'undefined' ? localStorage.getItem(_LAST_MODEL_KEY) : null;
+					if (typeof localStorage !== 'undefined') saved = restoreChatModel(models, localStorage);
 				} catch {
 					// Browser storage is optional.
 				}
-				selectedModel = last && models.some((model) => model.model_name === last)
-					? last : models[0]?.model_name ?? '';
+				selectedModelId = (saved === undefined ? models[0] : saved)?.id ?? null;
+				syncSelectedModel();
 			}
 			experienceState(experience, models.length ? 'ready' : 'empty', 0);
 			void experienceApplied(experience, {}, () => !destroyed && generation === modelRequestGeneration && token === requestToken && projectId === requestProject);
@@ -1330,8 +1338,10 @@
 	}
 
 	function syncSelectedModel() {
-		const modelName = lastAssistantModel(allMessages);
-		if (modelName && models.some((model) => model.model_name === modelName)) selectedModel = modelName;
+		const message = lastAssistantModel(allMessages);
+		const legacyName = message?.model_name ?? activeConv?.model_name;
+		const rowId = message?.execution?.model_row_id;
+		if (rowId != null || legacyName) selectedModelId = resolveCatalogModel(models, rowId, legacyName)?.id ?? null;
 	}
 
 	async function loadUsage() {
@@ -1479,10 +1489,6 @@
 	function bindAgent(agent: Agent) {
 		if (!canChat || !canTools) return;
 		activeAgent = agent;
-		// 에이전트가 모델을 소유 → 상단 셀렉터에도 반영(모델이 목록에 있으면)
-		if (agent.model_name && models.some((m) => m.model_name === agent.model_name)) {
-			selectedModel = agent.model_name;
-		}
 	}
 	function unbindAgent() {
 		activeAgent = null;
@@ -1506,7 +1512,7 @@
 		allMessages = [];
 		activeConvId = conv.id;
 		if (projectId) saveActiveConversationId(projectId, conv.id);
-		if (conv.model_name) selectedModel = conv.model_name;
+		if (conv.model_name) selectedModelId = resolveCatalogModel(models, null, conv.model_name)?.id ?? null;
 		error = null;
 		contextError = null;
 		contextPhase = 'ready';
@@ -1613,12 +1619,13 @@
 		const temp = tempMode;
 		const scopeId = temp ? tempThreadId : activeConvId;
 		const agentId = activeAgent ? String(activeAgent.id) : null;
+		const route = selectedModelObj ? modelRequest(selectedModelObj) : null;
 		const key = JSON.stringify({
 			projectId,
 			token,
 			temp,
 			scopeId,
-			model: selectedModel,
+			model: route,
 			effort,
 			agentId,
 			skills: selectedSkillIds,
@@ -1632,7 +1639,7 @@
 				? `/api/v1/chat/temp-threads/${tempThreadId}/context-preview`
 				: `/api/v1/chat/conversations/${activeConvId}/context-preview`,
 			body: {
-				model_id: selectedModel,
+				...route,
 				features,
 				reasoning_effort: effort,
 				agent_id: agentId ?? undefined,
@@ -1662,7 +1669,7 @@
 	async function executeContextPreview(options?: { emptyDraft?: boolean; experience?: ExperienceContext }): Promise<ContextState | null> {
 		if (streaming || destroyed || !token || !projectId) return null;
 		const hasScope = Boolean(activeConvId || (tempMode && tempThreadId));
-		if (!hasScope) {
+		if (!hasScope || !selectedModelObj) {
 			invalidateContextPreview();
 			contextState = null;
 			return null;
@@ -1747,7 +1754,7 @@
 	$effect(() => {
 		const _in = input;
 		const _att = attachments;
-		const _model = selectedModel;
+		const _model = selectedModelObj;
 		const _agent = activeAgent;
 		const _tools = selectedToolIds;
 		const _mcp = selectedMcpIds;
@@ -1758,7 +1765,7 @@
 		contextState = null;
 		contextError = null;
 		invalidateContextPreview();
-		if (!hasContextScope || streaming || !token || !projectId) return;
+		if (!hasContextScope || !_model || streaming || !token || !projectId) return;
 
 		untrack(() => {
 			scheduleDebouncedContextPreview();
@@ -1770,7 +1777,9 @@
 		if (!token || !projectId || streaming || preparingRun || manualCompacting || destroyed) return;
 		const hasScope = Boolean(activeConvId || (tempMode && tempThreadId));
 		if (!hasScope) return;
-		const prepared = await prepareRunTools(activeModelName);
+		const model = selectedModelObj;
+		if (!model) return;
+		const prepared = await prepareRunTools(model.id);
 		if (!prepared || !ownsRunTools(prepared)) return;
 
 		const experience = beginExperienceAction('lumen', 'start', 'shared.stream');
@@ -1789,7 +1798,7 @@
 			: `/api/v1/chat/conversations/${activeConvId}/compactions`;
 
 		const body = {
-			model_id: selectedModel,
+			...modelRequest(model),
 			features: selectedFeatureOptions(),
 			reasoning_effort: effort,
 			agent_id: activeAgent ? String(activeAgent.id) : undefined,
@@ -1807,7 +1816,7 @@
 		const generation = streamGeneration;
 
 		try {
-			assertRunTools(prepared, activeModelName);
+			assertRunTools(prepared, selectedModelObj?.id);
 			preparingRun = false;
 			const descriptor = await createChatRun(path, body, {
 				token,
@@ -1911,14 +1920,14 @@
 			'/api/v1/chat/conversations',
 			{
 				title: null,
-				model_name: selectedModel || null,
+				model_name: (prepared?.frozenSnapshot ? prepared.frozenSnapshot.model.model_name : activeModelName) || null,
 				workspace_id: wsId
 			},
 			token,
 			projectId
 		);
 		// The native POST may outlive its originating owner or conversation view.
-		if (prepared) assertRunTools(prepared, prepared.frozenSnapshot ? prepared.modelName : activeModelName);
+		if (prepared) assertRunTools(prepared, prepared.frozenSnapshot ? prepared.modelRowId : selectedModelObj?.id);
 		pendingWorkspaceId = null;
 		activeConvId = conv.id;
 		localMutationEpoch += 1;
@@ -1967,7 +1976,11 @@
 		let runState = createRunViewState(descriptor.run_id);
 		const knownApprovalSeq = draft.execution?.run_id === descriptor.run_id ? draft.execution.last_seq ?? 0 : 0;
 		if (draft.execution?.run_id === descriptor.run_id) runState.startedAt = draft.execution.started_at ?? null;
-		draft.execution = { ...(draft.execution?.run_id === descriptor.run_id ? draft.execution : {}), run_id: descriptor.run_id, status: descriptor.status };
+		draft.execution = {
+			...(draft.execution?.run_id === undefined || draft.execution.run_id === descriptor.run_id ? draft.execution : {}),
+			run_id: descriptor.run_id,
+			status: descriptor.status
+		};
 		const reveal = createChatRevealBuffer({
 			reducedMotion: prefersReducedMotion()
 		});
@@ -2255,8 +2268,8 @@
 		sandbox: PreparedSandboxTools;
 		generation: number;
 		selection: number;
-		modelName: string;
-		frozenSnapshot: boolean;
+		modelRowId: number;
+		frozenSnapshot?: FailedPersistentSubmission;
 		onAdmit?: () => void;
 	};
 	type FrozenRetryScope = {
@@ -2275,18 +2288,18 @@
 		return ownsRunPreparation(prepared.generation, prepared.selection, prepared.sandbox.ownerKey);
 	}
 
-	function assertRunTools(prepared: PreparedRunTools, modelName: string): void {
+	function assertRunTools(prepared: PreparedRunTools, modelRowId: number | undefined): void {
 		assertPreparedSandboxTools(prepared.sandbox);
 		if (!ownsRunTools(prepared)) {
 			throw new ManagedSandboxSelectionError('owner_changed', []);
 		}
-		if (prepared.modelName !== modelName) throw new ManagedSandboxSelectionError('selection_changed', []);
-		if (prepared.sandbox.names.length && !models.find((model) => model.model_name === modelName)?.capabilities?.tool_call) {
+		if (prepared.modelRowId !== modelRowId) throw new ManagedSandboxSelectionError('selection_changed', []);
+		if (prepared.sandbox.names.length && !resolveCatalogModel(models, modelRowId)?.capabilities?.tool_call) {
 			throw new SandboxModelUnsupportedError(mcpT('selectionModelUnsupported'));
 		}
 	}
 
-	async function prepareRunTools(modelName: string, snapshot?: FailedPersistentSubmission): Promise<PreparedRunTools | null> {
+	async function prepareRunTools(modelRowId: number, snapshot?: FailedPersistentSubmission): Promise<PreparedRunTools | null> {
 		if (preparingRun) return null;
 		preparingRun = true;
 		const generation = streamGeneration;
@@ -2295,8 +2308,8 @@
 		try {
 			// Store captures owner and selection synchronously, then refreshes availability.
 			const sandbox = await prepareManagedSandboxTools();
-			const prepared = { sandbox, generation, selection, modelName, frozenSnapshot: snapshot !== undefined };
-			assertRunTools(prepared, modelName);
+			const prepared = { sandbox, generation, selection, modelRowId, frozenSnapshot: snapshot };
+			assertRunTools(prepared, modelRowId);
 			if (snapshot) {
 				if (snapshot.sandboxOwnerKey !== sandbox.ownerKey) throw new ManagedSandboxSelectionError('owner_changed', []);
 				const savedNames = (snapshot.body as { features?: ReturnType<typeof selectedFeatureOptions> }).features?.tool_policy.enabled_sandbox_tools ?? [];
@@ -2333,11 +2346,11 @@
 		try {
 			const denied = chatRequestPermission(body, $serviceCapabilities);
 			if (denied) throw new Error(permissionReason(denied));
-			const modelId = (body as { model_id?: string } | null)?.model_id;
-			if (!canTools && models.find((model) => model.model_name === modelId)?.capabilities?.web_search_required) throw new Error(permissionReason('lumen-tools_user'));
+			const modelRowId = (body as { model_row_id?: number } | null)?.model_row_id;
+			if (!canTools && resolveCatalogModel(models, modelRowId)?.capabilities?.web_search_required) throw new Error(permissionReason('lumen-tools_user'));
 			if (!prepared) throw new ManagedSandboxSelectionError('selection_changed', []);
 			if ('sandbox' in prepared) {
-				assertRunTools(prepared, prepared.frozenSnapshot ? prepared.modelName : activeAgent?.model_name || modelId || activeModelName);
+				assertRunTools(prepared, modelRowId);
 				const requestedNames = (body as { features?: ReturnType<typeof selectedFeatureOptions> } | null)?.features?.tool_policy.enabled_sandbox_tools;
 				if (requestedNames && (requestedNames.length !== prepared.sandbox.names.length || requestedNames.some((name, index) => name !== prepared.sandbox.names[index]))) {
 					throw new ManagedSandboxSelectionError('selection_changed', []);
@@ -2410,7 +2423,7 @@
 				return;
 			}
 
-			const draft = newAssistantDraft(activeConv?.model_name ?? selectedModel, false);
+			const draft = newAssistantDraft(activeConv?.model_name ?? activeModelName, false);
 			invalidateContextPreview();
 			streaming = true;
 			currentRun = descriptor;
@@ -2489,7 +2502,8 @@
 		}
 		const text = input.trim();
 		if (!text || streaming || preparingRun || !token || !projectId) return;
-		if (!selectedModel) {
+		const model = selectedModelObj;
+		if (!model) {
 			error = t('panel.errors.noModels');
 			return;
 		}
@@ -2503,8 +2517,8 @@
 		const draftInput = input;
 		const draftAttachments = attachments;
 		const inputParts: UserInputPart[] = [{ type: 'text', text }, ...toInputParts(draftAttachments)];
-		const requestFeatures = selectedFeatureOptions();
-		const prepared = await prepareRunTools(activeModelName);
+		const requestFeatures = selectedFeatureOptions(model);
+		const prepared = await prepareRunTools(model.id);
 		if (!prepared || !ownsRunTools(prepared)) return;
 		if (!tempMode && activeConvId && historyHasAfter) {
 			const loadedLatest = await replaceHistoryWindow(selectionGeneration, experience);
@@ -2512,7 +2526,7 @@
 			if (!loadedLatest) { preparingRun = false; return; }
 		}
 		try {
-			assertRunTools(prepared, activeModelName);
+			assertRunTools(prepared, selectedModelObj?.id);
 		} catch (caught) {
 			if (!ownsRunTools(prepared)) { experienceDiscarded(experience, destroyed ? 'unmounted' : 'stale'); return; }
 			preparingRun = false;
@@ -2525,7 +2539,7 @@
 		};
 		const clientTimezone = browserTimezone();
 
-		if (tempMode) return sendTemp(text, inputParts, submittedAtMs, prepared, experience);
+		if (tempMode) return sendTemp(text, inputParts, submittedAtMs, prepared, model, experience);
 
 		invalidateContextPreview();
 		streaming = true;
@@ -2538,7 +2552,7 @@
 			endStream();
 			preparingRun = false;
 			try {
-				assertRunTools(prepared, activeModelName);
+				assertRunTools(prepared, selectedModelObj?.id);
 			} catch (caught) {
 				error = chatFailureMessage(caught, t('panel.errors.runFailed'));
 				return;
@@ -2560,7 +2574,7 @@
 				path: '',
 				body: {
 					parts: inputParts,
-					model_id: selectedModel,
+					...modelRequest(model),
 					features: requestFeatures,
 					reasoning_effort: effort,
 					agent_id: activeAgent?.id,
@@ -2568,8 +2582,7 @@
 					client_timezone: clientTimezone,
 				},
 				idempotencyKey: crypto.randomUUID(),
-				modelName: selectedModel,
-				effectiveModelName: prepared.modelName,
+				model,
 				sandboxOwnerKey: prepared.sandbox.ownerKey
 			};
 			return;
@@ -2590,14 +2603,14 @@
 			content: text,
 			created_at: null
 		};
-		stream = { base: [...activePath, userMsg], assistant: newAssistantDraft(selectedModel), conversationId: convId, temp: false };
+		stream = { base: [...activePath, userMsg], assistant: newAssistantDraft(model.model_name, true, model.id), conversationId: convId, temp: false };
 		// $state 프록시를 경유해 mutate 해야 반응성이 발생한다(raw draft 직접 쓰기는 트랩 우회).
 		const live = stream.assistant;
 
 		const path = `/api/v1/chat/conversations/${convId}/completions`;
 		const body = {
 			parts: inputParts,
-			model_id: selectedModel,
+			...modelRequest(model),
 			features: requestFeatures,
 			reasoning_effort: effort,
 			agent_id: activeAgent?.id,
@@ -2635,8 +2648,7 @@
 				path,
 				body,
 				idempotencyKey,
-				modelName: selectedModel,
-				effectiveModelName: prepared.modelName,
+				model,
 				sandboxOwnerKey: prepared.sandbox.ownerKey
 			};
 		}
@@ -2647,6 +2659,7 @@
 		inputParts: UserInputPart[],
 		submittedAtMs: number,
 		prepared: PreparedRunTools,
+		model: AvailableModel,
 		experience?: ExperienceContext
 	) {
 		const userMsg: DisplayMessage = {
@@ -2662,15 +2675,15 @@
 		tempMessages = history;
 		invalidateContextPreview();
 		streaming = true;
-		stream = { base: history, assistant: newAssistantDraft(selectedModel), conversationId: null, temp: true };
+		stream = { base: history, assistant: newAssistantDraft(model.model_name, true, model.id), conversationId: null, temp: true };
 		const live = stream.assistant; // 프록시 경유(반응성)
 
 		await runStream(
 			'/api/v1/chat/temp-completions',
 			{
 				parts: inputParts,
-				model_id: selectedModel,
-				features: selectedFeatureOptions(),
+				...modelRequest(model),
+				features: selectedFeatureOptions(model),
 				temp_thread_id: tempThreadId,
 				reasoning_effort: effort,
 				skill_ids: selectedSkillIds,
@@ -2698,7 +2711,7 @@
 	}
 
 	// --- 재생성 ---
-	async function regenerate(messageId: string, modelName: string) {
+	async function regenerate(messageId: string, choice: AvailableModel | null) {
 		if (!canChat) return;
 		if (streaming || preparingRun || tempMode || !activeConvId || !token || !projectId) return;
 		const conversationId = activeConvId;
@@ -2707,20 +2720,22 @@
 		if (idx === -1) return;
 		const experience = beginExperienceAction('lumen', 'retry', 'shared.stream');
 		const submittedAtMs = performance.now();
-		const prepared = await prepareRunTools(activeAgent?.model_name || modelName || selectedModel);
+		const model = choice ?? selectedModelObj;
+		if (!model) return;
+		const prepared = await prepareRunTools(model.id);
 		if (!prepared || !ownsRunTools(prepared)) return;
 		invalidateContextPreview();
 		streaming = true;
-		stream = { base: activePath.slice(0, idx), assistant: newAssistantDraft(modelName || selectedModel), conversationId, temp: false };
+		stream = { base: activePath.slice(0, idx), assistant: newAssistantDraft(model.model_name, true, model.id), conversationId, temp: false };
 		const live = stream.assistant; // 프록시 경유(반응성)
 
 		await runStream(
 			`/api/v1/chat/conversations/${conversationId}/messages/${messageId}/regenerate`,
 			{
-				model_id: modelName || selectedModel,
-				features: selectedFeatureOptions(activeAgent?.model_name || modelName || selectedModel),
+				...modelRequest(model),
+				features: selectedFeatureOptions(model),
 				// 재생성 모델은 composer 모델과 다를 수 있으므로 실제 실행 모델 기준으로 정규화한다.
-				reasoning_effort: effortForModel(effort, models, activeAgent?.model_name || modelName || selectedModel),
+				reasoning_effort: normalizeEffort(effort, model.capabilities, model.reasoning_none_supported),
 				client_timezone: browserTimezone(),
 				skill_ids: selectedSkillIds,
 			},
@@ -2751,7 +2766,7 @@
 			const submission = failedSubmission;
 			const submittedAtMs = performance.now();
 			error = null;
-			const prepared = await prepareRunTools(submission.effectiveModelName, submission);
+			const prepared = await prepareRunTools(submission.model.id, submission);
 			if (!prepared || !ownsRunTools(prepared)) return;
 			invalidateContextPreview();
 			streaming = true;
@@ -2782,7 +2797,7 @@
 			};
 			stream = {
 				base: [...activePath, userMsg],
-				assistant: newAssistantDraft(submission.modelName),
+				assistant: newAssistantDraft(submission.model.model_name, true, submission.model.id),
 				conversationId: convId,
 				temp: false
 			};
@@ -2828,14 +2843,14 @@
 		streaming = true;
 		stream = {
 			base: activePath.slice(0, idx + 1),
-			assistant: newAssistantDraft(selectedModel),
+			assistant: newAssistantDraft(resolveCatalogModel(models, message.execution?.model_row_id)?.model_name ?? null, true, message.execution?.model_row_id ?? undefined),
 			conversationId,
 			temp: false
 		};
 		const live = stream.assistant;
 		await runStream(
 			`/api/v1/chat/conversations/${conversationId}/runs/${targetRunId}/retry`,
-			{},
+			message.execution?.model_row_id == null ? {} : { model_row_id: message.execution.model_row_id },
 			live,
 			async () => {
 				setConversationRun(conversationId, false);
@@ -2971,7 +2986,7 @@
 			const scope = `${$auth.userId ?? ''}:${projectId ?? ''}`;
 			if (!token || scope !== modelScope) {
 				models = [];
-				selectedModel = '';
+				selectedModelId = null;
 				modelsRefreshing = false;
 				modelsError = '';
 				modelScope = scope;
@@ -3082,7 +3097,7 @@
 						onclick={() => (modelPickerOpen = true)}
 						title={t('panel.model.select')}
 					>
-						<span class="model-btn-name">{selectedModelObj?.display_name || activeModelName || t('panel.model.select')}</span>
+						<span class="model-btn-name">{modelLabel}</span>
 						<span class="model-btn-caps"><ModelCapabilityBadges caps={selectedModelObj?.capabilities} size="xs" iconsOnly /></span>
 						<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round" /></svg>
 					</button>
@@ -3245,7 +3260,7 @@
 <ModelPickerOverlay
 	open={modelPickerOpen}
 	{models}
-	value={activeModelName}
+	value={selectedModelObj?.id ?? null}
 	onSelect={chooseModel}
 	onClose={() => (modelPickerOpen = false)}
 	onRefresh={() => void loadModels()}

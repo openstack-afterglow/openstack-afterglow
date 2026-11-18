@@ -14,7 +14,7 @@ function renderPicker(availableModels = models) {
 	return render(ModelPickerOverlay, {
 		open: true,
 		models: availableModels,
-		value: 'gpt-5',
+		value: 1,
 		onSelect: vi.fn(),
 		onClose: vi.fn()
 	});
@@ -25,15 +25,17 @@ describe('ModelPickerOverlay provider navigation', () => {
 		const onSelect = vi.fn();
 		const sameLabel = [
 			{ ...models[0], provider: 'Shared label' },
-			{ ...models[1], provider: 'Shared label', api_model_name: models[0].api_model_name }
+			{ ...models[1], provider: 'Shared label', model_name: models[0].model_name, api_model_name: models[0].api_model_name }
 		];
-		const view = render(ModelPickerOverlay, { open: true, models: sameLabel, value: models[0].model_name, onSelect, onClose: vi.fn() });
+		const view = render(ModelPickerOverlay, { open: true, models: sameLabel, value: models[0].id, onSelect, onClose: vi.fn() });
 		const providerButtons = view.getAllByRole('button', { name: /Shared label/ });
 		expect(providerButtons).toHaveLength(2);
 		await fireEvent.click(providerButtons[1]);
 		expect(view.queryByRole('button', { name: t('modelPicker.selectModel', { name: models[0].display_name }) })).toBeNull();
-		await fireEvent.click(view.getByRole('button', { name: t('modelPicker.selectModel', { name: models[1].display_name }) }));
-		expect(onSelect).toHaveBeenCalledWith(models[1].model_name);
+		const second = view.getByRole('button', { name: t('modelPicker.selectModel', { name: models[1].display_name }) });
+		expect(second.getAttribute('aria-pressed')).toBe('false');
+		await fireEvent.click(second);
+		expect(onSelect).toHaveBeenCalledWith(sameLabel[1]);
 	});
 
 	it('shows a provider selector for multiple providers and filters the model list', async () => {
@@ -132,7 +134,7 @@ describe('ModelPickerOverlay provider navigation', () => {
 
 	it('retains provider filtering and the selected model when refreshed catalog order changes', async () => {
 		const onSelect = vi.fn();
-		const view = render(ModelPickerOverlay, { open: true, models, value: 'gpt-5', onSelect, onClose: vi.fn() });
+		const view = render(ModelPickerOverlay, { open: true, models, value: 1, onSelect, onClose: vi.fn() });
 		await fireEvent.click(view.getByRole('button', { name: /OpenAI/ }));
 		await view.rerender({ models: [models[3], models[2], models[0], models[1]] });
 

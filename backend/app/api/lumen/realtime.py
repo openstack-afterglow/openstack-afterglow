@@ -37,7 +37,8 @@ def _exceeds_frame_limit(frame: str, limit: int) -> bool:
 
 class SessionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    model_id: str = Field(min_length=1, max_length=190)
+    model_id: str | None = Field(default=None, min_length=1, max_length=190)
+    model_row_id: int | None = Field(default=None, strict=True, ge=1, le=2**63 - 1)
     provider_id: int | str | None = None
     kind: Literal["conversation", "transcription", "translation", "live"] = "conversation"
     voice: str | None = Field(default=None, max_length=100)
@@ -47,7 +48,9 @@ class SessionRequest(BaseModel):
     max_duration_seconds: int = Field(default=300, ge=10, le=900)
 
     @model_validator(mode="after")
-    def validate_mode_fields(self) -> SessionRequest:
+    def validate_session(self) -> SessionRequest:
+        if self.model_id is None and self.model_row_id is None:
+            raise ValueError("model_id or model_row_id is required")
         if self.kind == "translation":
             if self.output_language is None or self.voice is not None or self.instructions is not None:
                 raise ValueError("Translation requires only an output language")
@@ -88,8 +91,8 @@ async def create_session(
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(20.0, connect=5.0), verify=get_settings().ssl_verify
         ) as client:
-            # Older Lumen versions forbid unknown keys, including optional null fields.
-            optional = {"output_language", "reasoning_effort"}
+            # Older Lumen versions forbid newer optional keys even when null.
+            optional = {"model_id", "model_row_id", "output_language", "reasoning_effort"}
             body = payload.model_dump(exclude={name for name in optional if getattr(payload, name) is None})
             response = await client.post(url, headers=headers, json=body)
     except httpx.RequestError as exc:

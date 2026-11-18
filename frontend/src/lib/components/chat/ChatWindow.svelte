@@ -8,6 +8,7 @@
 	import { visibleActivityItems } from './chatActivityPresentation';
 	import { type AvailableModel, type ChatMessage as ChatMsg } from '$lib/api/chatTree';
 	import { projectMessagesForDisplay } from '$lib/api/chatTree';
+	import { resolveCatalogModel } from '$lib/api/modelCatalog';
 	import type { StreamMetrics } from '$lib/api/chatMetrics';
 	import { toolActivityFromCanonicalParts, type ToolActivityItem } from '$lib/api/chatToolActivity';
 	import type { RunActivityItem } from '$lib/api/chatRunReducer';
@@ -67,7 +68,7 @@
 		loadingTemporaryRuns?: boolean;
 		onLoadTemporaryRuns?: () => Promise<void>;
 		onCopy: (text: string) => void;
-		onRegenerate: (messageId: string, modelName: string) => void;
+		onRegenerate: (messageId: string, model: AvailableModel | null) => void;
 		onRetry: (messageId: string) => void;
 		onFork: (messageId: string) => void;
 		onSwitchVersion: (messageId: string, direction: -1 | 1) => void;
@@ -170,9 +171,8 @@
 	}
 
 
-	function modelDisplay(name: string | null | undefined): string | null {
-		if (!name) return null;
-		return models.find((m) => m.model_name === name)?.display_name ?? name;
+	function modelDisplay(message: DisplayMessage): string | null {
+		return resolveCatalogModel(models, message.execution?.model_row_id, message.model_name)?.display_name ?? message.model_name ?? null;
 	}
 
 	const displayedPath = $derived<DisplayMessage[]>(projectMessagesForDisplay(activePath) as DisplayMessage[]);
@@ -349,7 +349,7 @@
 							onApprovalDecision={onApprovalDecision && msg.execution?.run_id ? (callId, decision) => onApprovalDecision?.(msg.execution!.run_id!, callId, decision) : undefined}
 							hasPreviousVersion={msg.branch?.previous_id !== null && msg.branch?.previous_id !== undefined}
 							hasNextVersion={msg.branch?.next_id !== null && msg.branch?.next_id !== undefined}
-							modelDisplayName={modelDisplay(msg.model_name)}
+							modelDisplayName={modelDisplay(msg)}
 							{onCopy}
 							onRegenerate={(model) => onRegenerate(msg.id, model)}
 							onRetry={() => onRetry(msg.id)}

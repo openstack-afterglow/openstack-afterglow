@@ -11,6 +11,7 @@
 	import { ApiError } from '$lib/api/client';
 	import { serviceCapabilities, serviceDenials } from '$lib/stores/servicePermissions';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
+	import ProviderModelSelect from './ProviderModelSelect.svelte';
 	import { Alert, Button, CompactResourceCard, Field, PageShell, ResponsiveTable, SelectInput, Tabs, TextareaInput, TextInput } from '$lib/components/ui';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/chat-studio';
@@ -40,7 +41,7 @@
 	let sourceVersion = 0;
 	let mode = $state<AudioKind>('tts');
 	let models = $state<Record<AudioKind, AudioModel[]>>({ tts: [], stt: [] });
-	let selected = $state<Record<AudioKind, string>>({ tts: '', stt: '' });
+	let selected = $state<Record<AudioKind, number | null>>({ tts: null, stt: null });
 	let capabilities = $state<Record<AudioKind, AudioCapabilities | null>>({ tts: null, stt: null });
 	let loading = $state<Record<AudioKind, boolean>>({ tts: false, stt: false });
 	let capabilityLoading = $state<Record<AudioKind, boolean>>({ tts: false, stt: false });
@@ -94,8 +95,8 @@
 		sourceMedia?.pause();
 		mode = next;
 	}
-	const ttsModel = $derived(models.tts.find((model) => String(model.id) === selected.tts));
-	const sttModel = $derived(models.stt.find((model) => String(model.id) === selected.stt));
+	const ttsModel = $derived(models.tts.find((model) => model.id === selected.tts));
+	const sttModel = $derived(models.stt.find((model) => model.id === selected.stt));
 	const ttsReadiness = $derived(audioReadiness(ttsModel, capabilities.tts, 'tts'));
 	const sttReadiness = $derived(audioReadiness(sttModel, capabilities.stt, 'stt'));
 	const voices = $derived(capabilities.tts?.available_voices ?? []);
@@ -201,7 +202,7 @@
 		cleanupAudio();
 		releaseSource();
 		models = { tts: [], stt: [] };
-		selected = { tts: '', stt: '' };
+		selected = { tts: null, stt: null };
 		capabilities = { tts: null, stt: null };
 		loading = { tts: false, stt: false };
 		capabilityLoading = { tts: false, stt: false };
@@ -228,7 +229,7 @@
 			const list = await audioStudioApi.models(kind, requestScope);
 			if (!canPublish(epoch)) { experienceDiscarded(requestScope.experience, 'stale'); return; }
 			models = { ...models, [kind]: list.filter((model) => model.model_kind === kind && Number.isSafeInteger(model.id) && model.id > 0) };
-			if (!models[kind].some((model) => String(model.id) === selected[kind])) selected = { ...selected, [kind]: models[kind][0] ? String(models[kind][0].id) : '' };
+			if (!models[kind].some((model) => model.id === selected[kind])) selected = { ...selected, [kind]: models[kind][0]?.id ?? null };
 			experienceState(requestScope.experience, models[kind].length ? 'ready' : 'empty', kind === 'tts' ? 0 : 1);
 			const appliedModels = models[kind];
 			void experienceApplied(requestScope.experience, {}, () => canPublish(epoch) && models[kind] === appliedModels);
@@ -250,7 +251,7 @@
 		capabilityLoading = { ...capabilityLoading, [kind]: true };
 		try {
 			const value = await audioStudioApi.capabilities(kind, model.id, requestScope);
-			if (request !== capabilityRequests[kind] || !canPublish(epoch) || selected[kind] !== String(model.id)) { experienceDiscarded(requestScope.experience, 'stale'); return; }
+			if (request !== capabilityRequests[kind] || !canPublish(epoch) || selected[kind] !== model.id) { experienceDiscarded(requestScope.experience, 'stale'); return; }
 			capabilities = { ...capabilities, [kind]: value };
 			if (kind === 'tts') {
 				if (!value.available_voices?.includes(voice)) voice = value.available_voices?.[0] ?? '';
@@ -258,16 +259,25 @@
 			}
 			experienceState(requestScope.experience, 'ready', kind === 'tts' ? 2 : 3);
 			const appliedCapabilities = capabilities[kind];
-			void experienceApplied(requestScope.experience, {}, () => request === capabilityRequests[kind] && canPublish(epoch) && selected[kind] === String(model.id) && capabilities[kind] === appliedCapabilities);
+			void experienceApplied(requestScope.experience, {}, () => request === capabilityRequests[kind] && canPublish(epoch) && selected[kind] === model.id && capabilities[kind] === appliedCapabilities);
 		} catch (cause) {
-			if (request === capabilityRequests[kind] && canPublish(epoch) && selected[kind] === String(model.id)) {
+			if (request === capabilityRequests[kind] && canPublish(epoch) && selected[kind] === model.id) {
 				errors = { ...errors, [kind]: message(cause) }; experienceState(requestScope.experience, 'error', kind === 'tts' ? 2 : 3);
 				const displayedError = errors[kind];
-				void experienceApplied(requestScope.experience, {}, () => request === capabilityRequests[kind] && canPublish(epoch) && selected[kind] === String(model.id) && errors[kind] === displayedError);
+				void experienceApplied(requestScope.experience, {}, () => request === capabilityRequests[kind] && canPublish(epoch) && selected[kind] === model.id && errors[kind] === displayedError);
 			}
 		} finally {
-			if (request === capabilityRequests[kind] && epoch === generation && selected[kind] === String(model.id)) capabilityLoading = { ...capabilityLoading, [kind]: false };
+			if (request === capabilityRequests[kind] && epoch === generation && selected[kind] === model.id) capabilityLoading = { ...capabilityLoading, [kind]: false };
 		}
+	}
+	function selectModel(kind: AudioKind, row: AudioModel | null) {
+		const id = row?.id ?? null;
+		if (!audioAllowed || loading[kind] || (kind === 'tts' ? busyTts : busyStt) || selected[kind] === id) return;
+		capabilityRequests[kind]++;
+		capabilities = { ...capabilities, [kind]: null };
+		capabilityLoading = { ...capabilityLoading, [kind]: false };
+		errors = { ...errors, [kind]: '' };
+		selected = { ...selected, [kind]: id };
 	}
 	$effect(() => {
 		const next = scope && ownerKey ? ownerKey : '';
@@ -347,7 +357,7 @@
 		busyTts = true;
 		failures = { ...failures, tts: '' };
 		try {
-			const blob = await audioStudioApi.speech({ model_id: String(ttsModel.id), input: draft.trim(), voice: requestVoice, response_format: requestFormat }, requestScope, key, request.signal);
+			const blob = await audioStudioApi.speech({ model_id: String(ttsModel.id), model_row_id: ttsModel.id, input: draft.trim(), voice: requestVoice, response_format: requestFormat }, requestScope, key, request.signal);
 			if (!canPublish(epoch) || request.signal.aborted) { experienceDiscarded(requestScope.experience, request.signal.aborted ? 'aborted' : 'stale'); return; }
 			cleanupAudio();
 			audioUrl = URL.createObjectURL(blob);
@@ -504,6 +514,7 @@
 			pendingTranscription = { fingerprint: intentFingerprint, key: intentKey };
 			const result = await audioStudioApi.transcribe({
 				model_id: String(sttModel.id),
+				model_row_id: sttModel.id,
 				input_asset_id: assetId,
 				...(language.trim() ? { language: language.trim() } : {}),
 				...(timed ? { timestamp_granularities: SEGMENT_TIMESTAMPS } : {})
@@ -585,7 +596,7 @@
 					</div>
 					<aside class="settings" aria-labelledby="audio-tts-settings">
 						<h2 id="audio-tts-settings">{t('audioStudio.speechSettings')}</h2>
-						<Field label={t('audioStudio.speechModel')} for="audio-tts-model"><SelectInput id="audio-tts-model" value={selected.tts} onchange={(event) => { if (audioAllowed) selected = { ...selected, tts: (event.currentTarget as HTMLSelectElement).value }; }} disabled={!audioAllowed || loading.tts || busyTts}><option value="">{t('audioStudio.selectModel')}</option>{#each models.tts as model (model.id)}<option value={String(model.id)}>{model.display_name}</option>{/each}</SelectInput></Field>
+						<ProviderModelSelect models={models.tts} value={selected.tts} onSelect={(row) => selectModel('tts', row)} modelLabel={t('audioStudio.speechModel')} placeholder={t('audioStudio.selectModel')} id="audio-tts-model" disabled={!audioAllowed || loading.tts || busyTts} />
 						{#if loading.tts || capabilityLoading.tts}<LoadingState variant="inline" label={t('audioStudio.speechChecking')} />{:else if errors.tts}<Alert tone="danger">{errors.tts} <Button variant="subtle" disabled={!audioAllowed} onclick={() => scope && loadModels('tts', scope, generation)}>{t('audioStudio.reloadModels')}</Button></Alert>{:else if !models.tts.length}<Alert tone="warning">{t('audioStudio.noSpeechModels')}</Alert>{:else if ttsReadiness}<Alert tone="warning">{ttsReadiness}</Alert>{:else if audioAllowed}<p role="status" class="ready">{t('audioStudio.speechReady')}</p>{/if}
 						<fieldset class="voices" disabled={!audioAllowed || busyTts || !voices.length}>
 							<legend>{t('audioStudio.voice')}</legend>
@@ -645,7 +656,7 @@
 					</div>
 					<aside class="settings" aria-labelledby="audio-stt-settings">
 						<h2 id="audio-stt-settings">{t('audioStudio.transcriptionSettings')}</h2>
-						<Field label={t('audioStudio.transcriptionModel')} for="audio-stt-model"><SelectInput id="audio-stt-model" value={selected.stt} onchange={(event) => { if (audioAllowed) selected = { ...selected, stt: (event.currentTarget as HTMLSelectElement).value }; }} disabled={!audioAllowed || loading.stt || busyStt}><option value="">{t('audioStudio.selectModel')}</option>{#each models.stt as model (model.id)}<option value={String(model.id)}>{model.display_name}</option>{/each}</SelectInput></Field>
+						<ProviderModelSelect models={models.stt} value={selected.stt} onSelect={(row) => selectModel('stt', row)} modelLabel={t('audioStudio.transcriptionModel')} placeholder={t('audioStudio.selectModel')} id="audio-stt-model" disabled={!audioAllowed || loading.stt || busyStt} />
 						{#if loading.stt || capabilityLoading.stt}<LoadingState variant="inline" label={t('audioStudio.transcriptionChecking')} />{:else if errors.stt}<Alert tone="danger">{errors.stt} <Button variant="subtle" disabled={!audioAllowed} onclick={() => scope && loadModels('stt', scope, generation)}>{t('audioStudio.reloadModels')}</Button></Alert>{:else if !models.stt.length}<Alert tone="warning">{t('audioStudio.noTranscriptionModels')}</Alert>{:else if sttReadiness}<Alert tone="warning">{sttReadiness}</Alert>{:else if audioAllowed}<p role="status" class="ready">{t('audioStudio.transcriptionReady')}</p>{/if}
 						<Field label={t('audioStudio.languageCode')} for="audio-language"><TextInput id="audio-language" bind:value={language} placeholder={t('audioStudio.languagePlaceholder')} disabled={!audioAllowed || busyStt} /></Field>
 						<div class="switch-row">

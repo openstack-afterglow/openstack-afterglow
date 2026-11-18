@@ -19,6 +19,7 @@
 		type AgentForm
 	} from '$lib/api/chatAgents';
 	import type { AvailableModel } from '$lib/api/chatTree';
+	import { resolveCatalogModel } from '$lib/api/modelCatalog';
 	import { t } from '$lib/i18n/ns/chat-studio';
 
 	interface Props {
@@ -94,7 +95,13 @@
 		if (!token) return;
 		saving = true;
 		try {
-			const payload = buildAgentPayload(form);
+			const selected = resolveCatalogModel(models, form.model_row_id, form.model_name);
+			const payload = buildAgentPayload(selected ? { ...form, model_name: selected.model_name, model_row_id: selected.id } : form);
+			if (editingId !== null && !selected && form.model_row_id !== null) {
+				// Preserve an unavailable or ambiguous legacy pin when editing unrelated fields.
+				delete payload.model_name;
+				delete payload.model_row_id;
+			}
 			if (editingId !== null) {
 				await api.patch(`/api/v1/chat/agents/${editingId}`, payload, token, projectId);
 				toast.success(t('agentManager.updated'));
