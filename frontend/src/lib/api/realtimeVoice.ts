@@ -32,6 +32,7 @@ export interface RealtimeCapabilities {
 	realtime_session_fields?: ('voice' | 'instructions' | 'output_language' | 'reasoning_effort')[];
 	available_reasoning_efforts?: RealtimeReasoningEffort[];
 	default_reasoning_effort?: RealtimeReasoningEffort | null;
+	realtime_image_input?: boolean;
 }
 export interface RealtimeSession {
 	session_id: string;
@@ -41,6 +42,7 @@ export interface RealtimeSession {
 	expires_at: string;
 	ticket: string;
 	websocket_path: string;
+	realtime_image_input?: boolean;
 }
 
 export function realtimeMode(capabilities: RealtimeCapabilities | null): RealtimeMode | null {

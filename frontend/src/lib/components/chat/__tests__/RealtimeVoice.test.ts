@@ -82,6 +82,65 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('Realtime Voice', () => {
+	it('converts a WebP pick within both wire limits and fences encoding when permissions change', async () => {
+		const webp = new File(['webp fixture'], 'reference.webp', { type: 'image/webp' });
+		const close = vi.fn();
+		const decode = vi.fn().mockResolvedValue({ width: 4096, height: 2048, close });
+		vi.stubGlobal('createImageBitmap', decode);
+		const drawImage = vi.fn();
+		vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage } as unknown as CanvasRenderingContext2D);
+		const encode = vi.spyOn(HTMLCanvasElement.prototype, 'toBlob')
+			.mockImplementationOnce((respond) => respond(new Blob([new Uint8Array(1024 * 1024 + 1)], { type: 'image/png' })))
+			.mockImplementationOnce((respond) => respond(new Blob([new Uint8Array(900 * 1024)], { type: 'image/png' })));
+		const track = { stop: vi.fn(), enabled: true };
+		vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [track] }) } });
+		calls.capabilities.mockResolvedValue({ ...capability(), realtime_image_input: true });
+		calls.createSession.mockResolvedValue({ provider_type: 'openai', realtime_image_input: true });
+		render(RealtimeVoice);
+		const send = await screen.findByRole('button', { name: t('realtimeImage.send') });
+		expect(send).toHaveProperty('disabled', true);
+		await fireEvent.click(screen.getByRole('button', { name: t('realtimeVoice.startSession') }));
+		await waitFor(() => expect(Socket.instances).toHaveLength(1));
+		const socket = Socket.instances[0];
+		socket.open();
+		socket.message({ type: 'session.ready', realtime_kind: 'conversation', input_sample_rate_hz: 24000, output_sample_rate_hz: 24000 });
+		await screen.findByText(t('realtimeVoice.connectedMicrophoneOn'));
+		const input = screen.getByLabelText(t('realtimeImage.send'));
+		await fireEvent.change(input, { target: { files: [webp] } });
+		await waitFor(() => expect(socket.sent).toHaveLength(1));
+		const frame = JSON.parse(socket.sent[0]);
+		expect(frame.type).toBe('conversation.input_image');
+		expect(frame.image_url).toMatch(/^data:image\/png;base64,/);
+		expect(atob(frame.image_url.split(',')[1]).length).toBe(900 * 1024);
+		expect(new TextEncoder().encode(socket.sent[0]).length).toBeLessThan(2 * 1024 * 1024);
+		expect(drawImage.mock.calls.map((call) => call.slice(-2))).toEqual([[2048, 1024], [1024, 512]]);
+		expect(encode).toHaveBeenLastCalledWith(expect.any(Function), 'image/png', 0.86);
+		expect(close).toHaveBeenCalledTimes(1);
+		const pending = Promise.withResolvers<ImageBitmap>();
+		decode.mockReturnValueOnce(pending.promise);
+		encode.mockImplementationOnce((respond) => respond(new Blob(['png'], { type: 'image/png' })));
+		await fireEvent.change(input, { target: { files: [webp] } });
+		pendingLumen();
+		pending.resolve({ width: 10, height: 10, close } as unknown as ImageBitmap);
+		await waitFor(() => expect(close).toHaveBeenCalledTimes(2));
+		expect(socket.sent).toHaveLength(1);
+	});
+
+	it('does not send images when admission omits the capability', async () => {
+		const track = { stop: vi.fn(), enabled: true };
+		vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [track] }) } });
+		calls.capabilities.mockResolvedValue({ ...capability(), realtime_image_input: true });
+		render(RealtimeVoice);
+		await screen.findByText(t('realtimeVoice.ready'));
+		await fireEvent.click(screen.getByRole('button', { name: t('realtimeVoice.startSession') }));
+		await waitFor(() => expect(Socket.instances).toHaveLength(1));
+		const socket = Socket.instances[0];
+		socket.open();
+		socket.message({ type: 'session.ready', realtime_kind: 'conversation', input_sample_rate_hz: 24000, output_sample_rate_hz: 24000 });
+		await screen.findByText(t('realtimeVoice.connectedMicrophoneOn'));
+		expect(screen.getByRole('button', { name: t('realtimeImage.send') })).toHaveProperty('disabled', true);
+		expect(socket.sent).toHaveLength(0);
+	});
 	it.each(['translation', 'live'] as const)('admits and drains %s without conversation-only commands', async (kind) => {
 		const track = { stop: vi.fn(), enabled: true };
 		const getUserMedia = vi.fn().mockResolvedValue({ getTracks: () => [track] });
@@ -454,13 +513,15 @@ describe('Realtime Voice', () => {
 		} finally { state.mockRestore(); discarded.mockRestore(); applied.mockRestore(); }
 	});
 
-	it('supports transcription-only capture, commits PCM and retains only confirmed final text after terminal close', async () => {
-		calls.models.mockResolvedValue([{ ...model(), model_name: 'gpt-realtime-whisper', display_name: 'Realtime transcription' }]);
+	it.each(['gpt-realtime-whisper', 'gpt-transcribe'])('commits PCM and retains terminal transcription for %s', async (modelName) => {
+		calls.models.mockResolvedValue([{ ...model(), model_name: modelName, display_name: modelName }]);
 		calls.capabilities.mockResolvedValue({ ...capability(), realtime_kind: 'transcription', available_voices: [], default_voice: null, output_sample_rate_hz: 0 });
 		const track = { stop: vi.fn(), enabled: true };
 		vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [track] }) } });
 		render(RealtimeVoice);
 		await screen.findByText(t('realtimeTranscription.ready'));
+		expect(screen.getByRole('option', { name: modelName })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: t('realtimeImage.send') })).toBeNull();
 		expect(screen.queryByRole('combobox', { name: t('realtimeVoice.voice') })).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: t('realtimeTranscription.start') }));
 		await waitFor(() => expect(Socket.instances).toHaveLength(1));

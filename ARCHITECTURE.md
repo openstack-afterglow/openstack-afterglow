@@ -1540,6 +1540,8 @@ Lumen 브라우저 BFF는 기존 `/v1/{path}` 기본 전달을 유지하되 `/ap
 
 Image Studio는 선택 모델의 capability에서만 사용자 지정 크기·복잡도·배경·출력 형식과 GIF 설정을 노출한다. Browser validation은 입력 보조이며 Lumen이 허용 여부와 토큰 정산을 결정한다. 명시 크기/품질의 raster 출력 참고 견적은 해당 route의 유효 USD 단가와 OpenAI 계산식을 사용하고 입력/애니메이션/SVG 비용을 추정하지 않는다. 완료한 owned run의 `usage.updated`를 재생하여 실제 사용량과 provider 비용을 별도로 표시한다. GIF·SVG asset은 blob URL을 참조하는 `<img>`로만 표시하고 scope/선택 변경 시 URL을 해제한다. 관리자 registry는 카탈로그 가격 출처·유효 media rates·실행 gate를 분리한다. Text chat은 native `reasoning_options`/`reasoning_none_supported`를 그대로 적용한다.
 
+Image Studio consumes Lumen's advanced image capability metadata for ordered multiple sources, one primary-image mask/markup, fidelity, moderation and authorized SVG author/effort. Input and auxiliary assets use the existing owned upload path and participate in the same request fingerprint; incompatible attached assets block submission instead of being discarded.
+
 Afterglow Embedding Studio is a session-authenticated text-to-vector surface, separate from chat history. It selects only Lumen `model_kind=embedding` routes, checks current `lumen-chat_user` and model `embeddings`/pricing capability gates, limits input to 1–16 texts, and fences late results by request/user/project ownership. It displays dimensions, bounded vector preview, norm, token/cost and pairwise cosine similarity; it does not persist prompt or vector data. Public OpenAI/Gemini API-key embedding compatibility remains owned by Lumen, not the browser BFF.
 
 대시보드 텍스트 채팅은 API-key 기반 OpenAI 호환 `/v1/responses`(Codex 경로)가 아니라 Keystone 사용자/프로젝트가 소유한 `/v1/conversations/{id}/completions`·`/v1/temp-completions`에서 `202` durable run을 만들고 `/v1/runs/{id}/events`를 구독한다. 따라서 호환 API의 성공만으로 native provider worker의 인증·모델 라우팅을 검증하지 않는다. 접수 전 오류는 BFF가 보존한 HTTP 상태와 안전한 detail을 표시하고, 접수 뒤 `run.failed`는 Lumen의 `error_code`·`safe_message`를 별도로 표시한다. Provider 응답 원문·비밀값은 브라우저로 전달하지 않는다.
@@ -1562,6 +1564,8 @@ BFF 경로 `/api/v1/chat/admin/providers/{provider_id}/accounts...`는 `backend/
 Realtime Studio는 Lumen이 반환한 `realtime_kind`와 `realtime_session_fields`를 사용한다. Translation은 `output_language`, GPT-Live는 voice와 선택 지침을 설정한다. 두 모드는 PCM16과 양방향 자막을 처리하며, conversation의 `response.cancel`이나 transcription의 commit을 보내지 않는다. 정상 종료에서는 서버 `session.closed`까지 수신한 뒤 마이크·playback·socket을 정리하며 자막은 현재 화면 메모리에만 남는다. 사용자·프로젝트·확정 권한 변경은 자막까지 즉시 폐기한다.
 
 Frontend 문서와 standalone HAProxy는 `microphone=(self)`로 SPA 이동 후에도 브라우저의 명시적 권한 요청을 허용한다. Camera/geolocation과 framing은 계속 차단하며 FastAPI 및 Kolla HAProxy 구성을 변경하지 않는다.
+
+Realtime image admission projects Lumen's authoritative image grant into the one-use ticket. The BFF limits each UTF‑8 message in either direction to 2 MiB on those admitted conversations and 64 KiB elsewhere; oversize closes with 1009. Browser image picks are re-encoded as local PNG/JPEG before relay (≤1 MiB, ≤2048 px per side, ≤8 per session) and are never a durable asset. Native function calling is API-only; the browser does not execute tools. A priced `gpt-transcribe` realtime registration follows the existing transcription mode.
 
 Realtime browser intent key는 user/project/model/mode와 해당 모드의 voice·언어·지침이 같고 admission/WS 준비 실패의 결과가 불확실할 때 재사용한다. 명백한 4xx 또는 scope 변경에는 폐기한다. OpenAI conversation의 `response.cancel`은 연결을 유지하고, Gemini Live는 해당 wire 명령을 지원하지 않아 수동 중단 시 세션을 닫는다.
 

@@ -3,6 +3,7 @@
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 	import { realtimeVoiceApi, realtimeReadiness, realtimeMode, applyTranscriptionFrame, pcm16Base64, decodePcm16, REALTIME_OUTPUT_LANGUAGE, REALTIME_REASONING_EFFORTS, type RealtimeReasoningEffort, type RealtimeModel, type RealtimeCapabilities, type RealtimeScope, type RealtimeMode, type RealtimeTranscript } from '$lib/api/realtimeVoice';
 	import { ApiError } from '$lib/api/client';
+	import { encodeRealtimeImageFrame, REALTIME_IMAGE_ACCEPT, REALTIME_IMAGE_FRAME_BYTES, REALTIME_IMAGES_PER_SESSION } from '$lib/api/realtimeImage';
 	import { Alert, Button, Card, Field, PageShell, SelectInput, TextareaInput, TextInput } from '$lib/components/ui';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/chat-studio';
@@ -45,6 +46,11 @@
 	let closeTimer: ReturnType<typeof setTimeout> | null = null;
 	let socket: WebSocket | null = null;
 	let activeProvider = $state('');
+	let admittedImageInput = $state(false);
+	let imagePicker = $state<HTMLInputElement>();
+	let sendingImage = $state(false);
+	let sentImages = $state(0);
+	let imageError = $state('');
 	let media: MediaStream | null = null;
 	let context: AudioContext | null = null;
 	let microphone: MediaStreamAudioSourceNode | null = null;
@@ -61,6 +67,8 @@
 	const translation = $derived(mode === 'translation');
 	const showVoice = $derived(mode === 'conversation' || mode === 'live');
 	const showInstructions = $derived(showVoice && capabilities?.realtime_session_fields?.includes('instructions'));
+	const imageSupported = $derived(mode === 'conversation' && capabilities?.realtime_image_input === true);
+	const canSendImage = $derived(audioAllowed && connected && !ending && admittedImageInput && imageSupported && sentImages < REALTIME_IMAGES_PER_SESSION);
 	const reasoningEfforts = $derived(mode === 'conversation' && capabilities?.realtime_session_fields?.includes('reasoning_effort')
 		? (capabilities.available_reasoning_efforts ?? []).filter((effort) => REALTIME_REASONING_EFFORTS.includes(effort))
 		: []);
@@ -141,6 +149,10 @@
 			ended = false;
 		}
 		activeProvider = '';
+		admittedImageInput = false;
+		sendingImage = false;
+		sentImages = 0;
+		imageError = '';
 		if (!preserveIntent) pendingIntent = null;
 		if (clearError) error = '';
 		if (wasConnected) {
@@ -357,7 +369,8 @@
 		void experienceApplied(experience, {}, () => canPublish(epoch) && connected);
 	}
 	function onFrame(event: MessageEvent, epoch: number, experience: ExperienceContext | undefined) {
-		if (epoch !== generation || activeOwner !== ownerKey || !scope || typeof event.data !== 'string' || event.data.length > 64 * 1024) return;
+		if (epoch !== generation || activeOwner !== ownerKey || !scope || typeof event.data !== 'string' ||
+			event.data.length > (admittedImageInput ? REALTIME_IMAGE_FRAME_BYTES : 64 * 1024)) return;
 		try {
 			const packet = JSON.parse(event.data);
 			switch (packet.type) {
@@ -432,6 +445,7 @@
 			const session = await realtimeVoiceApi.createSession(model.id, sessionVoice, { ...scope, experience }, key, pendingRequest.signal, mode, sessionOptions);
 			if (!canPublish(epoch)) { experienceDiscarded(experience, 'stale'); if (epoch === generation) stop(true, true); return; }
 			activeProvider = session.provider_type;
+			admittedImageInput = session.realtime_image_input === true;
 			socket = realtimeVoiceApi.connect(session);
 			socket.onmessage = (event) => onFrame(event, epoch, experience);
 			socket.onclose = () => { if (epoch === generation) { error = disconnectMessage(); experienceState(experience, connected ? 'disabled' : 'error', connected ? 4 : 5); stop(false, !connected, activeMode === 'transcription'); } };
@@ -444,6 +458,27 @@
 			experienceState(experience, 'error', 5);
 			if (!(cause instanceof DOMException && cause.name === 'NotAllowedError') && !(cause instanceof ApiError && cause.status >= 400 && cause.status < 500)) experienceDiscarded(experience, 'unknown');
 			stop(false, !(cause instanceof ApiError && cause.status >= 400 && cause.status < 500));
+		}
+	}
+	async function sendImage(event: Event) {
+		const input = event.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		input.value = '';
+		if (!file || !canSendImage || sendingImage || !socket || socket.readyState !== WebSocket.OPEN) return;
+		const epoch = generation;
+		const target = socket;
+		const current = () => canPublish(epoch) && canSendImage && socket === target && target.readyState === WebSocket.OPEN;
+		imageError = '';
+		sendingImage = true;
+		try {
+			const frame = await encodeRealtimeImageFrame(file);
+			if (!current()) return;
+			target.send(frame);
+			sentImages++;
+		} catch {
+			if (current()) imageError = t('realtimeImage.error');
+		} finally {
+			if (epoch === generation) sendingImage = false;
 		}
 	}
 	function interrupt() {
@@ -487,8 +522,14 @@
 				{:else if mode === 'conversation'}
 					<Button variant="secondary" disabled={!connected} onclick={interrupt}>{activeProvider === 'gemini' ? t('realtimeVoice.interruptAndEnd') : t('realtimeVoice.interrupt')}</Button>
 				{/if}
+				{#if imageSupported}
+					<Button variant="secondary" disabled={!canSendImage || sendingImage} onclick={() => imagePicker?.click()}>{#if sendingImage}<LoadingState variant="control" label={t('realtimeImage.encoding')} />{:else}{t('realtimeImage.send')}{/if}</Button>
+					<input bind:this={imagePicker} type="file" accept={REALTIME_IMAGE_ACCEPT} hidden aria-label={t('realtimeImage.send')} onchange={sendImage} disabled={!canSendImage || sendingImage} />
+				{/if}
 				<Button variant="danger-outline" disabled={(!connected && !connecting) || ending || commitBusy} onclick={endSession}>{t('realtimeVoice.endSession')}</Button>
 			</div>
+			{#if imageError && audioAllowed}<Alert tone="warning">{imageError}</Alert>{/if}
+			{#if sentImages === REALTIME_IMAGES_PER_SESSION && audioAllowed}<p class="muted" role="status">{t('realtimeImage.limit')}</p>{/if}
 			{#if ending}<p role="status" class="muted">{t('realtimeTranscription.ending')}</p>
 			{:else if ended && audioAllowed}<p role="status" class="muted">{t('realtimeTranscription.ended')}</p>
 			{:else if connected}<p role="status" class="muted">{muted || !audioAllowed ? t('realtimeVoice.connectedMuted') : t('realtimeVoice.connectedMicrophoneOn')}</p>{/if}

@@ -45,6 +45,7 @@ export interface ImageGifLimits {
 	max_frame_duration_ms: number;
 	default_frame_duration_ms: number;
 	max_total_pixels: number;
+	size_auto_supported?: boolean;
 }
 export interface ImageCapabilities {
 	available_image_variants: string[];
@@ -55,6 +56,12 @@ export interface ImageCapabilities {
 	image_custom_size?: ImageSizeLimits | null;
 	image_gif?: ImageGifLimits | null;
 	image_output_price_per_million?: string | null;
+	image_svg_author_models?: { model: string; reasoning_efforts: string[] }[];
+	image_moderation_options?: string[];
+	max_image_input_count?: number;
+	image_mask_supported?: boolean;
+	image_markup_supported?: boolean;
+	image_input_fidelities?: string[];
 }
 export interface ImageRequest {
 	model_id: string;
@@ -68,10 +75,17 @@ export interface ImageRequest {
 	complexity?: string;
 	frame_count?: number;
 	frame_duration_ms?: number;
+	moderation?: string;
+	svg_model?: string;
+	svg_reasoning_effort?: string;
 }
-export interface ImageEditRequest extends ImageRequest {
-	input_asset_id: string;
-}
+export type ImageEditFields = ({ input_asset_id: string; input_asset_ids?: never } |
+	{ input_asset_id?: never; input_asset_ids: string[] }) & {
+	mask_asset_id?: string;
+	markup_asset_id?: string;
+	input_fidelity?: string;
+};
+export type ImageEditRequest = ImageRequest & ImageEditFields;
 export interface ImageApiScope {
 	token: string;
 	projectId: string;

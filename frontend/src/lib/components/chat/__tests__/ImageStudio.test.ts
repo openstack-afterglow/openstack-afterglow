@@ -138,6 +138,61 @@ describe('Image Studio', () => {
 		expect((await screen.findByRole('img', { name: t('imageStudio.generatedImage') })).getAttribute('src')).toBe('blob:preview');
 		expect(container.querySelector('.image-frame svg, .image-frame object, .image-frame iframe')).toBeNull();
 	});
+	it('sends a selected SVG author and only one of its advertised reasoning efforts', async () => {
+		api.capabilities.mockResolvedValue({
+			...openaiCapabilities, image_svg_author_models: [{ model: 'gpt-6.2-sol', reasoning_efforts: ['low', 'high'] }]
+		});
+		render(ImageStudio);
+		await screen.findByRole('option', { name: 'SVG' });
+		expect(screen.queryByLabelText(t('imageStudio.advanced.svgAuthor'))).toBeNull();
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.options.format')), { target: { value: 'svg' } });
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.advanced.svgAuthor')), { target: { value: 'gpt-6.2-sol' } });
+		await fireEvent.change(document.querySelector('#studio-svg-effort')!, { target: { value: 'high' } });
+		await fireEvent.input(screen.getByLabelText(t('imageStudio.prompt')), { target: { value: 'A tree' } });
+		await fireEvent.click(screen.getByRole('button', { name: t('imageStudio.createImage') }));
+		await waitFor(() => expect(api.submit.mock.calls[0]?.[1]).toMatchObject({
+			output_format: 'svg', svg_model: 'gpt-6.2-sol', svg_reasoning_effort: 'high', n: 1
+		}));
+	});
+
+	it('retains mask incompatibility and submits ordered sources with one replacement markup', async () => {
+		api.capabilities.mockResolvedValue({
+			...openaiCapabilities, available_image_variants: ['auto:high', ...openaiCapabilities.available_image_variants],
+			image_gif: { ...openaiCapabilities.image_gif, size_auto_supported: false, max_total_pixels: 10_485_760 },
+			max_image_input_count: 2, image_mask_supported: true, image_markup_supported: true,
+			image_moderation_options: ['auto', 'low'], image_input_fidelities: ['low', 'high']
+		});
+		api.upload.mockImplementation(async (file: File) => ({ id: file.name, name: file.name }));
+		const file = (name: string) => new File(['pixels'], name, { type: 'image/png' });
+		render(ImageStudio);
+		await screen.findByRole('option', { name: 'GIF' });
+		await fireEvent.input(screen.getByLabelText(t('imageStudio.prompt')), { target: { value: 'A tree' } });
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.inputImage')), { target: { files: [file('first.png'), file('second.png')] } });
+		await screen.findByText(t('imageStudio.uploadComplete', { name: 'second.png' }));
+		expect(screen.queryByRole('option', { name: 'SVG' })).toBeNull();
+		const overlay = screen.getByLabelText(t('imageStudio.advanced.overlayFile'));
+		await fireEvent.click(screen.getByRole('button', { name: t('imageStudio.advanced.mask') }));
+		await fireEvent.change(overlay, { target: { files: [file('mask.png')] } });
+		await screen.findByText(t('imageStudio.uploadComplete', { name: 'mask.png' }));
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.options.format')), { target: { value: 'gif' } });
+		expect(screen.getByLabelText(t('imageStudio.size'))).toHaveProperty('value', '1024x1024');
+		expect(screen.queryByRole('option', { name: t('imageStudio.autoSize') })).toBeNull();
+		expect(await screen.findByText(t('imageStudio.advanced.attachmentConflict'))).toBeTruthy();
+		const create = screen.getByRole('button', { name: t('imageStudio.createImage') });
+		expect(create).toHaveProperty('disabled', true);
+		await fireEvent.click(screen.getByRole('button', { name: t('imageStudio.advanced.markup') }));
+		await fireEvent.change(overlay, { target: { files: [file('markup.png')] } });
+		await screen.findByText(t('imageStudio.uploadComplete', { name: 'markup.png' }));
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.advanced.moderation')), { target: { value: 'low' } });
+		await fireEvent.change(screen.getByLabelText(t('imageStudio.advanced.fidelity')), { target: { value: 'high' } });
+		await fireEvent.click(create);
+		await waitFor(() => expect(api.submit.mock.calls[0]?.[1]).toEqual({
+			model_id: '1', prompt: 'A tree', size: '1024x1024', quality: 'high', n: 1, output_format: 'gif',
+			frame_count: 9, frame_duration_ms: 200, input_asset_ids: ['first.png', 'second.png'],
+			markup_asset_id: 'markup.png', moderation: 'low', input_fidelity: 'high'
+		}));
+	});
+
 	it.each(['models', 'capabilities'] as const)('commits the mounted %s error without serializing raw error or prompt', async (read) => {
 		const pending = Promise.withResolvers<never>();
 		api[read].mockReturnValueOnce(pending.promise);
