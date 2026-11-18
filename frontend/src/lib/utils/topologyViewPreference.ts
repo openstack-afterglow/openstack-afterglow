@@ -1,5 +1,6 @@
-// 토폴로지 뷰(레인 | 캔버스) 선택을 localStorage 에 보관한다. 기본값은 캔버스.
+// 사용자 토폴로지만 그리드를 제공한다. 관리자 기본값은 캔버스로 유지한다.
 export type TopologyView = 'lane' | 'canvas';
+export type UserTopologyView = TopologyView | 'grid';
 
 export const TOPOLOGY_VIEW_STORAGE_KEY = 'topology.view';
 export const DEFAULT_TOPOLOGY_VIEW: TopologyView = 'canvas';
@@ -9,17 +10,19 @@ export function isTopologyView(v: unknown): v is TopologyView {
 }
 
 /** SSR 과 저장소 접근 예외에서도 안전하게 기본값을 돌려준다. */
-export function readTopologyView(): TopologyView {
+export function readTopologyView(): TopologyView;
+export function readTopologyView(defaultView: 'grid'): UserTopologyView;
+export function readTopologyView(defaultView: UserTopologyView = DEFAULT_TOPOLOGY_VIEW): UserTopologyView {
 	try {
-		if (typeof localStorage === 'undefined') return DEFAULT_TOPOLOGY_VIEW;
+		if (typeof localStorage === 'undefined') return defaultView;
 		const v = localStorage.getItem(TOPOLOGY_VIEW_STORAGE_KEY);
-		return isTopologyView(v) ? v : DEFAULT_TOPOLOGY_VIEW;
+		return isTopologyView(v) ? v : defaultView;
 	} catch {
-		return DEFAULT_TOPOLOGY_VIEW;
+		return defaultView;
 	}
 }
 
-export function writeTopologyView(v: TopologyView): void {
+export function writeTopologyView(v: UserTopologyView): void {
 	try {
 		if (typeof localStorage === 'undefined') return;
 		localStorage.setItem(TOPOLOGY_VIEW_STORAGE_KEY, v);

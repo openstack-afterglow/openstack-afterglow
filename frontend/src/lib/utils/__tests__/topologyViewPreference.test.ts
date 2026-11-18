@@ -15,6 +15,15 @@ describe('topologyViewPreference', () => {
 		expect(readTopologyView()).toBe('canvas');
 	});
 
+	it('defaults the user route to grid without changing the admin route', () => {
+		expect(readTopologyView('grid')).toBe('grid');
+		writeTopologyView('grid');
+		expect(readTopologyView('grid')).toBe('grid');
+		expect(readTopologyView()).toBe('canvas');
+		writeTopologyView('lane');
+		expect(readTopologyView('grid')).toBe('lane');
+	});
+
 	it('알 수 없는 값은 기본값으로 대체한다', () => {
 		localStorage.setItem(TOPOLOGY_VIEW_STORAGE_KEY, 'grid');
 		expect(readTopologyView()).toBe('canvas');
