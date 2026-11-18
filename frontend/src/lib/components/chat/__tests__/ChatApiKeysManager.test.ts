@@ -57,6 +57,7 @@ const pool = {
 	manager_monthly_limit_credits: null, admin_ceiling_credits: '9000000000.00000001', is_active: true,
 };
 const policyPath = '/api/v1/chat/api-keys/issuance-policy';
+const servicePolicyPath = '/api/v1/chat/service-keys/issuance-policy';
 const issuanceGrants = ['lumen-keys_editor', 'lumen-inventory_reader', 'lumen-chat_user', 'lumen-images_user', 'lumen-audio_user', 'lumen-tools_user'];
 
 function policy(grants = issuanceGrants, monthly: string | null = '1000', weekly: string | null = '250') {
@@ -78,6 +79,7 @@ function policy(grants = issuanceGrants, monthly: string | null = '1000', weekly
 
 function response(path: string, _project?: string) {
 	if (path === policyPath) return policy();
+	if (path === servicePolicyPath) return { allowed_scopes: policy().allowed_scopes };
 	if (path.endsWith('/compat')) return discovery;
 	if (path.endsWith('/api-keys')) return [apiKey];
 	throw new Error(`Unexpected GET ${path}`);
@@ -337,12 +339,13 @@ describe('ChatApiKeysManager', () => {
 		expect(within(dialog).getByText(t('apiKeys.toolsNotice'))).toBeTruthy();
 	});
 
-	it('offers service-key scopes from the issuance policy only', async () => {
+	it('offers service-key scopes from the service-key policy, not the manager personal policy', async () => {
 		setVerifiedLumenActor({ ...get(auth), isDomainManager: true });
 		mocks.get.mockImplementation(async (path: string) => {
 			if (path.endsWith('/service-keys')) return [];
 			if (path.endsWith('/domain-pool')) return pool;
-			if (path === policyPath) return { ...policy(), allowed_scopes: ['models:read', 'embeddings:write'] };
+			if (path === servicePolicyPath) return { allowed_scopes: ['models:read', 'embeddings:write'] };
+			if (path === policyPath) return { ...policy(), allowed_scopes: ['compat:completions:write'] };
 			return response(path);
 		});
 		render(ChatApiKeysManager);
@@ -357,6 +360,8 @@ describe('ChatApiKeysManager', () => {
 		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/chat/service-keys', {
 			name: 'Embedder', scopes: ['models:read']
 		}, 'browser-token', 'project-1', expect.objectContaining(noReplay)));
+		expect(mocks.get).toHaveBeenCalledWith(servicePolicyPath, 'browser-token', 'project-1', { refresh: true });
+		expect(mocks.get.mock.calls.some(([path]) => path === policyPath)).toBe(false);
 	});
 
 	it('never expands issuance beyond the policy scope ceiling even when project grants are broader', async () => {

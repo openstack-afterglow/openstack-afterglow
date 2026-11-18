@@ -203,7 +203,6 @@ _USER_MUTATION_OPERATIONS = (
     "move",
     "upload",
     "acl",
-    "topups",
 )
 _USER_MUTATION_ACTION_PATTERN = r"^([a-z_]+\.)*(" + "|".join(_USER_MUTATION_OPERATIONS) + r")$"
 _USER_SESSION_ACTIONS = ("session_delete", "logout", "logout_all", "admin_revoke_sessions")
