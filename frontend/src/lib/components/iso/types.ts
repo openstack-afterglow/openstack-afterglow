@@ -37,7 +37,10 @@ export type IsoNodeKind =
 	| 'cidr'
 	| 'floating-ip'
 	| 'port'
-	| 'security-group';
+	| 'security-group'
+	| 'volume'
+	| 'file-share'
+	| 'k8s-service';
 
 /** Observed health for a node; `unknown` must be used when the source does not report state. */
 export type IsoStatus = 'ok' | 'pending' | 'warning' | 'error' | 'off' | 'unknown';

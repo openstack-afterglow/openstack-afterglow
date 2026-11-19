@@ -14,7 +14,7 @@
 		instance: 'instance', router: 'router', loadbalancer: 'loadbalancer', database: 'database',
 		gateway: 'gateway', 'vpn-server': 'vpnServer', peer: 'peer', 'peer-group': 'peerGroup',
 		internet: 'internet', cidr: 'cidr', 'floating-ip': 'floatingIp', port: 'port',
-		'security-group': 'securityGroup',
+		'security-group': 'securityGroup', volume: 'volume', 'file-share': 'fileShare', 'k8s-service': 'k8sService',
 	} as const satisfies Record<IsoNodeKind, string>;
 	const networkKinds = {
 		'external-network': 'externalNetwork', 'shared-network': 'sharedNetwork', 'internal-network': 'internalNetwork',

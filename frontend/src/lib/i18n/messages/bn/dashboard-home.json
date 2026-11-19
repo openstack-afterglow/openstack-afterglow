@@ -4,7 +4,6 @@
 	"start.create": "ইনস্ট্যান্স তৈরি",
 	"start.images": "ইমেজ দেখুন",
 	"start.guide": "নির্দেশিকা খুলুন",
-	"telemetry.collection": "টেলিমেট্রি সংগ্রহ",
 	"telemetry.openMonitoring": "VM পর্যবেক্ষণ খুলুন",
 	"topology.loadFailed": "টপোলজি লোড করা যায়নি",
 	"topology.title": "নেটওয়ার্ক টপোলজি",

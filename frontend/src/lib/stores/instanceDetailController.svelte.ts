@@ -22,14 +22,7 @@ export function invalidateInstanceDetailSelection() {
 	instanceDetailSelectionRevision.update(revision => revision + 1);
 }
 
-interface VolumeAttachment {
-	volume_id: string;
-	name?: string | null;
-	device?: string | null;
-	delete_on_termination?: boolean;
-	size?: number | null;
-	status?: string | null;
-}
+import type { StorageAttachment, VolumeAttachment } from '$lib/types/instanceStorage';
 
 export interface PasswordPrecheck {
 	supported: boolean;
@@ -85,6 +78,9 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	let floatingIps = $state<FloatingIpDetail[]>([]);
 	let interfaces = $state<PortInfo[]>([]);
 	let volumes = $state<VolumeAttachment[]>([]);
+	let volumesKnown = $state(false);
+	// Null means not loaded or unavailable; an empty list is an observed "no shares".
+	let storageAttachments = $state<StorageAttachment[] | null>(null);
 	let allSecurityGroups = $state<SecurityGroup[]>([]);
 	let securityGroupPorts = $state<PortInfo[]>([]);
 	let securityGroupsLoading = $state(true);
@@ -339,6 +335,8 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			refreshError = '';
 			allSecurityGroups = [];
 			securityGroupPorts = [];
+			volumesKnown = false;
+			storageAttachments = null;
 			securityGroupsLoading = true;
 			securityGroupsError = '';
 		}
@@ -365,7 +363,18 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		const instancePromise = request.get<Instance>(base, requestToken, transportProjectId);
 		const fipsPromise = request.get<FloatingIpDetail[]>(requestAdminMode ? `${base}/floating-ips` : '/api/v1/networks/floating-ips', requestToken, transportProjectId).catch(() => []);
 		const interfacesPromise = request.get<PortInfo[]>(`${base}/interfaces`, requestToken, transportProjectId).catch(() => []);
-		const volumesPromise = request.get<VolumeAttachment[]>(`${base}/volumes`, requestToken, transportProjectId).catch(() => []);
+		const volumesPromise = request.get<VolumeAttachment[]>(`${base}/volumes`, requestToken, transportProjectId).then((value) => {
+			if (ownsRequest()) volumesKnown = true;
+			return value;
+		}).catch(() => {
+			if (ownsRequest()) volumesKnown = false;
+			return [] as VolumeAttachment[];
+		});
+		void request.get<StorageAttachment[]>(`${base}/storage-attachments`, requestToken, transportProjectId).then((value) => {
+			if (ownsRequest()) storageAttachments = value;
+		}).catch(() => {
+			if (ownsRequest()) storageAttachments = null;
+		});
 		const securityGroupsPromise = request.get<{ ports: PortInfo[]; security_groups: SecurityGroup[] }>(
 			`${base}/security-groups`,
 			requestToken,
@@ -1063,6 +1072,8 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		get floatingIps() { return floatingIps; },
 		get interfaces() { return interfaces; },
 		get volumes() { return volumes; },
+		get volumesKnown() { return volumesKnown; },
+		get storageAttachments() { return storageAttachments; },
 		get allSecurityGroups() { return allSecurityGroups; },
 		get securityGroupPorts() { return securityGroupPorts; },
 		get securityGroupsLoading() { return securityGroupsLoading; },
@@ -1158,6 +1169,8 @@ export interface InstanceDetailController {
 	readonly floatingIps: FloatingIpDetail[];
 	readonly interfaces: PortInfo[];
 	readonly volumes: VolumeAttachment[];
+	readonly volumesKnown: boolean;
+	readonly storageAttachments: StorageAttachment[] | null;
 	readonly allSecurityGroups: SecurityGroup[];
 	/** Exact port rows returned by the security-groups endpoint, without interface-cache fallbacks. */
 	readonly securityGroupPorts: readonly PortInfo[];

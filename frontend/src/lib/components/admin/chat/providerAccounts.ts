@@ -20,6 +20,7 @@ export interface PoolEntry {
 }
 export interface ProviderCredential extends PoolEntry {
 	account_id: number;
+	created_at?: string;
 	auth_mode: AuthMode;
 	generation: number;
 	api_key_configured: boolean;
@@ -32,6 +33,7 @@ export interface ProviderCredential extends PoolEntry {
 }
 export interface ProviderAccount extends PoolEntry {
 	provider_id: number;
+	created_at?: string;
 	quota_group: string | null;
 	credentials: ProviderCredential[];
 }
@@ -52,11 +54,79 @@ export interface ProbeResult {
 	generation: number;
 	checked_at: string;
 }
+interface CredentialUsage {
+	credential_id: number | null;
+	requests: number;
+	prompt_tokens: number;
+	completion_tokens: number;
+	raw_cost: string;
+	month_requests?: number;
+	month_prompt_tokens?: number;
+	month_completion_tokens?: number;
+	month_raw_cost?: string;
+	last_used_at?: string | null;
+}
+
 export interface AccountUsage {
 	provider_id: number;
 	account_id: number;
-	credentials: { credential_id: number | null; requests: number; prompt_tokens: number; completion_tokens: number; raw_cost: string }[];
+	period?: { kind: 'calendar_month'; start: string; end: string; timezone: string };
+	credentials: CredentialUsage[];
 }
+
+const unusedKeyUsage = { requests: 0, input: 0, output: 0, cost: '0' };
+
+// PostgreSQL decimal amounts can arrive in exponent notation. Align scales without rounding.
+export function sumLedgerCosts(costs: Iterable<string | null>): string | null {
+	let units = 0n;
+	let scale = 0;
+	for (const cost of costs) {
+		const match = cost?.match(/^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i);
+		if (!match) return null;
+		const [, sign, whole, fraction = '', exponent = '0'] = match;
+		const nextScale = fraction.length - Number(exponent);
+		if (!Number.isInteger(nextScale) || Math.abs(nextScale) > 1000) return null;
+		const nextUnits = BigInt(`${sign}${whole}${fraction}`);
+		const alignedScale = Math.max(scale, nextScale);
+		units = units * 10n ** BigInt(alignedScale - scale) + nextUnits * 10n ** BigInt(alignedScale - nextScale);
+		scale = alignedScale;
+	}
+	if (!scale) return units.toString();
+	const digits = (units < 0n ? -units : units).toString().padStart(scale + 1, '0');
+	const fraction = digits.slice(-scale).replace(/0+$/, '');
+	return `${units < 0n ? '-' : ''}${digits.slice(0, -scale)}${fraction ? `.${fraction}` : ''}`;
+}
+
+function monthlyFigures(row: CredentialUsage | undefined) {
+	if (!row) return unusedKeyUsage;
+	const { month_requests: requests, month_prompt_tokens: input, month_completion_tokens: output, month_raw_cost: rawCost } = row;
+	if (requests == null || input == null || output == null || rawCost == null) return null;
+	const cost = sumLedgerCosts([rawCost]);
+	return cost === null ? null : { requests, input, output, cost };
+}
+
+export function summarizeAccountUsage(account: ProviderAccount, usage: AccountUsage) {
+	const rows = new Map(usage.credentials.map((row) => [row.credential_id, row]));
+	let period: { start: number; end: number; timezone: string } | null = null;
+	if (usage.period?.kind === 'calendar_month' && usage.period.timezone === 'UTC') {
+		const { start, end, timezone } = usage.period;
+		const startTime = Date.parse(start), endTime = Date.parse(end);
+		if (Number.isFinite(startTime) && Number.isFinite(endTime) && startTime < endTime) {
+			period = { start: startTime, end: endTime, timezone };
+		}
+	}
+	const keys = new Map(account.credentials.map(({ id }) => {
+		const row = rows.get(id);
+		return [id, {
+			month: period ? monthlyFigures(row) : null,
+			allTime: row ? { requests: row.requests, input: row.prompt_tokens, output: row.completion_tokens, cost: row.raw_cost } : unusedKeyUsage,
+			lastUsed: row?.last_used_at,
+		}];
+	}));
+	const monthCost = period ? sumLedgerCosts(Array.from(keys.values(), ({ month }) => month?.cost ?? null)) : null;
+	return { period, keys, monthCost, deleted: rows.get(null) };
+}
+
 export interface DeviceAttempt {
 	attempt_id: string;
 	status: 'pending' | 'connected' | 'cancelled' | 'expired' | 'error';

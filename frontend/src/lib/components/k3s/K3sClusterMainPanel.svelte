@@ -13,6 +13,7 @@
 	import K3sClusterVmList from './K3sClusterVmList.svelte';
 	import K3sNodegroupsSection from './K3sNodegroupsSection.svelte';
 	import K3sClusterNetworksCard from './K3sClusterNetworksCard.svelte';
+	import K3sClusterGrid from './K3sClusterGrid.svelte';
 	import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
 	import K3sClusterAuthorizationNotice from './K3sClusterAuthorizationNotice.svelte';
 
@@ -100,6 +101,14 @@
 	<K3sClusterInfoCard />
 	<K3sClusterNodesCard />
 </div>
-<K3sClusterVmList />
-<K3sNodegroupsSection />
-<K3sClusterNetworksCard />
+{#if s.cluster}
+	{#key s.cluster.id}
+		<K3sClusterGrid>
+			{#snippet list()}
+				<K3sClusterVmList />
+				<K3sClusterNetworksCard />
+			{/snippet}
+		</K3sClusterGrid>
+	{/key}
+{/if}
+<div class="mt-3"><K3sNodegroupsSection /></div>

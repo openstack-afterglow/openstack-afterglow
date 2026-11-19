@@ -35,6 +35,7 @@
     clusterId: () => clusterId,
     token: () => $auth.token ?? undefined,
     projectId: () => adminMode ? adminProjectId : $auth.projectId ?? undefined,
+    transportProjectId: () => $auth.projectId ?? undefined,
     userId: () => $auth.userId,
     adminMode: () => adminMode,
     onClose: () => (onClose ?? (() => goto('/dashboard/drover')))(),
@@ -85,6 +86,7 @@
     const userId = scopeUserId;
     const projectId = scopeProjectId;
     const id = clusterId;
+    void adminMode;
     void authorityGeneration;
     const ready = $authReady && !$projectSwitching;
     untrack(() => {

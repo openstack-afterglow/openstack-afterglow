@@ -410,7 +410,7 @@ describe('dashboard overview loading', () => {
 		expect(requests.every((request) => request.signal?.aborted)).toBe(true);
 	});
 
-	it('shows native zero, partial coverage and exporter fallback with the native reason', async () => {
+	it('shows native zero and partial coverage without chart-data or telemetry-collection disclosures', async () => {
 		const metrics = {
 			...trend,
 			scope: 'native_policy',
@@ -422,13 +422,11 @@ describe('dashboard overview loading', () => {
 		render(Page);
 		const cpu = within(await screen.findByRole('group', { name: 'vCPU 사용률 (14d)' }));
 		await cpu.findByText('0.0');
-		expect(cpu.getByText('네이티브 텔레메트리 · Gnocchi')).toBeTruthy();
 		expect(cpu.getByText('min 0.0% · max 0.0%')).toBeTruthy();
 		expect(screen.getByText('부분 수집 · 일부 표본 또는 리소스 누락')).toBeTruthy();
-		const disk = within(screen.getByRole('group', { name: '게스트 파일시스템 사용률 (14d)' }));
-		expect(disk.getByText('Exporter 대체 수집 · Prometheus')).toBeTruthy();
-		expect(disk.getByText('네이티브 텔레메트리: 메트릭 수집 미설정')).toBeTruthy();
-		expect(screen.getByText('네이티브 범위는 현재 사용자 정책에 표시되는 리소스로 제한됩니다.')).toBeTruthy();
+		expect(screen.queryByText('차트 데이터 보기')).toBeNull();
+		expect(screen.queryByText('텔레메트리 수집 상태')).toBeNull();
+		expect(screen.queryByText(/Gnocchi|Prometheus/)).toBeNull();
 	});
 
 	it.each([
@@ -441,7 +439,7 @@ describe('dashboard overview loading', () => {
 		const metrics = { ...trend, vcpu: empty, memory: empty, storage: empty, monitoring_available: available };
 		mocks.apiGet.mockImplementation((path: string) => Promise.resolve(resolveOverview(path, metrics)));
 		render(Page);
-		const collection = within(await screen.findByRole('region', { name: '텔레메트리 수집 상태' }));
+		const collection = within(await screen.findByRole('region', { name: '사용 추세' }));
 		expect((await collection.findAllByText(message)).length).toBeGreaterThan(0);
 		expect(collection.getByRole('link').getAttribute('href')).toBe('/dashboard/observability');
 		expect(collection.getByRole('group', { name: 'vCPU 사용률 (14d)' })).toBeTruthy();
@@ -563,7 +561,7 @@ describe('dashboard overview loading', () => {
 		mocks.apiGet.mockImplementation((path: string) => path.includes('/metrics/trend')
 			? Promise.reject(new Error('503')) : Promise.resolve(resolveOverview(path)));
 		render(Page);
-		const collection = within(screen.getByRole('region', { name: '텔레메트리 수집 상태' }));
+		const collection = within(screen.getByRole('region', { name: '사용 추세' }));
 		await waitFor(() => expect(collection.getAllByText('메트릭을 불러오지 못했습니다')).toHaveLength(3));
 		for (const name of ['vCPU 사용률 (14d)', '메모리 (14d)', '게스트 파일시스템 사용률 (14d)']) {
 			const card = within(collection.getByRole('group', { name }));

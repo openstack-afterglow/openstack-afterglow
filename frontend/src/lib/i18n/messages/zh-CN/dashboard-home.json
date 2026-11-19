@@ -4,7 +4,6 @@
 	"start.create": "创建实例",
 	"start.images": "浏览镜像",
 	"start.guide": "打开指南",
-	"telemetry.collection": "遥测采集状态",
 	"telemetry.openMonitoring": "打开虚拟机监控",
 	"topology.loadFailed": "无法加载拓扑",
 	"topology.title": "网络拓扑",

@@ -4,7 +4,6 @@
 	"start.create": "인스턴스 만들기",
 	"start.images": "이미지 살펴보기",
 	"start.guide": "가이드 열기",
-	"telemetry.collection": "텔레메트리 수집 상태",
 	"telemetry.openMonitoring": "VM 모니터링 열기",
 	"topology.loadFailed": "토폴로지 불러오기 실패",
 	"topology.title": "네트워크 토폴로지",

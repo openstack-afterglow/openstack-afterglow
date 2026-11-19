@@ -4,7 +4,6 @@
 	"start.create": "Opprett instans",
 	"start.images": "Se avbildninger",
 	"start.guide": "Åpne veiledning",
-	"telemetry.collection": "Telemetriinnsamling",
 	"telemetry.openMonitoring": "Åpne VM-overvåking",
 	"topology.loadFailed": "Kunne ikke laste inn topologien.",
 	"topology.title": "Nettverkstopologi",

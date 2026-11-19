@@ -23,6 +23,9 @@ export const glyphs: Record<IsoNodeKind, string> = {
 	'floating-ip': 'M12 22s7-6 7-13A7 7 0 1 0 5 9c0 7 7 13 7 13Zm2-13a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z',
 	port: 'M5 3h14v7l-3 3v5H8v-5l-3-3zm5 0v5m4-5v5m-2 10v4',
 	'security-group': 'M12 2l8 3v5c0 6-4 10-8 12-4-2-8-6-8-12V5zm-3 10 2 2 4-5',
+	volume: 'M3 14h18v6H3zM3 14l3-9h12l3 9M7 17h.01M11 17h5',
+	'file-share': 'M3 6h6l2 2h10v11H3zM3 11h18',
+	'k8s-service': 'M12 2l9 5v10l-9 5-9-5V7zM12 8v8m-4-6 4 2 4-2',
 };
 
 export const statusIcons: Record<IsoStatus, { path: string; tone: string }> = {

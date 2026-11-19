@@ -13,7 +13,11 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
-	import { allowedDeviceUri, eligibility, eligibilityDraft, localTimestamp, safeEndpoint, type RelayPage, type AccountProvider, type ProviderAccount, type ProviderCredential, type AccountUsage, type DeviceAttempt, type ProbeModel, type ProbeResult } from './providerAccounts';
+	import { allowedDeviceUri, eligibility, eligibilityDraft, localTimestamp, safeEndpoint, sumLedgerCosts, summarizeAccountUsage, type RelayPage, type AccountProvider, type ProviderAccount, type ProviderCredential, type AccountUsage, type DeviceAttempt, type ProbeModel, type ProbeResult } from './providerAccounts';
+
+	type UsageSummary = ReturnType<typeof summarizeAccountUsage>;
+	type UsageRead = { status: 'loading' | 'failed' } | { status: 'loaded'; summary: UsageSummary };
+	type CredentialTarget = { account: ProviderAccount; credential: ProviderCredential };
 
 	let { provider, token, projectId, onupdated }: { provider: AccountProvider; token?: string; projectId?: string; onupdated?: () => void | Promise<void> } = $props();
 	let open = $state(false);
@@ -23,7 +27,7 @@
 	let error = $state('');
 	let policy = $state('priority');
 	let selected = $state('');
-	let usage = $state<Record<number, AccountUsage>>({});
+	let usage = $state<Record<number, UsageRead>>({});
 	let histories = $state<Record<number, RelayPage>>({});
 	let historyErrors = $state<Record<number, string>>({});
 	let historyLoading = $state<number | null>(null);
@@ -40,11 +44,11 @@
 	let environment = $state('');
 	let expiry = $state('');
 	let cooldown = $state('');
-	let authTarget = $state<{ accountId: number; credential: ProviderCredential } | null>(null);
+	let authTarget = $state<CredentialTarget | null>(null);
 	let attempt = $state<DeviceAttempt | null>(null);
 	let tokenSecret = $state('');
 	let tokenExpiry = $state('');
-	let probeTarget = $state<{ accountId: number; credential: ProviderCredential } | null>(null);
+	let probeTarget = $state<CredentialTarget | null>(null);
 	let probeModels = $state<ProbeModel[]>([]);
 	let probeModel = $state('');
 	let probeResult = $state<ProbeResult | null>(null);
@@ -58,6 +62,18 @@
 	let pollTimer: ReturnType<typeof setTimeout> | undefined;
 	const mode = $derived(provider.auth_mode ?? 'api_key');
 	const credentials = $derived(accounts.flatMap((account) => account.credentials.map((credential) => ({ account, credential }))));
+	const providerMonthCost = $derived.by(() => {
+		const firstAccount = accounts[0];
+		if (!firstAccount) return null;
+		const first = usage[firstAccount.id];
+		if (first?.status !== 'loaded' || !first.summary.period) return null;
+		const { start, end } = first.summary.period;
+		return sumLedgerCosts(accounts.map(({ id }) => {
+			const read = usage[id];
+			if (read?.status !== 'loaded' || read.summary.period?.start !== start || read.summary.period.end !== end) return null;
+			return read.summary.monthCost;
+		}));
+	});
 	const inputClass = 'w-full rounded-lg border border-[var(--color-line-2)] bg-[var(--color-surface-sunken)] px-3 py-2 text-sm text-[var(--color-ink-0)]';
 
 	function stopPolling() { if (pollTimer !== undefined) clearTimeout(pollTimer); pollTimer = undefined; }
@@ -87,14 +103,40 @@
 	function failure(caught: unknown) { return caught instanceof ApiError ? t('accounts.requestFailed', { status: caught.status }) : t('accounts.networkError'); }
 	function timestamp(value: string) { if (!value) return null; const date = new Date(value); if (!Number.isFinite(date.getTime())) throw new Error('timestamp'); return date.toISOString(); }
 	function displayTime(value: string | null) { return value ? new Date(value).toLocaleString(intlLocale()) : t('accounts.unset'); }
+	function registrationTime(value: string | undefined) {
+		return value && Number.isFinite(Date.parse(value)) ? displayTime(value) : t('accounts.unknownValue');
+	}
+	function monthLabel(period: UsageSummary['period']) {
+		if (!period) return t('accounts.thisMonth');
+		const format = new Intl.DateTimeFormat(intlLocale(), { dateStyle: 'medium', timeZone: period.timezone });
+		return t('accounts.monthPeriod', { start: format.format(period.start), end: format.format(period.end - 1), timezone: period.timezone });
+	}
+	function displayLedgerAmount(cost: string | null) {
+		return cost === null ? t('accounts.unknownValue') : t('accounts.usdAmount', { cost });
+	}
+	function displayUsage(figures: { requests: number; input: number; output: number; cost: string } | null | undefined) {
+		return figures ? t('accounts.usageFigures', figures) : t('accounts.unknownValue');
+	}
+	function accountIdentity(account: ProviderAccount) {
+		return t('accounts.accountIdentity', { name: account.name, id: account.id });
+	}
+	function credentialIdentity(credential: ProviderCredential) {
+		return t('accounts.credentialIdentity', { name: credential.name, id: credential.id });
+	}
+	function credentialPathIdentity(account: ProviderAccount, credential: ProviderCredential) {
+		return t('accounts.credentialPathIdentity', { account: accountIdentity(account), credential: credentialIdentity(credential) });
+	}
 	function credentialPath(accountId: number, credentialId: number) { return `/accounts/${accountId}/credentials/${credentialId}`; }
 	async function load() {
 		const ctx = context(), request = ++readGeneration;
-		clearProbe(true); histories = {}; historyErrors = {}; historyLoading = null;
+		clearProbe(true); usage = {}; histories = {}; historyErrors = {}; historyLoading = null;
 		loading = true; listFailed = false;
 		try {
 			const result = await api.get<ProviderAccount[]>(`${ctx.base}/accounts`, ctx.token, ctx.project);
-			if (ctx.current() && request === readGeneration) accounts = result;
+			if (ctx.current() && request === readGeneration) {
+				accounts = result;
+				void loadAllUsage(result, ctx, request);
+			}
 		} catch (caught) { if (ctx.current() && request === readGeneration) { error = caught instanceof ApiError && caught.status === 404 ? t('accounts.poolUnavailable') : failure(caught); listFailed = true; } }
 		finally { if (ctx.current() && request === readGeneration) loading = false; }
 	}
@@ -106,7 +148,7 @@
 		try {
 			await action(ctx);
 			if (!ctx.current()) return;
-			after?.(); usage = {};
+			after?.();
 			await load();
 			if (ctx.current()) await onupdated?.();
 		} catch (caught) { if (ctx.current()) error = failure(caught); }
@@ -151,7 +193,7 @@
 	async function remove(account: ProviderAccount, credential?: ProviderCredential) {
 		if (busy) return;
 		const ctx = context();
-		if (!(await confirmDialog(t(credential ? 'accounts.confirmCredentialDelete' : 'accounts.confirmAccountDelete', { name: credential?.name ?? account.name }))) || !ctx.current()) return;
+		if (!(await confirmDialog(t(credential ? 'accounts.confirmCredentialDelete' : 'accounts.confirmAccountDelete', { name: credential ? credentialPathIdentity(account, credential) : accountIdentity(account) }))) || !ctx.current()) return;
 		const suffix = credential ? credentialPath(account.id, credential.id) : `/accounts/${account.id}`;
 		await mutate((request) => api.delete(`${request.base}${suffix}`, request.token, request.project), () => { clearEditor(); clearAuth(); });
 	}
@@ -159,14 +201,28 @@
 		if (policy === 'explicit' && !credentials.some(({ credential }) => String(credential.id) === selected)) { error = t('accounts.selectCredential'); return; }
 		await mutate((ctx) => api.patch(ctx.base, { selection_policy: policy, selected_credential_id: policy === 'explicit' ? Number(selected) : null }, ctx.token, ctx.project));
 	}
-	async function loadUsage(accountId: number) {
-		if (busy) return;
-		const ctx = context(); busy = true; error = '';
+	async function loadAllUsage(entries: ProviderAccount[], ctx: ReturnType<typeof context>, request: number) {
+		for (const { id } of entries) usage[id] = { status: 'loading' };
+		for (const account of entries) {
+			if (!ctx.current() || request !== readGeneration) return;
+			await loadUsage(account, ctx, request);
+		}
+	}
+	async function loadUsage(account: ProviderAccount, ctx = context(), request = readGeneration) {
+		const { id } = account;
+		const current = () => ctx.current() && request === readGeneration;
+		usage[id] = { status: 'loading' };
 		try {
-			const result = await api.get<AccountUsage>(`${ctx.base}/accounts/${accountId}/usage`, ctx.token, ctx.project);
-			if (ctx.current()) usage = { ...usage, [accountId]: result };
-		} catch (caught) { if (ctx.current()) error = failure(caught); }
-		finally { if (ctx.current()) busy = false; }
+			const result = await api.get<AccountUsage>(`${ctx.base}/accounts/${id}/usage`, ctx.token, ctx.project);
+			if (!current()) return;
+			if (result.provider_id !== provider.id || result.account_id !== id) throw new Error('usage ownership');
+			usage[id] = { status: 'loaded', summary: summarizeAccountUsage(account, result) };
+		} catch {
+			if (current()) usage[id] = { status: 'failed' };
+		}
+	}
+	function refreshUsage(account: ProviderAccount) {
+		if (!busy && !loading && usage[account.id]?.status !== 'loading') void loadUsage(account);
 	}
 	async function loadHistory(accountId: number, credential: ProviderCredential, more = false) {
 		if (busy || historyLoading !== null) return;
@@ -182,11 +238,11 @@
 		} catch (caught) { if (ctx.current() && request === readGeneration) historyErrors = { ...historyErrors, [credential.id]: failure(caught) }; }
 		finally { if (ctx.current() && request === readGeneration) historyLoading = null; }
 	}
-	async function prepareProbe(accountId: number, credential: ProviderCredential) {
+	async function prepareProbe(account: ProviderAccount, credential: ProviderCredential) {
 		if (busy) return;
 		clearEditor(); clearAuth(); clearProbe(); error = '';
 		const ctx = context();
-		probeTarget = { accountId, credential };
+		probeTarget = { account, credential };
 		const target = probeTarget; busy = true;
 		try {
 			const models = await api.get<ProbeModel[]>('/api/v1/chat/admin/models', ctx.token, ctx.project);
@@ -205,7 +261,7 @@
 		busy = true; error = ''; probeResult = null;
 		delete probeResults[probeKey(target.credential)];
 		try {
-			const result = await api.post<ProbeResult>(`${ctx.base}${credentialPath(target.accountId, target.credential.id)}/probe`, { model_id: modelId, generation: target.credential.generation }, ctx.token, ctx.project);
+			const result = await api.post<ProbeResult>(`${ctx.base}${credentialPath(target.account.id, target.credential.id)}/probe`, { model_id: modelId, generation: target.credential.generation }, ctx.token, ctx.project);
 			if (ctx.current() && probeTarget === target && probeModel === String(modelId) && result.generation === target.credential.generation && result.model_id === modelId) {
 				probeResult = result;
 				probeResults = { ...probeResults, [probeKey(target.credential)]: result };
@@ -213,18 +269,18 @@
 		} catch (caught) { if (ctx.current() && probeTarget === target) { probeResults = {}; error = failure(caught); } }
 		finally { if (ctx.current() && probeTarget === target) busy = false; }
 	}
-	function authenticate(accountId: number, credential: ProviderCredential) { if (busy) return; clearEditor(); clearAuth(); clearProbe(true); error = ''; authTarget = { accountId, credential }; }
+	function authenticate(account: ProviderAccount, credential: ProviderCredential) { if (busy) return; clearEditor(); clearAuth(); clearProbe(true); error = ''; authTarget = { account, credential }; }
 	async function saveToken(event: SubmitEvent) {
 		event.preventDefault(); if (!authTarget || !tokenSecret.trim()) return;
 		let body: { token: string; expires_at: string | null };
 		try { body = { token: tokenSecret.trim(), expires_at: timestamp(tokenExpiry) }; } catch { error = t('accounts.validation'); return; }
-		const path = credentialPath(authTarget.accountId, authTarget.credential.id); tokenSecret = '';
+		const path = credentialPath(authTarget.account.id, authTarget.credential.id); tokenSecret = '';
 		await mutate((ctx) => api.put(`${ctx.base}${path}/auth/token`, body, ctx.token, ctx.project), clearAuth);
 	}
-	async function disconnect(accountId: number, credential: ProviderCredential) {
+	async function disconnect(account: ProviderAccount, credential: ProviderCredential) {
 		const ctx = context();
-		if (busy || !(await confirmDialog(t('accounts.confirmDisconnect', { name: credential.name }))) || !ctx.current()) return;
-		await mutate((request) => api.delete(`${request.base}${credentialPath(accountId, credential.id)}/auth`, request.token, request.project), clearAuth);
+		if (busy || !(await confirmDialog(t('accounts.confirmDisconnect', { name: credentialPathIdentity(account, credential) }))) || !ctx.current()) return;
+		await mutate((request) => api.delete(`${request.base}${credentialPath(account.id, credential.id)}/auth`, request.token, request.project), clearAuth);
 	}
 	function schedulePoll() {
 		stopPolling(); if (!attempt || attempt.status !== 'pending') return;
@@ -235,7 +291,7 @@
 	async function deviceAction(action: 'start' | 'poll' | 'cancel') {
 		if (!authTarget || busy || (action !== 'start' && attempt?.status !== 'pending')) return;
 		const ctx = context(), target = authTarget, previous = attempt;
-		const path = `${ctx.base}${credentialPath(target.accountId, target.credential.id)}/auth/device`;
+		const path = `${ctx.base}${credentialPath(target.account.id, target.credential.id)}/auth/device`;
 		busy = true; error = ''; stopPolling();
 		try {
 			if (action === 'cancel') {
@@ -260,10 +316,13 @@
 		<p class="mt-3 text-sm text-[var(--color-ink-2)]">{t('accounts.scopeNotice')}</p>
 		{#if mode !== 'api_key'}<Alert tone="warning" class="mt-3">{t('accounts.subscriptionPolicy')}</Alert>{/if}
 		<p class="mt-3 text-sm text-[var(--color-ink-2)]">{t('accounts.multiKeyHelp')}</p>
+		<p class="mt-2 text-sm text-[var(--color-ink-2)]">{t('accounts.identityHelp')}</p>
+		<p class="mt-3 text-sm font-medium tabular-nums text-[var(--color-ink-0)]">{t('accounts.providerMonthTotal', { amount: displayLedgerAmount(providerMonthCost) })}</p>
+		<p class="mt-1 text-xs text-[var(--color-ink-2)]">{t('accounts.usageNotice')}</p>
 		{#if error}<Alert tone="danger" class="mt-3">{error}</Alert>{/if}
 		<div class="mt-4 grid gap-3 sm:grid-cols-2">
 			<Field label={t('accounts.selectionPolicy')} for="pool-policy"><SelectInput id="pool-policy" bind:value={policy} disabled={busy}><option value="priority">{t('accounts.priorityPolicy')}</option><option value="weighted">{t('accounts.weightedPolicy')}</option><option value="explicit">{t('accounts.explicitPolicy')}</option></SelectInput></Field>
-			{#if policy === 'explicit'}<Field label={t('accounts.selectedCredential')} for="pool-credential"><SelectInput id="pool-credential" bind:value={selected} disabled={busy}><option value="">{t('accounts.selectCredential')}</option>{#each credentials as item (item.credential.id)}<option value={String(item.credential.id)}>{item.account.name} / {item.credential.name} (#{item.credential.id})</option>{/each}</SelectInput></Field>{/if}
+			{#if policy === 'explicit'}<Field label={t('accounts.selectedCredential')} for="pool-credential"><SelectInput id="pool-credential" bind:value={selected} disabled={busy}><option value="">{t('accounts.selectCredential')}</option>{#each credentials as item (item.credential.id)}<option value={String(item.credential.id)}>{credentialPathIdentity(item.account, item.credential)}</option>{/each}</SelectInput></Field>{/if}
 		</div>
 		<p class="mt-2 text-xs text-[var(--color-ink-2)]">{t('accounts.policyHelp')}</p>
 		<div class="mt-3 flex flex-wrap gap-2"><Button variant="secondary" size="sm" disabled={busy || loading || listFailed} onclick={savePolicy}>{t('accounts.savePolicy')}</Button><Button size="sm" disabled={busy || loading || listFailed} onclick={() => editAccount()}>{t('accounts.addAccount')}</Button><Button variant="ghost" size="sm" disabled={busy || loading} onclick={() => { error = ''; void load(); }}>{t('configuration.refreshAll')}</Button></div>
@@ -292,7 +351,7 @@
 		{/if}
 		{#if authTarget}
 			<section class="mt-4 space-y-3 rounded-lg border border-[var(--color-line)] p-4" aria-label={t('configuration.subscriptionAuthentication')}>
-				<div class="flex justify-between gap-2"><h4 class="break-all font-medium text-[var(--color-ink-0)]">{authTarget.credential.name}</h4><Button variant="ghost" size="sm" disabled={busy} onclick={clearAuth}>{t('configuration.close')}</Button></div>
+				<div class="flex justify-between gap-2"><h4 class="break-words font-medium text-[var(--color-ink-0)]">{credentialPathIdentity(authTarget.account, authTarget.credential)}</h4><Button variant="ghost" size="sm" disabled={busy} onclick={clearAuth}>{t('configuration.close')}</Button></div>
 				{#if mode === 'anthropic_subscription'}
 					<form class="space-y-3" onsubmit={saveToken}>
 						<p class="text-xs text-[var(--color-ink-2)]">{t('accounts.claudeTokenHelp')}</p>
@@ -318,7 +377,7 @@
 		{/if}
 		{#if probeTarget}
 			<section class="mt-4 space-y-3 rounded-lg border border-[var(--color-line)] p-4" aria-label={t('accounts.probeTitle')}>
-				<div class="flex flex-wrap items-center justify-between gap-2"><h4 class="break-all font-medium text-[var(--color-ink-0)]">{probeTarget.credential.name} (#{probeTarget.credential.id})</h4><Button variant="ghost" size="sm" disabled={busy} onclick={() => clearProbe()}>{t('configuration.close')}</Button></div>
+				<div class="flex flex-wrap items-center justify-between gap-2"><h4 class="break-words font-medium text-[var(--color-ink-0)]">{credentialPathIdentity(probeTarget.account, probeTarget.credential)}</h4><Button variant="ghost" size="sm" disabled={busy} onclick={() => clearProbe()}>{t('configuration.close')}</Button></div>
 				<Alert tone="warning">{t('accounts.probeCost')}</Alert>
 				<Field label={t('accounts.probeModel')} for="probe-model"><SelectInput id="probe-model" bind:value={probeModel} disabled={busy} onchange={() => { probeResult = null; }}><option value="">{t('accounts.probeSelectModel')}</option>{#each probeModels as model (model.id)}<option value={String(model.id)}>{model.display_name || model.model_name} (#{model.id})</option>{/each}</SelectInput></Field>
 				{#if !busy && !probeModels.length}<p class="text-sm text-[var(--color-ink-2)]">{t('accounts.probeNoModels')}</p>{/if}
@@ -330,18 +389,36 @@
 		{#if !loading && !listFailed && accounts.length === 0}<p class="mt-4 text-sm text-[var(--color-ink-2)]">{t('accounts.empty')}</p>{/if}
 		<div class="mt-4 space-y-4">
 			{#each accounts as account (account.id)}
-				<section class="rounded-lg border border-[var(--color-line)] p-3 sm:p-4" aria-label={account.name}>
-					<div class="flex flex-wrap items-center justify-between gap-2"><div class="flex min-w-0 flex-wrap items-center gap-2"><h4 class="break-all font-medium text-[var(--color-ink-0)]">{account.name} <span class="text-xs text-[var(--color-ink-2)]">#{account.id}</span></h4><Pill tone={account.is_active ? 'success' : 'neutral'}>{account.is_active ? t('configuration.active') : t('configuration.inactive')}</Pill></div><div class="flex flex-wrap gap-2"><Button variant="ghost" size="sm" disabled={busy} onclick={() => editAccount(account)}>{t('accounts.edit')}</Button><Button variant="ghost" size="sm" disabled={busy} onclick={() => mutate((ctx) => api.patch(`${ctx.base}/accounts/${account.id}`, { is_active: !account.is_active }, ctx.token, ctx.project))}>{account.is_active ? t('configuration.deactivate') : t('configuration.activate')}</Button><Button variant="danger-outline" size="sm" disabled={busy} onclick={() => remove(account)}>{t('configuration.delete')}</Button></div></div>
+				{@const usageRead = usage[account.id]}
+				{@const accountUsage = usageRead?.status === 'loaded' ? usageRead.summary : null}
+				{@const usageMonth = monthLabel(accountUsage?.period ?? null)}
+				<section class="rounded-lg border border-[var(--color-line)] p-3 sm:p-4" aria-label={accountIdentity(account)}>
+					<div class="flex flex-wrap items-center justify-between gap-2"><div class="flex min-w-0 flex-wrap items-center gap-2"><h4 class="break-words font-medium text-[var(--color-ink-0)]">{accountIdentity(account)}</h4><Pill tone={account.is_active ? 'success' : 'neutral'}>{account.is_active ? t('configuration.active') : t('configuration.inactive')}</Pill></div><div class="flex flex-wrap gap-2"><Button variant="ghost" size="sm" disabled={busy} onclick={() => editAccount(account)}>{t('accounts.edit')}</Button><Button variant="ghost" size="sm" disabled={busy} onclick={() => mutate((ctx) => api.patch(`${ctx.base}/accounts/${account.id}`, { is_active: !account.is_active }, ctx.token, ctx.project))}>{account.is_active ? t('configuration.deactivate') : t('configuration.activate')}</Button><Button variant="danger-outline" size="sm" disabled={busy} onclick={() => remove(account)}>{t('configuration.delete')}</Button></div></div>
+					<p class="mt-1 text-xs text-[var(--color-ink-2)]">{t('accounts.registered', { date: registrationTime(account.created_at) })}</p>
 					<p class="mt-2 break-all text-xs text-[var(--color-ink-2)]">{t('accounts.poolSummary', { priority: account.priority, weight: account.weight })} · {t('accounts.quotaGroup')}: {account.quota_group ?? t('accounts.unset')}</p>
 					<p class="mt-1 break-all text-xs text-[var(--color-ink-2)]">{t('accounts.modelIds')}: {eligibilityDraft(account.allowed_model_ids) || t('accounts.unrestricted')} · {t('accounts.operations')}: {eligibilityDraft(account.allowed_capabilities) || t('accounts.unrestricted')}</p>
-					<div class="mt-3 flex flex-wrap gap-2"><Button variant="secondary" size="sm" disabled={busy} onclick={() => editCredential(account.id)}>{t('accounts.addCredential')}</Button><Button variant="ghost" size="sm" disabled={busy} onclick={() => loadUsage(account.id)}>{t('accounts.usage')}</Button></div>
-					{#if usage[account.id]}
-						<div class="mt-3 space-y-2 text-xs text-[var(--color-ink-2)]" aria-label={t('accounts.usage')}><p>{t('accounts.usageNotice')}</p>{#each usage[account.id].credentials as row}<p class="break-all">{t('accounts.usageRow', { id: row.credential_id ?? '-', requests: row.requests, input: row.prompt_tokens, output: row.completion_tokens, cost: row.raw_cost })}</p>{:else}<p>{t('accounts.noUsage')}</p>{/each}</div>
+					<p class="mt-2 text-sm font-medium tabular-nums text-[var(--color-ink-0)]">{t('accounts.accountMonthTotal', { amount: displayLedgerAmount(accountUsage?.monthCost ?? null) })}</p>
+					<div class="mt-3 flex flex-wrap items-center gap-2">
+						<Button variant="secondary" size="sm" disabled={busy} onclick={() => editCredential(account.id)}>{t('accounts.addCredential')}</Button>
+						<Button variant="ghost" size="sm" disabled={busy || loading || usageRead?.status === 'loading'} onclick={() => refreshUsage(account)}>{t('accounts.usage')}</Button>
+						{#if usageRead?.status === 'loading'}<LoadingState variant="inline" label={t('accounts.usageLoading')} />{/if}
+					</div>
+					{#if usageRead?.status === 'failed'}
+						<Alert tone="danger" class="mt-2">{t('accounts.usageFailed')}</Alert>
+					{/if}
+					{#if accountUsage?.deleted}
+						{@const row = accountUsage.deleted}
+						<p class="mt-2 text-xs tabular-nums text-[var(--color-ink-2)]">{t('accounts.deletedCredentialUsage', { usage: displayUsage({ requests: row.requests, input: row.prompt_tokens, output: row.completion_tokens, cost: row.raw_cost }) })}</p>
 					{/if}
 					{#each account.credentials as credential (credential.id)}
 						{@const observedProbe = probeResults[probeKey(credential)]}
+						{@const keyUsage = accountUsage?.keys.get(credential.id)}
 						<div class="mt-3 border-t border-[var(--color-line)] pt-3" data-credential-id={credential.id}>
-							<div class="flex flex-wrap items-center gap-2"><span class="break-all text-sm font-medium text-[var(--color-ink-0)]">{credential.name} (#{credential.id})</span><Pill size="xs" tone={credential.is_active ? 'success' : 'neutral'}>{credential.is_active ? t('configuration.active') : t('configuration.inactive')}</Pill><Pill size="xs" tone={credential.auth_mode === 'api_key' ? credential.api_key_configured ? 'success' : 'warning' : credential.subscription_status === 'configured' ? 'success' : 'warning'}>{credential.auth_mode === 'api_key' ? credential.api_key_configured ? t('configuration.keyConfigured') : t('configuration.noKey') : credential.subscription_status === 'configured' ? t('configuration.connected') : credential.subscription_status === 'reauth_required' ? t('configuration.reconnectRequired') : t('configuration.authenticationNotConnected')}</Pill></div>
+							<div class="flex flex-wrap items-center gap-2"><span class="break-words text-sm font-medium text-[var(--color-ink-0)]">{credentialIdentity(credential)}</span><Pill size="xs" tone={credential.is_active ? 'success' : 'neutral'}>{credential.is_active ? t('configuration.active') : t('configuration.inactive')}</Pill><Pill size="xs" tone={credential.auth_mode === 'api_key' ? credential.api_key_configured ? 'success' : 'warning' : credential.subscription_status === 'configured' ? 'success' : 'warning'}>{credential.auth_mode === 'api_key' ? credential.api_key_configured ? t('configuration.keyConfigured') : t('configuration.noKey') : credential.subscription_status === 'configured' ? t('configuration.connected') : credential.subscription_status === 'reauth_required' ? t('configuration.reconnectRequired') : t('configuration.authenticationNotConnected')}</Pill></div>
+							<p class="mt-1 text-xs text-[var(--color-ink-2)]">{t('accounts.registered', { date: registrationTime(credential.created_at) })}</p>
+							<p class="mt-2 text-xs font-medium tabular-nums text-[var(--color-ink-1)]">{t('accounts.monthUsage', { period: usageMonth, usage: displayUsage(keyUsage?.month) })}</p>
+							<p class="mt-1 text-xs tabular-nums text-[var(--color-ink-2)]">{t('accounts.allTimeUsage', { usage: displayUsage(keyUsage?.allTime) })}</p>
+							{#if keyUsage?.lastUsed}<p class="mt-1 text-xs text-[var(--color-ink-2)]">{t('accounts.lastUsed', { time: displayTime(keyUsage.lastUsed) })}</p>{/if}
 							<h5 class="mt-2 text-xs font-medium text-[var(--color-ink-1)]">{t('accounts.currentConnection')}</h5>
 							<p class="mt-1 break-all text-xs text-[var(--color-ink-2)]">{t('accounts.connectionIdentity', { provider: provider.id, account: account.id, credential: credential.id })}</p>
 							<p class="mt-1 break-all text-xs text-[var(--color-ink-2)]">{t('accounts.currentEndpoint')}: {safeEndpoint(provider.api_base) ?? t('accounts.providerDefaultEndpoint')}</p>
@@ -352,7 +429,7 @@
 							{#if observedProbe}
 								<div class="mt-2 space-y-1" data-probe-status={observedProbe.status}><Pill size="xs" tone={observedProbe.status === 'connected' ? 'success' : 'danger'}>{t(observedProbe.status === 'connected' ? 'accounts.probeConnected' : 'accounts.probeFailed')}</Pill><p class="break-all text-xs text-[var(--color-ink-2)]">{t('accounts.probeModel')}: #{observedProbe.model_id} · {displayTime(observedProbe.checked_at)}</p></div>
 							{:else}<p class="mt-1 text-xs text-[var(--color-ink-2)]">{t('accounts.probeUntested')}</p>{/if}
-							<div class="mt-2"><Button variant="secondary" size="sm" disabled={busy || !account.is_active || !credential.is_active} onclick={() => prepareProbe(account.id, credential)}>{t('accounts.probeTitle')}</Button></div>
+							<div class="mt-2"><Button variant="secondary" size="sm" disabled={busy || !account.is_active || !credential.is_active} onclick={() => prepareProbe(account, credential)}>{t('accounts.probeTitle')}</Button></div>
 							<section class="mt-3 space-y-2 rounded-lg bg-[var(--color-surface-sunken)] p-3" aria-label={t('accounts.relayHistory')}>
 								<h5 class="text-sm font-medium text-[var(--color-ink-0)]">{t('accounts.relayHistory')}</h5>
 								<p class="text-xs text-[var(--color-ink-2)]">{t('accounts.relayBoundary')}</p>
@@ -373,7 +450,7 @@
 									{#if histories[credential.id].next_before_id}<Button variant="ghost" size="sm" disabled={busy || historyLoading !== null} onclick={() => loadHistory(account.id, credential, true)}>{t('accounts.olderRelays')}</Button>{/if}
 								{/if}
 							</section>
-							<div class="mt-2 flex flex-wrap gap-2"><Button variant="ghost" size="sm" disabled={busy} onclick={() => editCredential(account.id, credential)}>{t('accounts.editCredential')}</Button><Button variant="ghost" size="sm" disabled={busy} onclick={() => mutate((ctx) => api.patch(`${ctx.base}${credentialPath(account.id, credential.id)}`, { is_active: !credential.is_active }, ctx.token, ctx.project))}>{credential.is_active ? t('configuration.deactivate') : t('configuration.activate')}</Button>{#if credential.auth_mode !== 'api_key'}<Button variant="secondary" size="sm" disabled={busy} onclick={() => authenticate(account.id, credential)}>{t('configuration.connect')}</Button><Button variant="ghost" size="sm" disabled={busy} onclick={() => disconnect(account.id, credential)}>{t('configuration.disconnect')}</Button>{/if}<Button variant="danger-outline" size="sm" disabled={busy} onclick={() => remove(account, credential)}>{t('configuration.delete')}</Button></div>
+							<div class="mt-2 flex flex-wrap gap-2"><Button variant="ghost" size="sm" disabled={busy} onclick={() => editCredential(account.id, credential)}>{t('accounts.editCredential')}</Button><Button variant="ghost" size="sm" disabled={busy} onclick={() => mutate((ctx) => api.patch(`${ctx.base}${credentialPath(account.id, credential.id)}`, { is_active: !credential.is_active }, ctx.token, ctx.project))}>{credential.is_active ? t('configuration.deactivate') : t('configuration.activate')}</Button>{#if credential.auth_mode !== 'api_key'}<Button variant="secondary" size="sm" disabled={busy} onclick={() => authenticate(account, credential)}>{t('configuration.connect')}</Button><Button variant="ghost" size="sm" disabled={busy} onclick={() => disconnect(account, credential)}>{t('configuration.disconnect')}</Button>{/if}<Button variant="danger-outline" size="sm" disabled={busy} onclick={() => remove(account, credential)}>{t('configuration.delete')}</Button></div>
 						</div>
 					{/each}
 				</section>

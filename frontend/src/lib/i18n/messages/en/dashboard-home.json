@@ -4,7 +4,6 @@
 	"start.create": "Create instance",
 	"start.images": "Browse images",
 	"start.guide": "Open guide",
-	"telemetry.collection": "Telemetry collection",
 	"telemetry.openMonitoring": "Open VM monitoring",
 	"topology.loadFailed": "Couldn't load the topology.",
 	"topology.title": "Network topology",

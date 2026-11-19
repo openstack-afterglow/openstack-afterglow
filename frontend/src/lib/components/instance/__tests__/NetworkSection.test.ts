@@ -153,6 +153,8 @@ describe('NetworkSection saved security policies', () => {
 		const view = render(Wrapper, { source });
 		await screen.findByRole('figure', { name: '인스턴스 네트워크 맵' });
 		expect(screen.queryByRole('button', { name: '+ 인터페이스 추가' })).toBeNull();
+		await fireEvent.click(await screen.findByRole('button', { name: /^보안 그룹, default/ }));
+		expect(within(screen.getByRole('region', { name: 'default' })).getByText(/TCP · 22/)).toBeTruthy();
 		await fireEvent.click(await screen.findByRole('button', { name: /^인터넷/ }));
 		expect(within(screen.getByRole('region', { name: '인터넷' })).getByText(/TCP · 22/)).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: '목록' }));
@@ -174,7 +176,8 @@ describe('NetworkSection saved security policies', () => {
 		await waitFor(() => expect(controller?.securityGroupPorts).toEqual([savedPort]));
 		expect(controller?.interfaces).toEqual([iface]);
 		expect(controller?.securityGroupIdsForPort(iface)).toEqual(['cached']);
-		expect(await screen.findByRole('button', { name: /보안 그룹 정보 확인 불가/ })).toBeTruthy();
+		expect(await screen.findByText('보안 그룹 정보 확인 불가')).toBeTruthy();
+		expect(screen.queryByRole('button', { name: /^보안 그룹,/ })).toBeNull();
 		expect(screen.queryByRole('button', { name: /^인터넷/ })).toBeNull();
 	});
 });
