@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [1.32.29] - 2026-11-19
+
 ### Added
 
 - 채팅 설정 API 키에 SDK 예제 패널을 추가했다. OpenAI·Anthropic·Gemini SDK의 Python·JavaScript·curl 예제는 배포에 설정된 공개 Lumen 주소로 채워지며 주소가 없으면 표시하지 않는다. 문서에 [Lumen API를 SDK로 사용하기](docs/lumen-sdk.md) 튜토리얼과 실행 가능한 `docs/examples/lumen-sdk` 예제·smoke runner를 추가했다.
@@ -38,6 +40,21 @@
 - Agent Vault requires signed Afterglow-to-Lumen requests. Configure the same private ingress key on both services.
 - 이미지 모델 가격은 요금 적용 방식을 토큰 단위와 이미지 단위 중에서 고른다. 토큰 단위는 텍스트 토큰(입력·캐시 입력)과 이미지 토큰(입력·캐시 입력·출력)을 USD / 1M tokens로 표시하고, 검토 화면은 공식 가격을 출처와 함께 미리 채워 수정한 항목만 수동 가격으로 저장한다. OpenAI 이미지 토큰 방식은 예약 상한을 비워 둘 수 있다. Leaf 단위 가격 재정의를 지원하는 Lumen이 필요하다.
 - Image model pricing chooses per-token or per-image billing. Per-token billing shows text tokens (input, cached input) and image tokens (input, cached input, output) in USD / 1M tokens; review prefills official prices with provenance and saves only edited fields as manual overrides. OpenAI image token billing can leave the reservation cap blank. Requires a Lumen release with per-field price overrides.
+- 서비스 키 발급 화면은 Lumen의 도메인 관리자 전용 서비스 키 발급 정책(`allowed_scopes`, `default_scopes`)만 사용하고, 개인 키 화면은 개인 발급 정책을 유지한다.
+- The service-key form uses only Lumen's manager-only service-key issuance policy (`allowed_scopes`, `default_scopes`); the personal-key form keeps the personal policy.
+- 도메인 풀 충전은 보내기 전에 관리자·도메인별 복구 기록(일회용 키·금액·메모)을 브라우저에 저장하고, 저장하지 못하면 보내지 않는다. 응답을 잃은 충전은 Lumen 원장 조회로 재확인하며, 확인되지 않은 동안에는 같은 키 재시도만 허용한다. 여러 탭은 Web Locks로 같은 도메인의 충전을 직렬화하고 다른 키의 기록을 지우지 않는다.
+- Domain pool top-ups persist a per-admin, per-domain recovery record (idempotency key, amount, note) in the browser before sending and send nothing if it cannot be stored. A top-up whose reply was lost is rechecked against the Lumen ledger; until confirmed, only a same-key retry is offered. Tabs serialize top-ups per domain with Web Locks and never clear another key's record.
+- Lumen 설치기가 관리하는 Codex 프로필과 대시보드의 Codex 실행 명령은 `web_search = "disabled"`를 사용한다. Lumen API 키는 공급자가 실행하는 도구를 403 `server_tool_not_allowed_for_key`로 거절하며, SDK 튜토리얼에 클라이언트 도구 호출과 거절되는 서버 도구를 정리했다.
+- Codex profiles managed by the Lumen installers and the dashboard Codex commands use `web_search = "disabled"`. Lumen API keys refuse provider-executed tools with 403 `server_tool_not_allowed_for_key`; the SDK tutorial documents client tool calling and the refused server tools.
+
+### Deployment
+
+- Lumen 0.6.21 이상이 필요하다(Vault, 도메인 크레딧 풀, 서비스 키 발급 정책, 충전 원장 조회, 모델 `domain_billing`). Lumen을 먼저 배포하며, 두 배포 사이에는 1.32.28의 메모리 설정 화면과 대시보드 메모리·Vault 도구가 동작하지 않는다.
+- 새 설정: `[services] lumen_ingress_secret`(`SERVICE_LUMEN_INGRESS_SECRET`, 32바이트 이상)은 Lumen의 `LUMEN_AFTERGLOW_INGRESS_SECRET`과 같은 값이어야 한다. Kolla는 보호된 plugin secrets 파일의 `lumen_afterglow_ingress_secret` 하나에서 두 서비스에 전달하며, append-only 초기화 도구 `generate_ingress_secret`이 비어 있을 때만 채운다. `[services] lumen_external_url`(`SERVICE_LUMEN_EXTERNAL_URL`, Kolla `lumen_external_url`)은 CLI 설치기의 공개 Lumen 주소다. 비워 두면 자동 설정 명령을 표시하지 않는다.
+- 새 DB migration은 없다. 공개 `/install/lumen.sh`·`/install/lumen.ps1`은 frontend가 backend `/api/v1/install/*`로 전달하므로 새 HAProxy 규칙이 필요 없다.
+- Requires Lumen 0.6.21 or later (Vault, domain credit pools, service-key issuance policy, top-up ledger lookup, model `domain_billing`). Deploy Lumen first; between the two rollouts the 1.32.28 memory settings page and dashboard memory/Vault tools do not work.
+- New settings: `[services] lumen_ingress_secret` (`SERVICE_LUMEN_INGRESS_SECRET`, at least 32 bytes) must equal Lumen's `LUMEN_AFTERGLOW_INGRESS_SECRET`. Kolla passes one `lumen_afterglow_ingress_secret` from the protected plugin secrets file to both services; the append-only initializer `generate_ingress_secret` fills it only when unset. `[services] lumen_external_url` (`SERVICE_LUMEN_EXTERNAL_URL`, Kolla `lumen_external_url`) is the public Lumen base for CLI installers; empty hides the automatic setup commands.
+- No new DB migration. Public `/install/lumen.sh` and `/install/lumen.ps1` are served by the frontend through the backend's `/api/v1/install/*`, so no new HAProxy rule is needed.
 
 ## [1.32.28] - 2026-11-18
 
