@@ -157,7 +157,10 @@ Afterglow 백엔드는 대부분의 `/api/v1/chat/{path}` 요청을 내부 Lumen
 | `GET /api/v1/chat/runs/{run_id}/events` | `/v1/runs/{run_id}/events` | 실시간 실행 이벤트 스트림 (SSE 스트리밍) |
 | `POST /api/v1/chat/runs/{run_id}/cancel` | `/v1/runs/{run_id}/cancel` | 실행 중인 에이전트 중단 |
 | `POST /api/v1/chat/runs/{run_id}/approvals/{call_id}` | `/v1/runs/{run_id}/approvals/{call_id}` | 사용자 승인/거절 상태 제출 |
-| `GET /api/v1/chat/usage` | `/v1/usage` | 현재 사용자 사용량과 현재 도메인이 지불자인 경우 선불 잔액·예약·월간 사용량/한도 |
+| `GET /api/v1/chat/usage` | `/v1/usage` | 호출자 본인 사용량(개인 지갑·도메인 풀 등 모든 결제 주체, `view`·`by_payer` 포함, 한도는 본인 월간 한도). `scope=domain`은 live 도메인 매니저만 도메인 풀 사용량과 풀 잔액·예약·월간 사용량/한도를 받고 그 외는 403 `domain_manager_required` |
+| `GET /api/v1/chat/usage/timeseries` | `/v1/usage/timeseries` | `bucket`·`range`·선택 `scope=domain`; 항목마다 `credited_cost_by_payer` |
+| `GET /api/v1/chat/usage/keys` | `/v1/usage/keys` | 키별 사용량과 `billing_scope`; `scope=domain`에서는 다른 구성원의 키 이름·접두사를 가린다 |
+| `GET /api/v1/chat/usage/records` | `/v1/usage/records` | 사용 기록 페이지(`limit`·`before_id`·`source`·선택 `scope=domain`); 행마다 `billing_scope`, 도메인 보기에서 다른 구성원 ID는 `null`. 모든 usage 응답은 `no-store` |
 | `GET/POST /api/v1/chat/api-keys` | `/v1/api-keys` | 개인 키 목록·발급. 프로젝트 선택 없음 |
 | `GET /api/v1/chat/api-keys/issuance-policy` | `/v1/api-keys/issuance-policy` | 허용된 모델 scope와 사용자 한도 |
 | `DELETE /api/v1/chat/api-keys/{id}` | `/v1/api-keys/{id}` | 본인 개인 키 폐기 |
