@@ -3,7 +3,7 @@
 	import { api, ApiError } from '$lib/api/client';
 	import { currentBillingSession, displayDomainCredit, domainBillingErrorMessage, lumenBrowserPath, validDomainCredit, type DomainPool } from '$lib/api/chatDomainBilling';
 	import { domainsApi, type AdminDomain } from '$lib/api/domains';
-	import { clearPendingTopup, pendingTopups, savePendingTopup, type PendingTopup } from '$lib/api/topupRecovery';
+	import { affectsPendingTopups, claimPendingTopup, pendingTopups, releasePendingTopup, type PendingTopup } from '$lib/api/topupRecovery';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
@@ -82,10 +82,34 @@
 		else { directoryError = true; domains = []; }
 	}
 
-	onMount(() => {
+	// Storage is the cross-tab source of truth: another tab may claim or resolve any slot.
+	function syncPending() {
 		const owner = session();
-		if (owner) pending = Object.fromEntries(pendingTopups(owner.userId).map((record) => [record.domainId, record]));
+		if (!owner) return;
+		const next = Object.fromEntries(pendingTopups(owner.userId).map((record) => [record.domainId, record]));
+		for (const domainId of new Set([...Object.keys(pending), ...Object.keys(next)])) {
+			if (pending[domainId]?.key === next[domainId]?.key) continue;
+			// Evidence gathered for one key never carries over to another operation.
+			rechecked = { ...rechecked, [domainId]: false };
+			retryRejected = { ...retryRejected, [domainId]: false };
+			pendingError = { ...pendingError, [domainId]: '' };
+		}
+		pending = next;
+	}
+
+	onMount(() => {
+		syncPending();
 		void load();
+		const onStorage = (event: StorageEvent) => { if (affectsPendingTopups(event.key)) syncPending(); };
+		const onVisible = () => { if (document.visibilityState === 'visible') syncPending(); };
+		window.addEventListener('storage', onStorage);
+		window.addEventListener('focus', syncPending);
+		document.addEventListener('visibilitychange', onVisible);
+		return () => {
+			window.removeEventListener('storage', onStorage);
+			window.removeEventListener('focus', syncPending);
+			document.removeEventListener('visibilitychange', onVisible);
+		};
 	});
 
 	function start(row: Row, nextMode: typeof mode) {
@@ -106,21 +130,39 @@
 		pools = [...(pools ?? []).filter((pool) => pool.domain_id !== domainId), next];
 	}
 
-	function forget(record: PendingTopup) {
-		const { [record.domainId]: _removed, ...rest } = pending;
-		pending = rest;
-		rechecked = { ...rechecked, [record.domainId]: false };
-		retryRejected = { ...retryRejected, [record.domainId]: false };
-		pendingError = { ...pendingError, [record.domainId]: '' };
-		clearPendingTopup(record);
+	async function forget(record: PendingTopup) {
+		if (pending[record.domainId]?.key === record.key) {
+			const { [record.domainId]: _removed, ...rest } = pending;
+			pending = rest;
+			rechecked = { ...rechecked, [record.domainId]: false };
+			retryRejected = { ...retryRejected, [record.domainId]: false };
+			pendingError = { ...pendingError, [record.domainId]: '' };
+		}
+		// Compare-and-delete: a slot another tab re-claimed with its own key survives.
+		await releasePendingTopup(record);
+		syncPending();
 	}
 
 	// Lumen applies one Idempotency-Key at most once, so resending this record cannot double-credit.
-	async function sendTopup(record: PendingTopup, resend = false): Promise<'applied' | 'rejected' | 'unsaved' | 'unknown' | 'stale'> {
+	async function sendTopup(record: PendingTopup, resend = false): Promise<'applied' | 'rejected' | 'unsaved' | 'blocked' | 'unknown' | 'stale'> {
 		const owner = session();
 		if (!owner || denied || owner.userId !== record.userId) return 'stale';
-		// Without a durable record a lost reply could be resent under a new key after reload.
-		if (!savePendingTopup(record)) {
+		// Claim the slot under the cross-tab lock; without a durable record a lost reply could be
+		// resent under a new key after reload.
+		const claim = await claimPendingTopup(record);
+		if (!session() || denied) {
+			if (claim.status === 'claimed' && !resend) void releasePendingTopup(record);
+			return 'stale';
+		}
+		if (claim.status === 'held') {
+			// Another tab's uncertain top-up owns this slot; recover it before any new key is sent.
+			syncPending();
+			pending = { ...pending, [record.domainId]: claim.existing };
+			pendingError = { ...pendingError, [record.domainId]: t('domainBilling.pendingElsewhere') };
+			open = false;
+			return 'blocked';
+		}
+		if (claim.status === 'unavailable') {
 			saveError = t('domainBilling.recoveryUnavailable');
 			if (!open) toast.error(saveError);
 			return 'unsaved';
@@ -129,15 +171,26 @@
 		// A new dispatch may commit; earlier lookup or rejection evidence no longer applies.
 		rechecked = { ...rechecked, [record.domainId]: false };
 		retryRejected = { ...retryRejected, [record.domainId]: false };
+		let dispatched = false;
 		try {
 			const next = await api.post<DomainPool>(`${path}/${encodeURIComponent(record.domainId)}/topups`,
-				{ amount_credits: record.amount_credits, note: record.note }, owner.token, owner.projectId, { ...mutation, idempotencyKey: record.key });
-			if (!session() || denied) return 'stale';
+				{ amount_credits: record.amount_credits, note: record.note }, owner.token, owner.projectId,
+				{ ...mutation, beforeDispatch: () => { requireCurrent(); dispatched = true; }, idempotencyKey: record.key });
+			if (!session() || denied) { void releasePendingTopup(record); return 'stale'; }
 			apply(next, record.domainId);
-			forget(record);
+			void forget(record);
 			toast.success(t('domainBilling.saved'));
 			return 'applied';
 		} catch (cause) {
+			// Aborted before dispatch: nothing reached the network. A first send keeps no phantom
+			// record; a resend leaves the original uncertain record exactly as it was.
+			if (!dispatched) {
+				if (resend) return 'stale';
+				void forget(record);
+				if (!session() || denied) return 'stale';
+				saveError = t('domainBilling.saveFailed');
+				return 'rejected';
+			}
 			if (!session()) return 'stale';
 			const status = cause instanceof ApiError ? cause.status : 0;
 			if (status === 403) { denied = true; pools = null; open = false; }
@@ -151,7 +204,7 @@
 				return 'rejected';
 			}
 			if (!resend && (definite || status === 401 || status === 403)) {
-				forget(record);
+				void forget(record);
 				saveError = domainBillingErrorMessage(cause) ?? t('domainBilling.saveFailed');
 				return 'rejected';
 			}
@@ -198,7 +251,7 @@
 				if (Number(entry.amount_credits) !== Number(record.amount_credits) || (entry.note ?? null) !== record.note) {
 					pendingError = { ...pendingError, [record.domainId]: t('domainBilling.topupConflict') };
 				} else {
-					forget(record);
+					void forget(record);
 					toast.success(t('domainBilling.recheckFound', {
 						amount: displayDomainCredit(record.amount_credits),
 						balance: typeof entry.balance_after === 'string' ? displayDomainCredit(entry.balance_after) : '—',
@@ -224,7 +277,7 @@
 			confirmLabel: t('domainBilling.discardPending'),
 			requiredText: t('domainBilling.discardPhrase'),
 		});
-		if (accepted && session() && retryRejected[record.domainId] && rechecked[record.domainId]) forget(record);
+		if (accepted && session() && retryRejected[record.domainId] && rechecked[record.domainId]) void forget(record);
 	}
 
 	async function submit(event: SubmitEvent) {

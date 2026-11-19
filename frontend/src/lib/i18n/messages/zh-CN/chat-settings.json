@@ -269,6 +269,7 @@
 	"domainBilling.discardConfirm": "使用相同密钥的重试被拒绝，且 Lumen 中没有记录。如果原始请求稍后入账，新的充值可能与之重复。要接受此风险并丢弃待处理记录，请输入下方短语。",
 	"domainBilling.discardPhrase": "我接受重复充值的风险",
 	"domainBilling.recoveryUnavailable": "此浏览器无法保存充值记录，因此未发送充值。请允许浏览器存储后重试。",
+	"domainBilling.pendingElsewhere": "另一个标签页中有此域的未确认充值，因此未发送这笔充值。请先重新检查那笔充值。",
 	"domainBilling.inventoryTitle": "服务密钥清单",
 	"domainBilling.inventoryDescription": "查看域拥有的服务密钥。不会显示完整密钥。",
 	"domainBilling.domainId": "域 ID",

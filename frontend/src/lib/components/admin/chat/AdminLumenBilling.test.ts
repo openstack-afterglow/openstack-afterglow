@@ -7,9 +7,10 @@ import { ApiError } from '$lib/api/client';
 import AdminDomainPoolsPage from '../../../../routes/admin/chat/domain-pools/+page.svelte';
 import AdminServiceKeysPage from '../../../../routes/admin/chat/service-keys/+page.svelte';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn(), confirm: vi.fn(), success: vi.fn(), error: vi.fn() }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn(), confirm: vi.fn(), success: vi.fn(), error: vi.fn(), dispatch: vi.fn() }));
 vi.mock('$lib/api/client', () => ({
-	api: mocks,
+	// The real client runs beforeDispatch immediately before the network send.
+	api: { get: mocks.get, patch: mocks.patch, post: (...args: unknown[]) => { mocks.dispatch(args[4]); return mocks.post(...args); } },
 	ApiError: class extends Error { constructor(public status: number, message: string) { super(message); } }
 }));
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: mocks.confirm }));
@@ -48,20 +49,149 @@ function seedPending() {
 	}));
 }
 
+const slot = 'afterglow:lumen-topup:v1:admin-fixture:domain-a';
+
+/** FIFO exclusive Web Locks double shared by every simulated tab in this document. */
+function installLocks(): string[] {
+	const requests: string[] = [];
+	const tails = new Map<string, Promise<unknown>>();
+	const request = (name: string, callback: () => unknown) => {
+		requests.push(name);
+		const run = (tails.get(name) ?? Promise.resolve()).then(() => callback());
+		tails.set(name, run.catch(() => undefined));
+		return run;
+	};
+	Object.defineProperty(navigator, 'locks', { value: { request }, configurable: true });
+	return requests;
+}
+
+type Tab = { container: HTMLElement };
+const researchIn = (tab: Tab) => within(tab.container).getByRole('heading', { name: 'Research lab' }).closest('.card') as HTMLElement;
+
+async function sendFrom(tab: Tab, value: string) {
+	await fireEvent.click(within(researchIn(tab)).getByRole('button', { name: t('domainBilling.topup') }));
+	// Each simulated tab opens its own dialog; the newest one belongs to this tab.
+	const dialog = (await screen.findAllByRole('dialog', { name: t('domainBilling.topup') })).at(-1) as HTMLElement;
+	await fireEvent.input(within(dialog).getByLabelText(t('domainBilling.amount')), { target: { value } });
+	await fireEvent.click(within(dialog).getByRole('button', { name: t('domainBilling.reviewTopup') }));
+}
+
 beforeEach(() => {
 	vi.resetAllMocks();
 	localStorage.clear();
 	initLocale('en');
 	login(true);
 	lookup = { found: false, entry: null };
+	mocks.dispatch.mockImplementation((options?: { beforeDispatch?: () => void }) => options?.beforeDispatch?.());
 	mocks.get.mockImplementation(async (path: string) => {
 		if (path === '/api/v1/admin/domains') return { items: [domain, unfundedDomain] };
 		if (path === `${base}/domain-pools`) return { items: [pool] };
-		if (path === lookupPath) return lookup;
+		if (path.startsWith(`${base}/domain-pools/domain-a/topups/`)) return lookup;
 		throw new Error(`Unexpected GET ${path}`);
 	});
 });
-afterEach(cleanup);
+afterEach(() => {
+	cleanup();
+	Reflect.deleteProperty(navigator, 'locks');
+});
+
+it('blocks a concurrent tab under the slot lock and clears only the claimed key', async () => {
+	const locks = installLocks();
+	mocks.confirm.mockResolvedValue(true);
+	const replyA = Promise.withResolvers<unknown>();
+	mocks.post.mockImplementationOnce(() => replyA.promise);
+	const tabA = render(AdminDomainPoolsPage);
+	const tabB = render(AdminDomainPoolsPage);
+	await within(tabA.container).findByText('Research lab');
+	await within(tabB.container).findByText('Research lab');
+
+	await sendFrom(tabA, '7');
+	await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
+	const keyA = mocks.post.mock.calls[0][4].idempotencyKey;
+	expect(JSON.parse(localStorage.getItem(slot) ?? 'null')).toMatchObject({ key: keyA, amount_credits: '7' });
+
+	// Tab B mounted before A claimed the slot, so its own view starts empty.
+	await sendFrom(tabB, '9');
+	await within(researchIn(tabB)).findByText(t('domainBilling.pendingElsewhere'));
+	expect(within(researchIn(tabB)).getByText(t('domainBilling.pendingTopupTitle'))).toBeTruthy();
+	expect(within(researchIn(tabB)).getByText(/\b7\b/)).toBeTruthy();
+	expect(mocks.post).toHaveBeenCalledTimes(1);
+	expect(locks.filter((name) => name === 'afterglow-topup:admin-fixture:domain-a').length).toBeGreaterThanOrEqual(2);
+
+	replyA.resolve({ ...pool, balance_credits: '9' });
+	await waitFor(() => expect(localStorage.getItem(slot)).toBeNull());
+	expect(within(researchIn(tabA)).queryByText(t('domainBilling.pendingTopupTitle'))).toBeNull();
+	// A real browser notifies the other tab with a storage event.
+	window.dispatchEvent(new StorageEvent('storage', { key: slot }));
+	await waitFor(() => expect(within(researchIn(tabB)).queryByText(t('domainBilling.pendingTopupTitle'))).toBeNull());
+	expect(mocks.post).toHaveBeenCalledTimes(1);
+});
+
+it('never lets a stale tab resolving an older key delete the current record', async () => {
+	installLocks();
+	localStorage.setItem(slot, JSON.stringify({
+		v: 1, userId: 'admin-fixture', domainId: 'domain-a', key: 'stale-key', amount_credits: '3', note: null, created_at: '2026-11-18T00:00:00Z',
+	}));
+	lookup = { found: true, entry: { kind: 'topup', amount_credits: '3.00000000', balance_after: '5.00000000', note: null, created_at: '2026-11-18T00:00:01+00:00', actor_user_id: null } };
+	render(AdminDomainPoolsPage);
+	const row = (await screen.findByText(t('domainBilling.pendingTopupTitle'))).closest('.card') as HTMLElement;
+	// Another tab resolved the stale key and claimed the slot with key A; no event reached this tab yet.
+	localStorage.setItem(slot, JSON.stringify({
+		v: 1, userId: 'admin-fixture', domainId: 'domain-a', key: 'recorded-key', amount_credits: '5', note: null, created_at: '2026-11-18T00:01:00Z',
+	}));
+	await fireEvent.click(within(row).getByRole('button', { name: t('domainBilling.recheck') }));
+	await waitFor(() => expect(mocks.success).toHaveBeenCalled());
+	expect(mocks.get).toHaveBeenCalledWith(`${base}/domain-pools/domain-a/topups/stale-key`, 'session-token', 'project-1', expect.anything());
+	await within(card('Research lab')).findByText(/^5 credits · /);
+	expect(JSON.parse(localStorage.getItem(slot) ?? 'null')).toMatchObject({ key: 'recorded-key' });
+	expect(mocks.post).not.toHaveBeenCalled();
+});
+
+it('updates the pending UI live from storage events and focus', async () => {
+	render(AdminDomainPoolsPage);
+	await screen.findByText('Research lab');
+	expect(screen.queryByText(t('domainBilling.pendingTopupTitle'))).toBeNull();
+	seedPending();
+	window.dispatchEvent(new StorageEvent('storage', { key: slot }));
+	await within(card('Research lab')).findByText(t('domainBilling.pendingTopupTitle'));
+	expect((within(card('Research lab')).getByRole('button', { name: t('domainBilling.topup') }) as HTMLButtonElement).disabled).toBe(true);
+	localStorage.removeItem(slot);
+	window.dispatchEvent(new Event('focus'));
+	await waitFor(() => expect(screen.queryByText(t('domainBilling.pendingTopupTitle'))).toBeNull());
+});
+
+it('without Web Locks, read-back compare-and-set never overwrites another uncertain key', async () => {
+	mocks.confirm.mockResolvedValue(true);
+	mocks.post.mockRejectedValueOnce(new ApiError(503, 'lost reply'));
+	const first = render(AdminDomainPoolsPage);
+	const second = render(AdminDomainPoolsPage);
+	await within(first.container).findByText('Research lab');
+	await within(second.container).findByText('Research lab');
+	await sendFrom(first, '7');
+	await within(researchIn(first)).findByText(t('domainBilling.pendingTopupTitle'));
+	const originalKey = mocks.post.mock.calls[0][4].idempotencyKey;
+
+	await sendFrom(second, '9');
+	await within(researchIn(second)).findByText(t('domainBilling.pendingElsewhere'));
+	expect(within(researchIn(second)).getByText(/\b7\b/)).toBeTruthy();
+	expect(mocks.post).toHaveBeenCalledTimes(1);
+	expect(JSON.parse(localStorage.getItem(slot) ?? 'null')).toMatchObject({ key: originalKey, amount_credits: '7' });
+});
+
+it('keeps no record for a first send aborted before dispatch', async () => {
+	mocks.confirm.mockResolvedValue(true);
+	mocks.dispatch.mockImplementationOnce(() => { throw new DOMException('Billing authority changed', 'AbortError'); });
+	render(AdminDomainPoolsPage);
+	await screen.findByText('Research lab');
+	await fireEvent.click(within(card('Research lab')).getByRole('button', { name: t('domainBilling.topup') }));
+	const dialog = await screen.findByRole('dialog', { name: t('domainBilling.topup') });
+	await fireEvent.input(within(dialog).getByLabelText(t('domainBilling.amount')), { target: { value: '7' } });
+	await fireEvent.click(within(dialog).getByRole('button', { name: t('domainBilling.reviewTopup') }));
+	await within(dialog).findByText(t('domainBilling.saveFailed'));
+	expect(mocks.post).not.toHaveBeenCalled();
+	expect(screen.queryByText(t('domainBilling.pendingTopupTitle'))).toBeNull();
+	expect(pendingKeys()).toEqual([]);
+});
 
 it('never requests admin inventory for a non-admin', () => {
 	login(false);

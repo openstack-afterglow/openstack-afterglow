@@ -269,6 +269,7 @@
 	"domainBilling.discardConfirm": "Nytt forsøk med samme nøkkel ble avvist, og Lumen har ingen oppføring. Hvis den opprinnelige forespørselen gjennomføres senere, kan en ny påfylling bli dobbel. Skriv inn frasen nedenfor for å godta risikoen og forkaste den ventende oppføringen.",
 	"domainBilling.discardPhrase": "Jeg godtar risikoen for dobbel påfylling",
 	"domainBilling.recoveryUnavailable": "Denne nettleseren kan ikke lagre påfyllingsoppføringen, så påfyllingen ble ikke sendt. Tillat nettleserlagring og prøv igjen.",
+	"domainBilling.pendingElsewhere": "En annen fane har en ubekreftet påfylling for dette domenet, så denne påfyllingen ble ikke sendt. Kontroller den påfyllingen først.",
 	"domainBilling.inventoryTitle": "Oversikt over tjenestenøkler",
 	"domainBilling.inventoryDescription": "Se tjenestenøkler som eies av domener. Hele nøkkelverdier vises ikke.",
 	"domainBilling.domainId": "Domene-ID",

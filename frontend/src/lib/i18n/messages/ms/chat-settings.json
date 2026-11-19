@@ -269,6 +269,7 @@
 	"domainBilling.discardConfirm": "Cubaan semula dengan kunci yang sama ditolak dan Lumen tiada rekod. Jika permintaan asal digunakan kemudian, tambah nilai baharu boleh berganda. Untuk menerima risiko ini dan membuang rekod tertunda, taip frasa di bawah.",
 	"domainBilling.discardPhrase": "Saya menerima risiko tambah nilai berganda",
 	"domainBilling.recoveryUnavailable": "Pelayar ini tidak dapat menyimpan rekod tambah nilai, jadi tambah nilai tidak dihantar. Benarkan storan pelayar dan cuba lagi.",
+	"domainBilling.pendingElsewhere": "Tab lain mempunyai tambah nilai yang belum disahkan untuk domain ini, jadi tambah nilai ini tidak dihantar. Semak semula tambah nilai itu dahulu.",
 	"domainBilling.inventoryTitle": "Inventori kunci perkhidmatan",
 	"domainBilling.inventoryDescription": "Periksa kunci perkhidmatan milik domain. Rahsia lengkap tidak ditunjukkan.",
 	"domainBilling.domainId": "ID domain",
