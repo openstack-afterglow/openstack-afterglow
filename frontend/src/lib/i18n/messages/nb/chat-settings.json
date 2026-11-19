@@ -379,6 +379,7 @@
 	"apiKeys.codex.configLabel": "Tilkoblingskonfigurasjon for Codex CLI",
 	"apiKeys.codex.keyPromptHelp": "Kjør først bare den ene linjen nedenfor i skallet, skriv inn hele den utstedte nøkkelen direkte i inntastingsfeltet med skjult inndata, og trykk på Enter. Hvis du limer inn alle de resterende kommandoene samtidig, kan neste kommando bli angitt i stedet for nøkkelen.",
 	"apiKeys.codex.runHelp": "Erstatt deretter <code>{modelId}</code> nedenfor med den offentlige API-ID-en til en aktiv Responses-kompatibel modell fra modellvelgeren, og kjør kommandoen i samme skall. CLI-alternativene erstatter den eksisterende standardleverandøren bare for denne kjøringen.",
+	"apiKeys.codex.webSearchHelp": "<code>{option}</code> slår av det leverandørdrevne nettsøkeverktøyet som Codex sender som standard. Lumen-API-nøkler tillater ikke verktøy på serversiden, så forespørsler uten dette alternativet avvises med 403.",
 	"apiKeys.codex.runLabel": "Kjørekommando for Codex CLI",
 	"apiKeys.codex.tlsHelp": "Hvis nettleseren og curl fungerer, men Codex ikke klarer å koble til via TLS og viser <code>{requestError}</code>, angir du <code>{certificateVariable}</code> til en PEM-samling som denne enheten stoler på, og kjører kommandoen på nytt i samme skall. Hvis filene nedenfor ikke finnes, eller du bruker en annen distribusjon, bruker du enhetens klarerte sertifikatsamling. Ikke deaktiver TLS-verifisering.",
 	"apiKeys.claudeCode.title": "Claude Code (Anthropic API)",

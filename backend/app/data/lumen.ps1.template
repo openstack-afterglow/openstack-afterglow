@@ -167,11 +167,15 @@
         # [profiles.<name>] table. Never apply its provider selection to config.toml.
         $rootFields = [ordered] @{}
         if ($DefaultModel) { $rootFields['model'] = ConvertTo-LumenTomlString $DefaultModel }
+        $rootKeys = @('model', 'model_provider', 'model_catalog_json')
         if ($CliProfile) {
             $rootFields['model_provider'] = '"lumen-cli"'
             $rootFields['model_catalog_json'] = ConvertTo-LumenTomlString $CatalogPath
+            # Lumen refuses provider-hosted tools for API keys; Codex otherwise
+            # declares hosted web_search on every Responses request.
+            $rootFields['web_search'] = '"disabled"'
+            $rootKeys += 'web_search'
         }
-        $rootKeys = @('model', 'model_provider', 'model_catalog_json')
         $section = @(); $edits = @(); $seen = @{}; $rootSeen = @{}
         $rootEnd = $Text.Length; $providerEnd = $Text.Length; $providerFound = $false
         foreach ($statement in @(Get-LumenTomlStatements $Text)) {

@@ -532,6 +532,8 @@ test("fresh-shell codex keeps management commands native and sends role routes w
 	for (const post of sent) {
 		assert.equal(post.headers.authorization, `Bearer ${secret}`)
 		assert.equal(post.headers["x-lumen-provider"], undefined, "desktop selector must not reach CLI role requests")
+		const tools = JSON.parse(post.body).tools ?? []
+		assert.ok(!tools.some((tool) => String(tool.type).startsWith("web_search")), "hosted web search must stay disabled for Lumen keys")
 	}
 	assert.equal(parseConfig(f).model_providers.lumen.http_headers["X-Lumen-Provider"], "provider-choice")
 })
@@ -802,11 +804,13 @@ test("native lumen-cli profile preserves unrelated settings, leaves earlier prov
 		'model_providers = { lumen = { name = "old", http_headers = { "X-Lumen-Provider" = "chosen" } }, other = { name = "Keep" } }\n',
 		'[model_providers]\nlumen = { name = "old", http_headers = { "X-Lumen-Provider" = "chosen" } }\nother = { name = "Keep" }\n',
 		'model_providers.lumen.name = "old"\n[model_providers.lumen.http_headers]\n"X-Lumen-Provider" = "chosen"\n[model_providers.other]\nname = "Keep"',
+		// A user value in the installer-owned Lumen profile is replaced: Lumen keys reject hosted tools.
+		'web_search = "live"\nmodel_reasoning_effort = "high"\n',
 	]) {
 		const f = fixture(t, existingConfig, cliText)
 		const original = parseConfig(f, f.cliConfigPath)
 		const expected = {
-			...original, model_provider: "lumen-cli", model: responsesModel, model_catalog_json: f.modelsPath,
+			...original, model_provider: "lumen-cli", model: responsesModel, model_catalog_json: f.modelsPath, web_search: "disabled",
 			model_providers: { ...original.model_providers, "lumen-cli": {
 				name: "Lumen Responses", base_url: bases[0], env_key: "LUMEN_API_KEY", wire_api: "responses",
 				requires_openai_auth: false, supports_websockets: false,
@@ -816,6 +820,8 @@ test("native lumen-cli profile preserves unrelated settings, leaves earlier prov
 		assert.deepEqual(parseConfig(f, f.cliConfigPath), expected)
 		assert.equal(fs.statSync(f.cliConfigPath).mode & 0o777, 0o600)
 		const rootConfig = parseConfig(f)
+		assert.equal(rootConfig.web_search, undefined, "desktop config.toml keeps its own web search setting")
+		assert.equal(fs.readFileSync(f.cliConfigPath, "utf8").match(/^web_search\s*=/gm).length, 1)
 		const backups = fs.readdirSync(f.codexHome).filter((name) => name.startsWith(".lumen-cli.config.toml.lumen-backup-"))
 		assert.equal(backups.length, 1)
 		assert.equal(fs.readFileSync(path.join(f.codexHome, backups[0]), "utf8"), cliText)

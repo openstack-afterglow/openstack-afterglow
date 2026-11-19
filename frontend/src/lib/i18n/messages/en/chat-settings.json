@@ -379,6 +379,7 @@
 	"apiKeys.codex.configLabel": "Codex CLI connection configuration",
 	"apiKeys.codex.keyPromptHelp": "First, run only the single line below in your shell, enter the full issued key directly into the hidden input prompt, and press Enter. Pasting all remaining commands at once may enter the next command instead of the key.",
 	"apiKeys.codex.runHelp": "Then replace <code>{modelId}</code> below with the public API ID of an active Responses-compatible model from the model selector and run it in the same shell. The CLI options replace the existing default provider for this run only.",
+	"apiKeys.codex.webSearchHelp": "<code>{option}</code> turns off the provider-hosted web search tool that Codex sends by default. Lumen API keys do not allow server-side tools, so requests without this option are rejected with 403.",
 	"apiKeys.codex.runLabel": "Codex CLI run command",
 	"apiKeys.codex.tlsHelp": "If your browser and curl work but Codex fails to connect over TLS with <code>{requestError}</code>, set <code>{certificateVariable}</code> to a PEM bundle trusted by this device and run it again in the same shell. If the files below do not exist or your distribution differs, use the device’s trusted bundle. Do not disable TLS verification.",
 	"apiKeys.claudeCode.title": "Claude Code (Anthropic API)",

@@ -379,6 +379,7 @@
 	"apiKeys.codex.configLabel": "Cấu hình kết nối Codex CLI",
 	"apiKeys.codex.keyPromptHelp": "Trước tiên, chỉ chạy một dòng bên dưới trong shell, nhập trực tiếp toàn bộ khóa đã được cấp vào lời nhắc nhập ẩn, rồi nhấn Enter. Việc dán tất cả các lệnh còn lại cùng lúc có thể khiến lệnh tiếp theo được nhập thay cho khóa.",
 	"apiKeys.codex.runHelp": "Sau đó, thay <code>{modelId}</code> bên dưới bằng ID API công khai của một mô hình đang hoạt động tương thích với Responses trong bộ chọn mô hình và chạy trong cùng shell. Các tùy chọn CLI chỉ thay thế nhà cung cấp mặc định hiện có cho lần chạy này.",
+	"apiKeys.codex.webSearchHelp": "<code>{option}</code> tắt công cụ tìm kiếm web do nhà cung cấp lưu trữ mà Codex gửi theo mặc định. Khóa API Lumen không cho phép công cụ phía máy chủ, vì vậy yêu cầu không có tùy chọn này sẽ bị từ chối với mã 403.",
 	"apiKeys.codex.runLabel": "Lệnh chạy Codex CLI",
 	"apiKeys.codex.tlsHelp": "Nếu trình duyệt và curl hoạt động nhưng Codex không thể kết nối qua TLS với lỗi <code>{requestError}</code>, hãy đặt <code>{certificateVariable}</code> thành gói chứng chỉ PEM được thiết bị này tin cậy và chạy lại trong cùng shell. Nếu các tệp bên dưới không tồn tại hoặc bạn dùng bản phân phối khác, hãy sử dụng gói chứng chỉ đáng tin cậy của thiết bị. Không tắt xác minh TLS.",
 	"apiKeys.claudeCode.title": "Claude Code (Anthropic API)",

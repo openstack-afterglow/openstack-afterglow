@@ -379,6 +379,7 @@
 	"apiKeys.codex.configLabel": "Konfigurasi sambungan Codex CLI",
 	"apiKeys.codex.keyPromptHelp": "Pertama, jalankan satu baris di bawah sahaja dalam shell anda, masukkan kunci penuh yang dikeluarkan terus pada prom input tersembunyi, dan tekan Enter. Menampal semua arahan yang tinggal serentak mungkin memasukkan arahan seterusnya dan bukannya kunci.",
 	"apiKeys.codex.runHelp": "Kemudian gantikan <code>{modelId}</code> di bawah dengan ID API awam model aktif yang serasi dengan Responses daripada pemilih model dan jalankannya dalam shell yang sama. Pilihan CLI menggantikan penyedia lalai sedia ada untuk pelaksanaan ini sahaja.",
+	"apiKeys.codex.webSearchHelp": "<code>{option}</code> mematikan alat carian web yang dihoskan oleh penyedia yang dihantar oleh Codex secara lalai. Kunci API Lumen tidak membenarkan alat sebelah pelayan, jadi permintaan tanpa pilihan ini ditolak dengan 403.",
 	"apiKeys.codex.runLabel": "Arahan pelaksanaan Codex CLI",
 	"apiKeys.codex.tlsHelp": "Jika pelayar dan curl berfungsi tetapi Codex gagal menyambung melalui TLS dengan <code>{requestError}</code>, tetapkan <code>{certificateVariable}</code> kepada himpunan PEM yang dipercayai oleh peranti ini dan jalankan semula dalam shell yang sama. Jika fail di bawah tidak wujud atau edaran anda berbeza, gunakan himpunan yang dipercayai oleh peranti. Jangan nyahdayakan pengesahan TLS.",
 	"apiKeys.claudeCode.title": "Claude Code (Anthropic API)",

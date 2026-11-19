@@ -646,6 +646,16 @@ describe('ChatApiKeysManager', () => {
 		expect(example).not.toContain('inference.example');
 	});
 
+	it('adds the hosted web search override to every Codex Lumen command and explains why', async () => {
+		render(ChatApiKeysManager);
+		await screen.findByRole('tab', { name: t('apiKeys.guide.codexTab') });
+		const commands = [t('apiKeys.codex.runLabel'), t('apiKeys.codex.defaultRunLabel')]
+			.map((name) => screen.getByRole('region', { name }).textContent ?? '');
+		for (const command of commands) expect(command).toContain('-c model_provider=lumen -c web_search=disabled');
+		const explanation = screen.getByText((_, element) => element?.tagName === 'P' && (element.textContent ?? '').includes('403'));
+		expect(explanation.querySelector('code')?.textContent).toBe('web_search=disabled');
+	});
+
 	it('switches a single accessible guide without refetching discovery', async () => {
 		render(ChatApiKeysManager);
 		const codexTab = await screen.findByRole('tab', { name: t('apiKeys.guide.codexTab') });

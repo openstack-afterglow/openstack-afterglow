@@ -1182,8 +1182,10 @@ def run():
             # An installer-owned provider table: profile files layer over
             # config.toml, so desktop [model_providers.lumen] headers would
             # otherwise be inherited by every CLI role request.
+            # Lumen refuses provider-hosted tools for API keys; Codex otherwise
+            # declares hosted web_search on every Responses request.
             settings = {'model_provider': 'lumen-cli', 'model': selected['id'],
-                        'model_catalog_json': str(models_path)}
+                        'model_catalog_json': str(models_path), 'web_search': 'disabled'}
             cli_updates[path] = codex_config(cli_texts[path], codex, settings, 'lumen-cli', clear_selector=True)
         quote = shlex.quote
         block = START + '\n' + '''case "$-" in *x*) _lumen_trace=1 ;; *) _lumen_trace=0 ;; esac
