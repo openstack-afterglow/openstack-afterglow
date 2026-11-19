@@ -458,16 +458,16 @@ supports_websockets = false
 printf 'Lumen API key: '; read -rs LUMEN_API_KEY; printf '\n'; export LUMEN_API_KEY
 ```
 
-그다음 실제 모델 ID로 placeholder를 바꿔 **같은 셸**에서 실행한다. CLI override를 쓰면 사용자 기본 provider가 Lumen이 아니어도 이 실행만 Lumen으로 연결한다.
+그다음 실제 모델 ID로 placeholder를 바꿔 **같은 셸**에서 실행한다. CLI override를 쓰면 사용자 기본 provider가 Lumen이 아니어도 이 실행만 Lumen으로 연결한다. Codex 0.170은 기본적으로 provider 호스팅 `web_search` 도구를 함께 보내고 Lumen API 키는 이를 `403 server_tool_not_allowed_for_key`로 거부하므로 `-c web_search=disabled`를 함께 지정한다.
 
 ```bash
-codex --strict-config -c model_provider=lumen -m "replace-with-active-Responses-model-ID"
+codex --strict-config -c model_provider=lumen -c web_search=disabled -m "replace-with-active-Responses-model-ID"
 ```
 
 사용자 설정의 최상위 `model`이 사용할 Lumen Responses 공개 모델 ID이고 선택한 profile·project 설정이 이를 덮어쓰지 않으면 다음처럼 실행한다. 설치기가 기본 모델 변경을 제안해도 기존 모델은 기본적으로 보존하며, 변경은 사용자 opt-in과 백업을 거친다. `model_provider=lumen`만으로 모델이 자동 선택되지는 않는다. 기존 다른 모델 또는 model override가 있으면 위의 `-m`을 사용한다.
 
 ```bash
-codex --strict-config -c model_provider=lumen
+codex --strict-config -c model_provider=lumen -c web_search=disabled
 ```
 
 Codex는 full-input Responses tool continuation을 Lumen에 보낸다. 브라우저·curl은 정상인데 Codex만 TLS 연결 오류로 실패할 때 `CODEX_CA_CERTIFICATE`에 **자기 장치가 신뢰하는 검증 가능한 PEM CA 번들**을 지정한다. macOS의 확인된 경로와 Debian/Ubuntu 계열 Linux의 일반적인 경로는 다음과 같다. 파일 존재·읽기 가능 여부를 먼저 확인하고 배포판이 다르면 해당 장치의 경로를 사용한다. TLS 검증을 끄지 않는다.

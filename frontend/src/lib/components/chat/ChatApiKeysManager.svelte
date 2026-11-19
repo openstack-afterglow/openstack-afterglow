@@ -197,8 +197,8 @@ supports_websockets = false
 # ${t('apiKeys.codex.providerComment')}
 # http_headers = { "X-Lumen-Provider" = "provider-id" }` : '');
 	const keyPromptExample = `printf 'Lumen API key: '; read -rs LUMEN_API_KEY; printf '\\n'; export LUMEN_API_KEY`;
-	const codexShellExample = `codex --strict-config -c model_provider=lumen -m "replace-with-active-Responses-model-ID"`;
-	const codexShortCommand = 'codex --strict-config -c model_provider=lumen';
+	const codexShellExample = `codex --strict-config -c model_provider=lumen -c web_search=disabled -m "replace-with-active-Responses-model-ID"`;
+	const codexShortCommand = 'codex --strict-config -c model_provider=lumen -c web_search=disabled';
 	const macCertificateCommand = 'export CODEX_CA_CERTIFICATE="/private/etc/ssl/cert.pem"';
 	const linuxCertificateCommand = 'export CODEX_CA_CERTIFICATE="/etc/ssl/certs/ca-certificates.crt"';
 	const claudeCodeExample = $derived(sdkBases ? `export LUMEN_MODEL="replace-with-active-Anthropic-model-ID"
@@ -660,6 +660,9 @@ claude` : '');
 					<pre class="{codeCls} mt-2 max-w-full whitespace-pre" role="region" aria-label={t('apiKeys.guide.keyPromptLabel')}><code>{keyPromptExample}</code></pre>
 					<p class="mt-3 text-sm leading-6 text-ink-2">
 						<RichText segments={t.rich('apiKeys.codex.runHelp', { modelId: 'replace-with-active-Responses-model-ID' })} classes={{ code: inlineCodeCls }} />
+					</p>
+					<p class="mt-2 text-sm leading-6 text-ink-2">
+						<RichText segments={t.rich('apiKeys.codex.webSearchHelp', { option: 'web_search=disabled' })} classes={{ code: inlineCodeCls }} />
 					</p>
 					<div class="mb-2 mt-3 flex flex-wrap justify-end gap-2">
 						<Button variant="ghost" size="sm" onclick={() => copyText(codexShellExample, t('apiKeys.toast.codexRunCopied'))}>{t('apiKeys.codex.copyRun')}</Button>

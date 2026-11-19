@@ -349,7 +349,7 @@ $again = Update-LumenToml $changed 'https://lumen.example/v1'
 behavior("native role profile files select route, provider and catalog without changing nested profiles", () => {
 	const result = run(`
 $catalog = Join-Path $work 'codex home\\lumen-models.json'
-$original = "model = 'old'\nmodel_provider = 'openai'\nmodel_catalog_json = '/old/catalog.json'\n[profiles.work]\nmodel = 'work'"
+$original = "model = 'old'\nmodel_provider = 'openai'\nmodel_catalog_json = '/old/catalog.json'\nweb_search = 'live'\n[profiles.work]\nmodel = 'work'"
 $changed = Update-LumenToml $original 'https://lumen.example/v1' 'lumen/7/11' $true $catalog
 $empty = Update-LumenToml '' 'https://lumen.example/v1' 'lumen/7/12' $true $catalog
 $only = Update-LumenToml '# comment without newline' 'https://lumen.example/v1' 'lumen/7/11' $true $catalog
@@ -365,9 +365,11 @@ $refused = @(
 		assert.ok(root.includes(`model = "${route}"`));
 		assert.ok(root.includes('model_provider = "lumen-cli"'));
 		assert.ok(root.includes(`model_catalog_json = ${result.catalog}`));
+		assert.equal(root.match(/^web_search = "disabled"$/gm)?.length, 1);
 		assert.ok(value.includes("[model_providers.lumen-cli]"));
 	}
 	assert.ok(!result.changed.includes("/old/catalog.json"));
+	assert.ok(!result.changed.includes("'live'"));
 	assert.ok(result.changed.includes("[profiles.work]\nmodel = 'work'"));
 	assert.equal(result.again, result.changed);
 	assert.deepEqual(result.refused, [true, true, true]);
@@ -384,7 +386,7 @@ $empty = Update-LumenToml '' 'https://lumen.example/v1' 'gpt-5.6-sol'
 	assert.ok(result.unchangedDefaults.startsWith(result.original));
 	assert.ok(result.changed.startsWith("model = \"gpt-5.6-sol\"\nmodel_provider = 'openai'"));
 	assert.ok(!result.empty.includes("model_provider ="));
-	for (const value of [result.unchangedDefaults, result.changed, result.empty]) assert.ok(!value.includes("model_catalog_json"));
+	for (const value of [result.unchangedDefaults, result.changed, result.empty]) assert.ok(!value.includes("model_catalog_json") && !value.includes("web_search"));
 	assert.ok(result.changed.includes("[profiles.work]\nmodel = 'work'"));
 	assert.equal(result.again, result.changed);
 });

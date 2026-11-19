@@ -379,6 +379,7 @@
 	"apiKeys.codex.configLabel": "Codex CLI接続設定",
 	"apiKeys.codex.keyPromptHelp": "まず以下の1行だけをシェルで実行し、非表示の入力プロンプトに発行したキーの値全体を直接入力してEnterを押してください。残りのコマンドをまとめて貼り付けると、キーの代わりに次のコマンドが入力される場合があります。",
 	"apiKeys.codex.runHelp": "次に、以下の<code>{modelId}</code>をモデル選択画面の有効なResponses互換モデルの公開API IDに置き換え、同じシェルで実行してください。CLIオプションは今回の実行でのみ既存のデフォルトプロバイダーを置き換えます。",
+	"apiKeys.codex.webSearchHelp": "<code>{option}</code> は、Codex が既定で送信するプロバイダーホスト型のウェブ検索ツールを無効にします。Lumen API キーではサーバー側ツールを使用できないため、このオプションがないとリクエストは 403 で拒否されます。",
 	"apiKeys.codex.runLabel": "Codex CLI実行コマンド",
 	"apiKeys.codex.tlsHelp": "ブラウザー・curlは正常なのにCodexが<code>{requestError}</code>でTLS接続に失敗する場合は、このデバイスが信頼するPEMバンドルを<code>{certificateVariable}</code>に指定し、同じシェルで再実行してください。以下のファイルがない場合やディストリビューションが異なる場合は、そのデバイスの信頼バンドルを使用してください。TLS検証を無効にしないでください。",
 	"apiKeys.claudeCode.title": "Claude Code（Anthropic API）",

@@ -379,6 +379,7 @@
 	"apiKeys.codex.configLabel": "Codex CLI 연결 설정",
 	"apiKeys.codex.keyPromptHelp": "먼저 아래 한 줄만 셸에서 실행하고, 표시되지 않는 입력 프롬프트에 발급한 키 전체 값을 직접 입력해 Enter를 누르세요. 나머지 명령을 한꺼번에 붙여 넣으면 키 대신 다음 명령이 입력될 수 있습니다.",
 	"apiKeys.codex.runHelp": "그다음 아래의 <code>{modelId}</code>를 모델 선택창의 활성 Responses 호환 모델 공개 API ID로 바꾸고 같은 셸에서 실행하세요. CLI 옵션은 이번 실행에서만 기존 기본 프로바이더를 대체합니다.",
+	"apiKeys.codex.webSearchHelp": "<code>{option}</code>는 Codex가 기본으로 보내는 provider 호스팅 웹 검색 도구를 끕니다. Lumen API 키는 서버 측 도구를 허용하지 않으므로 이 옵션이 없으면 요청이 403으로 거부됩니다.",
 	"apiKeys.codex.runLabel": "Codex CLI 실행 명령",
 	"apiKeys.codex.tlsHelp": "브라우저·curl은 정상인데 Codex가 <code>{requestError}</code>로 TLS 연결에 실패할 때, 이 장치가 신뢰하는 PEM 번들을 <code>{certificateVariable}</code>에 지정하고 같은 셸에서 다시 실행하세요. 아래 파일이 없거나 배포판이 다르면 해당 장치의 신뢰 번들을 사용하세요. TLS 검증을 끄지 마세요.",
 	"apiKeys.claudeCode.title": "Claude Code (Anthropic API)",

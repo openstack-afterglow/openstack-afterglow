@@ -379,6 +379,7 @@
 	"apiKeys.codex.configLabel": "Codex CLI 连接配置",
 	"apiKeys.codex.keyPromptHelp": "先在 shell 中仅执行以下一行，在隐藏的输入提示中直接输入已签发密钥的完整值，然后按 Enter。一次性粘贴其余命令可能会将下一条命令输入为密钥。",
 	"apiKeys.codex.runHelp": "然后将以下 <code>{modelId}</code> 替换为模型选择器中已启用且兼容 Responses 的模型公开 API ID，并在同一个 shell 中执行。CLI 选项仅在本次执行中替代现有默认提供商。",
+	"apiKeys.codex.webSearchHelp": "<code>{option}</code> 会关闭 Codex 默认发送的提供商托管网页搜索工具。Lumen API 密钥不允许使用服务器端工具，因此缺少此选项的请求会被以 403 拒绝。",
 	"apiKeys.codex.runLabel": "Codex CLI 执行命令",
 	"apiKeys.codex.tlsHelp": "如果浏览器和 curl 正常，但 Codex 因 <code>{requestError}</code> 导致 TLS 连接失败，请将 <code>{certificateVariable}</code> 指定为此设备信任的 PEM 证书包，并在同一个 shell 中重新执行。如果以下文件不存在或发行版不同，请使用该设备的信任证书包。不要关闭 TLS 验证。",
 	"apiKeys.claudeCode.title": "Claude Code（Anthropic API）",
