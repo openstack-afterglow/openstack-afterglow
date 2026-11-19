@@ -269,6 +269,7 @@
 	"domainBilling.discardConfirm": "同じキーでの再試行が拒否され、Lumen に記録がありません。元のリクエストが後から反映されると、新しいチャージと重複する可能性があります。このリスクを受け入れて保留中の記録を削除するには、次の文言を入力してください。",
 	"domainBilling.discardPhrase": "重複チャージのリスクを受け入れます",
 	"domainBilling.recoveryUnavailable": "このブラウザーでチャージ記録を保存できないため、チャージを送信しませんでした。ブラウザーのストレージを許可してから再試行してください。",
+	"domainBilling.pendingElsewhere": "別のタブにこのドメインの未確認のチャージがあるため、このチャージは送信しませんでした。先にそのチャージを再確認してください。",
 	"domainBilling.inventoryTitle": "サービスキー一覧",
 	"domainBilling.inventoryDescription": "ドメイン所有のサービスキーを参照します。完全な秘密情報は表示しません。",
 	"domainBilling.domainId": "ドメイン ID",

@@ -269,6 +269,7 @@
 	"domainBilling.discardConfirm": "Jaribio jipya kwa ufunguo uleule lilikataliwa na Lumen haina rekodi. Ombi la awali likitumika baadaye, nyongeza mpya inaweza kurudiwa. Ili kukubali hatari hii na kuondoa rekodi inayosubiri, andika kifungu kilicho hapa chini.",
 	"domainBilling.discardPhrase": "Nakubali hatari ya nyongeza kurudiwa",
 	"domainBilling.recoveryUnavailable": "Kivinjari hiki hakiwezi kuhifadhi rekodi ya nyongeza, kwa hivyo nyongeza haikutumwa. Ruhusu hifadhi ya kivinjari kisha ujaribu tena.",
+	"domainBilling.pendingElsewhere": "Kichupo kingine kina nyongeza ambayo haijathibitishwa kwa kikoa hiki, kwa hivyo nyongeza hii haikutumwa. Kagua nyongeza hiyo kwanza.",
 	"domainBilling.inventoryTitle": "Orodha ya funguo za huduma",
 	"domainBilling.inventoryDescription": "Kagua funguo za huduma zinazomilikiwa na vikoa. Funguo kamili za siri hazionyeshwi.",
 	"domainBilling.domainId": "Kitambulisho cha kikoa",

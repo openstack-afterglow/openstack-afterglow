@@ -269,6 +269,7 @@
 	"domainBilling.discardConfirm": "Lần thử lại với cùng khóa đã bị từ chối và Lumen không có bản ghi. Nếu yêu cầu ban đầu được áp dụng sau, một giao dịch nạp mới có thể bị trùng. Để chấp nhận rủi ro này và bỏ bản ghi đang chờ, hãy nhập cụm từ bên dưới.",
 	"domainBilling.discardPhrase": "Tôi chấp nhận rủi ro nạp trùng",
 	"domainBilling.recoveryUnavailable": "Trình duyệt này không lưu được bản ghi nạp nên giao dịch nạp chưa được gửi. Hãy cho phép lưu trữ trình duyệt rồi thử lại.",
+	"domainBilling.pendingElsewhere": "Một thẻ khác có giao dịch nạp chưa xác nhận cho miền này nên giao dịch này chưa được gửi. Hãy kiểm tra lại giao dịch đó trước.",
 	"domainBilling.inventoryTitle": "Danh sách khóa dịch vụ",
 	"domainBilling.inventoryDescription": "Kiểm tra khóa dịch vụ do miền sở hữu. Khóa bí mật đầy đủ không được hiển thị.",
 	"domainBilling.domainId": "ID miền",
