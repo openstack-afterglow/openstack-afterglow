@@ -15,6 +15,8 @@ Issue the key in the dashboard under **Chat settings → API keys**. Personal ke
 
 Perplexity Sonar and other web-search models are available only in dashboard chat. They need Lumen's web-search tool permission, which model-only keys cannot hold, so they are hidden from key model lists and key requests to them return `403 model_requires_server_tools`. The examples therefore cover OpenAI, Claude and Gemini models only.
 
+Keys may send tools the client declares and executes itself (OpenAI `function`/`custom`/`local_shell`/`apply_patch`/local `shell`, Anthropic custom and `bash_*`/`text_editor_*`/`memory_*`, Gemini `functionDeclarations`); Lumen returns the tool calls and never runs them. Server or hosted tools (web search, file search, code execution, computer use, image generation tool, MCP, Gemini `googleSearch`/`codeExecution`/`urlContext`) are rejected with `403 server_tool_not_allowed_for_key` before any credit hold. See the tutorial's tool-calling section for the full list and a function-calling example.
+
 Set the model variables you want to try. Pick IDs from `python python/openai_example.py list`, `python python/anthropic_example.py list` and `python python/gemini_example.py list`.
 
 | Variable | Used by |

@@ -41,7 +41,7 @@ Lumen serves the HTTP formats used by the official OpenAI SDK, Anthropic SDK and
    | Generate audio (dashboard route) | `native:audio:write` | `/v1/chat/audio/speech` (no example in this guide) |
    | Realtime audio | `compat:realtime:write` | `/v1/realtime`, `/v1/realtime/translations`, `/v1/live/sessions`, `/v1beta/realtime` WebSocket (no example in this guide) |
 
-   The issuance form offers only the scopes returned by Lumen's issuance policy, and hides scopes your current roles do not allow. Ask a project or domain manager for the Lumen permission if one is missing. Usage reads, batches and files, conversation history and memory, and server tool execution cannot be issued to API keys. Function tools your client defines in a request (function calling) are allowed; server-side or hosted tools such as web search, code execution, MCP and cloud tools are not.
+   The issuance form offers only the scopes returned by Lumen's issuance policy, and hides scopes your current roles do not allow. Ask a project or domain manager for the Lumen permission if one is missing. Usage reads, batches and files, conversation history and memory, and server tool execution cannot be issued to API keys. Tools your client declares in a request and executes itself (function calling) are allowed; server-side or hosted tools such as web search, code execution, MCP and cloud tools are not. See [Tool calling](#tool-calling) for the full list.
 4. Store the complete key shown once after issuance. The prefix in the list cannot authenticate.
 
 | Key type | Owner | Billed to |
@@ -323,11 +323,58 @@ Gemini scope and limits:
 - Supported: model list and single-model get (`pageSize`, `pageToken`, `nextPageToken`), `generateContent`, `streamGenerateContent?alt=sse` (the final chunk carries `usageMetadata`), `embedContent` and `batchEmbedContents`.
 - The model list includes text models from other providers such as OpenAI and Anthropic as well as Gemini models (excluding Perplexity Sonar models, which need the web-search tool). Gemini-provider models run natively; other text models are translated. Both support text, inline images, `systemInstruction`, function declarations (returned as `functionCall`), `temperature`, `topP`, `maxOutputTokens`, `stopSequences` and JSON mode (`responseMimeType: application/json`).
 - Inline image types: png/jpeg/webp/heic/heif for Gemini models, png/jpeg/webp/gif for translated models. `topK`, `safetySettings`, `thinkingConfig`, penalties and `seed` return `400` on translated models.
-- The request schema is closed; unknown fields return `400`. Rejected for every model: server tools (`googleSearch` and similar), `cachedContent`, `fileData`, audio/video/PDF input, `candidateCount` other than 1, `responseModalities` other than `TEXT`, `toolConfig` other than `functionCallingConfig`, and the virtual `lumen` model.
+- The request schema is closed; unknown fields return `400`. Rejected for every model: `cachedContent`, `fileData`, audio/video/PDF input, `candidateCount` other than 1, `responseModalities` other than `TEXT`, `toolConfig` other than `functionCallingConfig`, and the virtual `lumen` model.
+- Tools are limited to `functionDeclarations`. Server tools such as `googleSearch`, `codeExecution` and `urlContext` are rejected for key requests with `403 PERMISSION_DENIED` (`server_tool_not_allowed_for_key`).
 - `countTokens` returns `501 UNIMPLEMENTED`.
 - Error bodies use the Google shape `{"error":{"code","message","status"}}`.
 - Embeddings use only the Gemini embedding models registered by an administrator.
 - Gemini model listing and text generation require a Lumen release that includes these routes. Older Lumen releases return `404` on them; use the OpenAI SDK path there.
+
+## Tool calling
+
+Personal and service keys can send **tools that the client declares and executes itself**. Lumen returns the tool calls the model makes and never executes them; the client sends the results back in its next request. This is how Codex CLI and Claude Code work with personal keys.
+
+| SDK | Allowed (client-executed) | Rejected (server/hosted tools) |
+| --- | --- | --- |
+| OpenAI | `function`, `custom`, `local_shell`, `apply_patch`, `shell` with `environment.type: "local"` | `web_search*`, `web_search_options`, `file_search`, `code_interpreter`, computer use, `image_generation`, `mcp`, `shell` with a hosted or unknown environment |
+| Anthropic | custom tools (no `type` or `custom`), `bash_*`, `text_editor_*`, `memory_*` | `web_search_*`, `web_fetch_*`, `code_execution_*`, `computer_*`, `container`, `mcp_servers` |
+| Gemini | `functionDeclarations` | `googleSearch`, `codeExecution`, `urlContext` and similar |
+
+If any rejected tool is present, the whole request fails with `403 server_tool_not_allowed_for_key` before any credit hold or provider call. OpenAI and Gemini return it as the error code; Anthropic and the legacy Claude gateway carry it in the error message. Perplexity Sonar models, which have built-in web search, are rejected separately with `model_requires_server_tools`.
+
+OpenAI Python function calling:
+
+```python
+import json
+import os
+
+from openai import OpenAI
+
+client = OpenAI(api_key=os.environ["LUMEN_API_KEY"], base_url=f"{os.environ['LUMEN_BASE_URL']}/v1")
+model = os.environ["LUMEN_OPENAI_MODEL"]
+tools = [{
+    "type": "function",
+    "function": {
+        "name": "get_weather",
+        "description": "Return the current weather for a city.",
+        "parameters": {
+            "type": "object",
+            "properties": {"city": {"type": "string"}},
+            "required": ["city"],
+        },
+    },
+}]
+messages = [{"role": "user", "content": "What is the weather in Seoul?"}]
+
+first = client.chat.completions.create(model=model, messages=messages, tools=tools)
+call = first.choices[0].message.tool_calls[0]
+city = json.loads(call.function.arguments)["city"]
+result = {"city": city, "condition": "sunny", "celsius": 21}  # executed by the client
+
+messages += [first.choices[0].message, {"role": "tool", "tool_call_id": call.id, "content": json.dumps(result)}]
+final = client.chat.completions.create(model=model, messages=messages, tools=tools)
+print(final.choices[0].message.content)
+```
 
 ## Errors
 
@@ -337,10 +384,12 @@ Gemini scope and limits:
 | `403` | Missing key permission | Issue a new key with the required permissions. |
 | `403 model_not_allowed_for_key` | Model unavailable to keys (for example `model=lumen`) | Use a public model ID from the model list. |
 | `403 model_requires_server_tools` | Perplexity Sonar or another model that needs the web-search tool. OpenAI returns it as `code`, Anthropic as a `permission_error` message, Gemini with `PERMISSION_DENIED` | Use it in dashboard chat; keys cannot call it. |
+| `403 server_tool_not_allowed_for_key` | The request includes a server or hosted tool (web search, code execution, MCP and similar) | Remove that tool and use client-executed function tools. See [Tool calling](#tool-calling). |
 | `409 model_route_ambiguous` | The model ID matches more than one provider | Send the `X-Lumen-Provider` header. |
 | `domain_credit_insufficient` | The service key's domain prepaid balance or limit is exhausted. OpenAI-compatible responses use `429` | Ask a domain manager or system administrator for a top-up or limit change. |
 | `429` (other) | User limit or provider rate limit | Check usage and retry later. |
 | `501` | Unsupported feature (such as Gemini `countTokens`) | Do not call that feature. |
+| `422 … domain_billing (<reason>)` | **Dashboard chat only.** The model is not ready for domain billing (`pricing_unavailable`, `output_budget_unenforced`, `context_limit_unknown`). The dashboard model picker shows it disabled with this reason | Ask an administrator to configure the model's price, output limit or context limit, or pick another model. Key requests never return it. |
 
 Automatic SDK retries can repeat billed requests. The examples disable them with `max_retries=0` / `maxRetries: 0`. Choose a production retry policy with idempotency and cost in mind.
 
