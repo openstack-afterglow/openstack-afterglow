@@ -1482,3 +1482,39 @@ async def test_lumen_key_billing_transport_does_not_log_private_exception(api_cl
     assert response.headers["cache-control"] == "no-store"
     assert private not in response.text
     assert private not in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path",
+    [
+        "usage?scope=domain",
+        "usage/timeseries?bucket=day&range=30d&scope=domain",
+        "usage/keys?scope=domain",
+        "usage/records?limit=50&source=api&scope=domain",
+    ],
+)
+async def test_lumen_usage_forwards_domain_scope_and_refusal(api_client, path):
+    app.dependency_overrides[get_token_info] = _authenticated
+
+    async def handler(request):
+        assert request.method == "GET"
+        assert str(request.url) == f"http://isolated.test/v1/{path}"
+        assert request.headers["x-auth-token"] == "caller-token"
+        assert request.headers["x-project-id"] == "project-1"
+        # Lumen alone decides live domain-manager authority for the pool view.
+        return HttpxResponse(
+            403,
+            headers={"content-type": "application/json", "cache-control": "public, max-age=60"},
+            stream=httpx.ByteStream(b'{"detail":"domain_manager_required"}'),
+        )
+
+    upstream = AsyncClient(transport=httpx.MockTransport(handler))
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1"),
+        patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
+    ):
+        response = await api_client.get(f"/api/v1/chat/{path}")
+    assert response.status_code == 403
+    assert response.json() == {"detail": "domain_manager_required"}
+    assert response.headers["cache-control"] == "no-store"

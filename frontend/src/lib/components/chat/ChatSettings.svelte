@@ -1,13 +1,15 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/chat-settings';
 	import { goto } from '$app/navigation';
-	import { auth } from '$lib/stores/auth';
+	import { auth, logoutInProgress } from '$lib/stores/auth';
+	import { authDisplayContext } from '$lib/stores/authDisplayContext';
 	import { api } from '$lib/api/client';
 	import ChatVault from './ChatVault.svelte';
 	import ChatExtensionsManager from './ChatExtensionsManager.svelte';
 	import ChatApiKeysManager from './ChatApiKeysManager.svelte';
 	import ChatUsagePanel from './ChatUsagePanel.svelte';
 	import type { ChatUsage } from '$lib/api/chatTree';
+	import { domainViewDenied, usagePath, type BillingScope, type UsageView } from '$lib/api/chatUsage';
 	import { displayDomainCredit } from '$lib/api/chatDomainBilling';
 	import Alert from '$lib/components/ui/Alert.svelte';
 
@@ -36,21 +38,42 @@
 	const projectId = $derived($auth.projectId ?? undefined);
 	let usage = $state<ChatUsage | null>(null);
 	let usageGeneration = 0;
+	// Same live authority signal as the domain pool card; Lumen rechecks every domain read.
+	const canViewDomain = $derived($authDisplayContext.ready && !$logoutInProgress && $auth.isDomainManager && !!$auth.domainId);
+	let selectedView = $state<UsageView>('self');
+	const usageView = $derived<UsageView>(canViewDomain ? selectedView : 'self');
+	let domainViewRefused = $state(false);
+	const VIEWS: { key: UsageView; label: string }[] = [
+		{ key: 'self', get label() { return t('usage.view.self'); } },
+		{ key: 'domain', get label() { return t('usage.view.domain'); } }
+	];
+
+	function selectView(next: UsageView) {
+		domainViewRefused = false;
+		selectedView = next;
+	}
+	function refuseDomainView() {
+		selectedView = 'self';
+		domainViewRefused = true;
+	}
 
 	async function loadUsage(
 		expectedToken: string,
 		expectedProjectId: string | undefined,
+		view: UsageView,
 		generation: number
 	) {
 		try {
 			const nextUsage = await api.get<ChatUsage>(
-				'/api/v1/chat/usage',
+				usagePath('/api/v1/chat/usage', view),
 				expectedToken,
 				expectedProjectId
 			);
 			if (generation === usageGeneration) usage = nextUsage;
-		} catch {
-			if (generation === usageGeneration) usage = null;
+		} catch (cause) {
+			if (generation !== usageGeneration) return;
+			usage = null;
+			if (view === 'domain' && domainViewDenied(cause)) refuseDomainView();
 		}
 	}
 
@@ -66,9 +89,10 @@
 	$effect(() => {
 		const currentToken = token;
 		const currentProjectId = projectId;
+		const currentView = usageView;
 		const generation = ++usageGeneration;
 		usage = null;
-		if (currentToken) void loadUsage(currentToken, currentProjectId, generation);
+		if (currentToken) void loadUsage(currentToken, currentProjectId, currentView, generation);
 	});
 
 	// --- 사용량 ---
@@ -87,6 +111,9 @@
 	}
 	function fmtCredit(n: number): string {
 		return n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+	}
+	function payerLabel(scope: BillingScope): string {
+		return scope === 'domain' ? t('usage.payer.domain') : t('usage.payer.user');
 	}
 
 </script>
@@ -117,6 +144,21 @@
 				{#if section === 'usage'}
 					<section class="sec">
 						<h2 class="sec-title">{t('settings.usage.title')}</h2>
+						{#if canViewDomain}
+							<div class="mb-3 flex gap-1" role="group" aria-label={t('usage.viewLabel')}>
+								{#each VIEWS as v (v.key)}
+									<button
+										type="button"
+										aria-pressed={usageView === v.key}
+										class="rounded px-2 py-0.5 text-xs {usageView === v.key
+											? 'bg-[var(--color-surface-selected)] text-ink-0'
+											: 'text-[var(--color-ink-2)] hover:text-[var(--color-ink-1)]'}"
+										onclick={() => selectView(v.key)}>{v.label}</button
+									>
+								{/each}
+							</div>
+						{/if}
+						{#if domainViewRefused}<Alert class="mb-3" flat tone="warning">{t('usage.domainViewDenied')}</Alert>{/if}
 						<div class="stats">
 							<div class="stat">
 								<span class="stat-val">{fmt(monthTokens)}</span>
@@ -131,6 +173,19 @@
 								<span class="stat-lbl">{t('settings.usage.requests')}</span>
 							</div>
 						</div>
+						{#if usage?.by_payer?.length}
+							<div class="space-y-1 py-3">
+								<h3 class="text-xs font-semibold text-ink-2">{t('usage.byPayerTitle')}</h3>
+								<dl class="grid grid-cols-2 gap-3 text-sm tabular-nums">
+									{#each usage.by_payer as payer (payer.billing_scope)}
+										<div>
+											<dt class="text-xs text-ink-2">{payerLabel(payer.billing_scope)}</dt>
+											<dd>{t('usage.payerSummary', { credits: fmtCredit(payer.credited_cost), requests: payer.request_count })}</dd>
+										</div>
+									{/each}
+								</dl>
+							</div>
+						{/if}
 						{#if domainUsage}
 							<div class="space-y-2 py-3">
 								<h3 class="text-sm font-semibold text-ink-1">{t('domainBilling.title')}</h3>
@@ -163,7 +218,7 @@
 							</p>
 						{/if}
 						<div class="mt-4">
-							<ChatUsagePanel />
+							<ChatUsagePanel view={usageView} ondenied={refuseDomainView} />
 						</div>
 					</section>
 				{:else if section === 'apikeys'}

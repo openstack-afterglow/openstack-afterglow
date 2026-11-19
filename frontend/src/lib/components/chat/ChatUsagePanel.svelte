@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import Pill from '$lib/components/ui/Pill.svelte';
 	import { t } from '$lib/i18n/ns/chat-settings';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { auth } from '$lib/stores/auth';
@@ -7,11 +9,22 @@
 	import BklitChart from '$lib/components/charts/BklitChart.svelte';
 	import type { ChartDatum, ChartSpec } from '$lib/components/charts/types';
 	import {
+		domainViewDenied,
 		sourceRow,
+		usagePath,
+		type BillingScope,
 		type TimeseriesRow,
 		type KeyUsage,
-		type UsageBySource
+		type UsageBySource,
+		type UsageView
 	} from '$lib/api/chatUsage';
+
+	interface Props {
+		view?: UsageView;
+		/** Lumen refused the domain view; the owner falls back to the personal view. */
+		ondenied?: () => void;
+	}
+	let { view = 'self', ondenied }: Props = $props();
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
@@ -23,6 +36,8 @@
 	let series = $state<TimeseriesRow[]>([]);
 	let keys = $state<KeyUsage[]>([]);
 	let loading = $state(true);
+	// Responses from a superseded view or session never overwrite the current one.
+	let generation = 0;
 
 	const _RANGE_FOR: Record<string, string> = { hour: '30d', day: '30d', month: '1y' };
 	const BUCKETS: { key: 'hour' | 'day' | 'month'; label: string }[] = [
@@ -47,9 +62,33 @@
 	const maxTotal = $derived(Math.max(1, ...points.map((point) => typeof point.total === 'number' && Number.isFinite(point.total) ? point.total : 0)));
 	const web = $derived(sourceRow(bySource, 'web'));
 	const apiUse = $derived(sourceRow(bySource, 'api'));
+	const payerCredits = $derived.by(() => {
+		const byBucket = new Map<string, Record<BillingScope, number>>();
+		for (const sample of series) {
+			const split = sample.credited_cost_by_payer;
+			if (!split) continue;
+			const total = byBucket.get(sample.bucket) ?? { user: 0, domain: 0 };
+			total.user += split.user ?? 0;
+			total.domain += split.domain ?? 0;
+			byBucket.set(sample.bucket, total);
+		}
+		return byBucket;
+	});
 
 	function fmt(n: number): string {
 		return new Intl.NumberFormat(intlLocale()).format(Math.round(n));
+	}
+	function fmtCredit(n: number): string {
+		return new Intl.NumberFormat(intlLocale(), { maximumFractionDigits: 2 }).format(n);
+	}
+	function payerLabel(scope: BillingScope): string {
+		return scope === 'domain' ? t('usage.payer.domain') : t('usage.payer.user');
+	}
+	function payerSplit(split: Record<BillingScope, number>): string {
+		return (['user', 'domain'] as const)
+			.filter((scope) => split[scope] > 0)
+			.map((scope) => t('usage.payerCredits', { payer: payerLabel(scope), credits: fmtCredit(split[scope]) }))
+			.join(' · ');
 	}
 	function bucketLabel(b: string): string {
 		return bucket === 'month' ? b : bucket === 'hour' ? b.slice(5, 16) : b.slice(5);
@@ -69,47 +108,50 @@
 		formatValue: fmt,
 	});
 
-	async function loadSummary() {
-		if (!token) return;
+	// One load generation: the view, session and project it was issued for.
+	interface UsageRequest { view: UsageView; token: string; projectId: string | undefined; generation: number }
+
+	/** `undefined` when superseded; `null` when the read failed. */
+	async function read<T>(path: string, request: UsageRequest): Promise<T | null | undefined> {
 		try {
-			const s = await api.get<{ by_source: UsageBySource[] }>('/api/v1/chat/usage', token, projectId);
-			bySource = s.by_source ?? [];
-		} catch {
-			bySource = [];
+			const result = await api.get<T>(usagePath(path, request.view), request.token, request.projectId);
+			return request.generation === generation ? result : undefined;
+		} catch (cause) {
+			if (request.generation !== generation) return undefined;
+			if (request.view === 'domain' && domainViewDenied(cause)) ondenied?.();
+			return null;
 		}
 	}
-	async function loadKeys() {
-		if (!token) return;
-		try {
-			const r = await api.get<{ keys: KeyUsage[] }>('/api/v1/chat/usage/keys', token, projectId);
-			keys = r.keys ?? [];
-		} catch {
-			keys = [];
-		}
+	async function loadSummary(request: UsageRequest) {
+		const s = await read<{ by_source: UsageBySource[] }>('/api/v1/chat/usage', request);
+		if (s !== undefined) bySource = s?.by_source ?? [];
 	}
-	async function loadSeries() {
-		if (!token) return;
-		try {
-			const r = await api.get<{ series: TimeseriesRow[] }>(
-				`/api/v1/chat/usage/timeseries?bucket=${bucket}&range=${_RANGE_FOR[bucket]}`,
-				token,
-				projectId
-			);
-			series = r.series ?? [];
-		} catch {
-			series = [];
-		}
+	async function loadKeys(request: UsageRequest) {
+		const r = await read<{ keys: KeyUsage[] }>('/api/v1/chat/usage/keys', request);
+		if (r !== undefined) keys = r?.keys ?? [];
+	}
+	async function loadSeries(request: UsageRequest) {
+		const r = await read<{ series: TimeseriesRow[] }>(
+			`/api/v1/chat/usage/timeseries?bucket=${bucket}&range=${_RANGE_FOR[bucket]}`,
+			request
+		);
+		if (r !== undefined) series = r?.series ?? [];
 	}
 
 	function setBucket(b: 'hour' | 'day' | 'month') {
 		bucket = b;
-		void loadSeries();
+		if (token) void loadSeries({ view, token, projectId, generation });
 	}
 
 	$effect(() => {
-		if (!token) return;
-		loading = true;
-		void Promise.all([loadSummary(), loadSeries(), loadKeys()]).finally(() => (loading = false));
+		const requestToken = token;
+		if (!requestToken) return;
+		const current: UsageRequest = { view, token: requestToken, projectId, generation: ++generation };
+		untrack(() => {
+			loading = true;
+			void Promise.all([loadSummary(current), loadSeries(current), loadKeys(current)])
+				.finally(() => { if (current.generation === generation) loading = false; });
+		});
 	});
 
 </script>
@@ -158,9 +200,14 @@
 				<BklitChart spec={usageChart} height={Math.max(144, points.length * 24 + 48)} label={t('usage.trendTitle')} />
 				<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-ink-2 tabular-nums">
 					{#each points as point (point.bucket)}
-						<div class="flex justify-between gap-2">
-							<span class="truncate">{bucketLabel(String(point.bucket))}</span>
-							<span>{typeof point.total === 'number' ? fmt(point.total) : '—'}</span>
+						{@const split = payerCredits.get(String(point.bucket))}
+						{@const payers = split ? payerSplit(split) : ''}
+						<div>
+							<div class="flex justify-between gap-2">
+								<span class="truncate">{bucketLabel(String(point.bucket))}</span>
+								<span>{typeof point.total === 'number' ? fmt(point.total) : '—'}</span>
+							</div>
+							{#if payers}<div class="truncate text-right">{payers}</div>{/if}
 						</div>
 					{/each}
 				</div>
@@ -177,9 +224,12 @@
 		<div class="border-t border-[var(--color-line)] pt-4">
 			<h3 class="mb-2 text-xs font-semibold text-[var(--color-ink-2)]">{t('usage.keysTitle')}</h3>
 			<div class="divide-y divide-[var(--color-line)]">
-				{#each keys as k (k.api_key_id)}
+				{#each keys as k (`${k.api_key_id}:${k.billing_scope ?? ''}`)}
 					<div class="flex flex-wrap items-center justify-between gap-2 py-2">
-						<span class="truncate text-xs text-[var(--color-ink-1)]">{k.name || k.key_prefix || t('usage.keyFallback', { id: k.api_key_id })}</span>
+						<span class="flex min-w-0 items-center gap-2">
+							<span class="truncate text-xs text-[var(--color-ink-1)]">{k.name || k.key_prefix || t('usage.keyFallback', { id: k.api_key_id })}</span>
+							{#if k.billing_scope}<Pill size="xs">{payerLabel(k.billing_scope)}</Pill>{/if}
+						</span>
 						<span class="text-xs text-[var(--color-ink-2)]">{t('usage.keySummary', { tokens: Math.round(k.total_tokens), requests: Math.round(k.request_count) })}</span>
 					</div>
 				{/each}

@@ -114,7 +114,8 @@ class _PrivateLumenRoute(APIRoute):
             private = (
                 _noncanonical_path(parts)
                 or source_response
-                or parts == ["usage"]
+                # Personal and domain-pool usage are caller-private in every view.
+                or parts[:1] == ["usage"]
                 or _credential_or_pool_route(parts) is not None
                 or parts[:1] in (["embeddings"], ["decisions"], ["vault"])
                 or parts[:3] == ["admin", "models", "native-catalog"]
