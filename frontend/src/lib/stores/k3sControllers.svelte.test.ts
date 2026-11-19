@@ -79,6 +79,95 @@ beforeEach(() => {
 	mocks.interfaces.mockResolvedValue([]);
 });
 
+describe('Drover grid reads', () => {
+	it('bounds the node read fan-out and does not dispatch queued work after reset', async () => {
+		const { detail } = setup();
+		const agent_vm_ids = Array.from({ length: 12 }, (_, i) => `agent-${i}`);
+		const pending = Promise.withResolvers<unknown>();
+		const requests: AbortSignal[] = [];
+		mocks.get.mockImplementation(async (path: string, _token: string, _project: string, opts?: { signal: AbortSignal }) => {
+			if (path.endsWith('/c')) return { ...cluster, agent_vm_ids };
+			if (opts) requests.push(opts.signal);
+			return pending.promise;
+		});
+		await detail.loadCluster();
+		const loading = detail.loadGridNodes(['unknown-vm', ...agent_vm_ids]);
+		expect(requests).toHaveLength(4);
+		expect(requests.every(signal => !signal.aborted)).toBe(true);
+		expect(mocks.get.mock.calls.slice(1).map(([path]) => path)).toEqual(agent_vm_ids.slice(0, 4).map(id => `/api/v1/instances/${id}/security-groups`));
+		detail.reset();
+		expect(requests.every(signal => signal.aborted)).toBe(true);
+		pending.resolve({ ports: [], security_groups: [] });
+		await loading;
+		expect(requests).toHaveLength(4);
+		expect(detail.gridNodeData).toEqual({});
+		expect(detail.gridLoading).toBe(false);
+	});
+
+	it('keeps denied storage unknown while publishing observed ports and the latest valid zero rate', async () => {
+		const { detail } = setup();
+		await detail.loadCluster();
+		const policy = { ports: [], security_groups: [] };
+		mocks.get.mockImplementation(async (path: string) => {
+			if (path.endsWith('/volumes')) throw new ApiError(403, 'not allowed');
+			if (path.endsWith('/security-groups')) return policy;
+			if (path.includes('/metrics-batch')) return { instance_id: 'server', metrics: {
+				network_rx: { status: 'partial', unit: 'B/s', series: [
+					{ ts: 30, value: -40 }, { ts: 20, value: 0 }, { ts: 10, value: 12 },
+				] },
+				network_tx: { status: 'not_collected', unit: 'B/s', series: [] },
+			} };
+			return [];
+		});
+		await detail.loadGridNodes(['server']);
+		expect(detail.gridNodeData.server).toMatchObject({ policy, volumes: null, shares: [], traffic: { rx: { ts: 20, value: 0 }, tx: null } });
+	});
+
+	it('uses the session transport for admin compute and never reads foreign Manila associations via tenant routes', async () => {
+		const detail = createK3sClusterDetailController({
+			clusterId: () => 'c', token: () => 'token', userId: () => 'admin', adminMode: () => true,
+			projectId: () => 'foreign', transportProjectId: () => 'session-project',
+		});
+		await detail.loadCluster();
+		const metadata = { 'csi.storage.k8s.io/pv/name': 'pv-1' };
+		mocks.get.mockImplementation(async (path: string) => {
+			if (path.endsWith('/instances/server/volumes')) return [
+				{ volume_id: 'valid', name: 'renamed' }, { volume_id: 'wrong-vm', name: 'moved' }, { volume_id: 'named', name: 'pvc-example' },
+			];
+			if (path.endsWith('/volumes/valid')) return { id: 'valid', project_id: 'foreign', attachments: [{ server_id: 'server' }], metadata };
+			if (path.endsWith('/volumes/wrong-vm')) return { id: 'wrong-vm', project_id: 'foreign', attachments: [{ server_id: 'other' }], metadata };
+			return [];
+		});
+		await detail.loadGridNodes(['server']);
+		const calls = mocks.get.mock.calls.slice(1);
+		const compute = calls.filter(([path]) => path.startsWith('/api/v1/admin/instances/'));
+		expect(compute.map(([path]) => path)).toContain('/api/v1/admin/instances/server/volumes');
+		expect(compute.every(([, , project, options]) => project === 'session-project' && options.signal instanceof AbortSignal)).toBe(true);
+		expect(calls).toContainEqual(['/api/v1/admin/volumes/valid', 'token', 'session-project', expect.objectContaining({ signal: expect.any(AbortSignal) })]);
+		expect(calls.some(([path]) => path.endsWith('/volumes/named'))).toBe(false);
+		expect(calls).toContainEqual(['/api/v1/k3s/clusters/c/nodes/server/interfaces', 'token', 'foreign', expect.objectContaining({ signal: expect.any(AbortSignal) })]);
+		expect(calls.some(([path]) => path.endsWith('/storage-attachments'))).toBe(false);
+		expect(detail.gridNodeData.server.shares).toBeNull();
+		expect(detail.gridNodeData.server.volumes).toEqual([
+			{ volume_id: 'valid', name: 'renamed', metadata }, { volume_id: 'wrong-vm', name: 'moved' }, { volume_id: 'named', name: 'pvc-example' },
+		]);
+	});
+
+	it('collects Services across namespaces and identifies partial failure separately from an empty catalog', async () => {
+		const { detail } = setup();
+		await detail.loadCluster();
+		const service = { name: 'proxy', namespace: 'default', type: 'NodePort' };
+		mocks.get.mockImplementation(async (path: string) => {
+			if (path.endsWith('/namespaces')) return ['restricted', 'default'];
+			if (path.endsWith('/default/services')) return [service];
+			if (path.endsWith('/restricted/services')) throw new ApiError(403, 'not allowed');
+			return [];
+		});
+		await detail.loadGridInventory();
+		expect(detail.gridServices).toEqual({ items: [service], failedNamespaces: ['restricted'] });
+	});
+});
+
 describe('Drover handlers independently enforce current exact leaves', () => {
 	it('retains regex and column state over refresh and section remount, but clears actual owner reset', async () => {
 		const { detail, refreshToken } = setup();

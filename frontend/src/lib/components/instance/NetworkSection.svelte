@@ -17,21 +17,31 @@
 	const inspectorHeading = $props.id();
 	let viewMode = $state<IsoViewMode>('grid');
 	let selection = $state<{ instanceId: string; id: string } | null>(null);
+	const selectedId = $derived(selection?.instanceId === s.instance?.id ? selection?.id ?? null : null);
 	const grid = $derived.by(() => {
 		if (viewMode !== 'grid' || !s.instance) return null;
 		const savedByPort = new Map(s.securityGroupPorts.map(port => [port.id, port.security_group_ids]));
 		const policy = !s.securityGroupsLoading && !s.securityGroupsError && savedByPort.size === s.interfaces.length
 			&& s.interfaces.every(port => savedByPort.get(port.id) != null)
-			? { groups: s.allSecurityGroups, groupIds: s.interfaces.flatMap(port => savedByPort.get(port.id)!) }
+			? { groups: s.allSecurityGroups, portGroupIds: new Map(s.interfaces.map(port => [port.id, savedByPort.get(port.id)!])) }
 			: null;
 		return buildInstanceIsoScene({
 			instance: s.instance, ports: s.interfaces, networks: s.availableNetworks,
 			floatingIps: s.floatingIps, policy, waygateLocked: s.waygateLocked,
+			volumes: s.volumesKnown ? s.volumes : null, shares: s.storageAttachments,
+			expandedSecurityGroup: selectedId,
 		});
 	});
-	const selectedId = $derived(selection?.instanceId === s.instance?.id ? selection?.id ?? null : null);
 	const detail = $derived(selectedId ? grid?.details.get(selectedId) : undefined);
 
+	function associationLabel(state: string) {
+		switch (state) {
+			case 'tracked': return t('network.iso.association.tracked');
+			case 'untracked': return t('network.iso.association.untracked');
+			case 'mismatch': return t('network.iso.association.mismatch');
+			default: return t('network.iso.association.unknown');
+		}
+	}
 	let showAddInterface = $state(false);
 	let selectedNetId = $state('');
 	let sgEditPortId = $state<string | null>(null);
@@ -80,7 +90,8 @@
 
 	{#if grid && s.instance}
 		<div class="min-w-0 @max-md/panel:-mx-2">
-			<IsoGridView scene={grid.scene} label={t('network.iso.label')} caption={t('network.iso.caption')}
+			<IsoGridView scene={grid.scene} label={t('network.iso.label')}
+				caption={[t('network.iso.caption'), grid.scene.nodes.some(node => node.kind === 'volume' || node.kind === 'file-share') ? t('network.iso.storageNote') : ''].filter(Boolean).join(' ')}
 				height="clamp(17rem, 51dvh, 26.5rem)" fitKey={s.instance.id}
 				selectedId={detail ? selectedId : null}
 				onselect={id => { if (s.instance) selection = { instanceId: s.instance.id, id }; }}
@@ -116,6 +127,46 @@
 						{#if detail.port.fixed_ips.length}
 							<div><dt>{t('network.ipAddress')}</dt><dd class="break-words font-mono">{detail.port.fixed_ips.map(ip => ip.ip_address).join(', ')}</dd></div>
 						{/if}
+						{#if detail.securityGroups}
+							<div><dt>{t('network.securityGroups')}</dt><dd class="break-words">{detail.securityGroups.join(', ') || t('network.none')}</dd></div>
+						{/if}
+					</dl>
+				{:else if detail.kind === 'security-group'}
+					<dl class="space-y-2 text-xs text-ink-2">
+						<div><dt>{t('network.iso.detail.id')}</dt><dd class="break-all font-mono">{detail.groupId}</dd></div>
+						{#each detail.ports as port (port.id)}
+							<div><dt>{t('network.iso.detail.groupPorts')}</dt><dd class="break-all font-mono">{port.id}</dd></div>
+						{/each}
+					</dl>
+					{#if detail.missing}
+						<p class="text-xs text-state-warning-text">{t('network.iso.groupMissing')}</p>
+					{:else if detail.rules.length === 0}
+						<p class="text-xs text-ink-2">{t('network.iso.detail.noRules')}</p>
+					{:else}
+						<ul class="space-y-1 text-xs text-ink-2">
+							{#each detail.rules as rule (rule.key)}
+								<li class="break-words">{t(rule.direction === 'ingress' ? 'securityGroupUnion.direction.ingress' : 'securityGroupUnion.direction.egress')} · {rule.ethertype} · {rule.protocolLabel} · {rule.portLabel} · {rule.remoteLabel}</li>
+							{/each}
+						</ul>
+					{/if}
+				{:else if detail.kind === 'volume'}
+					<dl class="space-y-2 text-xs text-ink-2">
+						<div><dt>{t('network.iso.detail.id')}</dt><dd class="break-all font-mono">{detail.volume.volume_id}</dd></div>
+						{#if detail.volume.device}<div><dt>{t('network.iso.detail.device')}</dt><dd class="font-mono">{detail.volume.device}</dd></div>{/if}
+						{#if detail.volume.size}<div><dt>{t('network.iso.detail.size')}</dt><dd>{t('network.iso.sizeGb', { size: detail.volume.size })}</dd></div>{/if}
+						{#if detail.volume.status}<div><dt>{t('network.status')}</dt><dd><StatusChip status={detail.volume.status} /></dd></div>{/if}
+						{#if detail.volume.delete_on_termination !== undefined}
+							<div><dt>{t('volumes.title')}</dt><dd>{detail.volume.delete_on_termination ? t('volumes.deleteOnTermination') : t('volumes.keep')}</dd></div>
+						{/if}
+					</dl>
+				{:else if detail.kind === 'share'}
+					<dl class="space-y-2 text-xs text-ink-2">
+						<div><dt>{t('network.iso.detail.id')}</dt><dd class="break-all font-mono">{detail.share.file_storage_id}</dd></div>
+						{#if detail.share.share_proto}<div><dt>{t('network.iso.detail.protocol')}</dt><dd>{detail.share.share_proto.toUpperCase()}</dd></div>{/if}
+						<div><dt>{t('network.status')}</dt><dd><StatusChip status={detail.share.status} /></dd></div>
+						{#if detail.share.access_level}<div><dt>{t('network.iso.detail.accessLevel')}</dt><dd>{detail.share.access_level}</dd></div>{/if}
+						{#if detail.share.access_to}<div><dt>{t('network.iso.detail.accessTo')}</dt><dd class="break-all font-mono">{detail.share.access_to}</dd></div>{/if}
+						{#if detail.share.association_state}<div><dt>{t('network.iso.detail.association')}</dt><dd>{associationLabel(detail.share.association_state)}</dd></div>{/if}
 					</dl>
 				{:else if detail.kind === 'network'}
 					<ul class="space-y-2 text-xs text-ink-2">
@@ -138,10 +189,6 @@
 							<li class="flex flex-wrap items-center gap-2"><span class="break-all font-mono">{ip.floating_ip_address}</span><StatusChip status={ip.status} /></li>
 						{/each}
 					</ul>
-				{:else}
-					<p class="break-words text-xs text-ink-2">
-						{[detail.groups.join(', '), !grid.policyKnown ? t('network.iso.policyUnknown') : !detail.groups.length ? t('network.none') : ''].filter(Boolean).join(' · ')}
-					</p>
 				{/if}
 			</section>
 		{/if}

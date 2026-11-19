@@ -4,7 +4,6 @@
 	"start.create": "Tạo máy ảo",
 	"start.images": "Xem ảnh",
 	"start.guide": "Mở hướng dẫn",
-	"telemetry.collection": "Thu thập số liệu",
 	"telemetry.openMonitoring": "Mở giám sát VM",
 	"topology.loadFailed": "Không thể tải cấu trúc liên kết.",
 	"topology.title": "Cấu trúc liên kết mạng",

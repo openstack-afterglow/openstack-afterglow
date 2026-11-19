@@ -7,8 +7,13 @@ import { streamK3sProgress } from '$lib/api/k3sSseStream';
 import { maybeMockHead, symbolNoMatch } from '$lib/mockup/transport';
 import { toast } from '$lib/stores/toast';
 import { invalidateInstanceDetailSelection } from '$lib/stores/instanceDetailController.svelte';
-import type { NetworkInfo } from '$lib/types/networks';
-import type { K3sCluster, K3sClusterHealth, K3sInterfaceInfo, ConfigMapInfo, SecretInfo, PodInfo, ServiceInfo, DeploymentInfo, ReplicaSetInfo } from '$lib/types/k3s';
+import type { FloatingIpDetail, NetworkInfo, PortInfo } from '$lib/types/networks';
+import type { K3sCluster, K3sClusterHealth, K3sInterfaceInfo, K3sNodegroup, ConfigMapInfo, SecretInfo, PodInfo, ServiceInfo, DeploymentInfo, ReplicaSetInfo } from '$lib/types/k3s';
+import {
+  K3S_GRID_PAGE_SIZE,
+  type K3sGridInstance, type K3sGridNodeData, type K3sGridPolicy, type K3sGridRate,
+  type K3sGridServices, type K3sGridShare, type K3sGridVolume,
+} from '$lib/components/k3s/k3sIsoScene';
 import { listNodeInterfaces, attachNodeInterface, detachNodeInterface } from '$lib/api/k3s';
 import {
   listNamespaces,
@@ -65,7 +70,34 @@ export interface K3sClusterDetailControllerOpts {
   projectId: () => string | undefined;
   userId: () => string | null | undefined;
   adminMode: () => boolean;
+  transportProjectId?: () => string | undefined;
   onClose?: () => void;
+}
+
+const GRID_READ_CONCURRENCY = 4;
+type GridMetric = { status: string; unit: string; series: K3sGridRate[] };
+type GridMetricBatch = { instance_id: string; metrics: Partial<Record<'network_rx' | 'network_tx', GridMetric>> };
+type GridAdminVolume = Pick<K3sGridVolume, 'metadata'> & {
+  id: string;
+  project_id: string | null;
+  attachments: { server_id: string }[];
+};
+
+async function runGridReads<T>(items: readonly T[], current: () => boolean, read: (item: T) => Promise<void>) {
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(GRID_READ_CONCURRENCY, items.length) }, async () => {
+    while (next < items.length && current()) await read(items[next++]);
+  }));
+}
+
+function latestRate(metric: GridMetric | undefined): K3sGridRate | null {
+  if (metric?.unit !== 'B/s' || (metric.status !== 'available' && metric.status !== 'partial')) return null;
+  let latest: K3sGridRate | null = null;
+  for (const sample of metric.series) {
+    if (Number.isFinite(sample.ts) && sample.ts > 0 && sample.ts < 8.64e12
+      && Number.isFinite(sample.value) && sample.value >= 0 && (!latest || sample.ts > latest.ts)) latest = sample;
+  }
+  return latest;
 }
 
 export function createK3sClusterDetailController(opts: K3sClusterDetailControllerOpts) {
@@ -87,6 +119,15 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
   let initialCheckDone = $state(false);
   let interfaces = $state<Record<string, K3sInterfaceInfo[]>>({});
   let networks = $state<NetworkInfo[]>([]);
+  let gridInventoryRequest: AbortController | undefined;
+  let gridNodesRequest: AbortController | undefined;
+  let gridInventoryLoading = $state(false);
+  let gridNodesLoading = $state(false);
+  let gridNodegroups = $state.raw<readonly K3sNodegroup[] | null>(null);
+  let gridNetworks = $state.raw<readonly NetworkInfo[]>([]);
+  let gridFloating = $state.raw<readonly FloatingIpDetail[] | null>(null);
+  let gridServices = $state.raw<K3sGridServices | null>(null);
+  let gridNodeData = $state.raw<Readonly<Record<string, Readonly<K3sGridNodeData>>>>({});
   let interfaceActioning = $state<string | null>(null); // vmId or `${vmId}:${portId}`
   let namespaces = $state<string[]>([]);
   let selectedNamespace = $state('');
@@ -342,6 +383,140 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
   function decrementScale() {
     if (!get(k3sPermissions).editClusters) return;
     scalingTarget = Math.max(0, (scalingTarget ?? cluster?.agent_count ?? 0) - 1);
+  }
+
+  function gridScope(signal: AbortSignal, refresh: boolean) {
+    const id = opts.clusterId();
+    const targetProjectId = opts.projectId();
+    const userId = opts.userId();
+    const admin = opts.adminMode();
+    const transportProject = () => admin ? opts.transportProjectId?.() : opts.projectId();
+    const transportProjectId = transportProject();
+    const epoch = generation;
+    if (!id || cluster?.id !== id || !targetProjectId || !userId || !opts.token()) return null;
+    const current = () => !signal.aborted && generation === epoch && id === opts.clusterId()
+      && targetProjectId === opts.projectId() && userId === opts.userId() && !!opts.token()
+      && admin === opts.adminMode() && transportProjectId === transportProject();
+    const consumer = !admin || targetProjectId === transportProjectId;
+    const drover = `/api/v1/k3s/clusters/${encodeURIComponent(id)}`;
+    async function read<T>(path: string, project = transportProjectId): Promise<T | null> {
+      if (!current()) return null;
+      try {
+        return await api.get<T>(path, opts.token(), project, { signal, refresh, suppressAuthRedirect: true });
+      } catch {
+        return null;
+      }
+    }
+    return { current, consumer, admin, targetProjectId, read, droverRead: <T>(path: string) => read<T>(`${drover}${path}`, targetProjectId) };
+  }
+
+  async function loadGridInventory(refresh = false) {
+    gridInventoryRequest?.abort();
+    const request = new AbortController();
+    gridInventoryRequest = request;
+    const scope = gridScope(request.signal, refresh);
+    gridInventoryLoading = !!scope;
+    if (!scope) return;
+    try {
+      const cloud = scope.consumer ? Promise.all([
+        scope.read<NetworkInfo[]>('/api/v1/networks'),
+        scope.admin ? null : scope.read<FloatingIpDetail[]>('/api/v1/networks/floating-ips'),
+      ]).then(([networks, floating]) => {
+        if (scope.current()) {
+          gridNetworks = networks ?? [];
+          gridFloating = floating;
+        }
+      }) : null;
+      const groups = scope.droverRead<K3sNodegroup[]>('/nodegroups').then(groups => {
+        if (scope.current()) gridNodegroups = groups;
+      });
+      if (cluster?.status === 'ACTIVE') {
+        const namespaces = await scope.droverRead<string[]>('/namespaces');
+        if (namespaces && scope.current()) {
+          const items: ServiceInfo[] = [];
+          const failedNamespaces: string[] = [];
+          await runGridReads([...new Set(namespaces)].sort(), scope.current, async namespace => {
+            const services = await scope.droverRead<ServiceInfo[]>(`/namespaces/${encodeURIComponent(namespace)}/services`);
+            if (services) items.push(...services);
+            else failedNamespaces.push(namespace);
+          });
+          if (scope.current()) gridServices = { items, failedNamespaces };
+        } else if (scope.current()) {
+          gridServices = null;
+        }
+      }
+      await Promise.all([cloud, groups]);
+    } finally {
+      if (gridInventoryRequest === request) gridInventoryLoading = false;
+    }
+  }
+
+  async function loadGridNodes(vmIds: readonly string[], refresh = false) {
+    gridNodesRequest?.abort();
+    const request = new AbortController();
+    gridNodesRequest = request;
+    const scope = gridScope(request.signal, refresh);
+    gridNodesLoading = !!scope;
+    if (!scope) return;
+    gridNodeData = {};
+    try {
+      const allowed = new Set([
+        cluster?.server_vm_id, ...(cluster?.agent_vm_ids ?? []),
+        ...(gridNodegroups ?? []).flatMap(group => group.vms.map(vm => vm.vm_id)),
+      ]);
+      const ids = [...new Set(vmIds)].filter(id => allowed.has(id)).slice(0, K3S_GRID_PAGE_SIZE);
+      // Each worker runs one request at a time. Opening a page never fans out across the cluster.
+      await runGridReads(ids, scope.current, async vmId => {
+        const id = encodeURIComponent(vmId);
+        const base = `/api/v1/${scope.admin ? 'admin/' : ''}instances/${id}`;
+        const policy = await scope.read<K3sGridPolicy>(`${base}/security-groups`);
+        const interfaces = await scope.droverRead<K3sInterfaceInfo[]>(`/nodes/${id}/interfaces`);
+        const fallbackPorts = !policy && !interfaces ? await scope.read<PortInfo[]>(`${base}/interfaces`) : null;
+        const attachments = await scope.read<K3sGridVolume[]>(`${base}/volumes`);
+        const instance = await scope.read<K3sGridInstance>(base);
+        if (!scope.current()) return;
+        gridNodeData = { ...gridNodeData, [vmId]: {
+          instance, interfaces, policy, fallbackPorts, volumes: attachments, shares: null, floating: null, traffic: null,
+        } };
+        const shares = scope.consumer ? await scope.read<K3sGridShare[]>(`/api/v1/instances/${id}/storage-attachments`) : null;
+        const floating = scope.admin ? await scope.read<FloatingIpDetail[]>(`${base}/floating-ips`) : null;
+        const metrics = await scope.read<GridMetricBatch>(`${base}/metrics-batch?metrics=network_rx,network_tx&range=15m`);
+        if (!scope.current()) return;
+        const traffic = metrics?.instance_id === vmId ? {
+          rx: latestRate(metrics.metrics?.network_rx), tx: latestRate(metrics.metrics?.network_tx),
+        } : null;
+        let volumes = attachments;
+        if (scope.admin && attachments) {
+          volumes = [];
+          for (const attachment of attachments) {
+            if (!scope.current()) return;
+            const detail = !attachment.name?.startsWith('pvc-')
+              ? await scope.read<GridAdminVolume>(`/api/v1/admin/volumes/${encodeURIComponent(attachment.volume_id)}`) : null;
+            volumes.push(detail?.id === attachment.volume_id && detail.project_id === scope.targetProjectId
+              && detail.attachments?.some(item => item.server_id === vmId)
+              ? { ...attachment, metadata: detail.metadata } : attachment);
+          }
+        }
+        if (!scope.current()) return;
+        gridNodeData = { ...gridNodeData, [vmId]: { instance, interfaces, policy, fallbackPorts, volumes, shares, floating, traffic } };
+      });
+    } finally {
+      if (gridNodesRequest === request) gridNodesLoading = false;
+    }
+  }
+
+  function stopGridReads() {
+    gridInventoryRequest?.abort();
+    gridNodesRequest?.abort();
+    gridInventoryRequest = undefined;
+    gridNodesRequest = undefined;
+    gridInventoryLoading = false;
+    gridNodesLoading = false;
+    gridNodegroups = null;
+    gridNetworks = [];
+    gridFloating = null;
+    gridServices = null;
+    gridNodeData = {};
   }
 
   async function loadNetworks() {
@@ -770,6 +945,7 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     tableStates = {};
     invalidateInstanceDetailSelection();
     generation += 1;
+    stopGridReads();
     cluster = null;
     health = null;
     loading = true;
@@ -834,6 +1010,15 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     get isActive() { return isActive; },
     get interfaces() { return interfaces; },
     get networks() { return networks; },
+    get gridNodegroups() { return gridNodegroups; },
+    get gridNetworks() { return gridNetworks; },
+    get gridFloating() { return gridFloating; },
+    get gridServices() { return gridServices; },
+    get gridNodeData() { return gridNodeData; },
+    get gridLoading() { return gridInventoryLoading || gridNodesLoading; },
+    loadGridInventory,
+    loadGridNodes,
+    stopGridReads,
     get interfaceActioning() { return interfaceActioning; },
     loadCluster,
     loadHealth,

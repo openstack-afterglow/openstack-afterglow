@@ -4,7 +4,6 @@
 	"start.create": "インスタンスを作成",
 	"start.images": "イメージを見る",
 	"start.guide": "ガイドを開く",
-	"telemetry.collection": "テレメトリー収集状態",
 	"telemetry.openMonitoring": "VM監視を開く",
 	"topology.loadFailed": "トポロジーを読み込めませんでした",
 	"topology.title": "ネットワークトポロジー",

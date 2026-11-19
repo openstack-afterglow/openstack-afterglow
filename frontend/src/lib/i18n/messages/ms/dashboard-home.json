@@ -4,7 +4,6 @@
 	"start.create": "Cipta instans",
 	"start.images": "Lihat imej",
 	"start.guide": "Buka panduan",
-	"telemetry.collection": "Pengumpulan telemetri",
 	"telemetry.openMonitoring": "Buka pemantauan VM",
 	"topology.loadFailed": "Tidak dapat memuatkan topologi.",
 	"topology.title": "Topologi rangkaian",

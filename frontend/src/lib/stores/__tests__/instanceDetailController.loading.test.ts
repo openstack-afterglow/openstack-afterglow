@@ -165,7 +165,9 @@ describe('instance detail loading graph', () => {
 		await vi.waitFor(() => expect(replay.applied).toHaveBeenCalledTimes(1));
 		await controller!.fetchInstance('instance-1', { silent: true });
 		await vi.waitFor(() => expect(replay.applied).toHaveBeenCalledTimes(2));
-		expect(mockGet).toHaveBeenCalledTimes(16);
+		// Two detail reads of nine GETs each: instance, floating IPs, interfaces, volumes, storage attachments,
+		// security groups, available volumes, networks and owner.
+		expect(mockGet).toHaveBeenCalledTimes(18);
 		expect(JSON.stringify([...replay.state.mock.calls, ...replay.applied.mock.calls])).not.toContain('canary');
 	});
 });

@@ -1,7 +1,8 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writable } from 'svelte/store';
-import type { ProviderAccount, ProviderCredential, RelayPage } from '../providerAccounts';
+import messages from '$lib/i18n/messages/en/admin-chat.json';
+import type { AccountUsage, ProviderAccount, ProviderCredential, RelayPage } from '../providerAccounts';
 
 const mocks = vi.hoisted(() => {
   class ApiError extends Error { constructor(message: string, public status: number) { super(message); } }
@@ -11,13 +12,26 @@ const session = writable({ token: 'token', projectId: 'project', userId: 'admin'
 vi.mock('$lib/stores/auth', () => ({ auth: { subscribe: (run: Parameters<typeof session.subscribe>[0]) => session.subscribe(run) } }));
 vi.mock('$lib/api/client', () => ({ api: { get: mocks.get, post: mocks.post, patch: mocks.patch, put: mocks.put, delete: mocks.remove }, ApiError: mocks.ApiError }));
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: mocks.confirm }));
-vi.mock('$lib/i18n/ns/admin-chat', () => ({ t: (key: string, values?: Record<string, unknown>) => key + (values ? ' ' + Object.values(values).join(' ') : '') }));
+vi.mock('$lib/i18n/ns/admin-chat', () => {
+  const copy = new Set([
+    'identityHelp', 'accountIdentity', 'credentialIdentity', 'credentialPathIdentity', 'connectionIdentity',
+    'confirmAccountDelete', 'confirmCredentialDelete', 'confirmDisconnect', 'registered', 'unknownValue',
+    'thisMonth', 'monthPeriod', 'monthUsage', 'allTimeUsage', 'deletedCredentialUsage', 'usageFigures', 'lastUsed',
+    'accountMonthTotal', 'providerMonthTotal', 'usdAmount', 'usageLoading', 'usageFailed',
+  ].map((key) => `accounts.${key}`));
+  return { t: (key: string, values?: Record<string, unknown>) => {
+    if (copy.has(key)) {
+      return messages[key as keyof typeof messages].replace(/\{(\w+)\}/g, (_, field) => String(values?.[field]));
+    }
+    return key + (values ? ' ' + Object.values(values).join(' ') : '');
+  } };
+});
 vi.mock('$lib/i18n/runtime.svelte', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return { ...actual, intlLocale: () => 'en-US' };
 });
 import ProviderAccountsPanel from '../ProviderAccountsPanel.svelte';
-import { eligibility, allowedDeviceUri } from '../providerAccounts';
+import { eligibility, allowedDeviceUri, sumLedgerCosts } from '../providerAccounts';
 
 function deferred<T>() { return Promise.withResolvers<T>(); }
 const credential: ProviderCredential = { id: 101, account_id: 11, name: 'Key A', auth_mode: 'api_key', generation: 2, is_active: true, priority: 0, weight: 1, api_key_configured: true, api_key_source: 'database', api_key_env: null, subscription_status: 'disconnected', subscription_expires_at: null, allowed_model_ids: null, allowed_capabilities: null, expires_at: null, cooldown_until: null };
@@ -25,19 +39,38 @@ const account: ProviderAccount = { id: 11, provider_id: 1, name: 'Team A', is_ac
 let records: ProviderAccount[];
 const provider = { id: 1, name: 'Endpoint', auth_mode: 'api_key' as const, selection_policy: 'priority' as const };
 const base = '/api/v1/chat/admin/providers/1';
+const accountName = 'Account Team A (ID 11)';
+const keyName = 'API key Key A (ID 101)';
+const keyPathName = `${accountName} / ${keyName}`;
+const period = { kind: 'calendar_month', start: '2026-11-01T00:00:00+00:00', end: '2026-12-01T00:00:00+00:00', timezone: 'UTC' } as const;
+const monthText = 'This month (Nov 1, 2026 – Nov 30, 2026, UTC)';
+const allTimeRow = { credential_id: 101, requests: 3, prompt_tokens: 200, completion_tokens: 25, raw_cost: '0.125' };
+const monthRow = { ...allTimeRow, month_requests: 2, month_prompt_tokens: 120, month_completion_tokens: 15, month_raw_cost: '0.1', last_used_at: '2026-11-06T12:00:00Z' };
+const keyUsage = (credentials: AccountUsage['credentials'], account_id = 11): AccountUsage => ({ provider_id: 1, account_id, period, credentials });
+const legacyUsage = { provider_id: 1, account_id: 11, credentials: [] } satisfies AccountUsage;
+function poolRead(path: string) {
+  if (path.endsWith('/accounts')) return structuredClone(records);
+  const id = path.match(/\/accounts\/(\d+)\/usage$/)?.[1];
+  return id ? { ...legacyUsage, account_id: Number(id) } : null;
+}
+function credentialRegion(id = 101) { return within(document.querySelector(`[data-credential-id="${id}"]`) as HTMLElement); }
 async function openPanel(props: Record<string, unknown> = {}) {
   const component = render(ProviderAccountsPanel, { provider, token: 'token', projectId: 'project', ...props });
   await fireEvent.click(screen.getByRole('button', { name: 'accounts.manage' }));
-  await screen.findByRole('region', { name: 'Team A' });
+  await screen.findByRole('region', { name: accountName });
   return component;
 }
-function accountRegion() { return within(screen.getByRole('region', { name: 'Team A' })); }
+function accountRegion() { return within(screen.getByRole('region', { name: accountName })); }
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 beforeEach(() => {
   vi.clearAllMocks();
   records = structuredClone([account]);
   session.set({ token: 'token', projectId: 'project', userId: 'admin', sessionId: 'login-1', identityDomainId: 'domain', domainId: 'domain', isSystemAdmin: true, roles: ['admin'] });
-  mocks.get.mockImplementation((path: string) => path.endsWith('/accounts') ? Promise.resolve(structuredClone(records)) : Promise.reject(new Error('unexpected request')));
+  mocks.get.mockImplementation(async (path: string) => {
+    const result = poolRead(path);
+    if (result) return result;
+    throw new Error('unexpected request');
+  });
   mocks.confirm.mockResolvedValue(true);
   mocks.post.mockResolvedValue({}); mocks.patch.mockResolvedValue({}); mocks.put.mockResolvedValue({}); mocks.remove.mockResolvedValue(undefined);
 });
@@ -50,7 +83,7 @@ describe('endpoint account management', () => {
     await fireEvent.input(screen.getByLabelText('accounts.name'), { target: { value: 'Team B' } });
     await fireEvent.input(screen.getByLabelText('accounts.operations'), { target: { value: '-' } });
     await fireEvent.submit(screen.getByRole('form', { name: 'accounts.accountEditor' }));
-    await screen.findByRole('region', { name: 'Team B' });
+    await screen.findByRole('region', { name: 'Account Team B (ID 12)' });
     expect(mocks.post).toHaveBeenCalledWith(`${base}/accounts`, expect.objectContaining({ name: 'Team B', allowed_model_ids: null, allowed_capabilities: [] }), 'token', 'project');
     expect(screen.queryByRole('form')).toBeNull();
   });
@@ -103,12 +136,113 @@ describe('endpoint account management', () => {
     expect(body).not.toHaveProperty('api_key');
   });
 
-  it('shows account-scoped allocated ledger usage rather than clearing the result after fetch', async () => {
-    mocks.get.mockImplementation(async (path: string) => path.endsWith('/usage') ? { provider_id: 1, account_id: 11, credentials: [{ credential_id: 101, requests: 3, prompt_tokens: 200, completion_tokens: 25, raw_cost: '0.125' }] } : structuredClone(records));
+  it('distinguishes account and key IDs everywhere and shows both registration times when available', async () => {
+    const accountCreated = '2025-01-02T03:04:05+00:00';
+    const keyCreated = '2026-10-04T12:30:00+00:00';
+    records[0].created_at = accountCreated;
+    records[0].credentials[0].created_at = keyCreated;
+    records[0].credentials.push({ ...credential, id: 102, name: 'Key B' });
+    await openPanel({ provider: { ...provider, selection_policy: 'explicit' } });
+    expect(accountRegion().getByRole('heading', { name: accountName })).toBeTruthy();
+    expect(credentialRegion().getByText(keyName)).toBeTruthy();
+    expect(credentialRegion().getByText('Provider #1 · Account #11 · API key #101')).toBeTruthy();
+    expect(screen.getByRole('option', { name: keyPathName })).toBeTruthy();
+    expect(screen.getByText(/Lumen uses these internal IDs in logs and the ledger/)).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/Team A #11|Key A \(#101\)/);
+    expect(accountRegion().getByText(`Registered: ${new Date(accountCreated).toLocaleString('en-US')}`)).toBeTruthy();
+    expect(credentialRegion().getByText(`Registered: ${new Date(keyCreated).toLocaleString('en-US')}`)).toBeTruthy();
+    expect(credentialRegion(102).getByText('Registered: Unknown')).toBeTruthy();
+
+    mocks.confirm.mockResolvedValue(false);
+    await fireEvent.click(accountRegion().getAllByRole('button', { name: 'configuration.delete' })[0]);
+    expect(mocks.confirm).toHaveBeenLastCalledWith(`Delete ${accountName} and all its credentials? This cannot be undone.`);
+    await fireEvent.click(credentialRegion().getByRole('button', { name: 'configuration.delete' }));
+    expect(mocks.confirm).toHaveBeenLastCalledWith(`Delete ${keyPathName}? This cannot be undone.`);
+  });
+
+  it('identifies the exact subscription key in disconnect confirmation', async () => {
+    records[0].credentials[0].auth_mode = 'anthropic_subscription';
+    await openPanel({ provider: { ...provider, auth_mode: 'anthropic_subscription' } });
+    await fireEvent.click(credentialRegion().getByRole('button', { name: 'configuration.disconnect' }));
+    expect(mocks.confirm).toHaveBeenLastCalledWith(`Disconnect ${keyPathName}? Its saved subscription grant will be removed.`);
+    expect(mocks.remove).toHaveBeenCalledWith(`${base}/accounts/11/credentials/101/auth`, 'token', 'project');
+  });
+
+  it('automatically shows the UTC month, all-time figures, last use, and real zeros for a key absent from the ledger', async () => {
+    records[0].credentials.push({ ...credential, id: 102, name: 'Key B' });
+    mocks.get.mockImplementation(async (path: string) => path.endsWith('/usage') ? keyUsage([monthRow, { ...allTimeRow, credential_id: null }]) : structuredClone(records));
     await openPanel();
-    await fireEvent.click(accountRegion().getByRole('button', { name: 'accounts.usage' }));
-    expect(await screen.findByText('accounts.usageRow 101 3 200 25 0.125')).toBeTruthy();
+    expect(await credentialRegion().findByText(`${monthText}: Ledger requests: 2 · Input 120 · Output 15 · USD 0.1`)).toBeTruthy();
+    expect(credentialRegion().getByText('All time: Ledger requests: 3 · Input 200 · Output 25 · USD 0.125')).toBeTruthy();
+    expect(credentialRegion().getByText(`Last used: ${new Date(monthRow.last_used_at).toLocaleString('en-US')}`)).toBeTruthy();
+    expect(credentialRegion(102).getByText(`${monthText}: Ledger requests: 0 · Input 0 · Output 0 · USD 0`)).toBeTruthy();
+    expect(credentialRegion(102).queryByText(/^Last used:/)).toBeNull();
+    expect(accountRegion().getByText('This month, account keys total: USD 0.1')).toBeTruthy();
+    expect(accountRegion().getByText('Deleted keys, all time: Ledger requests: 3 · Input 200 · Output 25 · USD 0.125')).toBeTruthy();
+    expect(screen.getByText('accounts.usageNotice')).toBeTruthy();
     expect(mocks.get).toHaveBeenCalledWith(`${base}/accounts/11/usage`, 'token', 'project');
+  });
+
+  it.each([undefined, period])('keeps an incomplete monthly row unknown while showing legacy totals (%j)', async (reportedPeriod) => {
+    mocks.get.mockImplementation(async (path: string) => path.endsWith('/usage')
+      ? { ...legacyUsage, period: reportedPeriod, credentials: [allTimeRow] }
+      : structuredClone(records));
+    await openPanel();
+    expect(await credentialRegion().findByText('All time: Ledger requests: 3 · Input 200 · Output 25 · USD 0.125')).toBeTruthy();
+    expect(credentialRegion().getByText(`${reportedPeriod ? monthText : 'This month'}: Unknown`)).toBeTruthy();
+    expect(accountRegion().getAllByText('Registered: Unknown')).toHaveLength(2);
+    expect(screen.getByText('This month, provider keys total: Unknown')).toBeTruthy();
+  });
+
+  it('isolates a usage failure to its account and refreshes that account without mixing incompatible months', async () => {
+    records.push({ ...account, id: 12, name: 'Team B', credentials: [{ ...credential, account_id: 12, id: 102, name: 'Key B' }] });
+    const pending = deferred<AccountUsage>();
+    const otherMonthRow = { ...monthRow, credential_id: 102, month_raw_cost: '0.2' };
+    mocks.get.mockImplementation(async (path: string) => {
+      if (path.endsWith('/accounts')) return structuredClone(records);
+      return path.endsWith('/11/usage') ? pending.promise : keyUsage([otherMonthRow], 12);
+    });
+    await openPanel();
+    expect(mocks.get).not.toHaveBeenCalledWith(`${base}/accounts/12/usage`, 'token', 'project');
+    expect(accountRegion().getByRole('button', { name: 'accounts.addCredential' }).hasAttribute('disabled')).toBe(false);
+    pending.reject(new mocks.ApiError('irrelevant upstream body', 503));
+    expect((await accountRegion().findByRole('alert')).textContent).toContain("Couldn't load account usage");
+    expect(credentialRegion().getByText('This month: Unknown')).toBeTruthy();
+    expect(credentialRegion().getByText('All time: Unknown')).toBeTruthy();
+    expect(await credentialRegion(102).findByText(`${monthText}: Ledger requests: 2 · Input 120 · Output 15 · USD 0.2`)).toBeTruthy();
+    expect(screen.getByText('This month, provider keys total: Unknown')).toBeTruthy();
+
+    mocks.get.mockResolvedValueOnce(keyUsage([monthRow]));
+    await fireEvent.click(accountRegion().getByRole('button', { name: 'accounts.usage' }));
+    expect(await screen.findByText('This month, provider keys total: USD 0.3')).toBeTruthy();
+    expect(accountRegion().queryByRole('alert')).toBeNull();
+    expect(mocks.get.mock.calls.filter(([path]) => path === `${base}/accounts/11/usage`)).toHaveLength(2);
+
+    mocks.get.mockResolvedValueOnce({ ...keyUsage([monthRow]), period: { ...period, start: period.end, end: '2027-01-01T00:00:00Z' } });
+    await fireEvent.click(accountRegion().getByRole('button', { name: 'accounts.usage' }));
+    await credentialRegion().findByText('This month (Dec 1, 2026 – Dec 31, 2026, UTC): Ledger requests: 2 · Input 120 · Output 15 · USD 0.1');
+    expect(screen.getByText('This month, provider keys total: Unknown')).toBeTruthy();
+  });
+
+  it('discards a late usage result superseded by a new inventory read', async () => {
+    const pending = deferred<AccountUsage>();
+    let initial = true;
+    mocks.get.mockImplementation(async (path: string) => {
+      if (path.endsWith('/accounts')) return structuredClone(records);
+      if (!initial) return keyUsage([{ ...monthRow, month_raw_cost: '0.2' }]);
+      initial = false;
+      return pending.promise;
+    });
+    await openPanel();
+    await fireEvent.click(screen.getByRole('button', { name: 'configuration.refreshAll' }));
+    await screen.findByText('This month, provider keys total: USD 0.2');
+    await act(() => { pending.resolve(keyUsage([monthRow])); });
+    expect(screen.getByText('This month, provider keys total: USD 0.2')).toBeTruthy();
+  });
+
+  it('aligns decimal scales without rounding tiny, large, or scientific-notation costs', () => {
+    expect(sumLedgerCosts(['9007199254740993.000000001', '1E-8', '-0.000000001'])).toBe('9007199254740993.00000001');
+    expect(sumLedgerCosts(['0.1', '0.2'])).toBe('0.3');
   });
 
   it('does not delete after an ABA identity transition during confirmation', async () => {
@@ -118,7 +252,7 @@ describe('endpoint account management', () => {
     session.update((value) => ({ ...value, userId: 'another-admin' }));
     session.update((value) => ({ ...value, userId: 'admin' }));
     confirmation.resolve(true);
-    await waitFor(() => expect(screen.queryByRole('region', { name: 'Team A' })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('region', { name: accountName })).toBeNull());
     expect(mocks.remove).not.toHaveBeenCalled();
   });
 
@@ -131,8 +265,8 @@ describe('endpoint account management', () => {
     expect(screen.getByText('Refreshed endpoint')).toBeTruthy();
     expect(screen.getByRole('form', { name: 'accounts.credentialEditor' })).toBeTruthy();
     expect((screen.getByLabelText('configuration.apiKey') as HTMLInputElement).value).toBe('unsaved-private-key');
-    expect(screen.getByRole('region', { name: 'Team A' })).toBeTruthy();
-    expect(mocks.get).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('region', { name: accountName })).toBeTruthy();
+    expect(mocks.get.mock.calls.filter(([path]) => path.endsWith('/accounts'))).toHaveLength(1);
     expect(mocks.patch).not.toHaveBeenCalled();
   });
 
@@ -146,7 +280,7 @@ describe('endpoint account management', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'accounts.manage' }));
     pending.resolve([account]);
     await screen.findByText('accounts.empty');
-    expect(screen.queryByText('Key A (#101)')).toBeNull();
+    expect(screen.queryByText(keyName)).toBeNull();
     expect(screen.getByText('Other endpoint')).toBeTruthy();
   });
 
@@ -155,7 +289,7 @@ describe('endpoint account management', () => {
     await openPanel();
     await fireEvent.click(accountRegion().getAllByRole('button', { name: 'configuration.delete' })[1]);
     expect(await screen.findByText('accounts.requestFailed 403')).toBeTruthy();
-    expect(screen.getByText('Key A (#101)')).toBeTruthy();
+    expect(screen.getByText(keyName)).toBeTruthy();
     expect(mocks.remove).toHaveBeenCalledWith(`${base}/accounts/11/credentials/101`, 'token', 'project');
   });
 });
@@ -178,7 +312,7 @@ describe('explicit key connection probes', () => {
     { id: 12, provider_id: 2, model_name: 'Other provider', model_kind: 'text', is_active: true }];
   const result = { status: 'connected', reason: null, mode: 'structured', elapsed_ms: 12, model_id: 10, generation: 2, checked_at: '2026-10-25T12:00:00Z' };
   function probeReads() {
-    mocks.get.mockImplementation((path: string) => Promise.resolve(structuredClone(path.endsWith('/accounts') ? records : models)));
+    mocks.get.mockImplementation(async (path: string) => poolRead(path) ?? structuredClone(models));
   }
   async function chooseKey(id = 101) {
     const row = document.querySelector(`[data-credential-id="${id}"]`) as HTMLElement;
@@ -197,8 +331,8 @@ describe('explicit key connection probes', () => {
     await fireEvent.input(screen.getByLabelText('accounts.name'), { target: { value: 'Key B' } });
     await fireEvent.input(screen.getByLabelText('configuration.apiKey'), { target: { value: 'private-key-B' } });
     await fireEvent.submit(screen.getByRole('form', { name: 'accounts.credentialEditor' }));
-    await screen.findByText('Key B (#102)');
-    expect(screen.getByText('Key A (#101)')).toBeTruthy();
+    await screen.findByText('API key Key B (ID 102)');
+    expect(screen.getByText(keyName)).toBeTruthy();
     expect(mocks.post).toHaveBeenCalledWith(`${base}/accounts/11/credentials`, expect.objectContaining({ name: 'Key B', api_key: 'private-key-B' }), 'token', 'project');
     expect(mocks.patch).not.toHaveBeenCalled();
     expect(document.body.textContent).not.toContain('private-key-B');
@@ -209,6 +343,7 @@ describe('explicit key connection probes', () => {
     probeReads(); mocks.post.mockResolvedValue(result);
     await openPanel();
     await chooseKey();
+    expect(within(screen.getByRole('region', { name: 'accounts.probeTitle' })).getByRole('heading', { name: keyPathName })).toBeTruthy();
     expect(screen.getByText('accounts.probeCost')).toBeTruthy();
     expect(screen.queryByRole('option', { name: 'Image only (#11)' })).toBeNull();
     expect(screen.queryByRole('option', { name: 'Other provider (#12)' })).toBeNull();
@@ -245,7 +380,7 @@ describe('explicit key connection probes', () => {
     session.update((value) => ({ ...value, userId: 'other' }));
     session.update((value) => ({ ...value, userId: 'admin' }));
     pending.resolve(result);
-    await waitFor(() => expect(screen.queryByRole('region', { name: 'Team A' })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('region', { name: accountName })).toBeNull());
     expect(screen.queryByText('accounts.probeConnected')).toBeNull();
     expect(mocks.post).toHaveBeenCalledTimes(1);
   });
@@ -268,7 +403,7 @@ describe('explicit key connection probes', () => {
     await openPanel(); await chooseKey();
     await fireEvent.click(screen.getByRole('button', { name: 'accounts.probeRun' }));
     await waitFor(() => expect(document.querySelector('[data-credential-id="101"] [data-probe-status="connected"]')).toBeTruthy());
-    mocks.get.mockImplementation((path: string) => Promise.resolve(structuredClone(path.endsWith('/accounts') ? records : models.map((model) => ({ ...model, updated_at: '2030-01-01' })))));
+    mocks.get.mockImplementation(async (path: string) => poolRead(path) ?? models.map((model) => ({ ...model, updated_at: '2030-01-01' })));
     await chooseKey();
     expect(document.querySelector('[data-credential-id="101"] [data-probe-status]')).toBeNull();
     await fireEvent.click(screen.getByRole('button', { name: 'accounts.probeRun' }));
@@ -286,9 +421,9 @@ describe('settled per-key relay history', () => {
 
   it('shows distinct exact-key receipts separate from current configuration and pages only that key', async () => {
     records[0].credentials.push({ ...credential, id: 102, name: 'Key B' });
-    mocks.get.mockImplementation(async (path: string) => path.endsWith('/accounts') ? structuredClone(records) : path.includes('before_id=7') ? { ...relay(101, 6), items: [{ ...relay().items[0], ledger_id: 6, dispatches: null }] } : { ...relay(path.includes('/102/') ? 102 : 101), next_before_id: path.includes('/101/') ? 7 : null });
+    mocks.get.mockImplementation(async (path: string) => poolRead(path) ?? (path.includes('before_id=7') ? { ...relay(101, 6), items: [{ ...relay().items[0], ledger_id: 6, dispatches: null }] } : { ...relay(path.includes('/102/') ? 102 : 101), next_before_id: path.includes('/101/') ? 7 : null }));
     await openPanel({ provider: { ...provider, api_base: 'https://current-user:current-secret@current.example/v1?key=current-query' } });
-    expect(mocks.get).toHaveBeenCalledTimes(1);
+    expect(mocks.get.mock.calls.filter(([path]) => path.includes('/relays'))).toHaveLength(0);
     expect(row().getByText('accounts.currentEndpoint: https://current.example/v1')).toBeTruthy();
     await fireEvent.click(row().getByRole('button', { name: 'accounts.loadRelays' }));
     expect(await row().findByText('accounts.recordedDestination: https://old-key-101.example/v1/chat')).toBeTruthy();
@@ -310,12 +445,16 @@ describe('settled per-key relay history', () => {
     expect(screen.queryByText('accounts.empty')).toBeNull();
     expect(screen.getByRole('button', { name: 'accounts.addAccount' }).hasAttribute('disabled')).toBe(true);
     await fireEvent.click(screen.getByRole('button', { name: 'configuration.refreshAll' }));
-    expect(await screen.findByRole('region', { name: 'Team A' })).toBeTruthy();
+    expect(await screen.findByRole('region', { name: accountName })).toBeTruthy();
     expect(screen.queryByText('accounts.poolUnavailable')).toBeNull();
   });
 
   it('does not turn history read failures into zero and permits explicit retry', async () => {
-    mocks.get.mockImplementation(async (path: string) => path.endsWith('/accounts') ? structuredClone(records) : Promise.reject(new mocks.ApiError('echoed-secret', 503)));
+    mocks.get.mockImplementation(async (path: string) => {
+      const result = poolRead(path);
+      if (result) return result;
+      throw new mocks.ApiError('echoed-secret', 503);
+    });
     await openPanel();
     await fireEvent.click(row().getByRole('button', { name: 'accounts.loadRelays' }));
     expect(await row().findByText('accounts.requestFailed 503')).toBeTruthy();
@@ -327,7 +466,7 @@ describe('settled per-key relay history', () => {
   });
 
   it('rejects foreign-key history DTO without rendering it', async () => {
-    mocks.get.mockImplementation(async (path: string) => path.endsWith('/accounts') ? structuredClone(records) : relay(102));
+    mocks.get.mockImplementation(async (path: string) => poolRead(path) ?? relay(102));
     await openPanel();
     await fireEvent.click(row().getByRole('button', { name: 'accounts.loadRelays' }));
     expect(await row().findByText('accounts.networkError')).toBeTruthy();
@@ -336,12 +475,12 @@ describe('settled per-key relay history', () => {
 
   it.each(['close', 'ABA', 'refresh-generation', 'destroy'])('discards private late history after %s', async (change) => {
     const pending = deferred<RelayPage>();
-    mocks.get.mockImplementation((path: string) => path.endsWith('/accounts') ? Promise.resolve(structuredClone(records)) : pending.promise);
+    mocks.get.mockImplementation(async (path: string) => poolRead(path) ?? pending.promise);
     const component = await openPanel();
     await fireEvent.click(row().getByRole('button', { name: 'accounts.loadRelays' }));
     if (change === 'close') { await fireEvent.click(screen.getByRole('button', { name: 'configuration.close' })); }
     if (change === 'ABA') { session.update((value) => ({ ...value, projectId: 'other' })); session.update((value) => ({ ...value, projectId: 'project' })); }
-    if (change === 'refresh-generation') { records[0].credentials[0].generation = 3; await fireEvent.click(screen.getByRole('button', { name: 'configuration.refreshAll' })); await waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(3)); }
+    if (change === 'refresh-generation') { records[0].credentials[0].generation = 3; await fireEvent.click(screen.getByRole('button', { name: 'configuration.refreshAll' })); await waitFor(() => expect(mocks.get.mock.calls.filter(([path]) => path.endsWith('/accounts'))).toHaveLength(2)); }
     if (change === 'destroy') component.unmount();
     pending.resolve(relay());
     await Promise.resolve();

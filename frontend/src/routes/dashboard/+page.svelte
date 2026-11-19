@@ -429,13 +429,6 @@
 		return 'var(--color-accent)';
 	}
 
-	function telemetrySource(source: string): string {
-		if (source === 'gnocchi') return t('telemetry.native');
-		if (source === 'prometheus') return t('telemetry.fallback');
-		if (source === 'mixed') return t('telemetry.mixed');
-		return t('telemetry.source', { source });
-	}
-
 	function telemetryStatus(status: string): string {
 		if (status === 'partial') return t('telemetry.partial');
 		if (status === 'not_configured') return t('overview.metricsNotConfigured');
@@ -498,7 +491,7 @@
 		{k3sDisabled}
 	/>
 
-	<section aria-label={t('telemetry.collection')} class="min-w-0 space-y-3">
+	<section aria-label={t('overview.trend')} class="min-w-0 space-y-3">
 		<div class="flex flex-wrap items-center justify-between gap-2">
 			<h2 class="text-sm font-semibold text-ink-0">{t('overview.trend')}</h2>
 			<div class="flex flex-wrap items-center gap-3">
@@ -522,7 +515,7 @@
 					</div>
 					<div class="metric-slot-content">
 						{#if available}
-							<BklitChart spec={trendChart(series!.data, card.label, card.color)} height={72} label={`${card.label} · ${tc('chart.data')}`} showData xLabel={tc('chart.category')} class="w-full" />
+							<BklitChart spec={trendChart(series!.data, card.label, card.color)} height={72} decorative class="w-full" />
 						{:else if pending}
 							<LoadingState variant="section" label={tc('state.loadingNamed', { name: card.label })} />
 						{:else if trendState.error && !currentTrend}
@@ -532,18 +525,8 @@
 						{/if}
 					</div>
 					<div class="metric-slot-meta text-xs text-ink-2">
-						<details>
-							<summary class="w-fit cursor-pointer rounded-sm py-2 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]">{t('telemetry.collection')}{#if trendState.error && currentTrend} · <span class="text-state-danger-text">{t('overview.refreshFailed')}</span>{/if}</summary>
-							<div class="space-y-1 pb-2">
-								{#if pending}<LoadingState variant="inline" label={tc('state.loadingNamed', { name: card.label })} />
-								{:else if available}
-									{#if series?.source}<p>{telemetrySource(series.source)}</p>{/if}
-									{#if series?.status === 'partial'}<p class="text-state-warning-text">{t('telemetry.partial')}</p>{/if}
-									{#if series?.source && series.source !== 'gnocchi' && series.native_status && series.native_status !== 'available'}<p>{t('telemetry.nativeState', { status: telemetryStatus(series.native_status) })}</p>{/if}
-								{:else}<p>{series ? t('telemetry.nativeState', { status: telemetryStatus(series.native_status ?? series.status) }) : t('telemetry.unavailable')}</p>{/if}
-								{#if card.key === 'vcpu' && currentTrend?.scope === 'native_policy'}<p>{t('telemetry.nativePolicy')}</p>{/if}
-							</div>
-						</details>
+						{#if trendState.error && currentTrend}<p class="text-state-danger-text">{t('overview.refreshFailed')}</p>{/if}
+						{#if available && series?.status === 'partial'}<p class="text-state-warning-text">{t('telemetry.partial')}</p>{/if}
 						{#if available}<p class="tabular-nums">{t('overview.minMax', { min: Math.min(...known).toFixed(1), max: Math.max(...known).toFixed(1), unit: card.unit })}</p>{/if}
 					</div>
 				</div>
