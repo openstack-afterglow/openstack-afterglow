@@ -10,7 +10,7 @@
 	import ChatUsagePanel from './ChatUsagePanel.svelte';
 	import type { ChatUsage } from '$lib/api/chatTree';
 	import { domainViewDenied, usagePath, type BillingScope, type UsageView } from '$lib/api/chatUsage';
-	import { displayDomainCredit } from '$lib/api/chatDomainBilling';
+	import { currentDomainPool, displayDomainCredit } from '$lib/api/chatDomainBilling';
 	import Alert from '$lib/components/ui/Alert.svelte';
 
 	export type ChatSettingsSection = 'usage' | 'apikeys' | 'memory' | 'mcp' | 'tools' | 'skills';
@@ -103,7 +103,7 @@
 	const requests = $derived(usage?.month_request_count ?? 0);
 	const quotaMax = $derived(usage?.quota_max ?? 0);
 	const quotaUsed = $derived(usage?.quota_used ?? 0);
-	const domainUsage = $derived(usage?.billing_scope === 'domain' && !!$auth.domainId && usage.payer_domain_id === $auth.domainId ? usage : null);
+	const domainUsage = $derived(currentDomainPool(usage, $auth.domainId));
 	const domainInsufficient = $derived(domainUsage?.balance_credits != null && domainUsage.reserved_credits != null &&
 		Number(domainUsage.balance_credits) <= Number(domainUsage.reserved_credits));
 	function fmt(n: number): string {
@@ -207,7 +207,8 @@
 								{#if domainInsufficient}<Alert flat tone="warning">{t('domainBilling.insufficient')}</Alert>{/if}
 							</div>
 						{/if}
-						{#if !domainUsage && quotaMax > 0}
+						<!-- The caller's own monthly limit; older Lumen and the domain view report the pool there instead. -->
+						{#if !domainUsage?.legacy && usage?.view !== 'domain' && quotaMax > 0}
 							<p class="sec-desc quota">
 								{t('settings.usage.monthlyQuota', { used: fmt(quotaUsed), limit: fmt(quotaMax) })}
 							</p>
