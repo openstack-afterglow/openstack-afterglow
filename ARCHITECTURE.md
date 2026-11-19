@@ -2305,9 +2305,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "f74282826592d7ed7fbdc005104d5db1e289f34b224fe3fb9eda7767635c4d24",
-  "reviewed_at": "2026-11-19T04:06:58Z",
-  "summary": "Merge origin/dev (Afterglow 1.32.28 rollout receipts, docs only) into the 1.32.29 integration; version line keeps 1.32.29 release preparation"
+  "source_sha256": "d2f8fa8a464e9a95da0b1ff6fb535080da62471c86d2a4a81c90a2e8068f3472",
+  "reviewed_at": "2026-11-19T04:25:27Z",
+  "summary": "Review responsive Alert wrapping, service-key domain policy wording in nine locales, and provider secondary text contrast."
 }
 ```
 <!-- architecture-review:end -->

@@ -42,16 +42,18 @@
 <style>
 	.alert {
 		display: flex;
+		/* Narrow alerts put actions on their own row instead of squeezing the message. */
+		flex-wrap: wrap;
 		align-items: flex-start;
 		justify-content: space-between;
-		gap: 1rem;
+		gap: 0.75rem 1rem;
 		border: 1px solid var(--alert-line);
 		border-radius: var(--radius-lg);
 		background: color-mix(in oklab, var(--alert-tone) 12%, transparent);
 		color: var(--alert-text);
 		padding: 0.75rem 1rem;
 	}
-	.alert-body { min-width: 0; }
+	.alert-body { flex: 1 1 16rem; min-width: 0; }
 	.alert-title {
 		margin: 0 0 0.25rem;
 		font-size: 0.875rem;
@@ -66,8 +68,11 @@
 	.alert-flat { padding: 0; border: 0; border-radius: 0; background: transparent; }
 	.alert-actions {
 		display: flex;
-		flex-shrink: 0;
+		flex: 0 1 auto;
+		flex-wrap: wrap;
+		flex-wrap: balance;
 		gap: 0.5rem;
+		max-width: 100%;
 	}
 	.alert-success { --alert-tone: var(--color-state-success); --alert-text: var(--color-state-success-text); --alert-line: color-mix(in oklab, var(--color-state-success) 32%, transparent); }
 	.alert-warning { --alert-tone: var(--color-state-warning); --alert-text: var(--color-state-warning-text); --alert-line: color-mix(in oklab, var(--color-state-warning) 32%, transparent); }

@@ -227,6 +227,8 @@
 	"apiKeys.serviceTitle": "Funguo za huduma",
 	"apiKeys.serviceDescription": "Kama akaunti za huduma za OpenAI au funguo za huduma za Anthropic na Gemini, hizi ni vitambulisho vya mashine vinavyomilikiwa na kikoa. Zinaendelea kutumika baada ya aliyeziunda kuondoka, na matumizi yanatozwa kwenye hazina ya salio ya kikoa.",
 	"apiKeys.newServiceKey": "Ufunguo mpya wa huduma",
+	"apiKeys.serviceScopes": "Ruhusa za ufunguo wa huduma (sera ya kikoa)",
+	"apiKeys.serviceCreate": "+ Toa ufunguo mpya wa huduma",
 	"apiKeys.serviceRevokeConfirm": "Ungependa kubatilisha ufunguo wa huduma “{name}”? Programu zinazoutumia hazitaweza tena kujithibitisha.",
 	"apiKeys.serviceEmpty": "Hakuna funguo za huduma.",
 	"domainBilling.title": "Hazina ya salio ya kikoa",

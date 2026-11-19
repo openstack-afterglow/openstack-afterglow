@@ -227,6 +227,8 @@
 	"apiKeys.serviceTitle": "サービスキー",
 	"apiKeys.serviceDescription": "OpenAI のサービスアカウントや Anthropic・Gemini のサービスキーと同様に、ドメイン所有の自動化用認証情報です。発行者が離れても有効で、利用分はドメインのクレジットプールに請求されます。",
 	"apiKeys.newServiceKey": "新しいサービスキー",
+	"apiKeys.serviceScopes": "サービスキーの権限（ドメインポリシー）",
+	"apiKeys.serviceCreate": "+ 新しいサービスキーを発行",
 	"apiKeys.serviceRevokeConfirm": "サービスキー「{name}」を失効させますか？ このキーを使うプログラムは認証できなくなります。",
 	"apiKeys.serviceEmpty": "サービスキーはありません。",
 	"domainBilling.title": "ドメインクレジットプール",

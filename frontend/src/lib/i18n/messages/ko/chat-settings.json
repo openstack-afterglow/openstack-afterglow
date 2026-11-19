@@ -227,6 +227,8 @@
 	"apiKeys.serviceTitle": "서비스 키",
 	"apiKeys.serviceDescription": "OpenAI 서비스 계정이나 Anthropic·Gemini 서비스 키처럼 도메인 소유의 자동화 인증 정보입니다. 발급자가 도메인을 떠나도 유지되며 사용량은 도메인 크레딧 풀에 청구됩니다.",
 	"apiKeys.newServiceKey": "새 서비스 키",
+	"apiKeys.serviceScopes": "서비스 키 권한 (도메인 정책)",
+	"apiKeys.serviceCreate": "+ 새 서비스 키 발급",
 	"apiKeys.serviceRevokeConfirm": "서비스 키 “{name}”을 폐기할까요? 이 키를 쓰는 프로그램은 더 이상 인증할 수 없습니다.",
 	"apiKeys.serviceEmpty": "서비스 키가 없습니다.",
 	"domainBilling.title": "도메인 크레딧 풀",

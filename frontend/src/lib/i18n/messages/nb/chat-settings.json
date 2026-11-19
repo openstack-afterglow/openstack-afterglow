@@ -227,6 +227,8 @@
 	"apiKeys.serviceTitle": "Tjenestenøkler",
 	"apiKeys.serviceDescription": "Som OpenAI-tjenestekontoer eller tjenestenøkler hos Anthropic og Gemini er dette maskinlegitimasjon som eies av domenet. Nøklene virker også når den som opprettet dem, forlater domenet. Bruken belastes domenets kredittpott.",
 	"apiKeys.newServiceKey": "Ny tjenestenøkkel",
+	"apiKeys.serviceScopes": "Tillatelser for tjenestenøkkel (domenepolicy)",
+	"apiKeys.serviceCreate": "+ Utsted en ny tjenestenøkkel",
 	"apiKeys.serviceRevokeConfirm": "Vil du tilbakekalle tjenestenøkkelen «{name}»? Programmer som bruker den, kan ikke lenger autentisere seg.",
 	"apiKeys.serviceEmpty": "Ingen tjenestenøkler.",
 	"domainBilling.title": "Domenets kredittpott",

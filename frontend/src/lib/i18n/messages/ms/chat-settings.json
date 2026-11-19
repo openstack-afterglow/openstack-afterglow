@@ -227,6 +227,8 @@
 	"apiKeys.serviceTitle": "Kunci perkhidmatan",
 	"apiKeys.serviceDescription": "Seperti akaun perkhidmatan OpenAI atau kunci perkhidmatan Anthropic dan Gemini, ini ialah bukti kelayakan mesin milik domain. Kunci kekal sah selepas pencipta meninggalkan domain, dan penggunaan dicaj kepada kumpulan kredit domain.",
 	"apiKeys.newServiceKey": "Kunci perkhidmatan baharu",
+	"apiKeys.serviceScopes": "Kebenaran kunci perkhidmatan (dasar domain)",
+	"apiKeys.serviceCreate": "+ Keluarkan kunci perkhidmatan baharu",
 	"apiKeys.serviceRevokeConfirm": "Batalkan kunci perkhidmatan “{name}”? Program yang menggunakannya tidak dapat mengesahkan diri lagi.",
 	"apiKeys.serviceEmpty": "Tiada kunci perkhidmatan.",
 	"domainBilling.title": "Kumpulan kredit domain",

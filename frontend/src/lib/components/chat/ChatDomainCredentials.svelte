@@ -234,7 +234,7 @@
 			{:else if !scopes}<LoadingState variant="inline" label={t('apiKeys.policyLoading')} />
 			{:else}
 				<fieldset class="space-y-1" disabled={busy === 'create'}>
-					<legend class="mb-1 text-sm font-medium text-ink-1">{t('apiKeys.scopes')}</legend>
+					<legend class="mb-1 text-sm font-medium text-ink-1">{t('apiKeys.serviceScopes')}</legend>
 					{#each scopes as scope (scope)}
 						<label class="flex min-h-11 items-center gap-2 text-xs text-ink-2">
 							<input type="checkbox" value={scope} bind:group={selected} />
@@ -249,7 +249,7 @@
 		</form>
 		{#snippet actions()}
 			<Button variant="secondary" onclick={() => { formOpen = false; }} disabled={busy === 'create'}>{t('apiKeys.cancel')}</Button>
-			<Button type="submit" form={`${id}-create`} disabled={busy === 'create' || !scopes} ariaBusy={busy === 'create'}>{t('apiKeys.create')}</Button>
+			<Button type="submit" form={`${id}-create`} disabled={busy === 'create' || !scopes} ariaBusy={busy === 'create'}>{t('apiKeys.serviceCreate')}</Button>
 		{/snippet}
 	</FormModal>
 

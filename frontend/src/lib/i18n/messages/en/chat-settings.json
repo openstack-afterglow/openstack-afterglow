@@ -227,6 +227,8 @@
 	"apiKeys.serviceTitle": "Service keys",
 	"apiKeys.serviceDescription": "Like OpenAI service accounts or Anthropic and Gemini service keys, these are domain-owned machine credentials. They survive the creator leaving, and usage is billed to the domain credit pool.",
 	"apiKeys.newServiceKey": "New service key",
+	"apiKeys.serviceScopes": "Service key permissions (domain policy)",
+	"apiKeys.serviceCreate": "+ Issue a new service key",
 	"apiKeys.serviceRevokeConfirm": "Revoke service key “{name}”? Programs using it will no longer authenticate.",
 	"apiKeys.serviceEmpty": "No service keys.",
 	"domainBilling.title": "Domain credit pool",

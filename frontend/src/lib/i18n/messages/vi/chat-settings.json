@@ -227,6 +227,8 @@
 	"apiKeys.serviceTitle": "Khóa dịch vụ",
 	"apiKeys.serviceDescription": "Tương tự tài khoản dịch vụ OpenAI hoặc khóa dịch vụ Anthropic và Gemini, đây là thông tin xác thực máy do miền sở hữu. Khóa vẫn hoạt động khi người tạo rời đi và mức sử dụng được tính vào quỹ tín dụng của miền.",
 	"apiKeys.newServiceKey": "Tạo khóa dịch vụ",
+	"apiKeys.serviceScopes": "Quyền của khóa dịch vụ (chính sách miền)",
+	"apiKeys.serviceCreate": "+ Cấp khóa dịch vụ mới",
 	"apiKeys.serviceRevokeConfirm": "Thu hồi khóa dịch vụ “{name}”? Các chương trình sử dụng khóa này sẽ không thể xác thực.",
 	"apiKeys.serviceEmpty": "Không có khóa dịch vụ.",
 	"domainBilling.title": "Quỹ tín dụng của miền",

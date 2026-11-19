@@ -1962,7 +1962,7 @@
 					<RichText segments={t.rich('configuration.perplexityApiBaseGuidance')} tags={{ markup1: rich4markup1, markup2: rich4markup2 }} />
 				</Alert>
 			{:else}
-				<p class="mt-2 text-xs text-[var(--color-ink-3)]">
+				<p class="mt-2 text-xs text-[var(--color-ink-2)]">
 					{t('configuration.providerAdapterFormat')}
 				</p>
 			{/if}
@@ -2012,7 +2012,7 @@
 								</div>
 								<p class="mt-1 break-all text-xs text-[var(--color-ink-2)]"><RichText segments={t.rich('pricing.providerMetadata', { provider: p.api_provider, order: formatNumber(p.sort_order ?? 0) })} /></p>
 								{#if p.api_base}
-									<div class="mt-1 truncate text-xs text-[var(--color-ink-3)]">{p.api_base}</div>
+									<div class="mt-1 truncate text-xs text-[var(--color-ink-2)]">{p.api_base}</div>
 								{/if}
 							</div>
 							<div class="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs sm:justify-end">

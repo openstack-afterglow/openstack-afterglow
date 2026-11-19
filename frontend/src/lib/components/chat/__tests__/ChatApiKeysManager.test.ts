@@ -243,7 +243,8 @@ describe('ChatApiKeysManager', () => {
 		expect(within(dialog).getByText(t('apiKeys.toolsNotice'))).toBeTruthy();
 		await fireEvent.input(within(dialog).getByLabelText(t('apiKeys.nameLabel')), { target: { value: 'Nightly job' } });
 		await fireEvent.click(within(dialog).getByRole('checkbox', { name: /decisions:write/ }));
-		await fireEvent.click(within(dialog).getByRole('button', { name: t('apiKeys.create') }));
+		expect(within(dialog).getByRole('group', { name: t('apiKeys.serviceScopes') })).toBeTruthy();
+		await fireEvent.click(within(dialog).getByRole('button', { name: t('apiKeys.serviceCreate') }));
 		await screen.findByText('service-secret-fixture');
 		expect(mocks.post).toHaveBeenCalledWith('/api/v1/chat/service-keys', {
 			name: 'Nightly job', scopes: ['models:read', 'compat:completions:write', 'decisions:write']
@@ -360,7 +361,7 @@ describe('ChatApiKeysManager', () => {
 		expect(within(dialog).getAllByRole('checkbox')).toHaveLength(2);
 		expect(within(dialog).queryByText('compat:completions:write')).toBeNull();
 		await fireEvent.input(within(dialog).getByLabelText(t('apiKeys.nameLabel')), { target: { value: 'Embedder' } });
-		await fireEvent.click(within(dialog).getByRole('button', { name: t('apiKeys.create') }));
+		await fireEvent.click(within(dialog).getByRole('button', { name: t('apiKeys.serviceCreate') }));
 		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/chat/service-keys', {
 			name: 'Embedder', scopes: ['models:read']
 		}, 'browser-token', 'project-1', expect.objectContaining(noReplay)));

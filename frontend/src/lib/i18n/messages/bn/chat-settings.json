@@ -227,6 +227,8 @@
 	"apiKeys.serviceTitle": "পরিষেবা কী",
 	"apiKeys.serviceDescription": "OpenAI পরিষেবা অ্যাকাউন্ট বা Anthropic ও Gemini পরিষেবা কী-এর মতো এগুলো ডোমেইনের মালিকানাধীন মেশিন শংসাপত্র। নির্মাতা ডোমেইন ছেড়ে গেলেও কী সচল থাকে এবং ব্যবহারের খরচ ডোমেইনের ক্রেডিট পুলে ধরা হয়।",
 	"apiKeys.newServiceKey": "নতুন পরিষেবা কী",
+	"apiKeys.serviceScopes": "পরিষেবা কী-এর অনুমতি (ডোমেইন নীতি)",
+	"apiKeys.serviceCreate": "+ নতুন পরিষেবা কী ইস্যু করুন",
 	"apiKeys.serviceRevokeConfirm": "পরিষেবা কী “{name}” প্রত্যাহার করবেন? এই কী ব্যবহারকারী প্রোগ্রামগুলো আর প্রমাণীকরণ করতে পারবে না।",
 	"apiKeys.serviceEmpty": "কোনো পরিষেবা কী নেই।",
 	"domainBilling.title": "ডোমেইনের ক্রেডিট পুল",

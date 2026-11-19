@@ -227,6 +227,8 @@
 	"apiKeys.serviceTitle": "服务密钥",
 	"apiKeys.serviceDescription": "与 OpenAI 服务账号或 Anthropic、Gemini 服务密钥一样，这些是由域拥有的机器凭据。创建者离开后仍然有效，用量计入域额度池。",
 	"apiKeys.newServiceKey": "新建服务密钥",
+	"apiKeys.serviceScopes": "服务密钥权限（域策略）",
+	"apiKeys.serviceCreate": "+ 签发新服务密钥",
 	"apiKeys.serviceRevokeConfirm": "要撤销服务密钥“{name}”吗？使用此密钥的程序将无法通过认证。",
 	"apiKeys.serviceEmpty": "暂无服务密钥。",
 	"domainBilling.title": "域额度池",

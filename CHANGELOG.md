@@ -18,6 +18,8 @@
 
 ### Changed
 
+- 좁은 화면에서 안내문 본문을 유지하고 동작 버튼을 아래 줄로 배치한다. 서비스 키 발급 양식은 도메인 정책 기반 권한과 서비스 키 발급 버튼을 명확히 표시하며, 프로바이더 보조 텍스트의 대비를 높인다.
+- Alerts keep readable body text and wrap actions below on narrow screens. The service-key form labels domain-policy permissions and service-key issuance explicitly, and provider secondary text uses readable contrast.
 - 개인 프로젝트(Personal 도메인)에는 크레딧 풀이 없으므로 대시보드 채팅과 Studio는 조직(도메인) 생성 또는 조직 프로젝트 전환 안내를 미리 표시하고 전송·실행을 비활성화한다. 안내에서 리소스 선택 창을 열 수 있고, 도메인 만들기 정책이 허용하면 조직 만들기로 바로 이동한다. 대화 기록·에이전트·연결·Vault·API 키 관리는 그대로 사용할 수 있다. Lumen의 `domain_credit_insufficient`는 상태 코드와 관계없이 개인 프로젝트에서는 같은 안내로, 조직에서는 도메인 관리자·시스템 관리자에게 충전을 요청하라는 메시지로 표시한다.
 - The Personal domain has no credit pool, so dashboard chat and Studios show up-front guidance to create an organization (domain) or switch to an organization project and disable send and run. The notice opens the resource chooser and, when the create-domain policy allows, goes straight to organization creation. History, agents, connections, Vault, and API key management stay usable. Lumen's `domain_credit_insufficient` maps, at any status, to the same guidance in personal projects and to a request for a domain manager or system administrator top-up in organizations.
 - 개인 프로젝트에서도 대화의 버전 이동과 분기는 사용할 수 있으며, 과금되는 재시도·재생성만 비활성화한다. 실시간 relay는 Lumen의 애플리케이션 종료 코드(`4000`–`4999`)와 `1000`·`1001`·`1008`·`1011`을 123바이트 이내 사유와 함께 브라우저에 전달하고 그 밖의 종료는 `1011`로 바꾼다. 실시간 세션이 `4429 domain_credit_insufficient`로 끝나면 같은 개인·조직 안내를 표시한다.
