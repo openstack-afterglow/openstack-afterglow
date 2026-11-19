@@ -2837,6 +2837,35 @@ describe('ChatPanel in the Personal domain', () => {
 		expect(await screen.findByText('Personal history')).toBeTruthy();
 	});
 
+	it('keeps version browsing and fork usable while disabling billed regenerate', async () => {
+		workIn('personal');
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.patch.mockResolvedValue({ active_leaf_id: 99 });
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {
+			if (path === '/api/v1/chat/conversations') return [{ id: 'conv-branch', title: '분기 대화', model_name: 'model-1', workspace_id: null }];
+			if (path.includes('/conv-branch/messages?')) {
+				return {
+					messages: [{ id: 42, conversation_id: 'conv-branch', role: 'assistant', parent_id: 1, content: 'current branch', created_at: at, branch: { previous_id: 41, next_id: null } }],
+					active_leaf_id: 42, history_revision: 3, has_before: false, has_after: false, before_cursor: null, after_cursor: null
+				};
+			}
+			return fallback(path, ...args);
+		});
+		render(ChatPanel);
+		await fireEvent.click(await screen.findByRole('button', { name: '대화 기록과 설정 열기' }));
+		await fireEvent.click(await screen.findByRole('button', { name: '분기 대화' }));
+		await screen.findByText('current branch');
+		expect(screen.getByRole('button', { name: '분기' }).hasAttribute('disabled')).toBe(false);
+		expect(screen.getByTitle('다른 모델로 재생성').hasAttribute('disabled')).toBe(true);
+		const previous = screen.getByRole('button', { name: '이전 버전' });
+		expect(previous.hasAttribute('disabled')).toBe(false);
+		await fireEvent.click(previous);
+		await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith(
+			'/api/v1/chat/conversations/conv-branch/active-leaf', { message_id: 41, descend: true }, 'token', 'project-1'
+		));
+		expect(mocks.createRun).not.toHaveBeenCalled();
+	});
+
 	it('offers organization creation only under the existing create-domain policy', async () => {
 		workIn('personal', true);
 		render(ChatPanel);

@@ -26,6 +26,11 @@ router = APIRouter()
 _MAX_FRAME_BYTES = 64 * 1024
 # Native Lumen's UTF-8 JSON message cap for an admitted image session (both directions).
 _MAX_IMAGE_FRAME_BYTES = 2 * 1024 * 1024
+# Lumen's application outcomes (4000-4999) and these standard codes reach the browser;
+# anything else, including an abnormal upstream drop, becomes a generic 1011.
+_RELAYED_CLOSE_CODES = frozenset({1000, 1001, 1008, 1011})
+# RFC 6455 caps a close reason at 123 bytes of UTF-8.
+_MAX_CLOSE_REASON_BYTES = 123
 
 
 class _FrameTooLarge(ValueError):
@@ -34,6 +39,13 @@ class _FrameTooLarge(ValueError):
 
 def _exceeds_frame_limit(frame: str, limit: int) -> bool:
     return len(frame) > limit or (not frame.isascii() and len(frame.encode("utf-8")) > limit)
+
+
+def _browser_close(code: int | None, reason: str) -> tuple[int, str]:
+    """Bound Lumen's close code and reason; never relay unknown codes or their text."""
+    if code is None or not (code in _RELAYED_CLOSE_CODES or 4000 <= code <= 4999):
+        return 1011, ""
+    return code, reason.encode()[:_MAX_CLOSE_REASON_BYTES].decode("utf-8", "ignore")
 
 
 class SessionRequest(BaseModel):
@@ -175,6 +187,8 @@ async def relay(websocket: WebSocket):
     except (ValueError, KeyError, TypeError):
         await websocket.close(code=1013)
         return
+    # Lumen's close frame, set only once the upstream side has ended.
+    upstream_close: tuple[int | None, str] | None = None
     try:
         async with websockets.connect(
             ws_url,
@@ -207,12 +221,21 @@ async def relay(websocket: WebSocket):
                         raise _FrameTooLarge from exc
                     raise
 
-            tasks = {asyncio.create_task(browser_to_lumen()), asyncio.create_task(lumen_to_browser())}
+            lumen_task = asyncio.create_task(lumen_to_browser())
+            tasks = {asyncio.create_task(browser_to_lumen()), lumen_task}
             try:
                 done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED, timeout=960)
                 for task in done:
-                    with suppress(WebSocketDisconnect, ConnectionClosed):
+                    try:
                         task.result()
+                    except ConnectionClosed as exc:
+                        upstream_close = (exc.rcvd.code, exc.rcvd.reason) if exc.rcvd else (None, "")
+                    except WebSocketDisconnect:
+                        pass
+                    else:
+                        if task is lumen_task:
+                            # Iteration ends quietly on a normal close; the frame stays on the connection.
+                            upstream_close = (upstream.close_code, upstream.close_reason or "")
             finally:
                 for task in tasks:
                     task.cancel()
@@ -226,5 +249,6 @@ async def relay(websocket: WebSocket):
         with suppress(RuntimeError):
             await websocket.close(code=1011)
     else:
+        code, reason = _browser_close(*upstream_close) if upstream_close else (1000, "")
         with suppress(RuntimeError):
-            await websocket.close(code=1000)
+            await websocket.close(code=code, reason=reason)

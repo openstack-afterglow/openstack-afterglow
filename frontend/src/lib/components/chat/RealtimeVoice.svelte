@@ -467,7 +467,8 @@
 			admittedImageInput = session.realtime_image_input === true;
 			socket = realtimeVoiceApi.connect(session);
 			socket.onmessage = (event) => onFrame(event, epoch, experience);
-			socket.onclose = () => { if (epoch === generation) { error = disconnectMessage(); experienceState(experience, connected ? 'disabled' : 'error', connected ? 4 : 5); stop(false, !connected, activeMode === 'transcription'); } };
+			// The BFF relays Lumen's bounded close; 4429 means the domain pool refused the session.
+			socket.onclose = (event) => { if (epoch === generation) { error = dashboardCreditMessage(event.code === 4429 ? 'domain_credit_insufficient' : event.reason) ?? disconnectMessage(); experienceState(experience, connected ? 'disabled' : 'error', connected ? 4 : 5); stop(false, !connected, activeMode === 'transcription'); } };
 			socket.onerror = () => { if (epoch === generation) { error = connected && activeMode === 'live' ? disconnectMessage() : t('realtimeVoice.connectionUnavailable'); experienceState(experience, 'error', 5); stop(false, !connected, activeMode === 'transcription'); } };
 		} catch (cause) {
 			if (epoch !== generation) return;
