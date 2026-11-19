@@ -39,6 +39,8 @@
 		models: AvailableModel[];
 		busy?: boolean;
 		actionsDisabled?: boolean;
+		/** Disables only billed retry/regenerate, e.g. in the pool-less Personal domain. */
+		runActionsDisabled?: boolean;
 		loading?: boolean;
 		modelLocked?: boolean;
 		/** 메시지 id → TTFT/생성 속도 계측(런타임, 미저장). draft는 message.metrics로 전달. */
@@ -78,6 +80,7 @@
 		models,
 		busy = false,
 		actionsDisabled = false,
+		runActionsDisabled = false,
 		loading = false,
 		modelLocked = false,
 		metricsById = new Map<string, StreamMetrics>(),
@@ -337,6 +340,7 @@
 							message={msg}
 							{models}
 							busy={busy || actionsDisabled}
+							runDisabled={runActionsDisabled}
 							{modelLocked}
 							metrics={msg.metrics ?? metricsById.get(msg.id) ?? null}
 							toolItems={restoredToolItems(msg)}

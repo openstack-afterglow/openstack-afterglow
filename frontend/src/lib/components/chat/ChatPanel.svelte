@@ -2751,7 +2751,7 @@
 
 	// --- 재생성 ---
 	async function regenerate(messageId: string, choice: AvailableModel | null) {
-		if (!canChat) return;
+		if (!canChat || $personalWorkspace) return;
 		if (streaming || preparingRun || tempMode || !activeConvId || !token || !projectId) return;
 		const conversationId = activeConvId;
 		error = null;
@@ -2803,7 +2803,7 @@
 	}
 
 	async function retryFailedTurn(messageId: string) {
-		if (!canChat) return;
+		if (!canChat || $personalWorkspace) return;
 		if (streaming || preparingRun || tempMode || !token || !projectId) return;
 		const experience = beginExperienceAction('lumen', 'retry', 'shared.stream');
 		if (failedSubmission?.message.id === messageId) {
@@ -3255,7 +3255,8 @@
 
 		<div class="chat-workspace" class:empty-workspace={isEmpty && !treeLoading && !historyLoading} class:expanded-composer={expandedComposer} class:temp-mode={tempMode}>
 		<ChatWindow
-			actionsDisabled={!canChat || $personalWorkspace}
+			actionsDisabled={!canChat}
+			runActionsDisabled={$personalWorkspace}
 			activePath={displayPath}
 			unpositionedTemporaryRuns={tempMode ? tempUnpositionedRuns : []}
 			hasMoreTemporaryRuns={tempMode && tempRunHistoryHasMore}

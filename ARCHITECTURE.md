@@ -2304,9 +2304,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "7fb3fb33eba9967fecb47255d23d9c8e72cea2ddc39b4220bbbc4ad1abc76228",
-  "reviewed_at": "2026-11-19T03:25:45Z",
-  "summary": "Personal 도메인 대시보드 채팅·Studio 안내와 domain_credit_insufficient 표시 매핑 검토(표시 전용, Lumen admission 불변)"
+  "source_sha256": "32488265bb0fb00a337b167f53ca2092a8acccfaab070d8d91899622d2dc9ccd",
+  "reviewed_at": "2026-11-19T03:28:55Z",
+  "summary": "Personal 도메인에서 버전 탐색·분기는 유지하고 과금 재시도·재생성만 비활성화"
 }
 ```
 <!-- architecture-review:end -->
