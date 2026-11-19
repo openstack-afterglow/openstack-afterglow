@@ -189,6 +189,20 @@ describe('ChatSettings usage views', () => {
 		expect(screen.getByText(t('settings.usage.monthlyQuota', { used: '3', limit: '50' }))).toBeTruthy();
 	});
 
+	it('warns when the current domain pool cannot pay', async () => {
+		actor(false);
+		const personal = mocks.get.getMockImplementation()!;
+		const pool = { domain_id: 'domain-1', exists: true, funded: false, reserved_credits: '0', monthly_used_credits: '0', effective_monthly_limit_credits: null };
+		mocks.get.mockImplementation(async (path: string) => path === '/api/v1/chat/usage' ? { ...summary('self'), domain_pool: { ...pool, balance_credits: '5' } } : personal(path));
+		const { unmount } = render(ChatSettings);
+		await screen.findByText(t('domainBilling.inactive'));
+		unmount();
+		mocks.get.mockImplementation(async (path: string) => path === '/api/v1/chat/usage' ? { ...summary('self'), domain_pool: { ...pool, balance_credits: '0' } } : personal(path));
+		render(ChatSettings);
+		await screen.findByText(t('domainBilling.insufficient'));
+		expect(screen.queryByText(t('domainBilling.inactive'))).toBeNull();
+	});
+
 	it('shows no pool card when the current domain has no pool', async () => {
 		actor(false);
 		const personal = mocks.get.getMockImplementation()!;

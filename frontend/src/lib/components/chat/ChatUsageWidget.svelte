@@ -17,8 +17,9 @@
 	}
 	const quotaPct = $derived(usedPercent(usage.quota_used, usage.quota_max));
 	const poolPct = $derived(poolSummary ? usedPercent(poolSummary.monthly_used_credits, poolSummary.effective_monthly_limit_credits) : null);
-	// Dashboard chat draws on the pool when one exists, so the bar follows the pool limit.
-	const barPct = $derived(poolSummary ? poolPct : quotaPct);
+	// Prefer the pool limit when it has a usage percentage; an unlimited pool leaves the
+	// caller's own monthly limit as the only one to show on the bar.
+	const barPct = $derived(poolPct ?? quotaPct);
 	const barTone = $derived(barPct !== null && barPct >= 90 ? 'danger' : barPct !== null && barPct >= 70 ? 'warning' : 'ok');
 
 	function fmtPercent(n: number): string {
@@ -46,7 +47,7 @@
 		</div>
 	{/if}
 	{#if barPct !== null}
-		<div class="bar" aria-label={poolSummary ? t('usage.poolUsage', { percent: fmtPercent(barPct) }) : t('usage.quotaUsage', { percent: fmtPercent(barPct) })}>
+		<div class="bar" role="img" aria-label={poolPct !== null ? t('usage.poolUsage', { percent: fmtPercent(barPct) }) : t('usage.quotaUsage', { percent: fmtPercent(barPct) })}>
 			<BklitChart spec={{ kind: 'gauge', value: Math.min(100, barPct), color: barTone === 'danger' ? 'var(--color-state-danger)' : barTone === 'warning' ? 'var(--color-state-warning)' : 'var(--color-accent)', track: 'var(--color-surface-sunken)' }} height={5} decorative />
 		</div>
 	{/if}

@@ -385,17 +385,17 @@
 		return { model_id: model.model_name, model_row_id: model.id };
 	}
 	$effect(() => {
-		const caps = selectedModelObj?.capabilities;
+		const model = selectedModelObj;
+		if (!model) return;
+		const caps = model.capabilities;
 		if (!caps?.web_search || caps.feature_gates?.web_search?.mode !== 'native') searchEnabled = false;
 	});
 
 	// 모델을 바꾸면 현재 effort 가 새 모델에 없을 수 있으므로 정규화(없으면 null=서버 기본).
 	$effect(() => {
-		const normalized = normalizeEffort(
-			effort,
-			selectedModelObj?.capabilities,
-			selectedModelObj?.reasoning_none_supported
-		);
+		const model = selectedModelObj;
+		if (!model) return;
+		const normalized = normalizeEffort(effort, model.capabilities, model.reasoning_none_supported);
 		if (normalized !== effort) effort = normalized;
 	});
 
@@ -3054,6 +3054,8 @@
 					historyLoading = false; historyNewActivity = false; newlyCreatedConversationId = null;
 					input = ''; error = null; pendingWorkspaceId = null;
 					selectedModelId = null;
+					searchEnabled = false;
+					effort = 'auto';
 				}
 				if (project !== previousProject) {
 					models = [];

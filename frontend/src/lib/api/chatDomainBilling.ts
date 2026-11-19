@@ -117,9 +117,11 @@ export function currentDomainPool(usage: ChatUsage | null | undefined, domainId:
 		const pool = usage.domain_pool;
 		// A domain without a pool (the personal domain included) has no balance to show.
 		if (!pool?.exists || pool.domain_id !== domainId) return null;
-		// Only the domain view's own pool summary reports the active flag.
+		// `funded` means active with a positive balance. An unfunded pool that still holds credits
+		// is inactive; the domain view reports the flag directly.
 		const domainView = usage.billing_scope === 'domain' && usage.payer_domain_id === domainId;
-		return { ...pool, is_active: domainView ? usage.is_active : undefined, legacy: false };
+		const inactive = !pool.funded && Number(pool.balance_credits) > 0;
+		return { ...pool, is_active: domainView && usage.is_active !== undefined ? usage.is_active : inactive ? false : undefined, legacy: false };
 	}
 	if (usage.billing_scope !== 'domain' || usage.payer_domain_id !== domainId) return null;
 	return {

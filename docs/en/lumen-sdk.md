@@ -342,7 +342,7 @@ Personal and service keys can send **tools that the client declares and executes
 
 If any rejected tool is present, the whole request fails with `403 server_tool_not_allowed_for_key` before any credit hold or provider call. OpenAI and Gemini return it as the error code; Anthropic and the legacy Claude gateway carry it in the error message. Perplexity Sonar models, which have built-in web search, are rejected separately with `model_requires_server_tools`.
 
-Codex CLI 0.170 sends a hosted `web_search` tool on every Responses request by default. The setup script writes `web_search = "disabled"` into the `lumen-cli`, `lumen-sol` and `lumen-luna` profiles it manages and replaces any other value there. It does not change your desktop `config.toml`. For manual runs, add the override: `codex --strict-config -c model_provider=lumen -c web_search=disabled -m "<Responses model ID>"`.
+Codex CLI sends a hosted `web_search` tool on every Responses request by default (verified on 0.160.0 and 0.170.0). The setup script writes `web_search = "disabled"` into the `lumen-cli`, `lumen-sol` and `lumen-luna` profiles it manages and replaces any other value there. It does not change your desktop `config.toml`. For manual runs, add the override: `codex --strict-config -c model_provider=lumen -c web_search=disabled -m "<Responses model ID>"`. Both versions accept the key under `--strict-config` and then omit the tool.
 
 OpenAI Python function calling:
 

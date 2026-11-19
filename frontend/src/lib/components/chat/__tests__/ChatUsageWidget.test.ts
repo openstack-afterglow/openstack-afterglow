@@ -47,13 +47,25 @@ describe('chat header domain pool', () => {
 
 	it.each([false, true])('shows the pool balance and limit with the personal guard (manager: %s)', (isDomainManager) => {
 		actor('domain-1', isDomainManager);
-		const { container } = render(ChatUsageWidget, { props: { usage: selfView } });
+		render(ChatUsageWidget, { props: { usage: selfView } });
 		expect(screen.getByText(settingsT('domainBilling.balance'))).toBeTruthy();
 		expect(screen.getByText('25.5')).toBeTruthy();
 		expect(screen.getByText(t('usage.poolLimit')).nextElementSibling?.textContent).toBe(t('usage.used', { percent: '30%' }));
 		expect(screen.getByText(t('usage.personalLimit')).nextElementSibling?.textContent).toBe(t('usage.used', { percent: '10%' }));
-		expect(container.querySelector('.bar')?.getAttribute('aria-label')).toBe(t('usage.poolUsage', { percent: '30%' }));
+		expect(screen.getByRole('img', { name: t('usage.poolUsage', { percent: '30%' }) })).toBeTruthy();
 		expect(screen.queryByText(t('usage.monthQuota'))).toBeNull();
+	});
+
+	it('keeps the personal limit on the bar when the pool is unlimited', () => {
+		const { container } = render(ChatUsageWidget, { props: { usage: { ...selfView, domain_pool: { ...pool, effective_monthly_limit_credits: null } } } });
+		expect(screen.getByText(t('usage.poolLimit')).nextElementSibling?.textContent).toBe(settingsT('domainBilling.noLimit'));
+		expect(screen.getByRole('img', { name: t('usage.quotaUsage', { percent: '10%' }) })).toBeTruthy();
+		expect(container.querySelector('.usage')?.getAttribute('title')).toBe(t('usage.quotaTitle', { percent: '10%' }));
+	});
+
+	it.each([pool.effective_monthly_limit_credits, null])('marks an unfunded pool that still holds credits as inactive (limit: %s)', (limit) => {
+		render(ChatUsageWidget, { props: { usage: { ...selfView, domain_pool: { ...pool, funded: false, effective_monthly_limit_credits: limit } } } });
+		expect(screen.getByText(settingsT('domainBilling.inactiveLabel'))).toBeTruthy();
 	});
 
 	it('shows no pool line in a domain without a pool', () => {
