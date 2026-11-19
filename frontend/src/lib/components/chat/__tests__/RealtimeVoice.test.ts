@@ -7,6 +7,7 @@ import type * as ClientModule from '$lib/api/client';
 import RealtimeVoice from '../RealtimeVoice.svelte';
 import { t } from '$lib/i18n/ns/chat-studio';
 import { t as chatT } from '$lib/i18n/ns/chat-panel';
+import { t as settingsT } from '$lib/i18n/ns/chat-settings';
 import * as experience from '$lib/utils/experience';
 
 const calls = vi.hoisted(() => ({ models: vi.fn(), capabilities: vi.fn(), createSession: vi.fn(), connect: vi.fn(), fetch: vi.fn() }));
@@ -29,7 +30,7 @@ class Socket {
 	static instances: Socket[] = [];
 	readyState = 0;
 	onmessage: ((event: MessageEvent) => void) | null = null;
-	onclose: (() => void) | null = null;
+	onclose: ((event: CloseEvent) => void) | null = null;
 	onerror: (() => void) | null = null;
 	sent: string[] = [];
 	closed = false;
@@ -38,6 +39,7 @@ class Socket {
 	close() { this.readyState = 3; this.closed = true; }
 	open() { this.readyState = 1; }
 	message(value: Record<string, unknown>) { this.onmessage?.({ data: JSON.stringify(value) } as MessageEvent); }
+	closeFromServer(code = 1000, reason = '') { this.onclose?.({ code, reason } as CloseEvent); }
 }
 
 class Capture {
@@ -134,7 +136,7 @@ describe('Realtime Voice', () => {
 		socket.message({ type: 'transcript.output.delta', delta: 'Response continues' });
 		await screen.findByText('Response continues');
 		socket.close();
-		socket.onclose?.();
+		socket.closeFromServer();
 		await screen.findByText(t('realtimeVoice.connectionClosed'));
 		expect(track.stop).toHaveBeenCalledTimes(1);
 	});
@@ -292,7 +294,7 @@ describe('Realtime Voice', () => {
 		socket.message({ type: 'session.ready', realtime_kind: 'live', input_sample_rate_hz: 24000, output_sample_rate_hz: 24000 });
 		await screen.findByText(t('realtimeVoice.connectedMicrophoneOn'));
 		socket.close();
-		socket.onclose?.();
+		socket.closeFromServer();
 		expect(await screen.findByText(t('realtimeModes.usageUnconfirmed'))).toBeTruthy();
 		expect(screen.queryByText(t('realtimeTranscription.ended'))).toBeNull();
 		expect(track.stop).toHaveBeenCalled();
@@ -623,11 +625,45 @@ describe('Realtime Voice', () => {
 		socket.message({ type: 'transcript.input.delta', item_id: 'turn-1', delta: 'partial text' });
 		socket.message({ type: 'transcript.input.failed', item_id: 'turn-1' });
 		await screen.findByText(t('realtimeTranscription.failed'));
-		socket.onclose?.();
+		socket.closeFromServer();
 		await screen.findByText(t('realtimeVoice.connectionClosed'));
 		expect(screen.getByText('partial text')).toBeTruthy();
 		expect(screen.queryByText(t('realtimeTranscription.final'))).toBeNull();
 		expect(screen.getByText(t('realtimeTranscription.unfinished'))).toBeTruthy();
 		expect(stopTrack).toHaveBeenCalled();
+	});
+
+	it.each([
+		[4429, 'domain_credit_insufficient'],
+		[4429, ''],
+		[1008, 'domain_credit_insufficient']
+	] as const)('asks organization members for a top-up when the relay closes with %i "%s"', async (code, reason) => {
+		setVerifiedLumenActor({ ...user('project-1'), availableDomains: [{ id: 'domain-1', name: 'Domain', kind: 'organization' }] });
+		const track = { stop: vi.fn(), enabled: true };
+		vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [track] }) } });
+		render(RealtimeVoice);
+		await screen.findByText(t('realtimeVoice.ready'));
+		await fireEvent.click(screen.getByRole('button', { name: t('realtimeVoice.startSession') }));
+		await waitFor(() => expect(Socket.instances).toHaveLength(1));
+		const socket = Socket.instances[0]; socket.open();
+		socket.message({ type: 'session.ready', realtime_kind: 'conversation', input_sample_rate_hz: 24000, output_sample_rate_hz: 24000 });
+		await screen.findByText(t('realtimeVoice.connectedMicrophoneOn'));
+		socket.closeFromServer(code, reason);
+		expect(await screen.findByText(settingsT('dashboardChat.organizationCreditInsufficient'))).toBeTruthy();
+		expect(screen.queryByText(t('realtimeVoice.connectionClosed'))).toBeNull();
+		expect(track.stop).toHaveBeenCalled();
+	});
+
+	it('keeps the generic message for other relay closes', async () => {
+		vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: vi.fn(), enabled: true }] }) } });
+		render(RealtimeVoice);
+		await screen.findByText(t('realtimeVoice.ready'));
+		await fireEvent.click(screen.getByRole('button', { name: t('realtimeVoice.startSession') }));
+		await waitFor(() => expect(Socket.instances).toHaveLength(1));
+		const socket = Socket.instances[0]; socket.open();
+		socket.message({ type: 'session.ready', realtime_kind: 'conversation', input_sample_rate_hz: 24000, output_sample_rate_hz: 24000 });
+		await screen.findByText(t('realtimeVoice.connectedMicrophoneOn'));
+		socket.closeFromServer(1011, '');
+		expect(await screen.findByText(t('realtimeVoice.connectionClosed'))).toBeTruthy();
 	});
 });

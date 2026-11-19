@@ -22,7 +22,7 @@ from websockets.exceptions import ConnectionClosed
 from websockets.sync.server import serve
 
 from app.api.deps import get_token_info
-from app.api.lumen.realtime import router
+from app.api.lumen.realtime import _browser_close, router
 from app.services import ws_ticket
 
 
@@ -296,6 +296,68 @@ def test_realtime_relay_preserves_admitted_large_messages_and_rejects_overflow(
         accepted,
         *([1009] if overflow_from_lumen else []),
     ]
+
+
+@pytest.mark.parametrize(
+    ("lumen_code", "lumen_reason", "browser_code", "browser_reason"),
+    [
+        (4429, "domain_credit_insufficient", 4429, "domain_credit_insufficient"),
+        (1008, "policy", 1008, "policy"),
+        (1000, "", 1000, ""),
+        # Codes outside the relayed set never pass through, and neither does their text.
+        (3000, "Traceback: internal detail", 1011, ""),
+        (1003, "unsupported", 1011, ""),
+    ],
+)
+def test_realtime_relay_bounds_lumen_close_code_and_reason(
+    monkeypatch, lumen_code, lumen_reason, browser_code, browser_reason
+):
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1/chat")
+
+    def lumen(websocket):
+        websocket.recv(timeout=5)
+        websocket.close(code=lumen_code, reason=lumen_reason)
+
+    with serve(lumen, "127.0.0.1", 0) as server:
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            monkeypatch.setattr(
+                ws_ticket,
+                "consume_ticket",
+                AsyncMock(
+                    return_value={"session_id": str(uuid4()), "connect_token": "private-lumen-token-" + "1" * 20}
+                ),
+            )
+            monkeypatch.setattr("app.api.lumen.realtime._origin_allowed", lambda origin: True)
+            monkeypatch.setattr(
+                "app.services.service_proxy.resolve_service_endpoint",
+                AsyncMock(return_value=f"http://127.0.0.1:{server.socket.getsockname()[1]}"),
+            )
+            with (
+                TestClient(app) as browser,
+                browser.websocket_connect(
+                    "/api/v1/chat/realtime/ws?ticket=opaque", headers={"origin": "https://console.example"}
+                ) as socket,
+            ):
+                socket.send_text('{"type":"session.update"}')
+                result = socket.receive()
+        finally:
+            server.shutdown()
+            thread.join(timeout=5)
+    assert (result["type"], result["code"], result.get("reason") or "") == (
+        "websocket.close",
+        browser_code,
+        browser_reason,
+    )
+
+
+def test_realtime_close_reason_keeps_whole_characters_within_123_bytes():
+    # A peer cannot send more than 123 bytes, so the bound is checked directly.
+    assert _browser_close(4429, "é" * 62) == (4429, "é" * 61)
+    assert _browser_close(None, "domain_credit_insufficient") == (1011, "")
+    assert _browser_close(5000, "domain_credit_insufficient") == (1011, "")
 
 
 @pytest.mark.asyncio
