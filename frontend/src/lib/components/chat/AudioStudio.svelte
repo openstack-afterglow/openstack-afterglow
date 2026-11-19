@@ -11,6 +11,9 @@
 	import { ApiError } from '$lib/api/client';
 	import { serviceCapabilities, serviceDenials } from '$lib/stores/servicePermissions';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
+	import PersonalWorkspaceNotice from './PersonalWorkspaceNotice.svelte';
+	import { personalWorkspace } from '$lib/stores/personalWorkspace';
+	import { dashboardCreditMessage } from '$lib/api/chatDomainBilling';
 	import ProviderModelSelect from './ProviderModelSelect.svelte';
 	import { Alert, Button, CompactResourceCard, Field, PageShell, ResponsiveTable, SelectInput, Tabs, TextareaInput, TextInput } from '$lib/components/ui';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
@@ -112,8 +115,8 @@
 	);
 	const fingerprint = $derived(JSON.stringify([ownerKey, selected.tts, draft.trim(), voice, format]));
 	const transcriptionFingerprint = $derived(JSON.stringify([ownerKey, selected.stt, assetId, language.trim(), requestTimestamps ? SEGMENT_TIMESTAMPS : []]));
-	const ttsReady = $derived(audioAllowed && !loading.tts && !capabilityLoading.tts && !ttsReadiness && Boolean(draft.trim()) && voices.includes(voice) && formats.includes(format) && !busyTts);
-	const sttReady = $derived(audioAllowed && Boolean(assetId) && !sttReadiness && !loading.stt && !capabilityLoading.stt && !busyStt && !recording);
+	const ttsReady = $derived(audioAllowed && !$personalWorkspace && !loading.tts && !capabilityLoading.tts && !ttsReadiness && Boolean(draft.trim()) && voices.includes(voice) && formats.includes(format) && !busyTts);
+	const sttReady = $derived(audioAllowed && !$personalWorkspace && Boolean(assetId) && !sttReadiness && !loading.stt && !capabilityLoading.stt && !busyStt && !recording);
 	$effect(() => {
 		const current = fingerprint;
 		untrack(() => { if (pendingSpeech && pendingSpeech.fingerprint !== current) pendingSpeech = null; });
@@ -124,6 +127,8 @@
 	});
 
 	function message(cause: unknown): string {
+		const credit = dashboardCreditMessage(cause);
+		if (credit) return credit;
 		if (cause instanceof ApiError) {
 			if (cause.status === 401 || cause.status === 403) return t('audioStudio.projectDenied');
 			if (cause.status === 402) return t('audioStudio.quotaInsufficient');
@@ -563,6 +568,7 @@
 
 <PageShell>
 	<LumenPermissionNotice leaves={['lumen-audio_user']} />
+	<PersonalWorkspaceNotice />
 	<div class="studio">
 		<header class="header">
 			<div class="title">
@@ -597,7 +603,7 @@
 					<aside class="settings" aria-labelledby="audio-tts-settings">
 						<h2 id="audio-tts-settings">{t('audioStudio.speechSettings')}</h2>
 						<ProviderModelSelect models={models.tts} value={selected.tts} onSelect={(row) => selectModel('tts', row)} modelLabel={t('audioStudio.speechModel')} placeholder={t('audioStudio.selectModel')} id="audio-tts-model" disabled={!audioAllowed || loading.tts || busyTts} />
-						{#if loading.tts || capabilityLoading.tts}<LoadingState variant="inline" label={t('audioStudio.speechChecking')} />{:else if errors.tts}<Alert tone="danger">{errors.tts} <Button variant="subtle" disabled={!audioAllowed} onclick={() => scope && loadModels('tts', scope, generation)}>{t('audioStudio.reloadModels')}</Button></Alert>{:else if !models.tts.length}<Alert tone="warning">{t('audioStudio.noSpeechModels')}</Alert>{:else if ttsReadiness}<Alert tone="warning">{ttsReadiness}</Alert>{:else if audioAllowed}<p role="status" class="ready">{t('audioStudio.speechReady')}</p>{/if}
+						{#if loading.tts || capabilityLoading.tts}<LoadingState variant="inline" label={t('audioStudio.speechChecking')} />{:else if errors.tts}<Alert tone="danger">{errors.tts} <Button variant="subtle" disabled={!audioAllowed} onclick={() => scope && loadModels('tts', scope, generation)}>{t('audioStudio.reloadModels')}</Button></Alert>{:else if !models.tts.length}<Alert tone="warning">{t('audioStudio.noSpeechModels')}</Alert>{:else if ttsReadiness}<Alert tone="warning">{ttsReadiness}</Alert>{:else if audioAllowed && !$personalWorkspace}<p role="status" class="ready">{t('audioStudio.speechReady')}</p>{/if}
 						<fieldset class="voices" disabled={!audioAllowed || busyTts || !voices.length}>
 							<legend>{t('audioStudio.voice')}</legend>
 							{#if voices.length}
@@ -657,7 +663,7 @@
 					<aside class="settings" aria-labelledby="audio-stt-settings">
 						<h2 id="audio-stt-settings">{t('audioStudio.transcriptionSettings')}</h2>
 						<ProviderModelSelect models={models.stt} value={selected.stt} onSelect={(row) => selectModel('stt', row)} modelLabel={t('audioStudio.transcriptionModel')} placeholder={t('audioStudio.selectModel')} id="audio-stt-model" disabled={!audioAllowed || loading.stt || busyStt} />
-						{#if loading.stt || capabilityLoading.stt}<LoadingState variant="inline" label={t('audioStudio.transcriptionChecking')} />{:else if errors.stt}<Alert tone="danger">{errors.stt} <Button variant="subtle" disabled={!audioAllowed} onclick={() => scope && loadModels('stt', scope, generation)}>{t('audioStudio.reloadModels')}</Button></Alert>{:else if !models.stt.length}<Alert tone="warning">{t('audioStudio.noTranscriptionModels')}</Alert>{:else if sttReadiness}<Alert tone="warning">{sttReadiness}</Alert>{:else if audioAllowed}<p role="status" class="ready">{t('audioStudio.transcriptionReady')}</p>{/if}
+						{#if loading.stt || capabilityLoading.stt}<LoadingState variant="inline" label={t('audioStudio.transcriptionChecking')} />{:else if errors.stt}<Alert tone="danger">{errors.stt} <Button variant="subtle" disabled={!audioAllowed} onclick={() => scope && loadModels('stt', scope, generation)}>{t('audioStudio.reloadModels')}</Button></Alert>{:else if !models.stt.length}<Alert tone="warning">{t('audioStudio.noTranscriptionModels')}</Alert>{:else if sttReadiness}<Alert tone="warning">{sttReadiness}</Alert>{:else if audioAllowed && !$personalWorkspace}<p role="status" class="ready">{t('audioStudio.transcriptionReady')}</p>{/if}
 						<Field label={t('audioStudio.languageCode')} for="audio-language"><TextInput id="audio-language" bind:value={language} placeholder={t('audioStudio.languagePlaceholder')} disabled={!audioAllowed || busyStt} /></Field>
 						<div class="switch-row">
 							<div class="switch-copy">

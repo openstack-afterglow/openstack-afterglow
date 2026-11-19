@@ -6,6 +6,8 @@
 	import { t as mcpT } from '$lib/i18n/ns/mcp-gallery';
 	import ManagedSandboxToolsPicker from './ManagedSandboxToolsPicker.svelte';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
+	import PersonalWorkspaceNotice from './PersonalWorkspaceNotice.svelte';
+	import { personalWorkspace } from '$lib/stores/personalWorkspace';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import type { CloudToolsCatalogue, ContextState, ModelCapabilities } from '$lib/api/chatContracts';
 	import { siteConfig } from '$lib/config/site';
@@ -113,6 +115,8 @@
 		onStop,
 		children
 	}: Props = $props();
+	const componentId = $props.id();
+	const personalNoticeId = `${componentId}-personal-workspace`;
 	const shownPlaceholder = $derived(placeholder ?? t('input.placeholder'));
 
 	let ta = $state<HTMLTextAreaElement | null>(null);
@@ -529,7 +533,8 @@
 		effortOpen = false;
 	}
 
-	const canSend = $derived($serviceCapabilities('lumen-chat_user') && (!searchRequired || $serviceCapabilities('lumen-tools_user')) && !disabled && !sendDisabled && !streaming && !$managedSandboxTools.preparing && !managedSelectionError && value.trim().length > 0);
+	// The Personal domain has no credit pool; Lumen still decides admission for every other scope.
+	const canSend = $derived(!$personalWorkspace && $serviceCapabilities('lumen-chat_user') && (!searchRequired || $serviceCapabilities('lumen-tools_user')) && !disabled && !sendDisabled && !streaming && !$managedSandboxTools.preparing && !managedSelectionError && value.trim().length > 0);
 
 	const format = $derived(new Intl.NumberFormat(intlLocale()));
 	const knownContext = $derived(
@@ -619,6 +624,7 @@
 
 <div class="composer">
 	<LumenPermissionNotice leaves={['lumen-chat_user', 'lumen-tools_user', 'lumen-assets_editor']} />
+	<PersonalWorkspaceNotice id={personalNoticeId} />
 	<input
 		bind:this={fileInput}
 		type="file"
@@ -897,7 +903,7 @@
 						<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="1.5" /></svg>
 					</button>
 				{:else}
-					<button type="button" class="send" disabled={!canSend} onclick={onSend} title={t('input.send')} aria-label={t('input.send')}>
+					<button type="button" class="send" disabled={!canSend} onclick={() => { if (canSend) onSend(); }} title={t('input.send')} aria-label={t('input.send')} aria-describedby={$personalWorkspace ? personalNoticeId : undefined}>
 						<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7" stroke-linecap="round" stroke-linejoin="round" /></svg>
 					</button>
 				{/if}

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { derived } from 'svelte/store';
 	import { auth, authReady, logoutInProgress, projectSwitching } from '$lib/stores/auth';
 	import { sessionScopeKey } from '$lib/utils/authSession';
@@ -18,7 +18,7 @@
 	import { beginAuthExperience, createAuthNoticePresenter, type AuthExperience } from '$lib/components/auth/authExperience';
 	import { recordExperience } from '$lib/utils/experience';
 
-	let { onSelected, onClose, mockup = false, busy = $bindable(false) }: { onSelected: () => void; onClose: () => void; mockup?: boolean; busy?: boolean } = $props();
+	let { onSelected, onClose, mockup = false, createDomain: openCreateDomain = false, busy = $bindable(false) }: { onSelected: () => void; onClose: () => void; mockup?: boolean; createDomain?: boolean; busy?: boolean } = $props();
 	const controller = createWorkspaceController(() => onSelected());
 	const componentId = $props.id();
 	let search = $state('');
@@ -30,7 +30,8 @@
 	let settings = $state(false);
 	let createProject = $state(false);
 	let projectSubmitting = $state(false);
-	let createDomain = $state(false);
+	// Entry points such as the personal-workspace chat notice open the existing create-domain form directly.
+	let createDomain = $state(untrack(() => openCreateDomain && !mockup && $auth.canCreateDomain === true));
 	let name = $state('');
 	let description = $state('');
 	let live = false;

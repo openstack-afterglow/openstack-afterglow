@@ -2,6 +2,7 @@ import { get } from 'svelte/store';
 import { t } from '$lib/i18n/ns/chat-settings';
 import { intlLocale } from '$lib/i18n/runtime.svelte';
 import { auth, logoutInProgress } from '$lib/stores/auth';
+import { personalWorkspace } from '$lib/stores/personalWorkspace';
 import { authDisplayContext } from '$lib/stores/authDisplayContext';
 import { api } from './client';
 import { isCreditInput } from './chatQuotas';
@@ -119,4 +120,20 @@ export function domainBillingErrorMessage(cause: unknown): string | undefined {
 	}
 	if (typeof cause !== 'string' || !Object.hasOwn(billingErrors, cause)) return;
 	return t(billingErrors[cause as keyof typeof billingErrors]);
+}
+
+const domainCreditInsufficient = 'domain_credit_insufficient';
+
+/** Lumen reports an unfunded or exhausted domain pool as this code, at any HTTP status or as a run error code. */
+export function isDomainCreditInsufficient(cause: unknown): boolean {
+	if (typeof cause === 'string') return cause.trim() === domainCreditInsufficient;
+	if (!cause || typeof cause !== 'object') return false;
+	if ('code' in cause && cause.code === domainCreditInsufficient) return true;
+	return 'message' in cause && typeof cause.message === 'string' && cause.message.trim() === domainCreditInsufficient;
+}
+
+/** Dashboard chat and Studio guidance: the Personal domain has no pool; organizations need a top-up. */
+export function dashboardCreditMessage(cause: unknown): string | undefined {
+	if (!isDomainCreditInsufficient(cause)) return;
+	return t(get(personalWorkspace) ? 'dashboardChat.personalUnavailable' : 'dashboardChat.organizationCreditInsufficient');
 }

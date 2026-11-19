@@ -16,6 +16,9 @@
 	import GeminiDecisionEditor from './GeminiDecisionEditor.svelte';
 	import GeminiDecisionResults from './GeminiDecisionResults.svelte';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
+	import PersonalWorkspaceNotice from './PersonalWorkspaceNotice.svelte';
+	import { personalWorkspace } from '$lib/stores/personalWorkspace';
+	import { dashboardCreditMessage } from '$lib/api/chatDomainBilling';
 	import ProviderModelSelect from './ProviderModelSelect.svelte';
 	import { t } from '$lib/i18n/ns/decision-studio';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
@@ -68,9 +71,11 @@
 	const model = $derived(models.find((entry) => entry.id === selected));
 	const gemini = $derived(isGeminiDecisionModel(model));
 	const readiness = $derived(decisionReadiness(model, verified));
-	const canRun = $derived(allowed && !loading && !checking && !busy && !fileReading && !loadError && !readiness);
+	const canRun = $derived(allowed && !$personalWorkspace && !loading && !checking && !busy && !fileReading && !loadError && !readiness);
 
 	function message(cause: unknown, geminiRequest = false): string {
+		const credit = dashboardCreditMessage(cause);
+		if (credit) return credit;
 		if (cause instanceof ApiError) return decisionFailure(cause, geminiRequest);
 		return cause instanceof Error ? cause.message : t('decisions.connectionFailed');
 	}
@@ -281,6 +286,7 @@
 <svelte:head><title>{t('decisions.title')}</title></svelte:head>
 <PageShell>
 	<LumenPermissionNotice leaves={['lumen-chat_user']} />
+	<PersonalWorkspaceNotice />
 	<div class="studio" data-testid="decision-studio">
 		<header class="header">
 			<div><h1 id="decision-title">{t('decisions.title')}</h1><p class="muted">{t('decisions.description')}</p></div>
@@ -294,7 +300,7 @@
 					{:else if loadError}<Alert tone="danger">{loadError}<Button variant="subtle" onclick={() => void loadModels()}>{t('decisions.reload')}</Button></Alert>
 					{:else if !models.length}<Alert tone="warning">{t('decisions.noModels')}</Alert>
 					{:else if readiness}<Alert tone="warning">{readiness}</Alert>
-					{:else}<p role="status" class="muted">{t('decisions.ready')}</p>{/if}
+					{:else if !$personalWorkspace}<p role="status" class="muted">{t('decisions.ready')}</p>{/if}
 				{/if}
 			</section>
 			{#if gemini}

@@ -11,6 +11,9 @@
 	import { effortLabel } from '$lib/api/chatEffort';
 	import { serviceCapabilities, serviceDenials } from '$lib/stores/servicePermissions';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
+	import PersonalWorkspaceNotice from './PersonalWorkspaceNotice.svelte';
+	import { personalWorkspace } from '$lib/stores/personalWorkspace';
+	import { dashboardCreditMessage } from '$lib/api/chatDomainBilling';
 	import ProviderModelSelect from './ProviderModelSelect.svelte';
 	import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, type ExperienceContext } from '$lib/utils/experience';
 
@@ -413,7 +416,7 @@
 				case 'error':
 					// Lumen reports rejected operations independently of session closure.
 					if (audioAllowed) {
-						error = t(packet.code === 'realtime_hold_limit' ? 'realtimeVoice.quotaInsufficient' : 'realtimeVoice.providerFailed');
+						error = dashboardCreditMessage(packet.code) ?? t(packet.code === 'realtime_hold_limit' ? 'realtimeVoice.quotaInsufficient' : 'realtimeVoice.providerFailed');
 						experienceState(experience, 'error', 5);
 					}
 					break;
@@ -425,7 +428,7 @@
 	}
 	async function start() {
 		if (!canPublish(generation) || !scope || !model || !capabilities || !mode || readiness || connecting || connected ||
-			!languageValid || (showVoice && !capabilities.available_voices.includes(voice))) return;
+			!languageValid || (showVoice && !capabilities.available_voices.includes(voice)) || $personalWorkspace) return;
 		if (!navigator.mediaDevices?.getUserMedia || typeof AudioWorkletNode === 'undefined') {
 			error = t('realtimeVoice.streamingUnsupported');
 			return;
@@ -468,7 +471,9 @@
 			socket.onerror = () => { if (epoch === generation) { error = connected && activeMode === 'live' ? disconnectMessage() : t('realtimeVoice.connectionUnavailable'); experienceState(experience, 'error', 5); stop(false, !connected, activeMode === 'transcription'); } };
 		} catch (cause) {
 			if (epoch !== generation) return;
+			const credit = dashboardCreditMessage(cause);
 			if (cause instanceof DOMException && cause.name === 'NotAllowedError') error = t('realtimeVoice.microphoneDenied');
+			else if (credit) error = credit;
 			else if (cause instanceof ApiError && cause.status === 402) error = t('realtimeVoice.quotaInsufficient');
 			else error = t('realtimeVoice.sessionFailed');
 			experienceState(experience, 'error', 5);
@@ -510,6 +515,7 @@
 
 <PageShell>
 	<LumenPermissionNotice leaves={['lumen-audio_user']} />
+	<PersonalWorkspaceNotice />
 	<div class="studio">
 		<header class="header"><div><p class="muted">{t('realtimeVoice.breadcrumb')}</p><h1>{t('realtimeTranscription.title')}</h1><p class="muted">{t('realtimeTranscription.description')}</p></div><Button href="/dashboard/chat" variant="secondary">{t('realtimeVoice.textChat')}</Button></header>
 		<Card><div class="controls">
@@ -529,9 +535,9 @@
 			{#if reasoningEfforts.length}
 				<Field label={chatT('input.reasoningEffort')} for="realtime-effort"><SelectInput id="realtime-effort" bind:value={reasoningEffort} disabled={!audioAllowed || connecting || connected || capabilityLoading}><option value="">{effortLabel('auto')}</option>{#each reasoningEfforts as effort (effort)}<option value={effort}>{effortLabel(effort)}</option>{/each}</SelectInput></Field>
 			{/if}
-			{#if error}<Alert tone="danger">{error}</Alert>{:else if loading || capabilityLoading}<LoadingState variant="inline" label={t('realtimeVoice.checking')} />{:else if readiness}<Alert tone="warning">{readiness}</Alert>{:else if audioAllowed}<Alert tone="success">{transcription ? t('realtimeTranscription.ready') : t('realtimeVoice.ready')}</Alert>{/if}
+			{#if error}<Alert tone="danger">{error}</Alert>{:else if loading || capabilityLoading}<LoadingState variant="inline" label={t('realtimeVoice.checking')} />{:else if readiness}<Alert tone="warning">{readiness}</Alert>{:else if audioAllowed && !$personalWorkspace}<Alert tone="success">{transcription ? t('realtimeTranscription.ready') : t('realtimeVoice.ready')}</Alert>{/if}
 			<div class="actions">
-				<Button disabled={!audioAllowed || !languageValid || Boolean(readiness) || loading || capabilityLoading || connecting || connected} onclick={() => void start()}>{#if connecting}<LoadingState variant="control" label={t('realtimeVoice.connecting')} />{:else}{transcription ? t('realtimeTranscription.start') : t('realtimeVoice.startSession')}{/if}</Button>
+				<Button disabled={!audioAllowed || $personalWorkspace || !languageValid || Boolean(readiness) || loading || capabilityLoading || connecting || connected} onclick={() => void start()}>{#if connecting}<LoadingState variant="control" label={t('realtimeVoice.connecting')} />{:else}{transcription ? t('realtimeTranscription.start') : t('realtimeVoice.startSession')}{/if}</Button>
 				<Button variant="secondary" disabled={!connected || ending || (!audioAllowed && muted)} onclick={toggleMute}>{muted ? t('realtimeVoice.microphoneOn') : t('realtimeVoice.microphoneOff')}</Button>
 				{#if transcription}
 					<Button variant="secondary" disabled={!connected || !audioAllowed || ending || commitBusy} onclick={() => void commitSegment()}>{t('realtimeTranscription.commit')}</Button>

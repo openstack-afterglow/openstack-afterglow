@@ -285,3 +285,13 @@ describe('ChatVault', () => {
 		expect(getJson).not.toHaveBeenCalled();
 	});
 });
+
+describe('ChatVault in the Personal domain', () => {
+	it('stays usable because Vault notes are not billed to a domain pool', async () => {
+		setVerifiedLumenActor({ ...get(auth), availableDomains: [{ id: 'working-a', name: 'Personal', kind: 'personal' }] });
+		render(ChatVault);
+		await fireEvent.click(await screen.findByRole('button', { name: note.title }));
+		await waitFor(() => expect(getJson).toHaveBeenCalledWith(`${base}/notes/1`, 'token-a', 'project-a', netOptions));
+		expect(screen.queryByText(/개인 프로젝트에서는 대시보드 채팅을 사용할 수 없습니다/)).toBeNull();
+	});
+});
