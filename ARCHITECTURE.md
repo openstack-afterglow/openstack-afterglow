@@ -2311,8 +2311,8 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "f5d6f4ee680083ef695515a22fcceba17fbba6e6ee2b9ea43a67ce4387c0c2cd",
-  "reviewed_at": "2026-11-19T18:38:23Z",
+  "source_sha256": "732a36d6ad77bd2e7e94903c2928ecc5bb896f6005e9e9999c9c9dfbbe87657a",
+  "reviewed_at": "2026-11-19T18:43:56Z",
   "summary": "Instance grid draws per-port security groups plus attached volumes and file shares, Drover cluster grid, provider key pool identity, registration date and monthly usage, dashboard trend disclosure removal"
 }
 ```

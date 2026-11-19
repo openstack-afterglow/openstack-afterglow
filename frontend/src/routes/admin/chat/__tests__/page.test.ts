@@ -842,7 +842,7 @@ describe("admin chat model pricing", () => {
     await fireEvent.input(screen.getByPlaceholderText("예: openai-prod"), { target: { value: "shared-chatgpt" } });
     await fireEvent.click(screen.getByRole("button", { name: "+ 프로바이더 추가" }));
     const dialog = await screen.findByRole("dialog", { name: t('accounts.manage') });
-    expect(await within(dialog).findByText("Team subscription")).toBeTruthy();
+    expect((await within(dialog).findAllByText(/Team subscription/)).length).toBeGreaterThan(0);
     expect(post).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(post.mock.calls[0][1])).not.toContain("must-be-cleared");
     expect(screen.queryByText("ABCD-EFGH")).toBeNull();
@@ -866,7 +866,7 @@ describe("admin chat model pricing", () => {
     expect(secret.value).toBe("");
     expect(screen.queryByText(tokenValue)).toBeNull();
     expect(screen.getByRole("dialog", { name: t('accounts.manage') })).toBeTruthy();
-    expect(screen.getAllByText("Team credential").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Team credential/).length).toBeGreaterThan(0);
   });
 
   it("starts the selected credential device flow explicitly and keeps polling single-flight", async () => {

@@ -83,16 +83,29 @@ describe('Drover grid scene', () => {
 		expect(buildK3sIsoScene({ ...data, expandedSecurityGroup: sources[0].id })).toEqual(selected);
 	});
 
-	it('fits three VMs and populated network/storage at 45% or better in a 26rem diagram', () => {
-		const nodes: K3sGridNode[] = [node, { id: 'worker-1', role: 'agent' }, { id: 'worker-2', role: 'agent' }];
+	it.each([3, 4])('separates a full Services zone from the rest of a %i-VM diagram', (count) => {
+		const nodes: K3sGridNode[] = [node, ...Array.from({ length: count - 1 }, (_, i): K3sGridNode => ({ id: `worker-${i}`, role: 'agent' }))];
 		const nodeData = Object.fromEntries(nodes.map((vm, i) => [vm.id, {
 			policy: { ports: [port(`port-${i}`, ['ssh', 'default'], `10.0.0.${i + 3}`)], security_groups: [ssh, { ...ssh, id: 'default' }] },
-			volumes: [{ volume_id: `vol-${i}`, name: 'root-disk', status: 'in-use' }],
-			shares: [{ file_storage_id: `share-${i}`, name: 'Manila share', share_proto: 'NFS', status: 'available' }],
+			volumes: Array.from({ length: 3 }, (_, j) => ({ volume_id: `vol-${i}-${j}`, name: `disk-${j}`, status: 'in-use' })),
+			shares: Array.from({ length: 2 }, (_, j) => ({ file_storage_id: `share-${i}-${j}`, name: `NFS share ${j}`, share_proto: 'NFS', status: 'available' })),
 		}]));
-		const { scene } = buildK3sIsoScene({ ...input, nodes, nodeData, services: { items: [lb], failedNamespaces: [] } });
-		const { bounds } = layoutScene(scene);
-		expect(Math.min((1040 - 20) / bounds.w, (416 - 20) / bounds.h)).toBeGreaterThanOrEqual(0.45);
+		const services = Array.from({ length: 6 }, (_, i) => ({ ...lb, name: `svc-${i}` }));
+		const { scene } = buildK3sIsoScene({ ...input, nodes, nodeData, services: { items: services, failedNamespaces: [] } });
+		const zone = scene.platforms.find(item => item.id === 'services')!;
+		const inside = scene.nodes.filter(item => item.kind === 'k8s-service');
+		const outside = scene.nodes.filter(item => item.kind !== 'k8s-service');
+		expect(inside).toHaveLength(6);
+		expect(outside.some(item => item.x >= zone.x && item.x <= zone.x + zone.w && item.y >= zone.y && item.y <= zone.y + zone.h)).toBe(false);
+		for (const [index, service] of inside.entries()) {
+			for (const other of [...outside, ...inside.slice(index + 1)]) {
+				expect(Math.hypot(service.x - other.x, service.y - other.y)).toBeGreaterThanOrEqual(1.19);
+			}
+		}
+		if (count === 3) {
+			const { bounds } = layoutScene(scene);
+			expect(Math.min((1040 - 20) / bounds.w, (416 - 20) / bounds.h)).toBeGreaterThanOrEqual(0.45);
+		}
 	});
 
 	it('links the API only to the observed address match without claiming Service reachability', () => {

@@ -392,8 +392,9 @@ export function buildK3sIsoScene(input: SceneInput) {
 
 	const catalog = input.services ? { ...input.services, items: ordered(input.services.items, serviceKey), failedNamespaces: [...input.services.failedNamespaces].sort() } : null;
 	const serviceItems = limited(catalog?.items, SERVICE_LIMIT);
-	const serviceX = -3.3;
-	const serviceY = -2.65;
+	// Keep Services beyond the API marker, clear of both VM rows and the network slabs.
+	const serviceX = 1.45;
+	const serviceY = -5.8;
 	const serviceColumns = Math.min(3, serviceItems.length);
 	const servicesId = 'services';
 	add({ id: servicesId, label: labels.services, style: 'zone', tone: 'info', x: serviceX, y: serviceY,
