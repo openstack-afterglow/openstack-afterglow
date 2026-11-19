@@ -138,29 +138,78 @@ def test_lumen_feature_gate_routes_inclusion():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("path", "request_body", "request_type", "response_body", "response_type"),
+    ("method", "path", "upstream_path", "request_body", "response_body", "response_type"),
     [
         (
+            "POST",
             "audio/speech",
-            b'{"model_id":1,"input":"hello"}',
-            "application/json",
+            "/v1/chat/audio/speech",
+            b'{"model_id":"12","model_row_id":12,"input":"hello","voice":"alloy"}',
             b"\x00\xffID3\x01\x80",
             "audio/mpeg",
         ),
         (
+            "POST",
             "audio/transcriptions",
-            b'{"model_id":1,"input_asset_id":"f6d18ec7-c8d8-4db8-9bd7-2dceb0f0f68e"}',
-            "application/json",
+            "/v1/chat/audio/transcriptions",
+            b'{"model_row_id":23,"input_asset_id":"f6d18ec7-c8d8-4db8-9bd7-2dceb0f0f68e"}',
             b'{"text":"hello"}',
+            "application/json",
+        ),
+        (
+            "POST",
+            "images/generations",
+            "/v1/chat/images/generations",
+            b'{"model_row_id":34, "prompt":"A blue square"}',
+            b'{"run_id":"image-run"}',
+            "application/json",
+        ),
+        (
+            "POST",
+            "images/edits",
+            "/v1/chat/images/edits",
+            b'{"model_row_id":34,"input_asset_id":"f6d18ec7-c8d8-4db8-9bd7-2dceb0f0f68e","prompt":"Make it red"}',
+            b'{"run_id":"image-run"}',
+            "application/json",
+        ),
+        (
+            "POST",
+            "temp-completions",
+            "/v1/temp-completions",
+            b'{"model_id":"configured-model","model_row_id":45,"parts":[{"type":"text","text":"hello"}]}',
+            b'{"run_id":"chat-run"}',
+            "application/json",
+        ),
+        (
+            "POST",
+            "conversations/42/runs/chat-run/retry",
+            "/v1/conversations/42/runs/chat-run/retry",
+            b'{"model_row_id":45}',
+            b'{"run_id":"retried-run"}',
+            "application/json",
+        ),
+        (
+            "POST",
+            "agents",
+            "/v1/agents",
+            b'{"name":"Agent","model_name":"configured-model","model_row_id":45}',
+            b'{"id":1}',
+            "application/json",
+        ),
+        (
+            "PATCH",
+            "agents/1",
+            "/v1/agents/1",
+            b'{"model_name":"configured-model","model_row_id":56}',
+            b'{"id":1}',
             "application/json",
         ),
     ],
 )
-async def test_audio_routes_preserve_bytes_types_and_caller_scope(
-    api_client, current_access, path, request_body, request_type, response_body, response_type
+async def test_model_routes_preserve_bytes_types_and_caller_scope(
+    api_client, method, path, upstream_path, request_body, response_body, response_type
 ):
     app.dependency_overrides[get_token_info] = _authenticated
-    current_access["roles"].append("lumen-audio_user")
     received = []
 
     async def handler(request):
@@ -176,23 +225,24 @@ async def test_audio_routes_preserve_bytes_types_and_caller_scope(
         patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1"),
         patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
     ):
-        response = await api_client.post(
+        response = await api_client.request(
+            method,
             f"/api/v1/chat/{path}",
             content=request_body,
             headers={
-                "content-type": request_type,
+                "content-type": "application/json",
                 "authorization": "Bearer browser-jwt",
-                "idempotency-key": "audio-request-1",
+                "idempotency-key": "model-request-1",
             },
         )
 
     assert response.status_code == 200
     assert response.content == response_body
     assert response.headers["content-type"] == response_type
-    method, url, headers, body = received.pop()
-    assert (method, url, body) == ("POST", f"http://isolated.test/v1/chat/{path}", request_body)
-    assert headers["content-type"] == request_type
-    assert headers["idempotency-key"] == "audio-request-1"
+    forwarded_method, url, headers, body = received.pop()
+    assert (forwarded_method, url, body) == (method, f"http://isolated.test{upstream_path}", request_body)
+    assert headers["content-type"] == "application/json"
+    assert headers["idempotency-key"] == "model-request-1"
     assert headers["x-auth-token"] == "caller-token"
     assert headers["x-project-id"] == "project-1"
     assert "authorization" not in headers
@@ -228,7 +278,10 @@ async def test_embedding_playground_proxy_uses_native_route_and_no_store(api_cli
 async def test_decisions_proxy_preserves_wire_scope_and_private_response(api_client, current_access, decisions_policy):
     app.dependency_overrides[get_token_info] = _authenticated
     current_access["roles"].append("lumen-chat_user")
-    body = b'{"model":"gpt-6-luna","input":"Synthetic","questions":[{"type":"predicate","instructions":"Is it text?"}]}'
+    body = (
+        b'{"model":"gpt-6-luna","model_row_id":67,"input":"Synthetic",'
+        b'"questions":[{"type":"predicate","instructions":"Is it text?"}]}'
+    )
     result = b'{"model":"gpt-6-luna","answers":[{"type":"predicate","probability":0.9}],"cost_usd":"0.000001"}'
     received = []
 
@@ -662,6 +715,7 @@ async def test_context_routes_preserve_post_body_and_idempotency(api_client, cur
         current_access["roles"].append("lumen-chat_user")
     request_body = {"model_id": "configured-model"}
     if operation == "context-preview":
+        request_body["model_row_id"] = 78
         request_body["parts"] = [{"type": "text", "text": "unsent draft"}]
     else:
         request_body["expected_context_revision"] = "revision-1"
@@ -1252,3 +1306,215 @@ async def test_private_account_transport_failure_does_not_log_url_or_exception_s
     assert secret not in response.text
     assert secret not in caplog.text
     assert "provider administration failed" in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "api-keys"),
+        ("POST", "service-keys"),
+        ("PATCH", "domain-pool"),
+        ("GET", "admin/domain-pools"),
+        ("PATCH", "admin/domain-pools/domain-1"),
+        ("POST", "admin/domain-pools/domain-1/topups"),
+        ("GET", "admin/domain-pools/domain-1/topups/topup-test-id"),
+        ("GET", "admin/service-keys"),
+    ],
+)
+async def test_lumen_key_billing_routes_require_session(api_client, method, path):
+    with patch("app.services.service_proxy._get_internal_endpoint") as endpoint:
+        response = await api_client.request(method, f"/api/v1/chat/{path}")
+    assert response.status_code == 401
+    assert response.headers["cache-control"] == "no-store"
+    endpoint.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "admin/domain-pools"),
+        ("PATCH", "admin/domain-pools/domain-1"),
+        ("POST", "admin/domain-pools/domain-1/topups"),
+        ("GET", "admin/domain-pools/domain-1/topups/topup-test-id"),
+        ("GET", "admin/service-keys"),
+    ],
+)
+async def test_lumen_key_billing_admin_routes_deny_project_members(api_client, method, path):
+    app.dependency_overrides[get_token_info] = _authenticated
+    with patch("app.services.service_proxy._get_internal_endpoint") as endpoint:
+        response = await api_client.request(method, f"/api/v1/chat/{path}")
+    assert response.status_code == 403
+    assert response.headers["cache-control"] == "no-store"
+    endpoint.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["service-keys", "domain-pool"])
+async def test_lumen_key_billing_manager_routes_deny_stale_or_spoofed_authority(api_client, path):
+    app.dependency_overrides[get_token_info] = _authenticated
+    with (
+        patch("app.services.domain_scope.domain_context", return_value={"is_domain_manager": False}) as context,
+        patch("app.services.service_proxy._get_internal_endpoint") as endpoint,
+    ):
+        response = await api_client.get(f"/api/v1/chat/{path}", headers={"X-Is-Domain-Manager": "true"})
+    assert response.status_code == 403
+    assert response.headers["cache-control"] == "no-store"
+    context.assert_called_once_with("user-1", "default")
+    endpoint.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "path", "status", "body", "reply"),
+    [
+        ("GET", "api-keys", 200, None, []),
+        ("GET", "api-keys/issuance-policy", 200, None, {"allowed_scopes": ["models:read"]}),
+        ("POST", "api-keys", 201, {"name": "CLI"}, {"key": "issued-once-fixture"}),
+        ("DELETE", "api-keys/12", 204, None, None),
+        ("GET", "service-keys", 200, None, []),
+        ("GET", "service-keys/issuance-policy", 200, None, {"allowed_scopes": ["models:read", "decisions:write"]}),
+        ("POST", "service-keys", 201, {"name": "Job"}, {"key": "issued-once-fixture"}),
+        ("DELETE", "service-keys/7", 204, None, None),
+        ("GET", "domain-pool", 200, None, {"domain_id": "default", "balance_credits": "3"}),
+        ("PATCH", "domain-pool", 409, {"manager_monthly_limit_credits": "5"}, {"detail": "domain_credit_insufficient"}),
+        ("GET", "admin/domain-pools", 200, None, {"items": []}),
+        ("PATCH", "admin/domain-pools/domain-1", 200, {"is_active": False}, {"is_active": False}),
+        (
+            "POST",
+            "admin/domain-pools/domain-1/topups",
+            409,
+            {"amount_credits": "1.5", "note": "test receipt"},
+            {"detail": {"code": "idempotency_key_reused_with_different_intent"}},
+        ),
+        ("GET", "admin/domain-pools/domain-1/topups/topup-test-id", 200, None, {"found": False, "entry": None}),
+        (
+            "GET",
+            "admin/service-keys?owner_domain_id=domain-1&before_id=10",
+            200,
+            None,
+            {"items": [], "next_before_id": None},
+        ),
+    ],
+)
+async def test_lumen_key_billing_transport_preserves_scope_and_codes(
+    api_client, current_system_admin, method, path, status, body, reply
+):
+    app.dependency_overrides[get_token_info] = (
+        _authenticated_system_admin if path.startswith("admin/") else _authenticated
+    )
+
+    async def handler(request):
+        assert request.method == method
+        assert str(request.url) == f"http://isolated.test/v1/{path}"
+        assert request.headers["x-auth-token"] == "caller-token"
+        assert request.headers["x-project-id"] == "project-1"
+        assert "x-domain-id" not in request.headers
+        if path.endswith("/topups"):
+            assert request.headers["idempotency-key"] == "topup-test-id"
+        if body is not None:
+            assert json.loads(await request.aread()) == body
+        return HttpxResponse(
+            status,
+            headers={"content-type": "application/json", "cache-control": "public, max-age=60"},
+            stream=httpx.ByteStream(b"" if reply is None else json.dumps(reply).encode()),
+        )
+
+    upstream = AsyncClient(transport=httpx.MockTransport(handler))
+    with (
+        patch("app.api.lumen.proxy.require_domain_manager", new_callable=AsyncMock) as manager_guard,
+        patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1"),
+        patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
+    ):
+        response = await api_client.request(
+            method,
+            f"/api/v1/chat/{path}",
+            json=body,
+            headers={"X-Domain-Id": "spoofed-domain", "Idempotency-Key": "topup-test-id"},
+        )
+    assert manager_guard.await_count == (1 if path.startswith(("service-keys", "domain-pool")) else 0)
+    assert response.status_code == status
+    assert response.headers["cache-control"] == "no-store"
+    if reply is None:
+        assert not response.content
+    else:
+        assert response.json() == reply
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "path", "status"),
+    [
+        ("GET", "service-keys/7", 405),
+        ("POST", "service-keys/issuance-policy", 405),
+        ("POST", "admin/domain-pools/a/topup", 404),
+        ("POST", "admin/domain-pools/a/topups/topup-test-id", 405),
+        ("GET", f"admin/domain-pools/a/topups/{'k' * 121}", 404),
+        ("GET", "admin/domain-pools/a/topups/key.with.dots", 404),
+        ("POST", "domain-pool", 405),
+    ],
+)
+async def test_lumen_key_billing_allowlist_denies_unknown_paths_and_methods(api_client, method, path, status):
+    app.dependency_overrides[get_token_info] = _authenticated
+    with patch("app.services.service_proxy._get_internal_endpoint") as endpoint:
+        response = await api_client.request(method, f"/api/v1/chat/{path}")
+    assert response.status_code == status
+    assert response.headers["cache-control"] == "no-store"
+    endpoint.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_lumen_key_billing_transport_does_not_log_private_exception(api_client, caplog):
+    app.dependency_overrides[get_token_info] = _authenticated
+    private = "private-native-fixture"
+
+    def handler(request):
+        raise httpx.ConnectError(f"transport rejected {private}", request=request)
+
+    upstream = AsyncClient(transport=httpx.MockTransport(handler))
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1"),
+        patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
+    ):
+        response = await api_client.post("/api/v1/chat/api-keys", json={"name": "CLI"})
+    assert response.status_code == 503
+    assert response.headers["cache-control"] == "no-store"
+    assert private not in response.text
+    assert private not in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path",
+    [
+        "usage?scope=domain",
+        "usage/timeseries?bucket=day&range=30d&scope=domain",
+        "usage/keys?scope=domain",
+        "usage/records?limit=50&source=api&scope=domain",
+    ],
+)
+async def test_lumen_usage_forwards_domain_scope_and_refusal(api_client, path):
+    app.dependency_overrides[get_token_info] = _authenticated
+
+    async def handler(request):
+        assert request.method == "GET"
+        assert str(request.url) == f"http://isolated.test/v1/{path}"
+        assert request.headers["x-auth-token"] == "caller-token"
+        assert request.headers["x-project-id"] == "project-1"
+        # Lumen alone decides live domain-manager authority for the pool view.
+        return HttpxResponse(
+            403,
+            headers={"content-type": "application/json", "cache-control": "public, max-age=60"},
+            stream=httpx.ByteStream(b'{"detail":"domain_manager_required"}'),
+        )
+
+    upstream = AsyncClient(transport=httpx.MockTransport(handler))
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1"),
+        patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
+    ):
+        response = await api_client.get(f"/api/v1/chat/{path}")
+    assert response.status_code == 403
+    assert response.json() == {"detail": "domain_manager_required"}
+    assert response.headers["cache-control"] == "no-store"

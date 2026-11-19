@@ -1,5 +1,5 @@
 import { grantLumen, pendingLumen, refreshLumenAuth, setVerifiedLumenActor } from './lumenPermissionFixture';
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { get } from 'svelte/store';
@@ -16,6 +16,7 @@ import { experienceHealth, installExperienceCollector, type ExperienceCollectorC
 import { managedSandboxTools, setManagedSandboxTools } from '$lib/stores/managedSandboxTools';
 import type { McpSettingsPage } from '$lib/api/mcpCatalog';
 import { t as mcpT } from '$lib/i18n/ns/mcp-gallery';
+import { t as studioT } from '$lib/i18n/ns/chat-studio';
 const mocks = vi.hoisted(() => ({
 	get: vi.fn(),
 	post: vi.fn(),
@@ -138,7 +139,7 @@ beforeEach(() => {
 	vi.stubGlobal('cancelAnimationFrame', (frame: number) => animationFrames.delete(frame));
 	mocks.get.mockImplementation(async (path: string) => {
 		if (path === '/api/v1/chat/models') {
-			return [{ id: 1, model_name: 'model-1', display_name: 'Model 1' }];
+			return [{ id: 1, provider_id: 11, provider: 'Provider A', model_name: 'model-1', display_name: 'Model 1' }];
 		}
 		if (path === '/api/v1/chat/runs?active=true') return [];
 		if (path === '/api/v1/chat/conversations') return [];
@@ -176,6 +177,181 @@ beforeEach(() => {
 });
 
 describe('ChatPanel', () => {
+	it('retains the sidebar and shared inventories across a same-domain project change', async () => {
+		const fallback = mocks.get.getMockImplementation()!;
+		const history = { id: 'shared', title: 'Domain conversation', model_name: 'model-1', workspace_id: null, updated_at: at };
+		mocks.get.mockImplementation((path: string, ...args: unknown[]) =>
+			path === '/api/v1/chat/conversations' ? Promise.resolve([history]) : fallback(path, ...args));
+		render(ChatPanel);
+		const historyControl = await screen.findByRole('button', { name: '대화 기록과 설정 열기' });
+		await fireEvent.click(historyControl);
+		const row = await screen.findByText('Domain conversation');
+		await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/workspaces', 'token', 'project-1'));
+		projectSwitching.set(true);
+		await tick();
+		setVerifiedLumenActor({ ...get(auth), projectId: 'project-2', token: 'selected-token' });
+		projectSwitching.set(false);
+		await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/usage', 'selected-token', 'project-2'));
+		expect(screen.getByText('Domain conversation')).toBe(row);
+		for (const endpoint of ['conversations', 'agents', 'workspaces', 'custom-tools', 'mcp-servers?active_only=true']) {
+			expect(mocks.get.mock.calls.filter(([path]) => path === `/api/v1/chat/${endpoint}`)).toHaveLength(1);
+		}
+	});
+
+	it('discards a late conversation list when the working domain changes', async () => {
+		const previous = Promise.withResolvers<unknown[]>();
+		const fallback = mocks.get.getMockImplementation()!;
+		const history = (title: string) => ({ id: title, title, model_name: 'model-1', workspace_id: null, updated_at: at });
+		mocks.get.mockImplementation((path: string, token: string, ...args: unknown[]) => path === '/api/v1/chat/conversations'
+			? token === 'token' ? previous.promise : Promise.resolve([history('New domain conversation')])
+			: fallback(path, token, ...args));
+		render(ChatPanel);
+		await fireEvent.click(await screen.findByRole('button', { name: '대화 기록과 설정 열기' }));
+		await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/conversations', 'token', 'project-1'));
+		setVerifiedLumenActor({ ...get(auth), domainId: 'domain-2', projectId: 'project-2', token: 'other-domain' });
+		expect(await screen.findByText('New domain conversation')).toBeTruthy();
+		previous.resolve([history('Previous domain conversation')]);
+		await tick();
+		expect(screen.queryByText('Previous domain conversation')).toBeNull();
+		expect(screen.getByText('New domain conversation')).toBeTruthy();
+	});
+
+	const duplicateRows = [
+		{ id: 41, provider_id: 11, provider: 'Provider A', model_name: 'shared-model', display_name: 'Shared model' },
+		{ id: 57, provider_id: 22, provider: 'Provider B', model_name: 'shared-model', display_name: 'Shared model' }
+	];
+	function loadDuplicateCatalog() {
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation((path: string, ...rest: unknown[]) => path === '/api/v1/chat/models'
+			? Promise.resolve(duplicateRows) : fallback(path, ...rest));
+	}
+
+	it('persists the exact provider row and sends it after remount', async () => {
+		loadDuplicateCatalog();
+		const original = render(ChatPanel);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Shared model · Provider A' }));
+		const picker = within(screen.getByRole('dialog'));
+		await fireEvent.click(picker.getByRole('button', { name: /Provider B/ }));
+		await fireEvent.click(picker.getByRole('button', { name: 'Shared model 모델 선택' }));
+		expect(localStorage.getItem('chat:lastModelId')).toBe('57');
+		original.unmount();
+
+		mocks.post.mockResolvedValue({ id: 'selected-provider', model_name: 'shared-model', workspace_id: null });
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Shared model · Provider B' });
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Use the second provider' } });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		await waitFor(() => expect(mocks.createRun.mock.calls[0]?.[1]).toMatchObject({
+			model_id: 'shared-model', model_row_id: 57
+		}));
+		expect(mocks.createRun.mock.calls[0][0]).toBe('/api/v1/chat/conversations/selected-provider/completions');
+	});
+
+	it('keeps the exact provider row when retained chat moves to another project in its domain', async () => {
+		loadDuplicateCatalog();
+		render(ChatPanel);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Shared model · Provider A' }));
+		const picker = within(screen.getByRole('dialog'));
+		await fireEvent.click(picker.getByRole('button', { name: /Provider B/ }));
+		await fireEvent.click(picker.getByRole('button', { name: 'Shared model 모델 선택' }));
+		const composer = screen.getByRole('textbox') as HTMLTextAreaElement;
+		await fireEvent.input(composer, { target: { value: 'Keep provider B' } });
+
+		projectSwitching.set(true);
+		await tick();
+		setVerifiedLumenActor({ ...get(auth), projectId: 'project-2', token: 'selected-token' });
+		projectSwitching.set(false);
+		await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/models', 'selected-token', 'project-2'));
+		await screen.findByRole('button', { name: 'Shared model · Provider B' });
+		expect(screen.getByRole('textbox')).toBe(composer);
+		expect(composer.value).toBe('Keep provider B');
+		expect(mocks.get.mock.calls.filter(([path]) => path === '/api/v1/chat/conversations')).toHaveLength(1);
+
+		mocks.post.mockResolvedValue({ id: 'selected-provider', model_name: 'shared-model', workspace_id: null });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		await waitFor(() => expect(mocks.createRun.mock.calls[0]?.[1]).toMatchObject({ model_id: 'shared-model', model_row_id: 57 }));
+		expect(mocks.createRun.mock.calls[0][2]).toMatchObject({ token: 'selected-token', projectId: 'project-2' });
+	});
+
+	it('migrates a uniquely matching legacy chat model', async () => {
+		localStorage.setItem('chat:lastModel', 'model-1');
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		expect(localStorage.getItem('chat:lastModelId')).toBe('1');
+		expect(localStorage.getItem('chat:lastModel')).toBeNull();
+	});
+
+	it('leaves an ambiguous legacy name unselected and does not send it', async () => {
+		loadDuplicateCatalog();
+		localStorage.setItem('chat:lastModel', 'shared-model');
+		render(ChatPanel);
+		await fireEvent.click(screen.getByTitle('모델 선택'));
+		const picker = within(screen.getByRole('dialog'));
+		const choices = await picker.findAllByRole('button', { name: 'Shared model 모델 선택' });
+		expect(choices.every((choice) => choice.getAttribute('aria-pressed') === 'false')).toBe(true);
+		expect(localStorage.getItem('chat:lastModelId')).toBeNull();
+		expect(localStorage.getItem('chat:lastModel')).toBe('shared-model');
+	});
+
+	const unreadyContext = { ready: false, reason_code: 'context_limit_unknown' } as const;
+	const billingRows = [
+		{ id: 1, provider_id: 11, provider: 'Provider A', model_name: 'model-1', display_name: 'Model 1', domain_billing: unreadyContext },
+		{ id: 2, provider_id: 11, provider: 'Provider A', model_name: 'model-2', display_name: 'Model 2', domain_billing: { ready: true, reason_code: null } }
+	];
+	function loadBillingCatalog(rows: object[]) {
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation((path: string, ...rest: unknown[]) => path === '/api/v1/chat/models'
+			? Promise.resolve(rows) : fallback(path, ...rest));
+	}
+
+	it('defaults to the first domain-billing-ready model and shows unready rows disabled with a reason', async () => {
+		loadBillingCatalog(billingRows);
+		render(ChatPanel);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Model 2' }));
+		const picker = within(screen.getByRole('dialog'));
+		const unready = picker.getByRole('button', { name: 'Model 1 모델 선택' });
+		expect(unready.getAttribute('aria-disabled')).toBe('true');
+		expect(picker.getByText(studioT('modelBilling.contextLimit'))).toBeTruthy();
+		await fireEvent.click(unready);
+		expect(screen.getByRole('dialog')).toBeTruthy();
+		expect(localStorage.getItem('chat:lastModelId')).toBeNull();
+	});
+
+	it('replaces a remembered model that became unready and explains why', async () => {
+		localStorage.setItem('chat:lastModelId', '1');
+		loadBillingCatalog(billingRows);
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 2' });
+		expect(screen.getByText(studioT('modelBilling.fallback', {
+			previous: 'Model 1', next: 'Model 2', reason: studioT('modelBilling.contextLimit')
+		}))).toBeTruthy();
+		expect(localStorage.getItem('chat:lastModelId')).toBe('1');
+		mocks.post.mockResolvedValue({ id: 'fallback-conversation', model_name: 'model-2', workspace_id: null });
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Use the ready model' } });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		await waitFor(() => expect(mocks.createRun.mock.calls[0]?.[1]).toMatchObject({ model_id: 'model-2', model_row_id: 2 }));
+	});
+
+	it('selects nothing and guides the user when no model is ready for domain billing', async () => {
+		loadBillingCatalog(billingRows.map((row) => ({ ...row, domain_billing: unreadyContext })));
+		render(ChatPanel);
+		expect(await screen.findByText(studioT('modelBilling.noneReady'))).toBeTruthy();
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Nothing can run' } });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		await waitFor(() => expect(screen.getAllByText(studioT('modelBilling.noneReady')).length).toBeGreaterThan(1));
+		expect(mocks.createRun).not.toHaveBeenCalled();
+	});
+
+	it('maps a 422 domain_billing admission refusal to the localized reason', async () => {
+		mocks.createRun.mockRejectedValue(new mocks.ChatHttpError('requested chat capability is not available: domain_billing (pricing_unavailable)', 422));
+		mocks.post.mockResolvedValue({ id: 'refused-conversation', model_name: 'model-1', workspace_id: null });
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Refused at admission' } });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		expect(await screen.findByText(studioT('modelBilling.pricing'))).toBeTruthy();
+	});
+
 	it.each(['baseline', 'rich'] as const)('keeps %s unpositioned approval usable after SSE failure and restores its actual start after reload', async (shape) => {
 		let decided = false;
 		const descriptor = { run_id: 'run-1', conversation_id: null, temp_thread_id: 'temp-1', status: 'awaiting_input', run_kind: 'completion', events_url: '/events', cancel_url: '/cancel' };
@@ -2153,6 +2329,7 @@ describe('ChatPanel explicit sandbox selection', () => {
 		pending.resolve(page());
 		await waitFor(() => expect(mocks.createRun).toHaveBeenCalledTimes(1));
 		expect(mocks.createRun.mock.calls[0][0]).toBe('/api/v1/chat/temp-completions');
+		expect(mocks.createRun.mock.calls[0][1]).toMatchObject({ model_id: 'model-1', model_row_id: 1 });
 		expect(mocks.post.mock.calls.some(([path]) => path === '/api/v1/chat/conversations')).toBe(false);
 	});
 
@@ -2267,14 +2444,14 @@ describe('ChatPanel explicit sandbox selection', () => {
 		expect(mocks.createRun.mock.calls[1][2].idempotencyKey).toBe(original[2].idempotencyKey);
 	});
 
-	function historicalChat(retryable = false) {
+	function historicalChat(retryable = false, frozenRowId?: number) {
 		const fallback = mocks.get.getMockImplementation()!;
 		mocks.get.mockImplementation((path: string, ...args: unknown[]) => {
 			if (path === '/api/v1/chat/conversations') return Promise.resolve([{ id: 'sandbox-history', title: 'Sandbox history', model_name: 'model-1', workspace_id: null }]);
 			if (path.includes('/sandbox-history/messages?')) return Promise.resolve({
 				messages: [
 					{ id: 'saved-user', conversation_id: 'sandbox-history', role: 'user', parent_id: null, content: 'saved question', created_at: at,
-						...(retryable ? { execution: { run_id: 'saved-run', status: 'failed', retryable: true } } : {}) },
+						...(retryable ? { execution: { run_id: 'saved-run', status: 'failed', retryable: true, model_row_id: frozenRowId } } : {}) },
 					...(!retryable ? [{ id: 'saved-answer', conversation_id: 'sandbox-history', role: 'assistant', parent_id: 'saved-user', model_name: 'model-1', content: 'saved answer', created_at: at }] : [])
 				],
 				active_leaf_id: retryable ? 'saved-user' : 'saved-answer', history_revision: 1,
@@ -2299,6 +2476,7 @@ describe('ChatPanel explicit sandbox selection', () => {
 		setManagedSandboxTools(['Browser_Navigate']);
 		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Preview selection' } });
 		await waitFor(() => expect(mocks.previewContext.mock.calls.at(-1)?.[1]?.features.tool_policy.enabled_sandbox_tools).toEqual(['Browser_Navigate']));
+		expect(mocks.previewContext.mock.calls.at(-1)?.[1]).toMatchObject({ model_id: 'model-1', model_row_id: 1 });
 		expect(managedReads()).toHaveLength(reads);
 		expect(mocks.createRun).not.toHaveBeenCalled();
 		expect(mocks.post).not.toHaveBeenCalled();
@@ -2311,7 +2489,7 @@ describe('ChatPanel explicit sandbox selection', () => {
 		await openHistoricalChat();
 		setManagedSandboxTools(['Browser_Navigate']);
 		await fireEvent.click(screen.getByTitle('다른 모델로 재생성'));
-		await fireEvent.click(screen.getByRole('option', { name: 'Model 1' }));
+		await fireEvent.click(screen.getByRole('button', { name: '재생성' }));
 		await waitFor(() => expect(reads).toBe(2));
 		await waitFor(() => expect(get(managedSandboxTools).issue).toBe('unavailable'));
 		expect(mocks.createRun).not.toHaveBeenCalled();
@@ -2324,23 +2502,24 @@ describe('ChatPanel explicit sandbox selection', () => {
 		await openHistoricalChat();
 		setManagedSandboxTools(['Browser_Read']);
 		await fireEvent.click(screen.getByTitle('다른 모델로 재생성'));
-		await fireEvent.click(screen.getByRole('option', { name: 'Model 1' }));
+		await fireEvent.click(screen.getByRole('button', { name: '재생성' }));
 		await waitFor(() => expect(mocks.createRun).toHaveBeenCalledTimes(1));
 		expect(mocks.createRun.mock.calls[0][0]).toBe('/api/v1/chat/conversations/sandbox-history/messages/saved-answer/regenerate');
+		expect(mocks.createRun.mock.calls[0][1]).toMatchObject({ model_id: 'model-1', model_row_id: 1 });
 		expect(mocks.createRun.mock.calls[0][1].features.tool_policy).toMatchObject({ enabled_sandbox_tools: ['Browser_Read'], enabled_mcp_ids: null });
 		expect(managedReads()).toHaveLength(2);
 	});
 
-	it('keeps historical native retry empty and delegates original snapshot revalidation to native admission', async () => {
+	it.each([undefined, 57])('asserts the frozen retry row when execution reports it (%s)', async (frozenRowId) => {
 		catalogue();
-		historicalChat(true);
+		historicalChat(true, frozenRowId);
 		await openHistoricalChat();
 		setManagedSandboxTools(['Browser_Read']);
 		const reads = managedReads().length;
 		await fireEvent.click(screen.getByRole('button', { name: '다시 전송' }));
 		await waitFor(() => expect(mocks.createRun).toHaveBeenCalledTimes(1));
 		expect(mocks.createRun.mock.calls[0][0]).toBe('/api/v1/chat/conversations/sandbox-history/runs/saved-run/retry');
-		expect(mocks.createRun.mock.calls[0][1]).toEqual({});
+		expect(mocks.createRun.mock.calls[0][1]).toEqual(frozenRowId === undefined ? {} : { model_row_id: frozenRowId });
 		expect(managedReads()).toHaveLength(reads);
 	});
 
@@ -2404,6 +2583,7 @@ describe('ChatPanel explicit sandbox selection', () => {
 		['sandbox_tool_unavailable', 503, '실행 환경을 현재 사용할 수 없습니다'],
 		['sandbox_selection_multiple_pools', 422, '도구 구성이 더 이상 유효하지 않습니다'],
 		['sandbox_pool_full', 422, '현재 한도가 소진되었습니다'],
+		['domain_credit_insufficient', 402, '도메인 크레딧이 부족합니다'],
 		['sandbox_configuration_changed', 422, '샌드박스 구성이 변경되었습니다']
 	] as const)('shows actionable native %s errors without automatic retry or clearing the selection', async (code, status, message) => {
 		catalogue();
@@ -2453,9 +2633,16 @@ describe('ChatPanel explicit sandbox selection', () => {
 	it.each(['bound', 'unbound'] as const)('retries the originating effective agent model with a different composer model (%s)', async (agentState) => {
 		catalogue();
 		const fallback = mocks.get.getMockImplementation()!;
-		mocks.get.mockImplementation((path: string, ...args: unknown[]) => path === '/api/v1/chat/agents'
-			? Promise.resolve([{ id: 17, name: 'Snapshot agent', model_name: 'agent-model', mcp_ids: [], tool_ids: [], visibility: 'private' }])
-			: fallback(path, ...args));
+		mocks.get.mockImplementation((path: string, ...args: unknown[]) => {
+			if (path === '/api/v1/chat/agents') return Promise.resolve([
+				{ id: 17, name: 'Snapshot agent', model_name: 'model-1', model_row_id: 57, mcp_ids: [], tool_ids: [], visibility: 'private' }
+			]);
+			if (path === '/api/v1/chat/models') return Promise.resolve([
+				{ id: 1, provider_id: 11, model_name: 'model-1', display_name: 'Model 1' },
+				{ id: 57, provider_id: 22, model_name: 'model-1', display_name: 'Agent model' }
+			]);
+			return fallback(path, ...args);
+		});
 		mocks.post.mockResolvedValue({ id: 'agent-snapshot-conv', title: null, model_name: 'model-1', workspace_id: null, updated_at: at });
 		mocks.createRun.mockRejectedValueOnce(new Error('temporary transport failure'));
 		render(ChatPanel);
@@ -2466,7 +2653,7 @@ describe('ChatPanel explicit sandbox selection', () => {
 		const retry = await screen.findByRole('button', { name: '다시 전송' });
 		const original = mocks.createRun.mock.calls[0];
 		expect(original[1]).toMatchObject({
-			model_id: 'model-1', agent_id: 17, features: { tool_policy: { enabled_sandbox_tools: [] } }
+			model_id: 'model-1', model_row_id: 57, agent_id: 17, features: { tool_policy: { enabled_sandbox_tools: [] } }
 		});
 		if (agentState === 'unbound') await fireEvent.click(screen.getByRole('button', { name: '에이전트 해제' }));
 		await fireEvent.click(retry);
@@ -2522,14 +2709,14 @@ describe('ChatPanel explicit sandbox selection', () => {
 			await screen.findByText('saved answer');
 			setManagedSandboxTools(['Browser_Navigate']);
 			await fireEvent.click(screen.getByTitle('다른 모델로 재생성'));
-			await fireEvent.click(screen.getByRole('option', { name: 'Model 1' }));
+			await fireEvent.click(screen.getByRole('button', { name: '재생성' }));
 			await waitFor(() => expect(reads).toBe(2));
 
 			oldAdmission.reject(new Error('Old admission rejected'));
 			await tick();
 			await tick();
 			await fireEvent.click(screen.getByTitle('다른 모델로 재생성'));
-			await fireEvent.click(screen.getByRole('option', { name: 'Model 1' }));
+			await fireEvent.click(screen.getByRole('button', { name: '재생성' }));
 			expect(mocks.createRun).toHaveBeenCalledTimes(1);
 			preparation.resolve(page());
 			await waitFor(() => expect(mocks.createRun).toHaveBeenCalledTimes(2));
@@ -2584,7 +2771,7 @@ describe('ChatPanel explicit sandbox selection', () => {
 			await fireEvent.click(await screen.findByRole('button', { name: 'Sandbox history' }));
 			await screen.findByText('saved answer');
 			await fireEvent.click(screen.getByTitle('다른 모델로 재생성'));
-			await fireEvent.click(screen.getByRole('option', { name: 'Model 1' }));
+			await fireEvent.click(screen.getByRole('button', { name: '재생성' }));
 			await waitFor(() => expect(mocks.createRun).toHaveBeenCalledTimes(1));
 			await waitFor(() => expect(mocks.followRun).toHaveBeenCalledTimes(1));
 			await running.promise;
@@ -2609,5 +2796,102 @@ describe('ChatPanel explicit sandbox selection', () => {
 			oldCreation.resolve({ id: 'late-A' });
 			view.unmount();
 		}
+	});
+});
+
+describe('ChatPanel in the Personal domain', () => {
+	const personalNotice = '개인 프로젝트에서는 대시보드 채팅을 사용할 수 없습니다. 조직(도메인)을 만들거나 조직 프로젝트로 전환해 사용하세요.';
+	function workIn(kind: 'personal' | 'organization', canCreateDomain = false) {
+		setVerifiedLumenActor({ ...get(auth), canCreateDomain, availableDomains: [{ id: 'domain-1', name: 'Domain', kind }] });
+	}
+	function withHistoryAndAgents() {
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation((path: string, ...args: unknown[]) => {
+			if (path === '/api/v1/chat/conversations') return Promise.resolve([{ id: 'kept', title: 'Personal history', model_name: 'model-1', workspace_id: null, updated_at: at }]);
+			if (path === '/api/v1/chat/agents') return Promise.resolve([{ id: 17, name: 'Personal agent', model_name: 'model-1', mcp_ids: [], tool_ids: [], visibility: 'private' }]);
+			if (path === '/api/v1/chat/models') return Promise.resolve([{ id: 1, provider_id: 11, model_name: 'model-1', display_name: 'Model 1', capabilities: { tool_call: true } }]);
+			return fallback(path, ...args);
+		});
+	}
+
+	it('explains the missing pool up front, blocks send, and keeps history and agents usable', async () => {
+		workIn('personal');
+		withHistoryAndAgents();
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		expect(screen.getByText(personalNotice)).toBeTruthy();
+		expect(screen.getByRole('button', { name: '프로젝트 전환' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: '조직 만들기' })).toBeNull();
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Billed nowhere' } });
+		const send = screen.getByRole('button', { name: '전송' });
+		expect(send.hasAttribute('disabled')).toBe(true);
+		expect(document.getElementById(send.getAttribute('aria-describedby')!)?.textContent).toBe(personalNotice);
+		await fireEvent.click(send);
+		await fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
+		expect(mocks.createRun).not.toHaveBeenCalled();
+		expect(mocks.post).not.toHaveBeenCalled();
+
+		await fireEvent.click(screen.getByTitle('에이전트 선택'));
+		await fireEvent.click(await screen.findByRole('menuitem', { name: /Personal agent/ }));
+		await fireEvent.click(await screen.findByRole('button', { name: '대화 기록과 설정 열기' }));
+		expect(await screen.findByText('Personal history')).toBeTruthy();
+	});
+
+	it('keeps version browsing and fork usable while disabling billed regenerate', async () => {
+		workIn('personal');
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.patch.mockResolvedValue({ active_leaf_id: 99 });
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {
+			if (path === '/api/v1/chat/conversations') return [{ id: 'conv-branch', title: '분기 대화', model_name: 'model-1', workspace_id: null }];
+			if (path.includes('/conv-branch/messages?')) {
+				return {
+					messages: [{ id: 42, conversation_id: 'conv-branch', role: 'assistant', parent_id: 1, content: 'current branch', created_at: at, branch: { previous_id: 41, next_id: null } }],
+					active_leaf_id: 42, history_revision: 3, has_before: false, has_after: false, before_cursor: null, after_cursor: null
+				};
+			}
+			return fallback(path, ...args);
+		});
+		render(ChatPanel);
+		await fireEvent.click(await screen.findByRole('button', { name: '대화 기록과 설정 열기' }));
+		await fireEvent.click(await screen.findByRole('button', { name: '분기 대화' }));
+		await screen.findByText('current branch');
+		expect(screen.getByRole('button', { name: '분기' }).hasAttribute('disabled')).toBe(false);
+		expect(screen.getByTitle('다른 모델로 재생성').hasAttribute('disabled')).toBe(true);
+		const previous = screen.getByRole('button', { name: '이전 버전' });
+		expect(previous.hasAttribute('disabled')).toBe(false);
+		await fireEvent.click(previous);
+		await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith(
+			'/api/v1/chat/conversations/conv-branch/active-leaf', { message_id: 41, descend: true }, 'token', 'project-1'
+		));
+		expect(mocks.createRun).not.toHaveBeenCalled();
+	});
+
+	it('offers organization creation only under the existing create-domain policy', async () => {
+		workIn('personal', true);
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		expect(screen.getByRole('button', { name: '조직 만들기' })).toBeTruthy();
+	});
+
+	it('leaves organization projects unaffected', async () => {
+		workIn('organization', true);
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		expect(screen.queryByText(personalNotice)).toBeNull();
+		await fireEvent.click(screen.getByTitle('저장되지 않는 임시 채팅'));
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Organization message' } });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		await waitFor(() => expect(mocks.createRun).toHaveBeenCalled());
+	});
+
+	it('asks organization members to request a top-up when Lumen refuses the domain pool', async () => {
+		workIn('organization');
+		mocks.createRun.mockRejectedValue(Object.assign(new mocks.ChatHttpError('Request failed', 402), { code: 'domain_credit_insufficient' }));
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		await fireEvent.click(screen.getByTitle('저장되지 않는 임시 채팅'));
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Unfunded' } });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		expect(await screen.findByText('도메인 크레딧이 부족합니다. 도메인 관리자 또는 시스템 관리자에게 충전을 요청하세요.')).toBeTruthy();
 	});
 });

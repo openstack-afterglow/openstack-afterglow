@@ -14,6 +14,10 @@
 	import { t as chatT } from '$lib/i18n/ns/chat-panel';
 	import { serviceCapabilities, serviceDenials } from '$lib/stores/servicePermissions';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
+	import PersonalWorkspaceNotice from './PersonalWorkspaceNotice.svelte';
+	import { personalWorkspace } from '$lib/stores/personalWorkspace';
+	import { dashboardCreditMessage } from '$lib/api/chatDomainBilling';
+	import ProviderModelSelect from './ProviderModelSelect.svelte';
 	import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState } from '$lib/utils/experience';
 
 	// The actor survives token/permission refresh; each action checks its own leaf.
@@ -22,7 +26,7 @@
 	const assetsAllowed = $derived(Boolean(scope) && $serviceCapabilities('lumen-assets_editor'));
 	const storageKey = $derived(`afterglow:image-studio:${$auth.userId ?? ''}:${$auth.projectId ?? ''}`);
 	let models = $state<ImageModel[]>([]);
-	let modelId = $state('');
+	let modelId = $state<number | null>(null);
 	let modelsLoading = $state(false);
 	let modelsLoaded = $state(false);
 	let modelsError = $state('');
@@ -81,7 +85,7 @@
 	let activeScopeKey = '';
 	let activeCapabilityKey = '';
 	let pendingIntent: { fingerprint: string; key: string } | null = null;
-	const chosenModel = $derived(models.find((model) => String(model.id) === modelId));
+	const chosenModel = $derived(models.find((model) => model.id === modelId));
 	const readiness = $derived(imageModelReadiness(chosenModel));
 	const runActive = $derived(Boolean(currentRun && !currentRun.terminal));
 	const busy = $derived(submitting || uploading || runActive);
@@ -134,7 +138,9 @@
 		...(svgAuthors.some(({ model }) => model === svgAuthor) ? { svg_model: svgAuthor } : {}),
 		...(svgEfforts.includes(svgEffort) ? { svg_reasoning_effort: svgEffort } : {})
 	});
-	const imageRequest = $derived({ model_id: modelId, prompt: composedPrompt, size: requestedSize, quality, n: Number(count), ...optionalFields });
+	const imageRequest = $derived(modelId === null ? null : {
+		model_id: String(modelId), model_row_id: modelId, prompt: composedPrompt, size: requestedSize, quality, n: Number(count), ...optionalFields
+	});
 	const editFields = $derived.by((): ImageEditFields | null => {
 		if (!inputs.length) return null;
 		const ids = inputs.map(({ id }) => id);
@@ -146,7 +152,7 @@
 		};
 	});
 	const requestFingerprint = $derived(JSON.stringify([storageKey, imageRequest, editFields]));
-	const canSubmit = $derived(imagesAllowed && !readiness && !modelsLoading && !capabilitiesLoading && variantReady && !busy && Boolean(composedPrompt) &&
+	const canSubmit = $derived(imagesAllowed && !$personalWorkspace && !readiness && !modelsLoading && !capabilitiesLoading && variantReady && !busy && Boolean(composedPrompt) &&
 		!attachmentConflict && attachments.every(({ id }) => Boolean(id)));
 	const estimate = $derived.by(() => {
 		const rate = capabilities?.image_output_price_per_million;
@@ -176,9 +182,14 @@
 	function canPublish(requestScope: ImageApiScope): boolean {
 		return imagesAllowed && activeScopeKey === storageKey && requestScope.projectId === scope?.projectId;
 	}
-	function selectModel(event: Event) {
-		if (!imagesAllowed) return;
-		modelId = (event.currentTarget as HTMLSelectElement).value;
+	function selectModel(row: ImageModel | null) {
+		const id = row?.id ?? null;
+		if (!imagesAllowed || modelsLoading || busy || modelId === id) return;
+		capabilityRequest++;
+		capabilities = null;
+		capabilitiesError = '';
+		capabilitiesLoading = false;
+		modelId = id;
 		count = '1';
 	}
 	async function loadCapabilities(model: ImageModel, requestScope: ImageApiScope, generation: number) {
@@ -297,6 +308,8 @@
 		} catch { return []; }
 	}
 	function message(cause: unknown): string {
+		const credit = dashboardCreditMessage(cause);
+		if (credit) return credit;
 		if (cause instanceof ApiError) {
 			if (cause.status === 401 || cause.status === 403) return t('imageStudio.projectDenied');
 			if (cause.status === 402) return t('imageStudio.quotaInsufficient');
@@ -338,10 +351,10 @@
 		try {
 			const loaded = await imageStudioApi.models(requestScope);
 			if (generation !== modelRequest || !canPublish(requestScope)) { experienceDiscarded(requestScope.experience, 'stale'); return; }
-			models = loaded;
+			models = loaded.filter((model) => model.model_kind === 'image' && Number.isSafeInteger(model.id) && model.id > 0);
 			modelsLoaded = true;
-			if (!loaded.some((model) => String(model.id) === modelId)) modelId = loaded[0] ? String(loaded[0].id) : '';
-			experienceState(requestScope.experience, loaded.length ? 'ready' : 'empty', 0);
+			if (!models.some((model) => model.id === modelId)) modelId = models[0]?.id ?? null;
+			experienceState(requestScope.experience, models.length ? 'ready' : 'empty', 0);
 			void experienceApplied(requestScope.experience, {}, () => generation === modelRequest && canPublish(requestScope));
 		} catch (cause) {
 			if (generation === modelRequest && canPublish(requestScope)) {
@@ -456,7 +469,7 @@
 		modelsLoading = false;
 		models = [];
 		modelsLoaded = false;
-		modelId = '';
+		modelId = null;
 		runIds = [];
 		selectedRunId = null;
 		currentRun = null;
@@ -559,7 +572,8 @@
 		}
 	}
 	async function submit() {
-		if (!canSubmit || !scope || !canPublish(scope)) return;
+		const request = imageRequest;
+		if (!canSubmit || !scope || !request || !canPublish(scope)) return;
 		if (!customSizeValid) {
 			customSizeChecked = true;
 			customSizeField?.focus();
@@ -582,7 +596,6 @@
 		error = '';
 		submitting = true;
 		try {
-			const request = imageRequest;
 			const fingerprint = requestFingerprint;
 			const idempotencyKey = pendingIntent?.fingerprint === fingerprint ? pendingIntent.key : crypto.randomUUID();
 			pendingIntent = { fingerprint, key: idempotencyKey };
@@ -639,6 +652,7 @@
 
 <PageShell>
 	<LumenPermissionNotice leaves={['lumen-images_user', 'lumen-assets_editor']} />
+	<PersonalWorkspaceNotice />
 	<div class="studio">
 		<header class="studio-header">
 			<svg class="studio-mark" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5" /><circle cx="15.5" cy="9" r="1.75" /><path d="m3.5 17 5-5.5 4 4 2.5-2.5 5.5 5.5" /></svg>
@@ -671,10 +685,8 @@
 				{/each}
 			{/if}
 			<div class="composer-bar">
+				<ProviderModelSelect {models} value={modelId} onSelect={selectModel} modelLabel={t('imageStudio.model')} placeholder={t('imageStudio.selectModel')} id="studio-model" disabled={!imagesAllowed || modelsLoading || busy} />
 				<div class="composer-options">
-					<Field label={t('imageStudio.model')} for="studio-model" class="option-model">
-						<SelectInput id="studio-model" value={modelId} onchange={selectModel} disabled={!imagesAllowed || modelsLoading || busy || models.length === 0}><option value="">{t('imageStudio.selectModel')}</option>{#each models as model (model.id)}<option value={String(model.id)}>{model.display_name}</option>{/each}</SelectInput>
-					</Field>
 					<Field label={t('imageStudio.size')} for="studio-size"><SelectInput id="studio-size" bind:value={size} disabled={!imagesAllowed || busy || capabilitiesLoading || sizes.length === 0}>{#each sizes as option (option)}<option value={option}>{option === 'auto' ? t('imageStudio.autoSize') : option.replace('x', ' × ')}</option>{/each}{#if customLimits}<option value="custom">{t('imageStudio.options.custom')}</option>{/if}</SelectInput></Field>
 					<Field label={t('imageStudio.qualityLabel')} for="studio-quality"><SelectInput id="studio-quality" bind:value={quality} disabled={!imagesAllowed || busy || capabilitiesLoading || qualities.length === 0}>{#each qualities as option (option)}<option value={option}>{displayQuality(option)}</option>{/each}</SelectInput></Field>
 					<Field label={t('imageStudio.imageCount')} for="studio-count"><SelectInput id="studio-count" bind:value={count} disabled={!imagesAllowed || busy || capabilitiesLoading || maxCount < 1}>{#each Array.from({ length: maxCount }, (_, index) => index + 1) as option (option)}<option value={String(option)}>{option}</option>{/each}</SelectInput></Field>
@@ -748,7 +760,7 @@
 					{:else if readiness}<Alert tone="warning" title={t('imageStudio.notReady')}>{readiness}</Alert>
 					{:else if capabilitiesError}<Alert tone="danger" title={t('imageStudio.optionsLoadFailed')}>{capabilitiesError} <Button variant="subtle" disabled={!imagesAllowed} onclick={() => imagesAllowed && chosenModel && scope && loadCapabilities(chosenModel, scope, ++capabilityRequest)}>{t('imageStudio.retry')}</Button></Alert>
 					{:else if !variantReady}<Alert tone="warning">{t('imageStudio.variantUnavailable')}</Alert>
-					{:else}<p role="status" class="muted">{t('imageStudio.ready')}</p>{/if}
+					{:else if !$personalWorkspace}<p role="status" class="muted">{t('imageStudio.ready')}</p>{/if}
 				{/if}
 			</div>
 		</form>
@@ -843,9 +855,8 @@
 	.attachment-name { margin: 0; font-size: 0.8125rem; font-weight: 500; color: var(--color-ink-0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.attachment-hint { padding-inline: 0.25rem; }
 	.composer-bar { display: grid; gap: 0.875rem; padding-top: 1rem; border-top: 1px solid var(--color-line); }
-	/* Selects keep a readable minimum ("1024 × 1024") and at most three per row; the model name gets its own row until four columns fit. */
+	/* Size, quality and count keep a readable minimum width and wrap as needed. */
 	.composer-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, max(9rem, calc((100% - 1.5rem) / 3))), 1fr)); gap: 0.75rem; min-width: 0; }
-	.composer-options :global(.option-model) { grid-column: 1 / -1; }
 	.advanced-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: 0.75rem; min-width: 0; margin: 0; padding: 0; border: 0; }
 	.advanced-options legend { padding: 0 0 0.5rem; font-weight: 600; }
 	.custom-size { grid-column: 1 / -1; }
@@ -888,8 +899,6 @@
 	}
 	@media (min-width: 1024px) {
 		.studio-header { padding-top: 2.5rem; }
-		.composer-options { grid-template-columns: minmax(12rem, 2fr) repeat(3, minmax(9rem, 1fr)); }
-		.composer-options :global(.option-model) { grid-column: auto; }
 		.style-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 	}
 </style>

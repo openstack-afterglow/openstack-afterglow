@@ -30,7 +30,7 @@ from app.models.traffic_analytics import TrafficAnalyticsSettings
 from app.services.cloud_shell_security import MANDATORY_BLOCKED_CIDRS, canonical_blocked_cidrs
 
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
-_EMPTY_ENV_TOML_FALLBACK_KEYS = frozenset({"K3S_GPU_ADMISSION_TOKEN"})
+_EMPTY_ENV_TOML_FALLBACK_KEYS = frozenset({"K3S_GPU_ADMISSION_TOKEN", "SERVICE_LUMEN_INGRESS_SECRET"})
 
 
 def is_development_loopback_http_url(value: str) -> bool:
@@ -195,6 +195,8 @@ def _load_toml() -> dict:
     flat["service_waygate_internal_url"] = svc.get("waygate_internal_url", "")
     flat["service_drover_internal_url"] = svc.get("drover_internal_url", "")
     flat["service_lumen_internal_url"] = svc.get("lumen_internal_url", "")
+    flat["service_lumen_external_url"] = svc.get("lumen_external_url", "")
+    flat["service_lumen_ingress_secret"] = svc.get("lumen_ingress_secret", "")
     flat["service_palimpsest_internal_url"] = svc.get("palimpsest_internal_url", "")
 
     cloud_shell = data.get("cloud_shell", {})
@@ -652,7 +654,10 @@ class Settings(BaseSettings):
     service_waygate_internal_url: str = ""
     service_drover_internal_url: str = ""
     service_lumen_internal_url: str = ""
+    service_lumen_ingress_secret: SecretStr = Field(default=SecretStr(""), exclude=True, repr=False)
     service_palimpsest_internal_url: str = ""
+    # Public base for the CLI installers, not an internal BFF override.
+    service_lumen_external_url: str = ""
 
     # Global Cloud Shell resources live only in a dedicated service project.
     # User tokens are separately re-scoped to the selected logical project and
@@ -920,6 +925,52 @@ class Settings(BaseSettings):
         from app.services._endpoint import normalize_endpoint
 
         return normalize_endpoint(v)
+
+    @field_validator("service_lumen_ingress_secret")
+    @classmethod
+    def _validate_lumen_ingress_secret(cls, secret: SecretStr) -> SecretStr:
+        value = secret.get_secret_value()
+        if value and len(value.encode("utf-8")) < 32:
+            raise ValueError("[services] lumen_ingress_secret must contain at least 32 UTF-8 bytes")
+        return secret
+
+    @field_validator("service_lumen_external_url")
+    @classmethod
+    def _normalize_lumen_external_url(cls, value: str) -> str:
+        if not value:
+            return value
+        message = (
+            "[services] lumen_external_url must be an absolute HTTPS URL without credentials, query, "
+            "fragment or unsafe characters (HTTP is permitted on development loopback only)"
+        )
+        if len(value) > 2045 or not re.fullmatch(
+            r"https?://(?:[A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])(?::[0-9]+)?(?:/[A-Za-z0-9._~/-]*)?",
+            value,
+        ):
+            raise ValueError(message)
+        try:
+            parsed = urlsplit(value)
+            port = parsed.port
+        except ValueError:
+            raise ValueError(message) from None
+        host = parsed.hostname or ""
+        if (
+            not host
+            or (port is not None and port == 0)
+            or (
+                ":" not in host
+                and (
+                    len(host) > 253
+                    or any(
+                        not re.fullmatch(r"[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?", label)
+                        for label in host.removesuffix(".").split(".")
+                    )
+                )
+            )
+            or (parsed.scheme != "https" and not is_development_loopback_http_url(value))
+        ):
+            raise ValueError(message)
+        return value.rstrip("/")
 
     @property
     def ssl_verify(self) -> bool | str:

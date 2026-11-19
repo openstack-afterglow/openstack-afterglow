@@ -1,0 +1,12 @@
+{
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.10.0",
+    "@google/genai": "^3.6.0",
+    "openai": "^7.60.0"
+  }
+}

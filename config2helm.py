@@ -154,6 +154,7 @@ def convert(cfg: dict, include_secrets: bool) -> dict:
         _sec(k3s.get("kubeconfig_encryption_key", ""), "k3sKubeconfigEncryptionKey")
         _sec(k3s.get("gpu_admission_token", ""), "k3sGpuAdmissionToken")
         _sec(mcp.get("lumen_service_token", ""), "lumenMcpServiceToken")
+        _sec(svc.get("lumen_ingress_secret", ""), "lumenIngressSecret")
         _sec(ceph.get("rbd_keyring", ""), "cephRbdKeyring")
         _sec(db.get("url", ""), "databaseUrl")
         _sec(mon.get("prometheus_password", ""), "prometheusPassword")
@@ -355,6 +356,8 @@ def convert(cfg: dict, include_secrets: bool) -> dict:
     ):
         if k in svc:
             svc_out[k] = svc[k]
+    if "lumen_external_url" in svc:
+        svc_out["lumenExternalUrl"] = svc["lumen_external_url"]
     if svc_out:
         out["services"] = svc_out
 

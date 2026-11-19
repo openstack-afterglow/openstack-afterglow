@@ -319,6 +319,7 @@ afterglow_service_environments:
   afterglow-frontend:
     ORIGIN: "{{ afterglow_effective_frontend_config.app.frontend_base_url }}"
     PUBLIC_API_BASE: "{{ afterglow_effective_frontend_config.app.public_api_base }}"
+    BACKEND_INTERNAL_ORIGIN: "http://{{ afterglow_backend_listen_address | put_address_in_context('url') }}:{{ afterglow_backend_listen_port }}"
     HOST: "{{ afterglow_frontend_listen_address }}"
     PORT: "{{ afterglow_frontend_listen_port | string }}"
     LOG_DIRECTORY: "/var/log/kolla/afterglow"

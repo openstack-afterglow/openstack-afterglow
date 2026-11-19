@@ -13,6 +13,37 @@ Afterglow 백엔드는 독자적인 AI 모델·에이전트 실행 엔진 및 �
 
 직접적인 OpenAI / Anthropic 호환 API 호스팅은 Lumen 서비스가 전담합니다.
 
+## 공급자별 모델 선택
+
+`GET /api/v1/chat/models`의 `id`는 모델 레코드 ID다. 같은 `model_name`을 여러 공급자가 등록할 수 있으므로 dashboard는 `provider_id`로 선택지를 묶고 종류에 맞는 `id`를 보낸다.
+
+- 채팅 완료·재생성·임시 채팅·컨텍스트 미리보기/정리, Decision·이미지·음성·실시간 실행은 기존 선택자에 양의 정수 `model_row_id`를 추가한다. 임베딩은 기존 정수 `model_id`를 그대로 사용한다.
+- 에이전트 생성·수정은 선택한 `model_name`과 `model_row_id`를 저장한다. 변경하지 않은 레거시 모델 이름은 고유한 경우에만 정확한 행으로 이관한다.
+- 저장된 실행 재시도는 실행 이력에 제공된 `execution.model_row_id`를 원래 경로의 확인값으로 전송한다. 레거시 이력에 값이 없으면 빈 요청을 보내고 Lumen이 스냅샷으로 판단한다.
+- BFF는 기존 세션과 선택 프로젝트를 전달하며 Lumen이 활성 상태, 모델 종류, 기존 선택자 일치 및 실행 가능 여부를 검증한다.
+
+## Agent Vault
+
+채팅 설정의 **Agent Vault**는 대시보드 로그인 세션 전용이다. 같은 사용자의 도메인 노트는 해당 도메인의 프로젝트 간에 공유되며 전역 노트는 사용자의 다른 도메인에서도 보인다. 메모리는 대시보드 채팅에서만 사용하며 API 키와 외부 MCP로 조회할 수 없다.
+
+아래 경로 앞에 `/api/v1/chat`을 붙인다. BFF는 기존 Keystone token과 현재 프로젝트를 사용해 각각 Lumen `/v1/vault/*`로 전달한다. 조회는 `lumen-history_reader`, 수정은 `lumen-history_editor`를 요구하며 결과는 `Cache-Control: no-store`다.
+
+`X-Lumen-Ingress` is private to Afterglow and Lumen. Afterglow drops browser-supplied values and signs the exact forwarded method, encoded path (without query), Keystone token fingerprint, connection project and optional target project. Lumen requires valid proof for Vault; a matching private key on both services is required in addition to normal dashboard authorization.
+
+| 메서드 · 경로 | 동작 |
+| --- | --- |
+| `GET /vault/notes`, `GET /vault/search?query=…` | 유형·범위·프로젝트 키·역할로 거르고 `limit`/`before`로 페이지를 이동한다. |
+| `GET /vault/document` | Lumen이 생성한 `memory.md`의 `filename`, `content_type`, `content`를 반환한다. |
+| `POST /vault/notes` | 수동 메모리를 `user_note`로 만든다. Append-only 유형은 별도 새 기록을 추가한다. |
+| `GET /vault/notes/{id}`, `GET /vault/notes/{id}/revisions` | 노트 또는 읽기 전용 버전 기록을 조회한다. |
+| `PATCH /vault/notes/{id}` | `expectedHash`가 최신일 때만 내용과 선택적 제목을 교체한다. |
+| `GET\|PUT /vault/profile`, `/vault/coding-standards`, `/vault/short-term` | 프로필·코딩 규칙·단기 메모리를 읽거나 쓴다. 기존 노트 수정에는 `expectedHash`가 필요하다. |
+| 채팅 프로젝트 노트 | 목록·검색·상세·수정·버전 조회에 `workspace_id` 쿼리를 추가한다. `POST /vault/notes`에서는 JSON 본문에 넣고 `kind=user_note`, `scope=domain`을 사용한다. |
+
+선택 가능한 채팅 프로젝트는 `GET /api/v1/chat/workspaces`에서 읽는다. Lumen이 현재 사용자와 도메인의 프로젝트임을 확인한다. 채팅 프로젝트를 선택하지 않으면 workspace-private 노트는 목록·검색·`memory.md`에 포함되지 않는다. 쓰기 요청은 `chat_vault_note` 감사 유형으로 기록한다. 노트 본문, 제목, 응답과 쿼리는 감사 데이터에 포함하지 않는다.
+
+`409 hash_mismatch`에서는 원본을 다시 읽고 초안을 비교한다. `422 secret_detected`에서는 비밀번호·토큰·키를 제거한 뒤 다시 저장한다. 실패한 쓰기는 자동 재전송하지 않는다.
+
 ## MCP 개인·조직 연결
 
 브라우저의 `/api/v1/chat/mcp-settings`는 Lumen `/v1/mcp-settings`로 전달된다. 브라우저 access JWT는 Afterglow가 검증하고 실제 Lumen 요청에는 검증된 native identity와 프로젝트를 전달한다. 클라이언트가 보낸 domain/manager 표시는 권위가 아니다.
@@ -21,6 +52,7 @@ Afterglow 백엔드는 독자적인 AI 모델·에이전트 실행 엔진 및 �
 - `POST /mcp-connections`, `PATCH|DELETE /mcp-connections/{id}`: 본인 템플릿 연결을 관리한다.
 - `/domains/{domain_id}/mcp-connections`: 해당 domain 구성원은 비밀 없이 조회하고 본인의 활성화만 변경한다. 조직 연결 생성·수정·삭제와 공유 OAuth 관리는 exact-domain manager 또는 unrestricted human system admin만 가능하다. 프로젝트 admin 역할만으로 허용하지 않는다.
 - 기존 `/mcp-servers/{id}/activation` 및 OAuth 흐름은 유지된다. Catalog 설치와 조직 연결은 `implicit_selection=false`이며 활성화한 정확한 `config_version`과 현재 membership을 실행 전 재검증한다.
+- `GET /archived-connections`, `POST /archived-connections/{archive_id}/restore`: 현재 사용자의 도메인에서 보관된 중복 MCP 연결과 HTTP 도구를 조회·복원한다. `GET`은 `limit`(기본 100, 최대 200) 및 `before_id`를 받는다. 관리자는 `/domains/{domain_id}/archived-connections`의 동일 경로로 조직 소유 항목만 관리한다. Lumen이 현재 멤버십과 조직 관리자 권한을 다시 확인하며 BFF는 선택한 프로젝트의 인증 정보만 전달한다. 응답에는 연결 비밀이 없으며 캐시하지 않는다.
 - Playwright·Markitdown은 HTTPS 연결을 허위 생성하지 않는다. 검증된 실행별 sandbox profile이 있어야 사용 가능하고 미설정 상태에서는 그 이유를 표시한다.
 
 클라우드 VM 생성은 별도의 Afterglow MCP `manage` 동의와 프로토콜 v2가 필요하다. 모델은 실제 이미지·flavor·네트워크·부팅 볼륨 크기·사용자 SSH 키·보안그룹을 명시하고 사용자가 기존 승인 카드에서 확인한 뒤에만 변경 도구를 실행한다. API 요청 수락은 guest readiness가 아니다.
@@ -65,7 +97,7 @@ Native Lumen의 fresh Keystone core role·유효 할당과 실제 `oslo.policy` 
 BFF·UI는 native capability 결과를 사용하고 표시 역할 배열/`can_write`로 장애를 우회하지 않습니다. 현재 core role floor는 operator policy보다 먼저 적용하여 `@`로 reader의 mutation/paid inference를 허용하지 않습니다. Provider/model/pricing/quota 및 전역 통계 API는 project member와 별개인 genuine human system-admin 전용입니다. Original credential/issued-role-ID, API key scope, owner/private content와 frozen budget/approval/tool 권한은 각각 유지됩니다.
 
 
-API-key scope는 발급자의 현재 native 정책 결과를 좁히는 ceiling입니다. 발급에는 keys action과 요청 scope의 현재 권한이 필요하며, 기존 키 사용·새 provider I/O에서도 enabled owner/project·현재 role과 정책을 재검증합니다. Issuer 편집 action만 회수해도 기존 사용 scope까지 자동 소멸하지는 않지만 사용 action의 grant 또는 YAML 허용을 회수하면 해당 호출을 거부합니다. 다른 사용자/private content 소유권 검사는 별도로 유지합니다.
+개인 API 키는 프로젝트에 묶이지 않고 발급 사용자에게 귀속됩니다. 서비스 키는 도메인 소유이며 발급자가 도메인을 떠나도 유지됩니다. 두 키 종류 모두 모델 조회·채팅·임베딩·이미지·오디오·실시간·의사결정의 허용된 모델 API만 호출할 수 있습니다. 사용량 조회, native 이미지·실시간 run, 배치·파일, 클라우드 도구, 대화 이력, 메모리 및 키 관리에는 사용할 수 없습니다. 클라이언트가 요청에 선언하고 직접 실행하는 도구(OpenAI `function`·`custom`·`local_shell`·`apply_patch`·`environment.type: "local"`인 `shell`, Anthropic custom·`bash_*`·`text_editor_*`·`memory_*`, Gemini `functionDeclarations`)는 허용되며 Lumen은 도구 호출만 반환하고 실행하지 않습니다. 따라서 Codex CLI와 Claude Code는 개인 키로 동작합니다. 웹 검색·파일 검색·코드 실행·컴퓨터 사용·이미지 생성·MCP 같은 서버/호스팅 도구는 모든 키에서 크레딧 예약 전에 `403 server_tool_not_allowed_for_key`로 거부됩니다([도구 호출](../lumen-sdk.md#도구-호출)). 개인 키 발급 화면은 `GET /api/v1/chat/api-keys/issuance-policy`, 서비스 키 발급 화면은 `GET /api/v1/chat/service-keys/issuance-policy`의 `allowed_scopes`만 표시하며 별도 scope 목록을 두지 않습니다. 서비스 키 정책은 매니저 본인의 프로젝트 역할과 무관하게 서비스 키 발급이 허용하는 scope를 반환합니다. 개인 키의 발급 및 관리에는 계속 native keys action이 필요합니다. 서비스 키는 현재 도메인 매니저만 관리할 수 있습니다.
 
 동일 user/project의 token 갱신·권한 확인 pending/error 동안 Studio는 입력·이미 표시한 결과 Blob을 메모리에 유지하되 미리보기/다운로드·새 액션을 숨기거나 차단합니다. 현재 권한이 복구되면 같은 Blob을 다시 보여 줍니다. 확인 중 완료한 새 응답은 게시하지 않으며 같은 입력의 명시적 재요청은 기존 idempotency intent를 재사용합니다. Native 사용 capability의 확정 회수와 user/project 전환은 해당 결과·요청·object URL을 폐기합니다.
 
@@ -100,7 +132,7 @@ Afterglow 백엔드는 대부분의 `/api/v1/chat/{path}` 요청을 내부 Lumen
 
 | 메서드 · 경로 | 상위 위임 경로 | 설명 |
 |--------------|----------------|------|
-| `GET /api/v1/chat/models` | `/v1/chat/models` | 사용 가능한 LLM 모델 목록 조회. `reasoning_none_supported`가 true인 모델에만 추론 강도 "없음"(`reasoning_effort="none"`)을 노출한다. Lumen은 그 밖의 모델에서 `none`을 422로 거부하며, 값이 없으면(구버전 Lumen) 숨긴다 |
+| `GET /api/v1/chat/models` | `/v1/chat/models` | 사용 가능한 LLM 모델 목록 조회. `reasoning_none_supported`가 true인 모델에만 추론 강도 "없음"(`reasoning_effort="none"`)을 노출한다. Lumen은 그 밖의 모델에서 `none`을 422로 거부하며, 값이 없으면(구버전 Lumen) 숨긴다. 텍스트 모델의 `domain_billing: {ready, reason_code}`(`pricing_unavailable`·`output_budget_unenforced`·`context_limit_unknown`)이 `ready: false`이면 대시보드 선택기는 사유와 함께 비활성으로 표시하고 자동 선택하지 않는다. 필드가 없으면(구버전 Lumen) 준비된 것으로 취급하며, Lumen의 422 `domain_billing (<reason>)` 거부도 같은 사유로 표시한다 |
 | `POST /api/v1/chat/images/generations`, `/images/edits` | `/v1/chat/images/generations`, `/edits` | durable image run 접수. 두 경로 모두 JSON `prompt`와 UUID `Idempotency-Key` 필수. `generations`는 입력 이미지를 받지 않고, `edits`는 소유한 scanned `input_asset_id`를 요구한다 |
 | `POST /api/v1/chat/audio/speech` | `/v1/chat/audio/speech` | 음성 생성 요청을 전달하고 오디오 응답 바이트와 Content-Type을 보존 |
 | `POST /api/v1/chat/audio/transcriptions` | `/v1/chat/audio/transcriptions` | 저장된 오디오 asset ID와 선택 `language`·`prompt`, capability가 광고할 때만 `timestamp_granularities: ["segment"]`를 담은 JSON 전사 요청을 전달하고 응답 바이트와 Content-Type을 보존. 응답은 `{text}` 또는 timing 요청 시 `{text, segments:[{start,end,text}]}` |
@@ -125,9 +157,24 @@ Afterglow 백엔드는 대부분의 `/api/v1/chat/{path}` 요청을 내부 Lumen
 | `GET /api/v1/chat/runs/{run_id}/events` | `/v1/runs/{run_id}/events` | 실시간 실행 이벤트 스트림 (SSE 스트리밍) |
 | `POST /api/v1/chat/runs/{run_id}/cancel` | `/v1/runs/{run_id}/cancel` | 실행 중인 에이전트 중단 |
 | `POST /api/v1/chat/runs/{run_id}/approvals/{call_id}` | `/v1/runs/{run_id}/approvals/{call_id}` | 사용자 승인/거절 상태 제출 |
-| `GET /api/v1/chat/usage` | `/v1/usage` | 사용자 본인의 토큰 및 크레딧 사용량 조회 |
+| `GET /api/v1/chat/usage` | `/v1/usage` | 호출자 본인 사용량(개인 지갑·도메인 풀 등 모든 결제 주체, `view`·`by_payer` 포함, 한도는 본인 월간 한도). 모든 보기에 현재 도메인의 `domain_pool`(`exists`·`funded`·잔액·예약·월 사용량·유효 월 한도, 무제한이면 `null`; 풀이 없으면 `exists:false`)이 포함되어 구성원 누구나 풀 집계를 본다. `scope=domain`은 live 도메인 매니저만 도메인 풀 사용량과 풀 잔액·예약·월간 사용량/한도를 받고 그 외는 403 `domain_manager_required` |
+| `GET /api/v1/chat/usage/timeseries` | `/v1/usage/timeseries` | `bucket`·`range`·선택 `scope=domain`; 항목마다 `credited_cost_by_payer` |
+| `GET /api/v1/chat/usage/keys` | `/v1/usage/keys` | 키별 사용량과 `billing_scope`; `scope=domain`에서는 다른 구성원의 키 이름·접두사를 가린다 |
+| `GET /api/v1/chat/usage/records` | `/v1/usage/records` | 사용 기록 페이지(`limit`·`before_id`·`source`·선택 `scope=domain`); 행마다 `billing_scope`, 도메인 보기에서 다른 구성원 ID는 `null`. 모든 usage 응답은 `no-store` |
+| `GET/POST /api/v1/chat/api-keys` | `/v1/api-keys` | 개인 키 목록·발급. 프로젝트 선택 없음 |
+| `GET /api/v1/chat/api-keys/issuance-policy` | `/v1/api-keys/issuance-policy` | 허용된 모델 scope와 사용자 한도 |
+| `DELETE /api/v1/chat/api-keys/{id}` | `/v1/api-keys/{id}` | 본인 개인 키 폐기 |
 | `PATCH /api/v1/chat/api-keys/{id}` | `/v1/api-keys/{id}` | 본인 API 키 이름 변경 |
 | `PATCH /api/v1/chat/api-keys/{id}/limits` | `/v1/api-keys/{id}/limits` | 본인 API 키의 월·주간 크레딧 한도 설정(`null`은 해제) |
+| `GET/POST /api/v1/chat/service-keys` | `/v1/service-keys` | 현재 도메인 매니저: 서비스 키 목록·발급 |
+| `GET /api/v1/chat/service-keys/issuance-policy` | `/v1/service-keys/issuance-policy` | 현재 도메인 매니저: 서비스 키 발급 가능 scope `{allowed_scopes}` |
+| `DELETE /api/v1/chat/service-keys/{id}` | `/v1/service-keys/{id}` | 현재 도메인 매니저: 서비스 키 폐기 |
+| `GET/PATCH /api/v1/chat/domain-pool` | `/v1/domain-pool` | 현재 도메인 매니저: 선불 잔액, 예약, 월간 사용량·한도·상한 조회; `manager_monthly_limit_credits` 변경 |
+| `GET /api/v1/chat/admin/domain-pools` | `/v1/admin/domain-pools` | 시스템 관리자: 도메인 크레딧 풀 목록 |
+| `PATCH /api/v1/chat/admin/domain-pools/{domain_id}` | `/v1/admin/domain-pools/{domain_id}` | 시스템 관리자: `admin_ceiling_credits`·`is_active` 변경 |
+| `POST /api/v1/chat/admin/domain-pools/{domain_id}/topups` | `/v1/admin/domain-pools/{domain_id}/topups` | 시스템 관리자: `amount_credits`, 선택 `note`, 필수 `Idempotency-Key`로 충전 |
+| `GET /api/v1/chat/admin/domain-pools/{domain_id}/topups/{idempotency_key}` | `/v1/admin/domain-pools/{domain_id}/topups/{idempotency_key}` | 시스템 관리자: 그 키의 충전 원장 조회. `{found: true, entry}` 또는 `{found: false, entry: null}`(404 아님). 키는 `[A-Za-z0-9_-]{1,120}`만 전달 |
+| `GET /api/v1/chat/admin/service-keys` | `/v1/admin/service-keys` | 시스템 관리자: 서비스 키 metadata. `owner_domain_id`·`before_id`·`limit` 지원 |
 | `GET /api/v1/chat/admin/quotas` | `/v1/admin/quotas` | 관리자: 시스템 기본 월 한도·credit 환산 정책·사용자별 상속/override와 현재 사용량 목록 |
 | `PUT /api/v1/chat/admin/quotas/defaults` | `/v1/admin/quotas/defaults` | 관리자: 시스템 전체 기본 월 한도 설정(`null`은 무제한) |
 | `PUT /api/v1/chat/admin/quotas/{user_id}` | `/v1/admin/quotas/{user_id}` | 관리자: 사용자 개인 월·주간 override 설정(`null`은 명시적 무제한) |
@@ -238,6 +285,8 @@ When advertised, `image_moderation_options` permits `moderation`, and an SVG gen
 ### 실시간 음성 browser session
 
 `GET /api/v1/chat/models?model_kind=realtime`와 `GET /api/v1/chat/capabilities?model_id=<id>&model_kind=realtime`의 양방향 오디오 gate, 정확한 USD 가격, voice·sample-rate readiness를 먼저 확인합니다. 사용자가 **음성 세션 시작**을 누를 때에만 `getUserMedia` permission을 요청하고, `POST /api/v1/chat/realtime/sessions`에 `{model_id:"<id>",voice:"alloy",max_duration_seconds:300}` 및 UUID `Idempotency-Key`를 보냅니다. BFF는 Lumen의 provider key나 `connect_token`을 반환하지 않고 `{session_id,status,model_name,provider_type,expires_in_seconds,expires_at,ticket,websocket_path:"/api/v1/chat/realtime/ws",realtime_image_input}`만 반환합니다. `realtime_image_input`은 Lumen이 2 MiB 프레임을 승인한 conversation에서만 `true`입니다. `ticket`은 Redis 60초, project-scoped, 단일 소비이며 일반 auth token을 WebSocket URL에 넣지 않습니다.
+
+`model_row_id`는 선택된 카탈로그 행을 가리키는 JSON 정수(1–2⁶³−1)입니다. Studio는 기존 `model_id` 문자열과 함께 이 값을 보냅니다. API는 두 필드 중 하나 이상을 요구하며, BFF는 두 값이 있으면 그대로 전달합니다. Lumen이 두 선택 및 `provider_id`의 일치 여부를 검증합니다. BFF는 `model_id`나 `model_row_id`가 생략되거나 `null`이면 해당 필드를 전달하지 않습니다. `model_row_id`를 보내려면 이 필드를 지원하는 Lumen이 필요합니다.
 
 브라우저는 반환된 경로에 ticket으로 WSS 연결하고 `session.ready`의 `input_sample_rate_hz`(Gemini 16 kHz/OpenAI 24 kHz)에 맞춰 mono PCM16 worklet을 시작합니다. `audio.input.append`의 base64 chunk, `audio.output.delta`의 24 kHz playback, 자막 delta, `session.interrupted`, `response.cancel`을 처리합니다. 브라우저 프로젝트/사용자 변경·로그아웃·세션 종료 시 microphone track, AudioContext, playback, socket과 표시 자막을 즉시 정리합니다. 원본 오디오는 Afterglow→Lumen→선택 provider로 전송되며 Afterglow/Lumen은 원본 PCM·실시간 자막을 DB/S3에 보존하지 않습니다. Provider의 데이터 처리 정책은 별도로 확인해야 합니다. 생성 이미지·유한 오디오의 durable run/asset·usage는 **Lumen**이 소유합니다. 장애 시 upstream usage가 확정되지 않으면 Lumen hold가 unknown으로 남으며 BFF는 이를 임의 정산하지 않습니다.
 
@@ -350,6 +399,7 @@ Lumen은 외부 프로그램을 위한 OpenAI/Anthropic 호환 API를 제공한�
 - Anthropic SDK와 Claude Code: `endpoints.anthropic.sdk_base_url`을 그대로 사용한다. client가 `/v1/messages`를 붙이므로 직접 `/v1`을 추가하지 않는다.
 - Codex: `clients.codex.base_url`을 custom provider의 `base_url`로 사용하고 `wire_api = "responses"`를 선택한다. 일반 Lumen API 키를 환경 변수로 읽는다.
 - 대시보드 호스트 앞에 `api.`를 붙여 추측하지 않는다. localhost에서 실행하는 Afterglow도 연결된 Lumen의 공개 주소를 사용한다. Discovery 조회 실패 시 화면은 주소를 추측하지 않고 오류와 재시도를 표시한다.
+- **SDK 예제** 패널은 discovery가 아니라 설치기와 같은 `[services] lumen_external_url`을 사용한다. 공개 site config의 `lumen_external_url`로 이 검증된 공개 주소만 받아 OpenAI(`<url>/v1`)·Anthropic(`<url>`)·Google GenAI(`<url>`, `v1beta`) 예제에 넣고, 값이 없으면 패널을 숨긴다. 전체 튜토리얼은 [Lumen API를 SDK로 사용하기](../lumen-sdk.md)다.
 
 2026-09-06 실제 SDK로 확인한 DMSLab 배포 주소:
 
@@ -367,17 +417,17 @@ Lumen은 외부 프로그램을 위한 OpenAI/Anthropic 호환 API를 제공한�
 
 설정 **API 키 → 연결 방법 → Codex + Claude Code 자동 설정**에서 대시보드가 제공하는 스크립트를 확인하고 복사한다. Codex CLI 0.160.0+와 Claude Code 2.1.257+를 먼저 설치해야 한다. 설치기는 바이너리를 설치하거나 추론을 호출하지 않으며, 일반 Lumen API 키의 **전체 값**(`models:read` 권한)으로 Codex base의 `GET /cli/models`만 읽는다. 목록의 key prefix와 대시보드 로그인 토큰은 사용하지 않는다. `/cli/models`가 없는 이전 Lumen(404)이면 업그레이드 안내와 함께 아무 파일도 바꾸지 않고 중단하므로 Lumen을 Afterglow보다 먼저 배포한다.
 
-아래는 주소 형식 예시다. 실제 명령은 현재 대시보드 origin과 discovery의 Codex Responses/Anthropic SDK base를 사용하며 배포 subpath를 보존한다. 비밀 키는 URL·명령 인자·복사 명령에 넣지 않고 실행 뒤 로컬 private prompt로 입력한다.
+복사 명령에는 현재 대시보드의 다운로드 주소만 들어간다. Afterglow는 시작할 때 `[services] lumen_external_url`을 검증하고 두 설치기에 삽입한다. Codex는 공개 주소에 `/v1`을 붙이고 Claude Code는 공개 주소를 그대로 사용한다. 별도의 Lumen URL 인자나 환경 변수는 받지 않는다. 비밀 키는 실행 뒤 로컬의 숨김 프롬프트에만 입력한다.
 
 ```sh
-curl -fsSL 'https://dashboard.example/install/lumen.sh' | sh -s -- 'https://lumen.example/v1' 'https://lumen.example'
+curl -fsSL 'https://dashboard.example/install/lumen.sh' | sh
 ```
 
 ```powershell
-$env:LUMEN_CODEX_BASE_URL='https://lumen.example/v1'; $env:LUMEN_ANTHROPIC_BASE_URL='https://lumen.example'; irm 'https://dashboard.example/install/lumen.ps1' | iex
+irm 'https://dashboard.example/install/lumen.ps1' | iex
 ```
 
-- **다운로드 신뢰:** 실행 전에 주소와 스크립트 내용을 확인한다. Lumen bases는 HTTPS여야 하며 userinfo·query·fragment·control character를 허용하지 않는다. 대시보드 다운로드도 HTTPS이며 개발용 loopback HTTP preview만 예외다. 목록 조회는 검증된 TLS로 한 번 수행하고 redirect를 따르지 않는다. 인증 실패·빈 목록·형식 오류는 정적 목록이나 수동 ID로 대체하지 않고 변경 없이 중단한다. 목록의 사용 가능 표시는 서버 구성 증거이며 provider의 실제 추론 응답을 검증하지 않는다.
+- **다운로드 신뢰:** 실행 전에 주소와 스크립트 내용을 확인한다. 공개 Lumen 주소는 절대 HTTPS URL이어야 하며 자격 증명·쿼리·프래그먼트를 허용하지 않는다. 개발 환경의 루프백 Lumen과 루프백 대시보드만 HTTP를 허용한다. 공개 주소를 구성하지 않으면 UI에 명령을 표시하지 않는다. 직접 다운로드한 스크립트도 안내 메시지와 함께 실패하며, PowerShell에서는 현재 터미널을 닫지 않는다. HTTPS 목록 조회는 TLS를 검증하고 리디렉션을 따르지 않는다. 인증 실패·빈 목록·형식 오류는 정적 목록이나 수동 ID로 대체하지 않고 변경 없이 중단한다. 목록의 사용 가능 표시는 서버 구성 증거이며 provider의 실제 추론 응답을 검증하지 않는다.
 - **역할 선택:** 실제 provider 그룹별로 번호, 표시 이름·공개 ID, `lumen/<provider>/<model>` route ID, 알려진 context·입출력 단가, 지원 프로토콜(`messages`/`responses`)을 보여 준다. Codex Sol·Luna(Responses)와 Claude Fable·Opus·Sonnet·Haiku(Messages)를 각각 번호로 고르고 Claude 시작 역할(기본 `sonnet`)을 정한다. 같은 모델을 여러 역할에 쓸 수 있고, 같은 공개 ID가 여러 provider에 있어도 route ID로 구분되어 선택한 provider에서 실행·정산된다. 구독 프로토콜 미지원처럼 사용할 수 없는 행은 사유를 표시하고 선택을 거부한다. Lumen 0.6.6부터 custom OpenAI 호환 base 행은 native Responses 지원을 증명하지 못해 `messages`만 광고하므로 Claude 역할에서만 고를 수 있다. 역할명은 위치일 뿐 모델 크기·품질 주장이 아니다. Lumen의 cross-protocol adapter가 비-Claude 모델도 Claude Code에 연결하지만 Anthropic 공식 지원 범위는 아니다.
 - **macOS/Linux:** POSIX `sh`, Python **3.11+**의 `tomllib`, controlling terminal이 필요하다. pipe stdin이 아닌 `/dev/tty`에서 키를 echo 없이 받는다. 키는 `${XDG_CONFIG_HOME:-$HOME/.config}/lumen/key.sh`(0600), 전용 디렉터리는 0700이며 TOML과 일반 셸 프로필에는 평문 키를 넣지 않는다. `~/.bashrc`, 첫 기존 `.bash_profile`/`.bash_login`/`.profile`(없으면 `.profile`), `${ZDOTDIR:-$HOME}/.zshrc`의 한 marker block을 갱신한다. 기존 profile mode와 unrelated 설정을 유지한다. 안전하지 않은 소유권·권한·symlink/hardlink·잘못된 TOML·불완전한 marker는 변경 없이 거부한다. 지원되지 않는 dotfile 구성을 삭제하거나 강제로 덮어쓰지 않는다.
 - **CA:** POSIX는 읽을 수 있는 검증 가능한 시스템 PEM 번들을 사용한다. `LUMEN_CA_BUNDLE` > 사용자 `CODEX_CA_CERTIFICATE` > platform default 순이며 사용자 지정 번들은 Claude Code의 `NODE_EXTRA_CA_CERTS`에도 적용한다. 선택 경로가 symlink여도 read-only 실제 PEM·소유권·권한을 검증하고 인증서에 chmod/write하지 않는다. 새 configured shell의 inherited CA와 기존 Node 공유 의도를 보존해 rerun 때 trust 설정·backup이 불필요하게 바뀌지 않는다. TLS 검증을 끄지 않는다. Windows도 명시적인 `LUMEN_CA_BUNDLE` > 기존 `CODEX_CA_CERTIFICATE`를 검증·선택하고 지정이 없으면 OS trust를 사용한다. Windows의 Claude trust 환경은 변경하지 않는다.
@@ -411,16 +461,16 @@ supports_websockets = false
 printf 'Lumen API key: '; read -rs LUMEN_API_KEY; printf '\n'; export LUMEN_API_KEY
 ```
 
-그다음 실제 모델 ID로 placeholder를 바꿔 **같은 셸**에서 실행한다. CLI override를 쓰면 사용자 기본 provider가 Lumen이 아니어도 이 실행만 Lumen으로 연결한다.
+그다음 실제 모델 ID로 placeholder를 바꿔 **같은 셸**에서 실행한다. CLI override를 쓰면 사용자 기본 provider가 Lumen이 아니어도 이 실행만 Lumen으로 연결한다. Codex 0.170은 기본적으로 provider 호스팅 `web_search` 도구를 함께 보내고 Lumen API 키는 이를 `403 server_tool_not_allowed_for_key`로 거부하므로 `-c web_search=disabled`를 함께 지정한다.
 
 ```bash
-codex --strict-config -c model_provider=lumen -m "replace-with-active-Responses-model-ID"
+codex --strict-config -c model_provider=lumen -c web_search=disabled -m "replace-with-active-Responses-model-ID"
 ```
 
 사용자 설정의 최상위 `model`이 사용할 Lumen Responses 공개 모델 ID이고 선택한 profile·project 설정이 이를 덮어쓰지 않으면 다음처럼 실행한다. 설치기가 기본 모델 변경을 제안해도 기존 모델은 기본적으로 보존하며, 변경은 사용자 opt-in과 백업을 거친다. `model_provider=lumen`만으로 모델이 자동 선택되지는 않는다. 기존 다른 모델 또는 model override가 있으면 위의 `-m`을 사용한다.
 
 ```bash
-codex --strict-config -c model_provider=lumen
+codex --strict-config -c model_provider=lumen -c web_search=disabled
 ```
 
 Codex는 full-input Responses tool continuation을 Lumen에 보낸다. 브라우저·curl은 정상인데 Codex만 TLS 연결 오류로 실패할 때 `CODEX_CA_CERTIFICATE`에 **자기 장치가 신뢰하는 검증 가능한 PEM CA 번들**을 지정한다. macOS의 확인된 경로와 Debian/Ubuntu 계열 Linux의 일반적인 경로는 다음과 같다. 파일 존재·읽기 가능 여부를 먼저 확인하고 배포판이 다르면 해당 장치의 경로를 사용한다. TLS 검증을 끄지 않는다.
@@ -465,7 +515,7 @@ claude
 
 ### API 키와 모델 ID
 
-1. 채팅 화면의 **설정 → API 키 → 새 API 키** 또는 `/dashboard/chat/settings?section=apikeys`에서 발급한다. Modal에서 프로젝트·선택적 이름·만료 없음/30일/90일/직접 날짜·허용된 전체/선택/읽기 전용 권한·월 크레딧 한도를 한 번에 지정한다. 선택 프로젝트의 current permissions와 `GET /api/v1/chat/api-keys/issuance-policy`를 새로 조회하고 같은 프로젝트 header로 한 번의 POST를 보낸다. 원래 프로젝트 권한이나 쿼터를 대상에 재사용하지 않는다. 미래의 timezone-aware `expires_at`만 허용하며 기존 무만료 키는 유지한다. 평문 키는 발급 직후 한 번만 표시한다. 폐기 키는 기본 숨김이며 **전체 보기 / 활성만 보기**로 전환하고 폐기 행의 수정·폐기 액션은 표시하지 않는다. 만료됐지만 미폐기인 키는 만료 상태로 표시한다. 같은 화면의 이름 변경과 월·주간 한도 수정은 유지하며 초과 한도는 인라인 오류로 막는다.
+1. **설정 → API 키 → 새 API 키** 또는 `/dashboard/chat/settings?section=apikeys`에서 개인 키를 발급한다. 프로젝트를 고르지 않고 현재 세션의 허용 scope, 선택적 이름, 만료, 월 크레딧 한도를 지정한다. 평문 키는 발급 직후 한 번만 표시한다. 폐기 키는 기본 숨김이며 만료와 폐기는 별도 상태다. 이름 변경과 월·주간 키 한도 수정은 같은 화면에서 수행한다. 현재 도메인 매니저는 **서비스 키**에서도 별도로 발급·폐기할 수 있다.
 2. 메시지 작성창의 **모델 선택**에서 원하는 모델 옆의 **ID 복사**를 누른다.
 3. 복사되는 **API ID**는 `api_model_name`이다. 표시 이름, 내부 숫자 ID, 운영용 `model_name`/LiteLLM route가 아니며 따옴표·`model=` 접두사를 포함하지 않는다.
 4. 목록의 **Provider**는 `api_provider`다. 같은 공개 API ID가 여러 provider에 있을 때 SDK 요청의 `provider` 선택자로 사용한다.
@@ -473,6 +523,12 @@ claude
 6. 실행 환경의 `LUMEN_API_KEY`에 발급 키를, `LUMEN_MODEL`에 복사한 API ID를 설정한다. route 충돌 시 `LUMEN_PROVIDER`에 Provider를 설정한다. 키를 소스·노트북 출력·로그에 기록하지 않는다.
 
 호환 API는 API 키를 사용하며 Keystone 토큰은 사용하지 않는다. 기본 scope는 모델 조회용 `models:read`와 completion용 `compat:completions:write`다.
+
+개인 키 사용량은 해당 사용자에게 청구된다. 대시보드 모델 요청과 서비스 키 사용은 같은 도메인의 선불 크레딧에 청구된다. 풀 월 한도의 `null`은 생략 가능한 한도 자체를 해제하고 `0`은 새 이용을 차단한다. 도메인 매니저 한도는 시스템 관리자 상한을 초과할 수 없다. 관리자 충전 확인에는 대상 도메인 ID·금액·메모를 표시한다. 충전 결과가 불명확하면 같은 요청의 본문과 `Idempotency-Key`를 재사용하며, 다른 본문과 같은 키는409를 반환한다. 전송 직전 관리자 사용자 ID·도메인·요청 키·금액·메모(자격 증명 없음)를 브라우저 `localStorage`에 기록하므로 응답 유실 뒤 새로고침·재방문해도 같은 관리자·도메인에만 "확인되지 않은 충전"이 표시된다. 기록을 쓰고 다시 읽어 일치하지 않으면(저장소 차단·용량 초과 포함) 충전을 보내지 않는다. 다른 탭이 같은 관리자·도메인에 다른 키의 미확인 기록을 남겼으면 덮어쓰지 않고 그 기록을 가져와 표시하며 새 충전을 보내지 않는다. 전송 직전 취소되어 네트워크에 나가지 않은 첫 전송은 기록을 남기지 않는다. 화면은 자동 재시도하지 않는다. 다시 확인은 시스템 관리자 전용 `GET /v1/admin/domain-pools/{domain_id}/topups/{idempotency_key}`(BFF `/api/v1/chat/admin/...` 그대로 전달, 키는 `[A-Za-z0-9_-]{1,120}`만 허용)로 그 키의 원장 항목을 조회한다. `found: true`면 금액·반영 후 잔액·시각을 보여 주고 확인된 충전으로 기록을 지운다. `found: false`는 "아직 반영되지 않음"일 뿐이라 늦게 도착한 원래 요청이 나중에 반영될 수 있으므로 기록을 유지하고 같은 키 재시도와 다시 확인만 제공한다. 기록은 확인된 성공, 첫 전송의 확정 거절, 원장 조회 `found: true`에서만 지운다. 재시도·조회의 401/403/408/429/5xx/네트워크 오류는 원래 요청에 대해 아무것도 알려 주지 않으므로 기록을 유지한다. 보류 항목 삭제는 같은 키 재시도가 확정 4xx로 거절된 뒤 다시 확인이 `found: false`를 돌려주고, 관리자가 중복 충전 위험을 감수한다는 문구를 직접 입력했을 때만 가능하다. 키·풀 BFF 응답은 `no-store`이고 Lumen의 원본 상태/오류 코드는 보존한다. Afterglow와 Lumen이 현재 권한을 독립적으로 확인하며 추가 신뢰 헤더는 없다.
+
+Personal 도메인에는 크레딧 풀이 없다. 대시보드는 현재 작업 도메인(`available_domains[].kind === "personal"`)을 기준으로 채팅 입력창과 Studio에 조직 전환·생성 안내를 미리 표시하고 전송·실행과 메시지 재시도·재생성을 비활성화한다. 대화 기록(버전 이동·분기 포함)·에이전트·연결·Vault·API 키 관리는 청구 대상이 아니므로 막지 않는다. 이 판단은 표시용이며 허용 여부는 Lumen이 결정한다. Lumen은 풀이 없거나 부족한 도메인을 `domain_credit_insufficient`로 거부한다. 응답 형태는 경로마다 다르다. 채팅 run 생성은 본문 `detail`/`code`(BFF `ChatHttpError.code`), native Studio와 실시간 세션 생성은 HTTP 402·409·429의 `detail`, durable run은 `run.failed.error_code`, 연결된 실시간 WebSocket은 종료 코드 `4429`(사유 `domain_credit_insufficient`)로 전달한다. 대시보드는 상태 코드와 관계없이 이 코드를 개인 프로젝트에서는 조직 전환 안내로, 조직에서는 "도메인 크레딧이 부족합니다. 도메인 관리자 또는 시스템 관리자에게 충전을 요청하세요."로 표시한다.
+
+`/api/v1/chat/realtime/ws` relay는 Lumen의 종료 코드 중 애플리케이션 범위 `4000`–`4999`와 `1000`·`1001`·`1008`·`1011`만 브라우저에 그대로 전달하고, 종료 사유는 UTF-8 123바이트 이내에서 글자 단위로 자른다. 그 밖의 코드나 종료 frame 없는 비정상 종료는 사유 없이 `1011`로 닫는다. BFF 내부 예외 문구는 종료 사유로 보내지 않는다.
 
 - OpenAI 인증: `Authorization: Bearer <API 키>`
 - Anthropic 인증: `x-api-key: <API 키>`
@@ -621,6 +677,14 @@ Discovery 응답은 generation, provider, token/project와 화면 수명으로 �
 입력·출력 가격 아래에는 선택 항목인 **프롬프트 캐시 단가**(캐시 읽기, 캐시 쓰기 5분, 캐시 쓰기 1시간, USD / 1M tokens)가 있다. 세 항목은 서로 및 텍스트 단가와 독립이다. 음수가 아닌 일반 소수(`^\d+(\.\d+)?$`)만 받고, 오류는 제출 전에 `Field` error로 표시한다. 입력한 문자열은 trim만 하고 float로 변환하지 않은 채 전달하며, 정밀도 한도는 Lumen이 검증한다. 등록 시 비운 캐시 항목은 보내지 않는다. 가격 수정은 prefill과 달라진 key만 보내고 기존 값을 비우면 `null`로 해제하며, 손대지 않은 항목은 보내지도 검증하지도 않는다. 바뀐 항목이 없으면 요청 없이 닫는다. Lumen이 저장된 캐시 0을 `0E-10` 같은 지수 표기로 돌려주면 목록과 prefill은 `0`으로 표시한다. 모델 목록은 설정된 캐시 단가를 표시하고, 설정되지 않은 항목은 캐시 token이 단가 설정 전까지 0 USD로 청구된다고 표시한다. 응답에 cache key 자체가 없으면(cache 단가 이전 Lumen) 0 USD 안내 대신 미지원으로 표시하고 가격 수정의 cache 입력을 숨기며, 불러온 모델이 모두 그런 응답이면 등록 form의 cache 입력도 숨긴다. models.dev 가져오기는 여전히 캐시 단가를 적용하지 않고 가격 수정에서 설정하도록 안내한다. Afterglow BFF는 모델 schema 없이 요청·응답 byte를 그대로 전달한다(`backend/tests/contracts/test_lumen_proxy.py`). 배포 순서는 Afterglow frontend → cache 단가를 지원하는 Lumen이다. 새 Lumen은 `usage.updated`에 `cache_read_input_tokens`, `cache_creation_5m_input_tokens`, `cache_creation_1h_input_tokens`, `advisor_cache_read_tokens`, `advisor_cache_creation_5m_tokens`, `advisor_cache_creation_1h_tokens` component를 보내며, 이 kind를 모르는 이전 frontend의 strict parser(`frontend/src/lib/api/chatContracts.ts`)는 그 event에서 멈춰 캐시 토큰이 있는 web run을 완료하지 못한다. 새 frontend는 이전 Lumen에서도 동작한다: 모델이 하나 이상 로드되면 cache key가 없는 응답을 미지원으로 표시하고 cache key를 보내지 않는다. 모델이 하나도 없으면 Lumen 버전을 구분할 수 없어 등록 form이 cache 입력을 유지하므로, 이전 Lumen에서 cache 단가를 채워 첫 모델을 등록하면 Lumen이 422로 거절한다.
 
 미설정 text cache의 기존 과금 규칙은 `model_kind=text`에 해당한다. Image/TTS/STT/realtime은 적용하는 text 방향의 실행 가격만 필요하다. 종류별 discovery/등록/목록 필터와 전용 가격 modal에서 image/audio `input_per_million`, `cache_read_per_million`, `output_per_million`을 `media_pricing.token_rates`에 독립 저장하며 빈 값은 explicit 0과 다르다. Text cache 열은 그대로 보존하고 JSON의 바뀐 leaf만 merge해 unknown metadata·다른 기준 가격·시간 alias를 지우지 않는다. Media token 과금 중 사용한 cache rate가 없거나 usage split이 불명확하면 0/다른 가격으로 대체하지 않고 Lumen이 정산을 미확정으로 남긴다.
+
+이미지 모델의 등록 검토·직접 등록·가격 수정은 **요금 적용 방식**을 `토큰 단위` 또는 `이미지 단위` radio로 고른다. 토큰 단위는 OpenAI 가격표와 같은 두 그룹을 USD / 1M tokens로 표시한다. **텍스트 토큰**의 입력·캐시 입력은 기존 `input_price_per_million`·`cache_read_price_per_million` 열에, **이미지 토큰**의 입력·캐시 입력·출력은 `media_pricing.token_rates.image`에 저장한다. 이미지 모델에는 modality checkbox가 없으며, 오디오 토큰 그룹은 catalog modality나 저장 값이 있을 때만 보인다. 이미지 단위는 기본 이미지 단가와 정확한 `size:quality` 변형 단가를 그대로 제공한다. Lumen 이미지 단위 실행은 모델이 지원하는 정확한 `size:quality`의 양수 변형 단가만 사용한다(예: Gemini 2.5는 `auto`만). 화면은 기본 단가만 있는 등 명백히 비어 있는 draft만 막고, 실제 활성화 준비는 Lumen의 `image_pricing_readiness`(`ready`, `reason`, `executable_variants`, `unsupported_variants`, `supported_variants`)를 따른다. **가격 확인 후 등록·활성화**는 이미지 모델을 먼저 비활성으로 만들고 응답이 `ready`일 때만 `is_active: true`로 PATCH한다. 준비되지 않으면 비활성으로 남기고 사유와 지원하지 않는 변형을 검토 항목에 표시하며, 가격 수정 화면은 지원 변형 목록과 지원하지 않는 저장 변형을 inline으로 표시한다. 목록의 활성화도 준비되지 않은 이미지 모델이면 사유를 보여 주고 요청하지 않는다. 방식을 바꿔도 두 draft가 유지되고 저장 시 선택한 방식만 적용한다.
+
+**직접 등록**도 이미지 모델은 `is_active: false`로 만든 뒤 응답 readiness가 `ready`일 때만 활성화한다(Lumen은 `is_active` 생략 시 활성으로 만든다). Lumen이 활성화나 활성 행을 준비되지 않은 상태로 만드는 저장을 HTTP 409 `detail.code = "image_pricing_not_ready"`(`reason`, `unsupported_variants`)로 원자적으로 거부하면 등록 검토·직접 등록·목록 활성화·가격 수정 모두 사유와 지원하지 않는 변형을 표시하고 행을 기존 상태(비활성)로 둔다. 가격 수정 화면은 거부된 draft를 유지한다.
+
+같은 provider·kind의 native catalog 항목이 있으면 검토 화면이 catalog 방식(GPT Image 2.6은 토큰 단위)과 공식 가격을 입력란에 미리 채우고 **공식 가격**으로 표시한다. 손대지 않은 공식 leaf는 요청에서 빠져 Lumen catalog 갱신을 계속 따른다. 수정한 leaf만 수동 가격(manual > official)으로 보내며, 필드별 **공식 가격으로 복원**은 해당 leaf를 다시 생략하거나 기존 저장 값에 `null`을 보낸다. 이 UI가 저장하는 이미지 미디어 가격은 `media_pricing.override_mode: "leaf"` 희소 patch이고 Lumen이 catalog 위에 leaf별로 overlay한다. Mode가 없는 기존 행은 **수동 가격 (미디어 단가 전체)**으로 표시하고 기존 replace 의미로 바뀐 leaf만 merge하며, 관리자가 명시적으로 선택할 때만 leaf mode로 전환한다. 가격 수정 화면은 Lumen 응답의 저장 값(`media_pricing`, text 가격 열)과 `catalog_entry.token_pricing`/`media_pricing`을 비교해 출처를 표시한다.
+
+OpenAI 이미지 토큰 방식은 `reservation_usd`를 비워도 Lumen이 요청별 bounded hold를 계산하므로 저장할 수 있다. 다른 provider는 양수 예약 상한이 필요하다. 이미지 단위로 저장하면 Lumen 규칙에 따라 저장된 예약 상한을 지운다. 활성화 준비는 텍스트 입력과 이미지 출력 단가를 요구하며 이미지 편집은 이미지 입력 단가도 필요하다는 안내를 inline으로 표시한다. 이미지 캐시 입력 단가는 저장할 수 있지만 현재 direct Images API는 캐시된 이미지 token을 별도로 보고하지 않으므로, provider가 분리된 cached image count를 보고할 때만 청구된다.
 
 과금 기준은 image unit, audio duration/characters, realtime session, 실제 provider tokens를 분리한다. `audio_{input|output}_per_{second|minute|hour}`, `realtime_{input|output}_per_{second|minute|hour}`, `realtime_session_per_{second|minute|hour}`는 선택 단위를 정확한 Decimal 문자열로 보존하며 충돌 alias는 Lumen이 거부한다. Session은 최대 연결 시간만큼 예약하고 실제 경과 시간을 분 올림 없이 청구하며 PCM 합계를 더하지 않는다. Tokens의 양수 `reservation_usd`는 요청/세션 전체의 자금 상한으로 사용 단가가 아니다. 실제 modality 상세가 없으면 추정하지 않으며 OpenAI Images output split 누락은 paid unknown hold, OpenAI binary TTS/whisper-1 token basis는 I/O 전 거부한다. 기존 media omission은 legacy unit/duration이다. 가격 설정은 새로운 실행 protocol을 추가하지 않는다.
 

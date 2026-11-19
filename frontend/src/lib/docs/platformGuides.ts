@@ -496,6 +496,7 @@ export const platformGuides: DocGuide[] = [
 						text: [
 							'Codex CLI 0.160.0+와 Claude Code 2.1.257+는 각 클라이언트의 공식 설치 안내로 먼저 설치합니다. 화면의 Codex + Claude Code 자동 설정은 CLI 바이너리 설치나 추론 호출 없이, 입력한 키로 Lumen 모델 목록(models:read)만 읽고 역할별 모델·키 보관·셸 프로필을 설정합니다.',
 							'실행 전 macOS/Linux /install/lumen.sh 또는 Windows /install/lumen.ps1 스크립트 내용을 확인하고 화면이 생성한 배포별 명령을 복사합니다. 키는 실행 후 로컬 숨김 프롬프트에서 입력하며 URL·명령 인자·history에 넣지 않습니다. POSIX는 Python 3.11+와 대화형 터미널, Windows는 해당 PowerShell edition과 조직 정책을 확인합니다.',
+							'다운로드한 스크립트에 배포의 공개 Lumen 주소가 포함되어 있습니다. 복사 명령에 Lumen 주소를 추가하지 마세요. 자동 설정 명령이 표시되지 않으면 수동으로 연결하세요.',
 							'프로바이더별 모델 목록에서 Codex Sol·Luna와 Claude Fable·Opus·Sonnet·Haiku를 각각 고릅니다. 역할명은 모델 크기·품질 등급이 아니며 같은 모델을 여러 역할에 쓸 수 있습니다. 새 터미널에서 codex(Sol), codex --profile lumen-luna(Luna), claude --model opus 등으로 실행하며 기존 데스크톱 provider/model은 보존합니다. 자동 설정 성공만으로 실제 API 인증·모델 실행 성공을 주장하지 않습니다.'
 						],
 						command: {

@@ -3,13 +3,16 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/sv
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { authReady, projectSwitching } from '$lib/stores/auth';
 import type * as RealtimeModule from '$lib/api/realtimeVoice';
+import type * as ClientModule from '$lib/api/client';
 import RealtimeVoice from '../RealtimeVoice.svelte';
 import { t } from '$lib/i18n/ns/chat-studio';
 import { t as chatT } from '$lib/i18n/ns/chat-panel';
+import { t as settingsT } from '$lib/i18n/ns/chat-settings';
 import * as experience from '$lib/utils/experience';
 
-const calls = vi.hoisted(() => ({ models: vi.fn(), capabilities: vi.fn(), createSession: vi.fn(), connect: vi.fn() }));
+const calls = vi.hoisted(() => ({ models: vi.fn(), capabilities: vi.fn(), createSession: vi.fn(), connect: vi.fn(), fetch: vi.fn() }));
 vi.mock('$lib/api/realtimeVoice', async (original) => ({ ...await original<typeof RealtimeModule>(), realtimeVoiceApi: calls }));
+vi.mock('$lib/api/client', async (original) => ({ ...await original<typeof ClientModule>(), fetchWithAuth: calls.fetch }));
 const gate = (priced = true) => ({ feature_gates: {
 	audio_input: { available: true, mode: 'native', pricing_available: priced },
 	audio_output: { available: true, mode: 'native', pricing_available: priced }
@@ -27,7 +30,7 @@ class Socket {
 	static instances: Socket[] = [];
 	readyState = 0;
 	onmessage: ((event: MessageEvent) => void) | null = null;
-	onclose: (() => void) | null = null;
+	onclose: ((event: CloseEvent) => void) | null = null;
 	onerror: (() => void) | null = null;
 	sent: string[] = [];
 	closed = false;
@@ -36,6 +39,7 @@ class Socket {
 	close() { this.readyState = 3; this.closed = true; }
 	open() { this.readyState = 1; }
 	message(value: Record<string, unknown>) { this.onmessage?.({ data: JSON.stringify(value) } as MessageEvent); }
+	closeFromServer(code = 1000, reason = '') { this.onclose?.({ code, reason } as CloseEvent); }
 }
 
 class Capture {
@@ -82,6 +86,33 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('Realtime Voice', () => {
+	it('admits the exact same-name model row from the selected provider', async () => {
+		const track = { stop: vi.fn(), enabled: true };
+		const getUserMedia = vi.fn().mockResolvedValue({ getTracks: () => [track] });
+		vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia } });
+		calls.models.mockResolvedValue([{ ...model(), provider_id: 1, provider: 'OpenAI' }, { ...model(), id: 27, provider_id: 2, provider: 'Second OpenAI account' }]);
+		calls.capabilities.mockImplementation(async (id: number) => ({ ...capability(), model_id: id }));
+		calls.fetch.mockResolvedValueOnce(Response.json({ status: 'ready', provider_type: 'openai', ticket: 'opaque', websocket_path: '/api/v1/chat/realtime/ws' }));
+		const actual = await vi.importActual<typeof RealtimeModule>('$lib/api/realtimeVoice');
+		calls.createSession.mockImplementationOnce(actual.realtimeVoiceApi.createSession);
+
+		render(RealtimeVoice);
+		await screen.findByText(t('realtimeVoice.ready'));
+		const start = screen.getByRole('button', { name: t('realtimeVoice.startSession') });
+		const select = screen.getByRole('combobox', { name: t('realtimeVoice.model') });
+		await fireEvent.change(screen.getByRole('combobox', { name: t('modelPicker.providers') }), { target: { value: '2' } });
+		expect(select).toHaveProperty('value', '');
+		expect(start).toHaveProperty('disabled', true);
+		await fireEvent.change(select, { target: { value: '27' } });
+		await screen.findByText(t('realtimeVoice.ready'));
+		await fireEvent.click(start);
+
+		await waitFor(() => expect(calls.fetch).toHaveBeenCalledOnce());
+		const [path, request] = calls.fetch.mock.calls[0];
+		expect(path).toBe('/api/v1/chat/realtime/sessions');
+		expect(JSON.parse(request.body)).toEqual({ model_id: '27', model_row_id: 27, voice: 'alloy', max_duration_seconds: 300 });
+	});
+
 	it.each([
 		['realtime_hold_limit', 'realtimeVoice.quotaInsufficient'],
 		['invalid_function_call_id', 'realtimeVoice.providerFailed'],
@@ -105,7 +136,7 @@ describe('Realtime Voice', () => {
 		socket.message({ type: 'transcript.output.delta', delta: 'Response continues' });
 		await screen.findByText('Response continues');
 		socket.close();
-		socket.onclose?.();
+		socket.closeFromServer();
 		await screen.findByText(t('realtimeVoice.connectionClosed'));
 		expect(track.stop).toHaveBeenCalledTimes(1);
 	});
@@ -263,7 +294,7 @@ describe('Realtime Voice', () => {
 		socket.message({ type: 'session.ready', realtime_kind: 'live', input_sample_rate_hz: 24000, output_sample_rate_hz: 24000 });
 		await screen.findByText(t('realtimeVoice.connectedMicrophoneOn'));
 		socket.close();
-		socket.onclose?.();
+		socket.closeFromServer();
 		expect(await screen.findByText(t('realtimeModes.usageUnconfirmed'))).toBeTruthy();
 		expect(screen.queryByText(t('realtimeTranscription.ended'))).toBeNull();
 		expect(track.stop).toHaveBeenCalled();
@@ -594,11 +625,45 @@ describe('Realtime Voice', () => {
 		socket.message({ type: 'transcript.input.delta', item_id: 'turn-1', delta: 'partial text' });
 		socket.message({ type: 'transcript.input.failed', item_id: 'turn-1' });
 		await screen.findByText(t('realtimeTranscription.failed'));
-		socket.onclose?.();
+		socket.closeFromServer();
 		await screen.findByText(t('realtimeVoice.connectionClosed'));
 		expect(screen.getByText('partial text')).toBeTruthy();
 		expect(screen.queryByText(t('realtimeTranscription.final'))).toBeNull();
 		expect(screen.getByText(t('realtimeTranscription.unfinished'))).toBeTruthy();
 		expect(stopTrack).toHaveBeenCalled();
+	});
+
+	it.each([
+		[4429, 'domain_credit_insufficient'],
+		[4429, ''],
+		[1008, 'domain_credit_insufficient']
+	] as const)('asks organization members for a top-up when the relay closes with %i "%s"', async (code, reason) => {
+		setVerifiedLumenActor({ ...user('project-1'), availableDomains: [{ id: 'domain-1', name: 'Domain', kind: 'organization' }] });
+		const track = { stop: vi.fn(), enabled: true };
+		vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [track] }) } });
+		render(RealtimeVoice);
+		await screen.findByText(t('realtimeVoice.ready'));
+		await fireEvent.click(screen.getByRole('button', { name: t('realtimeVoice.startSession') }));
+		await waitFor(() => expect(Socket.instances).toHaveLength(1));
+		const socket = Socket.instances[0]; socket.open();
+		socket.message({ type: 'session.ready', realtime_kind: 'conversation', input_sample_rate_hz: 24000, output_sample_rate_hz: 24000 });
+		await screen.findByText(t('realtimeVoice.connectedMicrophoneOn'));
+		socket.closeFromServer(code, reason);
+		expect(await screen.findByText(settingsT('dashboardChat.organizationCreditInsufficient'))).toBeTruthy();
+		expect(screen.queryByText(t('realtimeVoice.connectionClosed'))).toBeNull();
+		expect(track.stop).toHaveBeenCalled();
+	});
+
+	it('keeps the generic message for other relay closes', async () => {
+		vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: vi.fn(), enabled: true }] }) } });
+		render(RealtimeVoice);
+		await screen.findByText(t('realtimeVoice.ready'));
+		await fireEvent.click(screen.getByRole('button', { name: t('realtimeVoice.startSession') }));
+		await waitFor(() => expect(Socket.instances).toHaveLength(1));
+		const socket = Socket.instances[0]; socket.open();
+		socket.message({ type: 'session.ready', realtime_kind: 'conversation', input_sample_rate_hz: 24000, output_sample_rate_hz: 24000 });
+		await screen.findByText(t('realtimeVoice.connectedMicrophoneOn'));
+		socket.closeFromServer(1011, '');
+		expect(await screen.findByText(t('realtimeVoice.connectionClosed'))).toBeTruthy();
 	});
 });

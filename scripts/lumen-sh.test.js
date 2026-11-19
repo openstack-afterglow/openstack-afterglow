@@ -6,7 +6,13 @@ const test = require("node:test")
 const { spawn, spawnSync } = require("node:child_process")
 const https = require("node:https")
 
-const installer = fs.readFileSync(path.resolve(__dirname, "../frontend/static/install/lumen.sh"), "utf8")
+const template = fs.readFileSync(path.resolve(__dirname, "../backend/app/data/lumen.sh.template"), "utf8")
+
+function renderInstaller(baseUrl) {
+	return template.replace("__LUMEN_CODEX_URL_LITERAL__", JSON.stringify(`${baseUrl}/v1`))
+		.replace("__LUMEN_ANTHROPIC_URL_LITERAL__", JSON.stringify(baseUrl))
+}
+
 let bases
 let tlsServer
 let tlsRoot
@@ -142,7 +148,8 @@ test.before(async () => {
 			}
 		})
 	})
-	bases = [`https://127.0.0.1:${port}/responses/v1`, `https://127.0.0.1:${port}/anthropic`]
+	const base = `https://127.0.0.1:${port}/responses`
+	bases = [`${base}/v1`, base]
 })
 
 test.after(async () => {
@@ -306,9 +313,9 @@ function actions(optIn = "n", sol = "1", startup = "") {
 
 function install(f, options = {}) {
 	const request = {
-		command: ["sh", ...(options.trace ? ["-x", "-v"] : []), "-s", "--", ...(options.bases ?? bases)],
+		command: ["sh", ...(options.trace ? ["-x", "-v"] : []), ...(options.args ? ["-s", "--", ...options.args] : [])],
 		env: f.env,
-		script: installer,
+		script: renderInstaller(options.baseUrl ?? bases[1]),
 		actions: options.actions ?? actions(options.optIn),
 		endOwnerAfterStatus: options.endOwnerAfterStatus ?? false,
 	}
@@ -322,9 +329,9 @@ function install(f, options = {}) {
 	return interaction
 }
 
-function withoutTerminal(f, urls = bases) {
-	const result = spawnSync("sh", ["-s", "--", ...urls], {
-		input: installer, encoding: "utf8", env: f.env, detached: true, timeout: 5000,
+function withoutTerminal(f) {
+	const result = spawnSync("sh", [], {
+		input: renderInstaller(bases[1]), encoding: "utf8", env: f.env, detached: true, timeout: 5000,
 	})
 	assert.equal(result.error, undefined)
 	return { status: result.status, output: result.stdout + result.stderr }
@@ -525,6 +532,8 @@ test("fresh-shell codex keeps management commands native and sends role routes w
 	for (const post of sent) {
 		assert.equal(post.headers.authorization, `Bearer ${secret}`)
 		assert.equal(post.headers["x-lumen-provider"], undefined, "desktop selector must not reach CLI role requests")
+		const tools = JSON.parse(post.body).tools ?? []
+		assert.ok(!tools.some((tool) => String(tool.type).startsWith("web_search")), "hosted web search must stay disabled for Lumen keys")
 	}
 	assert.equal(parseConfig(f).model_providers.lumen.http_headers["X-Lumen-Provider"], "provider-choice")
 })
@@ -566,14 +575,14 @@ test("opt-in changes only the top-level model", (t) => {
 	assert.equal(config.model_providers.lumen.http_headers["X-Lumen-Provider"], "provider-choice")
 })
 
-test("omitted URLs prompt through /dev/tty and default-model opt-in handles a file without a final newline", (t) => {
+test("uses the baked URLs despite old arguments or environment overrides; opt-in handles no final newline", (t) => {
 	const f = fixture(t, 'model_provider = "openai"')
-	const result = install(f, { bases: [], actions: [
-		{ prompt: "Codex HTTPS base URL: ", value: bases[0] },
-		{ prompt: "Anthropic HTTPS base URL: ", value: bases[1] }, ...actions("y"),
-	] })
+	f.env.LUMEN_CODEX_BASE_URL = "https://ignored.example/codex"
+	f.env.LUMEN_ANTHROPIC_BASE_URL = "https://ignored.example/anthropic"
+	const result = install(f, { args: ["https://ignored.example/v1", "https://ignored.example"], optIn: "y" })
 	assert.equal(result.status, 0, result.output)
-	assert.equal(result.answered, 11)
+	assert.equal(result.answered, 9)
+	assert.equal(parseConfig(f).model_providers.lumen.base_url, bases[0])
 	assert.equal(parseConfig(f).model, catalogRows[0].api_model_name)
 	assertEnv(newShell(f, "bash"), f)
 })
@@ -595,34 +604,10 @@ test("inline and dotted provider settings retain nested tables and unrelated val
 	}
 })
 
-test("unsafe URLs and wrong invocation arity reject without echoing inputs or mutating files", (t) => {
-	const f = fixture(t, existingConfig)
+test("preflight failure preserves files and tty settings when the session ends before output drain", (t) => {
+	const f = fixture(t, "not valid TOML")
 	const before = snapshot(f.home)
-	for (const value of [
-		"http://gateway.example.com/v1", "https://user:secret@gateway.example.com/v1",
-		"https://gateway.example.com/v1?token=private", "https://gateway.example.com/v1#private",
-		"https://gateway.example.com/v1?", "https://gateway.example.com/v1#",
-		"https://bad_host/v1", "https://gateway.example.com:/v1",
-		"https://gateway.example.com/\nprivate", "https://gateway.example.com/%0a",
-		"https://gateway.example.com:99999/v1", "https://gateway.example.com/$(touch-private)",
-	]) {
-		const result = install(f, { bases: [value, bases[1]], actions: [] })
-		assert.equal(result.status, 1)
-		assert.equal(result.answered, 0)
-		assert.ok(!result.output.includes(value))
-		assert.ok(!result.output.includes("private"))
-		assert.deepEqual(snapshot(f.home), before)
-	}
-	for (const urls of [[bases[0]], [...bases, "unexpected"]]) {
-		assert.equal(install(f, { bases: urls, actions: [] }).status, 1)
-		assert.deepEqual(snapshot(f.home), before)
-	}
-})
-
-test("invalid invocation preserves files and tty settings when the session ends before output drain", (t) => {
-	const f = fixture(t, existingConfig)
-	const before = snapshot(f.home)
-	const result = install(f, { bases: [bases[0]], actions: [], endOwnerAfterStatus: true })
+	const result = install(f, { actions: [], endOwnerAfterStatus: true })
 	assert.equal(result.status, 1)
 	assert.equal(result.answered, 0)
 	assert.equal(result.echoRestored, true)
@@ -633,12 +618,10 @@ test("invalid invocation preserves files and tty settings when the session ends 
 test("nonTTY failure does not consume stdin as a credential or modify profiles", (t) => {
 	const f = fixture(t, existingConfig)
 	const before = snapshot(f.home)
-	for (const urls of [bases, []]) {
-		const result = withoutTerminal(f, urls)
-		assert.equal(result.status, 1)
-		assert.ok(!result.output.includes(secret))
-		assert.deepEqual(snapshot(f.home), before)
-	}
+	const result = withoutTerminal(f)
+	assert.equal(result.status, 1)
+	assert.ok(!result.output.includes(secret))
+	assert.deepEqual(snapshot(f.home), before)
 })
 
 test("invalid and incompatible selections cannot commit before a valid choice", (t) => {
@@ -674,8 +657,8 @@ test("catalog auth, outage, unsafe metadata and untrusted TLS preserve the prior
 			f.env.CODEX_CA_CERTIFICATE = process.platform === "darwin" ? "/private/etc/ssl/cert.pem" : "/etc/ssl/certs/ca-certificates.crt"
 		}
 		const before = snapshot(f.root)
-		const urls = failure === "untrusted" ? bases : [new URL(`/${failure}/v1`, bases[0]).href, bases[1]]
-		const result = install(f, { bases: urls, actions: actions().slice(0, 1), trace: true })
+		const baseUrl = failure === "untrusted" ? bases[1] : new URL(`/${failure}`, bases[0]).href
+		const result = install(f, { baseUrl, actions: actions().slice(0, 1), trace: true })
 		assert.equal(result.status, 1, result.output)
 		assert.equal(result.keyEcho, false)
 		assert.equal(result.echoRestored, true)
@@ -688,7 +671,7 @@ test("catalog auth, outage, unsafe metadata and untrusted TLS preserve the prior
 test("catalog redirects cannot send the key to another route or commit local state", async (t) => {
 	const f = fixture(t, existingConfig)
 	const before = snapshot(f.root)
-	const result = install(f, { bases: [new URL("/redirect/v1", bases[0]).href, bases[1]], actions: actions().slice(0, 1) })
+	const result = install(f, { baseUrl: new URL("/redirect", bases[0]).href, actions: actions().slice(0, 1) })
 	assert.equal(result.status, 1, result.output)
 	assert.ok(!result.output.includes(secret))
 	assert.deepEqual(snapshot(f.root), before)
@@ -821,11 +804,13 @@ test("native lumen-cli profile preserves unrelated settings, leaves earlier prov
 		'model_providers = { lumen = { name = "old", http_headers = { "X-Lumen-Provider" = "chosen" } }, other = { name = "Keep" } }\n',
 		'[model_providers]\nlumen = { name = "old", http_headers = { "X-Lumen-Provider" = "chosen" } }\nother = { name = "Keep" }\n',
 		'model_providers.lumen.name = "old"\n[model_providers.lumen.http_headers]\n"X-Lumen-Provider" = "chosen"\n[model_providers.other]\nname = "Keep"',
+		// A user value in the installer-owned Lumen profile is replaced: Lumen keys reject hosted tools.
+		'web_search = "live"\nmodel_reasoning_effort = "high"\n',
 	]) {
 		const f = fixture(t, existingConfig, cliText)
 		const original = parseConfig(f, f.cliConfigPath)
 		const expected = {
-			...original, model_provider: "lumen-cli", model: responsesModel, model_catalog_json: f.modelsPath,
+			...original, model_provider: "lumen-cli", model: responsesModel, model_catalog_json: f.modelsPath, web_search: "disabled",
 			model_providers: { ...original.model_providers, "lumen-cli": {
 				name: "Lumen Responses", base_url: bases[0], env_key: "LUMEN_API_KEY", wire_api: "responses",
 				requires_openai_auth: false, supports_websockets: false,
@@ -835,6 +820,8 @@ test("native lumen-cli profile preserves unrelated settings, leaves earlier prov
 		assert.deepEqual(parseConfig(f, f.cliConfigPath), expected)
 		assert.equal(fs.statSync(f.cliConfigPath).mode & 0o777, 0o600)
 		const rootConfig = parseConfig(f)
+		assert.equal(rootConfig.web_search, undefined, "desktop config.toml keeps its own web search setting")
+		assert.equal(fs.readFileSync(f.cliConfigPath, "utf8").match(/^web_search\s*=/gm).length, 1)
 		const backups = fs.readdirSync(f.codexHome).filter((name) => name.startsWith(".lumen-cli.config.toml.lumen-backup-"))
 		assert.equal(backups.length, 1)
 		assert.equal(fs.readFileSync(path.join(f.codexHome, backups[0]), "utf8"), cliText)
@@ -842,16 +829,16 @@ test("native lumen-cli profile preserves unrelated settings, leaves earlier prov
 		const first = snapshot(f.home)
 		assert.equal(install(f).status, 0)
 		assert.deepEqual(snapshot(f.home), first, "identical native profile rerun must not create backups or change content")
-		const rotatedBases = [new URL("/rotated/responses/v1", bases[0]).href, bases[1]]
+		const rotatedBase = new URL("/rotated/responses", bases[0]).href
 		const rotatedModel = catalogRows[1].id
 		// Simulate user edits to managed fields without depending on TOML output
 		// formatting; rerun must repair provider/model as well as the endpoint.
 		fs.writeFileSync(f.cliConfigPath, cliText)
-		assert.equal(install(f, { bases: rotatedBases, actions: actions("n", "2") }).status, 0)
+		assert.equal(install(f, { baseUrl: rotatedBase, actions: actions("n", "2") }).status, 0)
 		expected.model = rotatedModel
-		expected.model_providers["lumen-cli"].base_url = rotatedBases[0]
+		expected.model_providers["lumen-cli"].base_url = `${rotatedBase}/v1`
 		assert.deepEqual(parseConfig(f, f.cliConfigPath), expected)
-		rootConfig.model_providers.lumen.base_url = rotatedBases[0]
+		rootConfig.model_providers.lumen.base_url = `${rotatedBase}/v1`
 		assert.deepEqual(parseConfig(f), rootConfig, "rerun must preserve every desktop setting outside the managed provider")
 		for (const [name, value] of Object.entries(snapshot(f.home))) {
 			if (path.join(f.home, name) === f.keyPath || value.content === null) continue

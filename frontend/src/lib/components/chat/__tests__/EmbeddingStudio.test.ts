@@ -5,6 +5,8 @@ import type * as EmbeddingModule from '$lib/api/embeddingStudio';
 import EmbeddingStudio from '../EmbeddingStudio.svelte';
 import { t } from '$lib/i18n/ns/chat-studio';
 import { intlLocale } from '$lib/i18n/runtime.svelte';
+import { t as t2 } from '$lib/i18n/ns/chat-settings';
+import { ApiError } from '$lib/api/errors';
 
 const calls = vi.hoisted(() => ({ models: vi.fn(), capabilities: vi.fn(), embed: vi.fn() }));
 vi.mock('$lib/api/embeddingStudio', async (original) => ({ ...await original<typeof EmbeddingModule>(), embeddingStudioApi: calls }));
@@ -43,6 +45,23 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('Embedding Studio', () => {
+	it('embeds with the exact row from a different provider with the same model name', async () => {
+		calls.models.mockResolvedValue([model, { ...model, id: 8, provider_id: 2, provider: 'Second OpenAI account' }]);
+		calls.embed.mockResolvedValue({ ...embedded, model_id: 8, embeddings: [embedded.embeddings[0]] });
+		render(EmbeddingStudio);
+		await screen.findByText(t('embeddingStudio.ready'));
+		await fireEvent.input(input(1), { target: { value: 'provider-specific vector' } });
+		const select = screen.getByRole('combobox', { name: t('embeddingStudio.model') });
+		await fireEvent.change(screen.getByRole('combobox', { name: t('modelPicker.providers') }), { target: { value: '2' } });
+		expect(select).toHaveProperty('value', '');
+		expect(embedButton()).toHaveProperty('disabled', true);
+		await fireEvent.change(select, { target: { value: '8' } });
+		await screen.findByText(t('embeddingStudio.ready'));
+		await fireEvent.click(embedButton());
+		expect(calls.capabilities).toHaveBeenLastCalledWith(8, expect.anything(), expect.any(AbortSignal));
+		expect(calls.embed).toHaveBeenCalledWith({ model_id: 8, input: ['provider-specific vector'] }, expect.anything(), expect.any(AbortSignal));
+	});
+
 	it('uses published allowed dimensions as choices and sends only the explicit selection', async () => {
 		calls.capabilities.mockResolvedValue(capability({ default_dimensions: 768, min_dimensions: 256, max_dimensions: 768, allowed_dimensions: [256, 768] }));
 		render(EmbeddingStudio);
@@ -205,5 +224,33 @@ describe('Embedding Studio', () => {
 		expect(embedButton().hasAttribute('disabled')).toBe(true);
 		await fireEvent.click(embedButton());
 		expect(calls.embed).not.toHaveBeenCalled();
+	});
+});
+
+describe('Embedding Studio in the Personal domain', () => {
+	const workIn = (kind: 'personal' | 'organization') => setVerifiedLumenActor({ ...user('project-1'), availableDomains: [{ id: 'domain-1', name: 'Domain', kind }] });
+
+	it('shows the missing-pool notice and never runs, while models stay inspectable', async () => {
+		workIn('personal');
+		render(EmbeddingStudio);
+		await waitFor(() => expect(calls.capabilities).toHaveBeenCalled());
+		expect(screen.getByText(t2('dashboardChat.personalUnavailable'))).toBeTruthy();
+		expect(screen.getByRole('button', { name: t2('dashboardChat.switchWorkspace') })).toBeTruthy();
+		expect(screen.queryByText(t('embeddingStudio.ready'))).toBeNull();
+		await fireEvent.input(input(1), { target: { value: 'personal input' } });
+		expect(embedButton().hasAttribute('disabled')).toBe(true);
+		await fireEvent.submit(embedButton().closest('form')!);
+		expect(calls.embed).not.toHaveBeenCalled();
+	});
+
+	it('runs in an organization and maps an unfunded pool to a top-up request', async () => {
+		workIn('organization');
+		calls.embed.mockRejectedValue(new ApiError(429, 'domain_credit_insufficient'));
+		render(EmbeddingStudio);
+		await screen.findByText(t('embeddingStudio.ready'));
+		expect(screen.queryByText(t2('dashboardChat.personalUnavailable'))).toBeNull();
+		await fireEvent.input(input(1), { target: { value: 'organization input' } });
+		await fireEvent.click(embedButton());
+		expect(await screen.findByText(t2('dashboardChat.organizationCreditInsufficient'))).toBeTruthy();
 	});
 });

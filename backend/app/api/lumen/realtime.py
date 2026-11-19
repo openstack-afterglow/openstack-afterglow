@@ -19,12 +19,18 @@ from app.api.cloud_shell import _origin_allowed
 from app.api.deps import get_token_info
 from app.config import get_settings
 from app.services import service_proxy, ws_ticket
+from app.services.lumen_ingress import attach_lumen_ingress
 from app.services.service_authorization import authorize_service_request
 
 router = APIRouter()
 _MAX_FRAME_BYTES = 64 * 1024
 # Native Lumen's UTF-8 JSON message cap for an admitted image session (both directions).
 _MAX_IMAGE_FRAME_BYTES = 2 * 1024 * 1024
+# Lumen's application outcomes (4000-4999) and these standard codes reach the browser;
+# anything else, including an abnormal upstream drop, becomes a generic 1011.
+_RELAYED_CLOSE_CODES = frozenset({1000, 1001, 1008, 1011})
+# RFC 6455 caps a close reason at 123 bytes of UTF-8.
+_MAX_CLOSE_REASON_BYTES = 123
 
 
 class _FrameTooLarge(ValueError):
@@ -35,9 +41,17 @@ def _exceeds_frame_limit(frame: str, limit: int) -> bool:
     return len(frame) > limit or (not frame.isascii() and len(frame.encode("utf-8")) > limit)
 
 
+def _browser_close(code: int | None, reason: str) -> tuple[int, str]:
+    """Bound Lumen's close code and reason; never relay unknown codes or their text."""
+    if code is None or not (code in _RELAYED_CLOSE_CODES or 4000 <= code <= 4999):
+        return 1011, ""
+    return code, reason.encode()[:_MAX_CLOSE_REASON_BYTES].decode("utf-8", "ignore")
+
+
 class SessionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    model_id: str = Field(min_length=1, max_length=190)
+    model_id: str | None = Field(default=None, min_length=1, max_length=190)
+    model_row_id: int | None = Field(default=None, strict=True, ge=1, le=2**63 - 1)
     provider_id: int | str | None = None
     kind: Literal["conversation", "transcription", "translation", "live"] = "conversation"
     voice: str | None = Field(default=None, max_length=100)
@@ -47,7 +61,9 @@ class SessionRequest(BaseModel):
     max_duration_seconds: int = Field(default=300, ge=10, le=900)
 
     @model_validator(mode="after")
-    def validate_mode_fields(self) -> SessionRequest:
+    def validate_session(self) -> SessionRequest:
+        if self.model_id is None and self.model_row_id is None:
+            raise ValueError("model_id or model_row_id is required")
         if self.kind == "translation":
             if self.output_language is None or self.voice is not None or self.instructions is not None:
                 raise ValueError("Translation requires only an output language")
@@ -84,12 +100,12 @@ async def create_session(
     }
     if logical_project != connection_project:
         headers["x-target-project-id"] = logical_project
+    settings = get_settings()
+    attach_lumen_ingress(headers, secret=settings.service_lumen_ingress_secret, method="POST", url=url)
     try:
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(20.0, connect=5.0), verify=get_settings().ssl_verify
-        ) as client:
-            # Older Lumen versions forbid unknown keys, including optional null fields.
-            optional = {"output_language", "reasoning_effort"}
+        async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=5.0), verify=settings.ssl_verify) as client:
+            # Older Lumen versions forbid newer optional keys even when null.
+            optional = {"model_id", "model_row_id", "output_language", "reasoning_effort"}
             body = payload.model_dump(exclude={name for name in optional if getattr(payload, name) is None})
             response = await client.post(url, headers=headers, json=body)
     except httpx.RequestError as exc:
@@ -171,6 +187,8 @@ async def relay(websocket: WebSocket):
     except (ValueError, KeyError, TypeError):
         await websocket.close(code=1013)
         return
+    # Lumen's close frame, set only once the upstream side has ended.
+    upstream_close: tuple[int | None, str] | None = None
     try:
         async with websockets.connect(
             ws_url,
@@ -203,12 +221,21 @@ async def relay(websocket: WebSocket):
                         raise _FrameTooLarge from exc
                     raise
 
-            tasks = {asyncio.create_task(browser_to_lumen()), asyncio.create_task(lumen_to_browser())}
+            lumen_task = asyncio.create_task(lumen_to_browser())
+            tasks = {asyncio.create_task(browser_to_lumen()), lumen_task}
             try:
                 done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED, timeout=960)
                 for task in done:
-                    with suppress(WebSocketDisconnect, ConnectionClosed):
+                    try:
                         task.result()
+                    except ConnectionClosed as exc:
+                        upstream_close = (exc.rcvd.code, exc.rcvd.reason) if exc.rcvd else (None, "")
+                    except WebSocketDisconnect:
+                        pass
+                    else:
+                        if task is lumen_task:
+                            # Iteration ends quietly on a normal close; the frame stays on the connection.
+                            upstream_close = (upstream.close_code, upstream.close_reason or "")
             finally:
                 for task in tasks:
                     task.cancel()
@@ -222,5 +249,6 @@ async def relay(websocket: WebSocket):
         with suppress(RuntimeError):
             await websocket.close(code=1011)
     else:
+        code, reason = _browser_close(*upstream_close) if upstream_close else (1000, "")
         with suppress(RuntimeError):
-            await websocket.close(code=1000)
+            await websocket.close(code=code, reason=reason)

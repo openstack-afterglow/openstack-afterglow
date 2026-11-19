@@ -145,6 +145,9 @@ for directory in (direct, source):
             assert len(matches) == 1 and archive.read(matches[0]) == content, name
         assert any(entry.endswith("share/afterglow/kolla/site.yml") for entry in names)
         assert any(entry.endswith("share/afterglow/kolla/install.sh") for entry in names)
+        for name in ("passwords.afterglow.additions.yml", "operator/afterglow_kolla_operator/generate_ingress_secret.py"):
+            matches = [entry for entry in names if entry.endswith("share/afterglow/kolla/" + name)]
+            assert len(matches) == 1 and archive.read(matches[0]) == (root / "deploy/kolla" / name).read_bytes(), name
 `
 		const verified = spawnSync("python3", ["-c", script, rootDir, direct, fromSource], { encoding: "utf8", timeout: 30000 })
 		assert.equal(verified.status, 0, verified.stderr)

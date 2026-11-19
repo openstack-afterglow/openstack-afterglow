@@ -106,6 +106,7 @@ secrets:
   k3sKubeconfigEncryptionKey: ""
   k3sGpuAdmissionToken: ""
   lumenMcpServiceToken: ""
+  lumenIngressSecret: ""
   cephRbdKeyring: ""
   databaseUrl: ""
   prometheusPassword: ""
@@ -569,6 +570,8 @@ services:
   trove: false
   barbican: false
   mcp: false
+  # Public Lumen base without /v1; empty disables automatic CLI setup.
+  lumenExternalUrl: ""
 
 # -----------------------------------------------------------------------------
 # [cloud_shell]

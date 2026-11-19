@@ -32,10 +32,17 @@ def _without_legacy_key(config: dict[str, Any]) -> dict[str, Any]:
 
 
 def merge_config(base_text: str, operator_text: str) -> dict[str, Any]:
-    return _merge(
-        _without_legacy_key(tomllib.loads(base_text)),
-        _without_legacy_key(tomllib.loads(operator_text)),
-    )
+    base = _without_legacy_key(tomllib.loads(base_text))
+    operator = _without_legacy_key(tomllib.loads(operator_text))
+    services = base.get("services", {})
+    if isinstance(services, dict) and "lumen_ingress_secret" in services:
+        secret = services["lumen_ingress_secret"]
+        if not isinstance(secret, str) or (secret and len(secret.encode("utf-8")) < 32):
+            raise ValueError("lumen_afterglow_ingress_secret must be empty or at least 32 UTF-8 bytes")
+        overrides = operator.get("services", {})
+        if not isinstance(overrides, dict) or overrides.get("lumen_ingress_secret", secret) != secret:
+            raise ValueError("Kolla ingress signing must use the same lumen_afterglow_ingress_secret as Lumen")
+    return _merge(base, operator)
 
 
 def load_merged(paths: list[Path]) -> dict[str, Any]:

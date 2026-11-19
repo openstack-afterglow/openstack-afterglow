@@ -8,6 +8,7 @@
 	import { visibleActivityItems } from './chatActivityPresentation';
 	import { type AvailableModel, type ChatMessage as ChatMsg } from '$lib/api/chatTree';
 	import { projectMessagesForDisplay } from '$lib/api/chatTree';
+	import { resolveCatalogModel } from '$lib/api/modelCatalog';
 	import type { StreamMetrics } from '$lib/api/chatMetrics';
 	import { toolActivityFromCanonicalParts, type ToolActivityItem } from '$lib/api/chatToolActivity';
 	import type { RunActivityItem } from '$lib/api/chatRunReducer';
@@ -38,6 +39,8 @@
 		models: AvailableModel[];
 		busy?: boolean;
 		actionsDisabled?: boolean;
+		/** Disables only billed retry/regenerate, e.g. in the pool-less Personal domain. */
+		runActionsDisabled?: boolean;
 		loading?: boolean;
 		modelLocked?: boolean;
 		/** 메시지 id → TTFT/생성 속도 계측(런타임, 미저장). draft는 message.metrics로 전달. */
@@ -67,7 +70,7 @@
 		loadingTemporaryRuns?: boolean;
 		onLoadTemporaryRuns?: () => Promise<void>;
 		onCopy: (text: string) => void;
-		onRegenerate: (messageId: string, modelName: string) => void;
+		onRegenerate: (messageId: string, model: AvailableModel | null) => void;
 		onRetry: (messageId: string) => void;
 		onFork: (messageId: string) => void;
 		onSwitchVersion: (messageId: string, direction: -1 | 1) => void;
@@ -77,6 +80,7 @@
 		models,
 		busy = false,
 		actionsDisabled = false,
+		runActionsDisabled = false,
 		loading = false,
 		modelLocked = false,
 		metricsById = new Map<string, StreamMetrics>(),
@@ -170,9 +174,8 @@
 	}
 
 
-	function modelDisplay(name: string | null | undefined): string | null {
-		if (!name) return null;
-		return models.find((m) => m.model_name === name)?.display_name ?? name;
+	function modelDisplay(message: DisplayMessage): string | null {
+		return resolveCatalogModel(models, message.execution?.model_row_id, message.model_name)?.display_name ?? message.model_name ?? null;
 	}
 
 	const displayedPath = $derived<DisplayMessage[]>(projectMessagesForDisplay(activePath) as DisplayMessage[]);
@@ -337,6 +340,7 @@
 							message={msg}
 							{models}
 							busy={busy || actionsDisabled}
+							runDisabled={runActionsDisabled}
 							{modelLocked}
 							metrics={msg.metrics ?? metricsById.get(msg.id) ?? null}
 							toolItems={restoredToolItems(msg)}
@@ -349,7 +353,7 @@
 							onApprovalDecision={onApprovalDecision && msg.execution?.run_id ? (callId, decision) => onApprovalDecision?.(msg.execution!.run_id!, callId, decision) : undefined}
 							hasPreviousVersion={msg.branch?.previous_id !== null && msg.branch?.previous_id !== undefined}
 							hasNextVersion={msg.branch?.next_id !== null && msg.branch?.next_id !== undefined}
-							modelDisplayName={modelDisplay(msg.model_name)}
+							modelDisplayName={modelDisplay(msg)}
 							{onCopy}
 							onRegenerate={(model) => onRegenerate(msg.id, model)}
 							onRetry={() => onRetry(msg.id)}

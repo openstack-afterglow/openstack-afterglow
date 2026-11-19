@@ -67,7 +67,6 @@ afterEach(cleanup);
 describe('admin multimodal pricing consumer', () => {
 	it.each([
 		{ kind: 'text', primary: '텍스트 토큰 단가', input: '입력' },
-		{ kind: 'image', primary: '이미지 토큰 단가', input: '이미지 입력' },
 		{ kind: 'tts', primary: '오디오 토큰 단가', input: '오디오 입력' },
 		{ kind: 'stt', primary: '오디오 토큰 단가', input: '오디오 입력' },
 		{ kind: 'realtime', primary: '오디오 토큰 단가', input: '오디오 입력' }
@@ -100,7 +99,7 @@ describe('admin multimodal pricing consumer', () => {
 		expect(within(restored).getByLabelText(nativeT('price.cacheWrite'))).toBeTruthy();
 		expect(within(restored).getByLabelText(nativeT('price.cacheWriteLong'))).toBeTruthy();
 	});
-	it('updates default price groups when a discovered model kind changes and saves explicit extra text rates', async () => {
+	it('switches a discovered model to image billing groups and saves explicit image token rates', async () => {
 		candidates = [{ id: 'primary-only', purpose: 'chat', model_kind: 'text' }];
 		render(ModelPage);
 		const dialog = await openDiscovery();
@@ -109,45 +108,50 @@ describe('admin multimodal pricing consumer', () => {
 		await fireEvent.click(within(dialog).getByRole('button', { name: '선택 모델 검토' }));
 		const entry = within(dialog).getByTestId('registration-entry');
 		expect(within(entry).getByRole('group', { name: '텍스트 토큰 단가' })).toBeTruthy();
-		expect(within(entry).queryByLabelText('이미지 입력')).toBeNull();
 		await fireEvent.change(within(entry).getByLabelText('모델 종류 · primary-only'), { target: { value: 'image' } });
 		expect(within(entry).queryByLabelText('입력 단가 · primary-only')).toBeNull();
-		expect(within(entry).queryByLabelText('캐시 읽기')).toBeNull();
-		expect(within(entry).queryByLabelText('이미지 출력')).toBeNull();
-		await fireEvent.change(within(entry).getByLabelText('이미지 과금 기준'), { target: { value: 'tokens' } });
+		expect((within(entry).getByRole('radio', { name: '이미지 단위' }) as HTMLInputElement).checked).toBe(true);
+		expect(within(entry).queryByRole('group', { name: '이미지 토큰' })).toBeNull();
+		expect(within(entry).queryByRole('checkbox')).toBeNull();
+		await fireEvent.click(within(entry).getByRole('radio', { name: '토큰 단위' }));
+		const text = within(entry).getByRole('group', { name: '텍스트 토큰' });
+		const image = within(entry).getByRole('group', { name: '이미지 토큰' });
+		await fireEvent.input(within(text).getByLabelText('입력'), { target: { value: '3' } });
+		await fireEvent.input(within(text).getByLabelText('캐시 입력'), { target: { value: '0' } });
+		await fireEvent.input(within(image).getByLabelText('출력'), { target: { value: '40' } });
 		await fireEvent.input(within(entry).getByLabelText('요청 전체 예약 상한'), { target: { value: '1' } });
-		expect(within(entry).getByLabelText('이미지 출력')).toBeTruthy();
-		await fireEvent.click(within(entry).getByRole('checkbox', { name: '텍스트 토큰 단가' }));
-		await fireEvent.input(within(entry).getByLabelText('입력 단가 · primary-only'), { target: { value: '3' } });
-		await fireEvent.input(within(entry).getByLabelText('캐시 읽기'), { target: { value: '0' } });
-		await fireEvent.input(within(entry).getByLabelText('이미지 출력'), { target: { value: '40' } });
 		await fireEvent.click(within(dialog).getByRole('button', { name: '비활성으로 저장' }));
 		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/chat/admin/models', {
-			provider_id: 1, model_name: 'primary-only', model_kind: 'image', input_price_per_million: '3',
-			cache_read_price_per_million: '0', media_pricing: { billing_basis: 'tokens', reservation_usd: '1', token_rates: { image: { output_per_million: '40' } } }, is_active: false
+			provider_id: 1, model_name: 'primary-only', model_kind: 'image', input_price_per_million: '3', cache_read_price_per_million: '0',
+			media_pricing: { override_mode: 'leaf', billing_basis: 'tokens', reservation_usd: '1', token_rates: { image: { output_per_million: '40' } } }, is_active: false
 		}, 'token', 'project'));
 	});
-	it('follows the selected billing basis without deleting alternate stored token prices', async () => {
+	it('keeps token and per-image drafts while switching a legacy whole-object override', async () => {
 		rows = [model('image', { image_per_unit: '0.04' })];
 		render(ModelPage);
 		const dialog = await openEditor();
-		expect(within(dialog).queryByLabelText('이미지 출력')).toBeNull();
+		expect(within(dialog).getByText('수동 가격 (미디어 단가 전체)')).toBeTruthy();
+		expect(within(dialog).queryByRole('group', { name: '이미지 토큰' })).toBeNull();
 		expect((within(dialog).getByLabelText('이미지 기본 단가') as HTMLInputElement).value).toBe('0.04');
-		await fireEvent.change(within(dialog).getByLabelText('이미지 과금 기준'), { target: { value: 'tokens' } });
+		await fireEvent.click(within(dialog).getByRole('radio', { name: '토큰 단위' }));
+		await fireEvent.input(within(within(dialog).getByRole('group', { name: '이미지 토큰' })).getByLabelText('출력'), { target: { value: '40' } });
 		await fireEvent.input(within(dialog).getByLabelText('요청 전체 예약 상한'), { target: { value: '1' } });
-		expect(within(dialog).getByLabelText('이미지 출력')).toBeTruthy();
-		await fireEvent.change(within(dialog).getByLabelText('이미지 과금 기준'), { target: { value: 'unit' } });
-		expect(within(dialog).queryByLabelText('이미지 출력')).toBeNull();
-		await fireEvent.change(within(dialog).getByLabelText('이미지 과금 기준'), { target: { value: 'tokens' } });
-		await fireEvent.input(within(dialog).getByLabelText('이미지 출력'), { target: { value: '40' } });
-		await fireEvent.change(within(dialog).getByLabelText('이미지 과금 기준'), { target: { value: 'unit' } });
-		expect((within(dialog).getByLabelText('이미지 출력') as HTMLInputElement).value).toBe('40');
+		await fireEvent.click(within(dialog).getByRole('radio', { name: '이미지 단위' }));
+		expect(within(dialog).queryByRole('group', { name: '이미지 토큰' })).toBeNull();
+		expect((within(dialog).getByLabelText('이미지 기본 단가') as HTMLInputElement).value).toBe('0.04');
+		await fireEvent.click(within(dialog).getByRole('radio', { name: '토큰 단위' }));
+		expect((within(within(dialog).getByRole('group', { name: '이미지 토큰' })).getByLabelText('출력') as HTMLInputElement).value).toBe('40');
+		expect((within(dialog).getByLabelText('요청 전체 예약 상한') as HTMLInputElement).value).toBe('1');
+		await fireEvent.click(within(dialog).getByRole('radio', { name: '이미지 단위' }));
 		await fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
+		await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith('/api/v1/chat/admin/models/1', {
+			media_pricing: { image_per_unit: '0.04', billing_basis: 'unit', token_rates: { image: { output_per_million: '40' } } }
+		}, 'token', 'project'));
 		await waitFor(() => expect(screen.queryByRole('dialog', { name: '모델 가격 수정' })).toBeNull());
 		const reopened = await openEditor();
-		expect((within(reopened).getByLabelText('이미지 과금 기준') as HTMLSelectElement).value).toBe('unit');
-		expect((within(reopened).getByLabelText('이미지 출력') as HTMLInputElement).value).toBe('40');
-		expect((within(reopened).getByLabelText('이미지 기본 단가') as HTMLInputElement).value).toBe('0.04');
+		expect((within(reopened).getByRole('radio', { name: '이미지 단위' }) as HTMLInputElement).checked).toBe(true);
+		await fireEvent.click(within(reopened).getByRole('radio', { name: '토큰 단위' }));
+		expect((within(within(reopened).getByRole('group', { name: '이미지 토큰' })).getByLabelText('출력') as HTMLInputElement).value).toBe('40');
 	});
 	it('filters registered image models independently and clears hidden selections', async () => {
 		rows = [model(), { ...model('text'), id: 2, display_name: 'Text model' }]; render(ModelPage);
@@ -161,15 +165,16 @@ describe('admin multimodal pricing consumer', () => {
 		expect((screen.getByRole('checkbox', { name: 'Media model 선택' }) as HTMLInputElement).checked).toBe(false);
 		expect(screen.queryByRole('checkbox', { name: 'Text model 선택' })).toBeNull();
 	});
-	it('requires positive token reservation and saves text/cache and media token rates independently', async () => {
+	it('rejects a zero reservation and saves text cache and image token rates independently', async () => {
 		rows = [model('image', { image_per_unit: '0.04' })]; render(ModelPage);
 		const modal = await openEditor();
-		await fireEvent.change(within(modal).getByLabelText('이미지 과금 기준'), { target: { value: 'tokens' } });
+		await fireEvent.click(within(modal).getByRole('radio', { name: '토큰 단위' }));
 		await fireEvent.input(within(modal).getByLabelText('요청 전체 예약 상한'), { target: { value: '0' } });
-		await fireEvent.input(within(modal).getByLabelText('캐시 읽기'), { target: { value: '0' } });
-		await fireEvent.input(within(modal).getByLabelText('이미지 출력'), { target: { value: '40' } });
+		await fireEvent.input(within(within(modal).getByRole('group', { name: '텍스트 토큰' })).getByLabelText('캐시 입력'), { target: { value: '0' } });
+		await fireEvent.input(within(within(modal).getByRole('group', { name: '이미지 토큰' })).getByLabelText('출력'), { target: { value: '40' } });
 		await fireEvent.click(within(modal).getByRole('button', { name: '저장' }));
 		expect(mocks.patch).not.toHaveBeenCalled();
+		expect(mocks.error).toHaveBeenCalledWith(t('pricing.reservationError'));
 		await fireEvent.input(within(modal).getByLabelText('요청 전체 예약 상한'), { target: { value: '1.5000' } });
 		await fireEvent.click(within(modal).getByRole('button', { name: '저장' }));
 		await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith('/api/v1/chat/admin/models/1', {
@@ -179,7 +184,6 @@ describe('admin multimodal pricing consumer', () => {
 	it.each([
 		{ kind: 'text', label: '입력', key: 'input_price_per_million', value: '5' },
 		{ kind: undefined, label: '입력', key: 'input_price_per_million', value: '5' },
-		{ kind: 'image', label: '입력', key: 'input_price_per_million', value: '5' },
 		{ kind: 'tts', label: '입력', key: 'input_price_per_million', value: '2' },
 		{ kind: 'stt', label: '출력', key: 'output_price_per_million', value: '4' },
 		{ kind: 'realtime', label: '입력', key: 'input_price_per_million', value: '0' }
@@ -254,24 +258,25 @@ describe('admin multimodal pricing consumer', () => {
 		await waitFor(() => expect(mocks.post.mock.calls[0][1]).toEqual({ provider_id: 1, model_name: 'unclassified', model_kind: 'tts', is_active: false }));
 	});
 	it('edits multimodal cached rates without changing text/catalog prices or unknown JSON, and reopens saved values', async () => {
-		const pricing = { image_per_unit: '0.04', image_variants: { '1024x1024:high': '0.08' }, vendor_extension: { tier: 'kept' }, token_rates: {
+		const pricing = { billing_basis: 'tokens', image_per_unit: '0.04', image_variants: { '1024x1024:high': '0.08' }, vendor_extension: { tier: 'kept' }, token_rates: {
 			image: { input_per_million: '5', cache_read_per_million: '1.2500000000', output_per_million: '40', future_rate: '7' },
 			audio: { input_per_million: '9', cache_read_per_million: '0', output_per_million: '18' }
 		} };
 		rows = [model('image', pricing)];
 		render(ModelPage);
 		const modal = await openEditor();
-		expect((within(modal).getByLabelText('캐시 읽기') as HTMLInputElement).value).toBe('0.3');
-		await fireEvent.input(within(modal).getByLabelText('이미지 캐시 입력'), { target: { value: '0' } });
-		await fireEvent.input(within(modal).getByLabelText('오디오 캐시 입력'), { target: { value: '' } });
+		const group = (dialog: HTMLElement, name: string) => within(within(dialog).getByRole('group', { name }));
+		expect((group(modal, '텍스트 토큰').getByLabelText('캐시 입력') as HTMLInputElement).value).toBe('0.3');
+		await fireEvent.input(group(modal, '이미지 토큰').getByLabelText('캐시 입력'), { target: { value: '0' } });
+		await fireEvent.input(group(modal, '오디오 토큰 단가').getByLabelText('캐시 입력'), { target: { value: '' } });
 		await fireEvent.click(within(modal).getByRole('button', { name: '저장' }));
 		const expected = { ...pricing, token_rates: { image: { ...pricing.token_rates.image, cache_read_per_million: '0' }, audio: { input_per_million: '9', output_per_million: '18' } } };
 		await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith('/api/v1/chat/admin/models/1', { media_pricing: expected }, 'token', 'project'));
 		await waitFor(() => expect(screen.queryByRole('dialog', { name: '모델 가격 수정' })).toBeNull());
 		const reopened = await openEditor();
-		expect((within(reopened).getByLabelText('이미지 캐시 입력') as HTMLInputElement).value).toBe('0');
-		expect((within(reopened).getByLabelText('오디오 캐시 입력') as HTMLInputElement).value).toBe('');
-		expect((within(reopened).getByLabelText('입력') as HTMLInputElement).value).toBe('2.0000000000');
+		expect((group(reopened, '이미지 토큰').getByLabelText('캐시 입력') as HTMLInputElement).value).toBe('0');
+		expect((group(reopened, '오디오 토큰 단가').getByLabelText('캐시 입력') as HTMLInputElement).value).toBe('');
+		expect((group(reopened, '텍스트 토큰').getByLabelText('입력') as HTMLInputElement).value).toBe('2');
 		await fireEvent.click(within(reopened).getByRole('button', { name: '저장' }));
 		expect(mocks.patch).toHaveBeenCalledTimes(1);
 	});
@@ -367,12 +372,13 @@ describe('admin multimodal pricing consumer', () => {
 		await fireEvent.input(screen.getByLabelText('모델명 (예: gpt-4o)'), { target: { value: 'exact-image-route' } });
 		await fireEvent.input(screen.getByLabelText('표시 이름 · provider-image'), { target: { value: 'Reviewed image' } });
 		await fireEvent.input(screen.getByLabelText('이미지 기본 단가'), { target: { value: '0.04' } });
-		await fireEvent.click(within(dialog).getByRole('checkbox', { name: '텍스트 토큰 단가' }));
-		await fireEvent.input(screen.getByLabelText('캐시 읽기'), { target: { value: '0' } });
+		await fireEvent.click(within(dialog).getByRole('radio', { name: '토큰 단위' }));
+		await fireEvent.input(within(within(dialog).getByRole('group', { name: '텍스트 토큰' })).getByLabelText('캐시 입력'), { target: { value: '0' } });
+		await fireEvent.click(within(dialog).getByRole('radio', { name: '이미지 단위' }));
 		await fireEvent.click(screen.getByRole('button', { name: '비활성으로 저장' }));
 		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/chat/admin/models', {
 			provider_id: 1, model_name: 'exact-image-route', display_name: 'Reviewed image', model_kind: 'image',
-			media_pricing: { image_per_unit: '0.04' }, cache_read_price_per_million: '0', is_active: false
+			media_pricing: { override_mode: 'leaf', billing_basis: 'unit', image_per_unit: '0.04' }, cache_read_price_per_million: '0', is_active: false
 		}, 'token', 'project'));
 	});
 	it.each(['is_title_model', 'is_memory_model'])('blocks changing a designated %s to media', async (designation) => {
@@ -382,5 +388,257 @@ describe('admin multimodal pricing consumer', () => {
 		expect((within(dialog).getByRole('option', { name: '이미지' }) as HTMLOptionElement).disabled).toBe(true);
 		expect((within(dialog).getByRole('button', { name: '종류 변경·비활성 저장' }) as HTMLButtonElement).disabled).toBe(true);
 		expect(mocks.patch).not.toHaveBeenCalled();
+	});
+});
+
+describe('image official-price provenance', () => {
+	const catalogEntry = {
+		id: 'gpt-image-2.6-sunburst', aliases: [], kind: 'image', display_name: 'GPT Image 2.6 Sunburst', status: 'active', verified_at: '2026-11-18',
+		source_urls: ['https://developers.openai.com/api/docs/pricing'], context_window: null, max_output_tokens: null,
+		input_modalities: ['text', 'image'], output_modalities: ['image'], capabilities: {}, notes: null,
+		token_pricing: { input: '5.00', cache_read: '1.25' },
+		media_pricing: { billing_basis: 'tokens', token_rates: { image: { input_per_million: '8.00', output_per_million: '30.00' } } }
+	};
+	const group = (scope: HTMLElement, name: string) => within(within(scope).getByRole('group', { name }));
+	const value = (input: HTMLElement) => (input as HTMLInputElement).value;
+	async function reviewSunburst() {
+		candidates = [{ id: catalogEntry.id, purpose: 'non_chat', model_kind: 'image', catalog_entry: catalogEntry }];
+		render(ModelPage);
+		const dialog = await openDiscovery();
+		await fireEvent.click(within(dialog).getByRole('button', { name: '모델 불러오기' }));
+		await fireEvent.click(await screen.findByRole('checkbox', { name: catalogEntry.id }));
+		await fireEvent.click(within(dialog).getByRole('button', { name: '선택 모델 검토' }));
+		return { dialog, entry: within(dialog).getByTestId('registration-entry') };
+	}
+	function serveProviderType(providerType: string) {
+		const base = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation(async (path: string) => path === '/api/v1/chat/admin/providers' ? [{ ...provider, provider_type: providerType }] : base(path));
+	}
+	const readiness = (overrides: Record<string, unknown>) => ({
+		ready: false, reason: null, executable_variants: [], unsupported_variants: [], supported_variants: [], ...overrides
+	});
+	async function reviewUnitImage() {
+		candidates = [{ id: 'unit-image', purpose: 'non_chat', model_kind: 'image' }];
+		render(ModelPage);
+		const dialog = await openDiscovery();
+		await fireEvent.click(within(dialog).getByRole('button', { name: '모델 불러오기' }));
+		await fireEvent.click(await screen.findByRole('checkbox', { name: 'unit-image' }));
+		await fireEvent.click(within(dialog).getByRole('button', { name: '선택 모델 검토' }));
+		await fireEvent.input(within(dialog).getByLabelText('이미지 기본 단가'), { target: { value: '0.04' } });
+		return dialog;
+	}
+	async function addVariant(dialog: HTMLElement, name: string, price: string) {
+		await fireEvent.click(within(dialog).getByRole('button', { name: '+ variant 추가' }));
+		await fireEvent.input(within(dialog).getByLabelText('이미지 variant 이름'), { target: { value: name } });
+		await fireEvent.input(within(dialog).getByLabelText('이미지 variant 단가'), { target: { value: price } });
+	}
+
+	it('prefills official token prices with labels and omits untouched catalog leaves', async () => {
+		const { dialog, entry } = await reviewSunburst();
+		expect((within(entry).getByRole('radio', { name: '토큰 단위' }) as HTMLInputElement).checked).toBe(true);
+		expect(within(entry).queryByRole('checkbox')).toBeNull();
+		const text = group(entry, '텍스트 토큰'), image = group(entry, '이미지 토큰');
+		expect(value(text.getByLabelText('입력'))).toBe('5.00');
+		expect(value(text.getByLabelText('캐시 입력'))).toBe('1.25');
+		expect(value(image.getByLabelText('입력'))).toBe('8.00');
+		expect(value(image.getByLabelText('캐시 입력'))).toBe('');
+		expect(value(image.getByLabelText('출력'))).toBe('30.00');
+		expect(text.getAllByText('USD / 1M tokens')).toHaveLength(2);
+		expect(image.getAllByText('USD / 1M tokens')).toHaveLength(3);
+		expect(within(entry).getAllByText('공식 가격')).toHaveLength(5);
+		expect(image.getByText(t('pricing.imageCachedInputHelp'))).toBeTruthy();
+		expect(value(within(entry).getByLabelText('요청 전체 예약 상한'))).toBe('');
+		mocks.post.mockResolvedValue({ id: 9, image_pricing_readiness: readiness({ ready: true, executable_variants: ['1024x1024:high'] }) });
+		await fireEvent.click(within(dialog).getByRole('button', { name: '가격 확인 후 등록·활성화' }));
+		await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith('/api/v1/chat/admin/models/9', { is_active: true }, 'token', 'project'));
+		expect(mocks.post).toHaveBeenCalledWith('/api/v1/chat/admin/models', {
+			provider_id: 1, model_name: catalogEntry.id, model_kind: 'image', is_active: false
+		}, 'token', 'project');
+	});
+	it('sends only edited leaves and resets a field to its official price', async () => {
+		const { dialog, entry } = await reviewSunburst();
+		const text = group(entry, '텍스트 토큰'), image = group(entry, '이미지 토큰');
+		await fireEvent.input(image.getByLabelText('출력'), { target: { value: '32' } });
+		await fireEvent.input(text.getByLabelText('캐시 입력'), { target: { value: '1.5' } });
+		expect(within(entry).getAllByText('수동 가격')).toHaveLength(2);
+		await fireEvent.click(within(entry).getByRole('button', { name: '캐시 입력: 공식 가격으로 복원' }));
+		expect(value(text.getByLabelText('캐시 입력'))).toBe('1.25');
+		expect(document.activeElement).toBe(text.getByLabelText('캐시 입력'));
+		expect(within(entry).getAllByText('수동 가격')).toHaveLength(1);
+		await fireEvent.click(within(dialog).getByRole('button', { name: '비활성으로 저장' }));
+		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/chat/admin/models', {
+			provider_id: 1, model_name: catalogEntry.id, model_kind: 'image',
+			media_pricing: { override_mode: 'leaf', token_rates: { image: { output_per_million: '32' } } }, is_active: false
+		}, 'token', 'project'));
+	});
+	it('keeps token and per-image drafts when switching the billing basis', async () => {
+		const { dialog, entry } = await reviewSunburst();
+		await fireEvent.input(group(entry, '이미지 토큰').getByLabelText('출력'), { target: { value: '32' } });
+		await fireEvent.click(within(entry).getByRole('radio', { name: '이미지 단위' }));
+		expect(within(entry).queryByRole('group', { name: '이미지 토큰' })).toBeNull();
+		await fireEvent.input(within(entry).getByLabelText('이미지 기본 단가'), { target: { value: '0.05' } });
+		await fireEvent.click(within(entry).getByRole('radio', { name: '토큰 단위' }));
+		expect(value(group(entry, '이미지 토큰').getByLabelText('출력'))).toBe('32');
+		await fireEvent.click(within(entry).getByRole('radio', { name: '이미지 단위' }));
+		expect(value(within(entry).getByLabelText('이미지 기본 단가'))).toBe('0.05');
+		await fireEvent.click(within(dialog).getByRole('button', { name: '비활성으로 저장' }));
+		await waitFor(() => expect(mocks.post.mock.calls[0][1]).toEqual({
+			provider_id: 1, model_name: catalogEntry.id, model_kind: 'image', is_active: false,
+			media_pricing: { override_mode: 'leaf', billing_basis: 'unit', image_per_unit: '0.05', token_rates: { image: { output_per_million: '32' } } }
+		}));
+	});
+	it.each([
+		{ providerType: 'openai', valid: true },
+		{ providerType: 'gemini', valid: false }
+	])('applies $providerType token reservation rules', async ({ providerType, valid }) => {
+		serveProviderType(providerType);
+		candidates = [{ id: 'manual-image', purpose: 'non_chat', model_kind: 'image' }];
+		render(ModelPage);
+		const dialog = await openDiscovery();
+		await fireEvent.click(within(dialog).getByRole('button', { name: '모델 불러오기' }));
+		await fireEvent.click(await screen.findByRole('checkbox', { name: 'manual-image' }));
+		await fireEvent.click(within(dialog).getByRole('button', { name: '선택 모델 검토' }));
+		await fireEvent.click(within(dialog).getByRole('radio', { name: '토큰 단위' }));
+		await fireEvent.input(group(dialog, '텍스트 토큰').getByLabelText('입력'), { target: { value: '5' } });
+		await fireEvent.input(group(dialog, '이미지 토큰').getByLabelText('출력'), { target: { value: '30' } });
+		const save = within(dialog).getByRole('button', { name: '비활성으로 저장' }) as HTMLButtonElement;
+		const activate = within(dialog).getByRole('button', { name: '가격 확인 후 등록·활성화' }) as HTMLButtonElement;
+		expect(save.disabled).toBe(!valid);
+		expect(activate.disabled).toBe(!valid);
+		expect(within(dialog).queryByText(t('pricing.reservationError')) === null).toBe(valid);
+		if (!valid) await fireEvent.input(within(dialog).getByLabelText('요청 전체 예약 상한'), { target: { value: '2' } });
+		await fireEvent.click(save);
+		await waitFor(() => expect(mocks.post.mock.calls[0][1]).toEqual({
+			provider_id: 1, model_name: 'manual-image', model_kind: 'image', input_price_per_million: '5', is_active: false,
+			media_pricing: { override_mode: 'leaf', billing_basis: 'tokens', ...(valid ? {} : { reservation_usd: '2' }), token_rates: { image: { output_per_million: '30' } } }
+		}));
+	});
+	it('keeps a base-only per-image draft inactive-only', async () => {
+		const dialog = await reviewUnitImage();
+		const activate = within(dialog).getByRole('button', { name: '가격 확인 후 등록·활성화' }) as HTMLButtonElement;
+		const guidance = within(dialog).getByText(t('pricing.imageVariantHelp'));
+		expect(activate.disabled).toBe(true);
+		expect(guidance.classList.contains('font-semibold')).toBe(true);
+		await addVariant(dialog, '1024x1024:high', '0');
+		expect(activate.disabled).toBe(true);
+		await fireEvent.click(within(dialog).getByRole('button', { name: t('configuration.delete') }));
+		await fireEvent.click(within(dialog).getByRole('button', { name: '비활성으로 저장' }));
+		await waitFor(() => expect(mocks.post.mock.calls[0][1]).toEqual({
+			provider_id: 1, model_name: 'unit-image', model_kind: 'image', is_active: false,
+			media_pricing: { override_mode: 'leaf', billing_basis: 'unit', image_per_unit: '0.04' }
+		}));
+		expect(mocks.patch).not.toHaveBeenCalled();
+	});
+	it('saves an unsupported positive variant inactive and flags it from the server result', async () => {
+		const dialog = await reviewUnitImage();
+		await addVariant(dialog, '1024x1024:high', '0.08');
+		const activate = within(dialog).getByRole('button', { name: '가격 확인 후 등록·활성화' }) as HTMLButtonElement;
+		expect(activate.disabled).toBe(false);
+		mocks.post.mockResolvedValue({ id: 12, image_pricing_readiness: readiness({
+			reason: 'unsupported_image_variants', unsupported_variants: ['1024x1024:high'], supported_variants: ['auto:auto']
+		}) });
+		await fireEvent.click(activate);
+		const entry = await within(dialog).findByTestId('registration-entry');
+		await within(entry).findByText(new RegExp(t('pricing.imageSavedInactive')));
+		expect(within(entry).getByText(new RegExp(t('pricing.imageUnsupportedVariantList', { variants: '1024x1024:high' })))).toBeTruthy();
+		expect(within(entry).getByText(new RegExp(t('pricing.imageReadinessVariants').slice(0, 20)))).toBeTruthy();
+		expect(mocks.post.mock.calls[0][1]).toMatchObject({ is_active: false, media_pricing: { image_variants: { '1024x1024:high': '0.08' } } });
+		expect(mocks.patch).not.toHaveBeenCalled();
+		expect(mocks.error).toHaveBeenCalledWith(t('pricing.imageActivationHeld', { count: '1' }));
+		expect(screen.getByTestId('model-registration-review')).toBeTruthy();
+	});
+	it('activates a supported positive variant after the server reports it ready', async () => {
+		const dialog = await reviewUnitImage();
+		await addVariant(dialog, 'auto:auto', '0.05');
+		mocks.post.mockResolvedValue({ id: 13, image_pricing_readiness: readiness({ ready: true, executable_variants: ['auto:auto'], supported_variants: ['auto:auto'] }) });
+		await fireEvent.click(within(dialog).getByRole('button', { name: '가격 확인 후 등록·활성화' }));
+		await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith('/api/v1/chat/admin/models/13', { is_active: true }, 'token', 'project'));
+		expect(mocks.post.mock.calls[0][1]).toEqual({
+			provider_id: 1, model_name: 'unit-image', model_kind: 'image', is_active: false,
+			media_pricing: { override_mode: 'leaf', billing_basis: 'unit', image_per_unit: '0.04', image_variants: { 'auto:auto': '0.05' } }
+		});
+		expect(mocks.error).not.toHaveBeenCalled();
+	});
+	it('flags unsupported saved variants and server guidance in the edit form', async () => {
+		rows = [{ ...model('image', { override_mode: 'leaf', billing_basis: 'unit', image_variants: { '1024x1024:high': '0.08' } }),
+			image_pricing_readiness: readiness({ reason: 'unsupported_image_variants', unsupported_variants: ['1024x1024:high'], supported_variants: ['auto:auto'] }) }];
+		render(ModelPage);
+		const modal = await openEditor();
+		expect(within(modal).getByText(t('pricing.imageReadinessVariants'))).toBeTruthy();
+		expect(within(modal).getByText(t('pricing.imageSupportedVariants', { variants: 'auto:auto' }))).toBeTruthy();
+		expect(within(modal).getByText(t('pricing.imageVariantUnsupported'))).toBeTruthy();
+		expect(within(modal).getByLabelText('이미지 variant 이름').getAttribute('aria-invalid')).toBe('true');
+	});
+	it('shows stored and official provenance in the edit form and resets one leaf with null', async () => {
+		rows = [{ ...model('image', { override_mode: 'leaf', token_rates: { image: { output_per_million: '31' } } }), provider_family: 'native',
+			input_price_per_million: null, cache_read_price_per_million: null, catalog_entry: catalogEntry }];
+		render(ModelPage);
+		const modal = await openEditor();
+		const text = group(modal, '텍스트 토큰'), image = group(modal, '이미지 토큰');
+		expect((within(modal).getByRole('radio', { name: '토큰 단위' }) as HTMLInputElement).checked).toBe(true);
+		expect(value(text.getByLabelText('입력'))).toBe('5.00');
+		expect(value(image.getByLabelText('출력'))).toBe('31');
+		expect(within(modal).getAllByText('수동 가격')).toHaveLength(1);
+		await fireEvent.click(image.getByRole('button', { name: '출력: 공식 가격으로 복원' }));
+		expect(value(image.getByLabelText('출력'))).toBe('30.00');
+		await fireEvent.click(within(modal).getByRole('button', { name: '저장' }));
+		await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith('/api/v1/chat/admin/models/1', {
+			media_pricing: { override_mode: 'leaf', token_rates: { image: { output_per_million: null } } }
+		}, 'token', 'project'));
+	});
+	async function manualImage(name: string, variant: string) {
+		render(ModelPage);
+		const dialog = await openDiscovery();
+		await fireEvent.click(within(dialog).getByRole('button', { name: '직접 입력' }));
+		await fireEvent.change(within(dialog).getByLabelText('모델 종류'), { target: { value: 'image' } });
+		await fireEvent.input(within(dialog).getByPlaceholderText('모델명 (예: gpt-4o)'), { target: { value: name } });
+		await addVariant(dialog, variant, '0.08');
+		await fireEvent.click(within(dialog).getByRole('button', { name: '+ 모델 추가' }));
+		return dialog;
+	}
+	const notReady = () => Object.assign(new mocks.ApiError('not ready', 409), {
+		imagePricingNotReady: { reason: 'unsupported_image_variants', unsupported_variants: ['1024x1024:high'] }
+	});
+	const heldText = `${t('pricing.imageReadinessVariants')} ${t('pricing.imageUnsupportedVariantList', { variants: '1024x1024:high' })}`;
+	it('saves a manual image with only an unsupported variant inactive', async () => {
+		mocks.post.mockResolvedValue({ id: 21, image_pricing_readiness: readiness({ reason: 'unsupported_image_variants', unsupported_variants: ['1024x1024:high'] }) });
+		await manualImage('gemini-image', '1024x1024:high');
+		await waitFor(() => expect(mocks.error).toHaveBeenCalledWith(`${t('pricing.imageSavedInactive')} ${heldText}`));
+		expect(mocks.post.mock.calls[0][1]).toMatchObject({ model_name: 'gemini-image', model_kind: 'image', is_active: false });
+		expect(mocks.patch).not.toHaveBeenCalled();
+		expect(mocks.success).not.toHaveBeenCalled();
+	});
+	it('activates a manual image with a supported variant', async () => {
+		mocks.post.mockResolvedValue({ id: 22, image_pricing_readiness: readiness({ ready: true, executable_variants: ['auto:auto'] }) });
+		await manualImage('gemini-image', 'auto:auto');
+		await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith('/api/v1/chat/admin/models/22', { is_active: true }, 'token', 'project'));
+		expect(mocks.post.mock.calls[0][1]).toMatchObject({ is_active: false });
+		await waitFor(() => expect(mocks.success).toHaveBeenCalledWith(t('configuration.modelAdded')));
+		expect(mocks.error).not.toHaveBeenCalled();
+	});
+	it('keeps a manual image inactive when Lumen rejects activation with image_pricing_not_ready', async () => {
+		mocks.post.mockResolvedValue({ id: 23, image_pricing_readiness: readiness({ ready: true }) });
+		mocks.patch.mockRejectedValueOnce(notReady());
+		await manualImage('gemini-image', '1024x1024:high');
+		await waitFor(() => expect(mocks.error).toHaveBeenCalledWith(`${t('pricing.imageSavedInactive')} ${heldText}`));
+		expect(mocks.patch).toHaveBeenCalledTimes(1);
+	});
+	it('shows the server reason when list activation is rejected', async () => {
+		rows = [model('image', { override_mode: 'leaf', billing_basis: 'unit', image_variants: { '1024x1024:high': '0.08' } })];
+		mocks.patch.mockRejectedValueOnce(notReady());
+		render(ModelPage);
+		await fireEvent.click(await screen.findByRole('button', { name: '활성화' }));
+		await waitFor(() => expect(mocks.error).toHaveBeenCalledWith(heldText));
+		expect(rows[0].is_active).toBe(false);
+	});
+	it('keeps the price editor open with the server reason when a save is rejected', async () => {
+		rows = [{ ...model('image', { override_mode: 'leaf', billing_basis: 'unit', image_variants: { 'auto:auto': '0.08' } }), is_active: true }];
+		mocks.patch.mockRejectedValueOnce(notReady());
+		render(ModelPage);
+		const modal = await openEditor();
+		await fireEvent.input(within(modal).getByLabelText('이미지 variant 이름'), { target: { value: '1024x1024:high' } });
+		await fireEvent.click(within(modal).getByRole('button', { name: '저장' }));
+		await waitFor(() => expect(mocks.error).toHaveBeenCalledWith(heldText));
+		expect(screen.getByRole('dialog', { name: '모델 가격 수정' })).toBeTruthy();
 	});
 });

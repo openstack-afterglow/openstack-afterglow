@@ -7,6 +7,61 @@
 
 ## [Unreleased]
 
+## [1.32.29] - 2026-11-19
+
+### Added
+
+- 채팅 설정 API 키에 SDK 예제 패널을 추가했다. OpenAI·Anthropic·Gemini SDK의 Python·JavaScript·curl 예제는 배포에 설정된 공개 Lumen 주소로 채워지며 주소가 없으면 표시하지 않는다. 문서에 [Lumen API를 SDK로 사용하기](docs/lumen-sdk.md) 튜토리얼과 실행 가능한 `docs/examples/lumen-sdk` 예제·smoke runner를 추가했다.
+- Chat settings API keys add an SDK examples panel. Python, JavaScript and curl examples for the OpenAI, Anthropic and Gemini SDKs use the deployment's configured public Lumen URL and stay hidden when none is configured. The docs add the [Using the Lumen API with SDKs](docs/en/lumen-sdk.md) tutorial and runnable `docs/examples/lumen-sdk` examples with a smoke runner.
+- API 키는 웹 검색 도구 권한을 가질 수 없으므로 Perplexity Sonar 등 웹 검색 모델은 대시보드 채팅에서만 사용할 수 있다. SDK 튜토리얼과 예제에서 제외했다.
+- API keys cannot hold the web-search tool permission, so Perplexity Sonar and other web-search models are available only in dashboard chat. The SDK tutorial and examples exclude them.
+
+### Changed
+
+- 좁은 화면에서 안내문 본문을 유지하고 동작 버튼을 아래 줄로 배치한다. 서비스 키 발급 양식은 도메인 정책 기반 권한과 서비스 키 발급 버튼을 명확히 표시하며, 프로바이더 보조 텍스트의 대비를 높인다.
+- Alerts keep readable body text and wrap actions below on narrow screens. The service-key form labels domain-policy permissions and service-key issuance explicitly, and provider secondary text uses readable contrast.
+- 개인 프로젝트(Personal 도메인)에는 크레딧 풀이 없으므로 대시보드 채팅과 Studio는 조직(도메인) 생성 또는 조직 프로젝트 전환 안내를 미리 표시하고 전송·실행을 비활성화한다. 안내에서 리소스 선택 창을 열 수 있고, 도메인 만들기 정책이 허용하면 조직 만들기로 바로 이동한다. 대화 기록·에이전트·연결·Vault·API 키 관리는 그대로 사용할 수 있다. Lumen의 `domain_credit_insufficient`는 상태 코드와 관계없이 개인 프로젝트에서는 같은 안내로, 조직에서는 도메인 관리자·시스템 관리자에게 충전을 요청하라는 메시지로 표시한다.
+- The Personal domain has no credit pool, so dashboard chat and Studios show up-front guidance to create an organization (domain) or switch to an organization project and disable send and run. The notice opens the resource chooser and, when the create-domain policy allows, goes straight to organization creation. History, agents, connections, Vault, and API key management stay usable. Lumen's `domain_credit_insufficient` maps, at any status, to the same guidance in personal projects and to a request for a domain manager or system administrator top-up in organizations.
+- 개인 프로젝트에서도 대화의 버전 이동과 분기는 사용할 수 있으며, 과금되는 재시도·재생성만 비활성화한다. 실시간 relay는 Lumen의 애플리케이션 종료 코드(`4000`–`4999`)와 `1000`·`1001`·`1008`·`1011`을 123바이트 이내 사유와 함께 브라우저에 전달하고 그 밖의 종료는 `1011`로 바꾼다. 실시간 세션이 `4429 domain_credit_insufficient`로 끝나면 같은 개인·조직 안내를 표시한다.
+- Version browsing and fork stay usable in personal projects; only billed retry and regenerate are disabled. The realtime relay passes Lumen's application close codes (`4000`–`4999`) and `1000`/`1001`/`1008`/`1011` with a reason of at most 123 bytes, and turns any other close into `1011`. A realtime session closed with `4429 domain_credit_insufficient` shows the same personal or organization guidance.
+- Lumen CLI 설치기는 Afterglow 시작 시 배포의 공개 Lumen 주소를 포함한다. Codex·Claude Code 자동 설정 명령에는 URL 옵션이 없으며, 공개 주소가 없으면 명령을 표시하지 않는다.
+- Lumen CLI installers embed the deployment's public Lumen URL at Afterglow startup. Codex and Claude Code setup commands take no URL options and stay hidden when no public URL is configured.
+- Lumen 개인 키는 프로젝트에 묶이지 않는다. 도메인 매니저는 서비스 키와 선불 풀 한도를 관리하고, 시스템 관리자는 도메인 풀을 충전하고 서비스 키를 조회한다.
+- Lumen personal keys are project-independent. Domain managers manage service keys and pool limits; system administrators top up domain pools and inspect service keys.
+- 채팅 기록, 에이전트, 메모리 및 도구 연결은 같은 도메인의 프로젝트 전환 시 유지된다. 사용량 기록과 클라우드 도구는 선택한 프로젝트를 사용한다. 연결 관리에서 보관된 개인 연결과 도구를 복원할 수 있으며, 조직 항목은 권한을 확인한 관리자가 복원한다.
+- Chat history, agents, memory and tool connections persist across project switches in a domain. Usage attribution and cloud tools follow the selected project. Manage connections can restore archived personal duplicates; authorized managers can restore organization duplicates.
+- 채팅·에이전트·Studio에서 공급자를 먼저 선택하고 등록 모델을 고른다. 공급자가 다른 동명 모델은 별도 선택지로 표시하며 실행에서도 정확한 등록 모델을 사용한다.
+- Chat, agents, and Studios select a provider before a registered model. Same-name models from different providers stay distinct during selection and execution.
+- 대시보드 채팅·에이전트·재생성 모델 선택은 Lumen의 `domain_billing` 준비 상태를 따른다. 도메인 과금이 준비되지 않은 모델은 사유(가격 미설정·출력 한도 미적용·컨텍스트 한도 미설정)와 함께 비활성으로 표시하고 자동 선택하지 않는다. 저장된 모델이 준비되지 않으면 첫 준비 모델로 전환하고 안내하며, Lumen의 422 `domain_billing` 거부도 같은 사유로 표시한다. 관리자 모델 목록은 도메인 과금 준비 배지와 가격·기능 편집 바로가기를 보여 준다. `domain_billing`이 없는 이전 Lumen 모델은 준비된 것으로 취급한다.
+- Dashboard chat, agent, and regenerate model pickers follow Lumen's `domain_billing` readiness. Models that are not ready for domain billing stay visible but disabled with their reason (pricing, output limit, or context limit) and are never auto-selected. A remembered model that becomes unready falls back to the first ready model with a notice, and Lumen's 422 `domain_billing` refusal shows the same reason. The admin model list shows a domain billing readiness badge with pricing and capability editor shortcuts. Models from older Lumen without `domain_billing` count as ready.
+- 채팅 설정의 메모리를 Agent Vault로 교체했다. 도메인·전역 노트 검색, 버전 확인, 충돌을 보호하는 편집, 추가 전용 기록과 `memory.md` 내보내기를 지원한다. 대시보드 로그인 세션과 Vault를 지원하는 Lumen이 필요하다.
+- Agent Vault replaces chat memory settings with scoped note search, revision history, conflict-safe editing, append-only records, and `memory.md` export. Requires a dashboard session and a Vault-capable Lumen deployment.
+- Agent Vault에서 채팅 프로젝트를 선택해 해당 프로젝트의 메모리를 검색·조회·수정하거나 새 노트를 만들 수 있다.
+- Agent Vault can search, read, edit, and create notes restricted to one chat project.
+- Agent Vault는 Afterglow와 Lumen 사이의 서명된 인증 요청만 허용한다. 두 서비스에 같은 비공개 ingress 키를 설정해야 한다.
+- Agent Vault requires signed Afterglow-to-Lumen requests. Configure the same private ingress key on both services.
+- 이미지 모델 가격은 요금 적용 방식을 토큰 단위와 이미지 단위 중에서 고른다. 토큰 단위는 텍스트 토큰(입력·캐시 입력)과 이미지 토큰(입력·캐시 입력·출력)을 USD / 1M tokens로 표시하고, 검토 화면은 공식 가격을 출처와 함께 미리 채워 수정한 항목만 수동 가격으로 저장한다. OpenAI 이미지 토큰 방식은 예약 상한을 비워 둘 수 있다. Leaf 단위 가격 재정의를 지원하는 Lumen이 필요하다.
+- Image model pricing chooses per-token or per-image billing. Per-token billing shows text tokens (input, cached input) and image tokens (input, cached input, output) in USD / 1M tokens; review prefills official prices with provenance and saves only edited fields as manual overrides. OpenAI image token billing can leave the reservation cap blank. Requires a Lumen release with per-field price overrides.
+- 서비스 키 발급 화면은 Lumen의 도메인 관리자 전용 서비스 키 발급 정책(`allowed_scopes`, `default_scopes`)만 사용하고, 개인 키 화면은 개인 발급 정책을 유지한다.
+- The service-key form uses only Lumen's manager-only service-key issuance policy (`allowed_scopes`, `default_scopes`); the personal-key form keeps the personal policy.
+- 도메인 풀 충전은 보내기 전에 관리자·도메인별 복구 기록(일회용 키·금액·메모)을 브라우저에 저장하고, 저장하지 못하면 보내지 않는다. 응답을 잃은 충전은 Lumen 원장 조회로 재확인하며, 확인되지 않은 동안에는 같은 키 재시도만 허용한다. 여러 탭은 Web Locks로 같은 도메인의 충전을 직렬화하고 다른 키의 기록을 지우지 않는다.
+- Domain pool top-ups persist a per-admin, per-domain recovery record (idempotency key, amount, note) in the browser before sending and send nothing if it cannot be stored. A top-up whose reply was lost is rechecked against the Lumen ledger; until confirmed, only a same-key retry is offered. Tabs serialize top-ups per domain with Web Locks and never clear another key's record.
+- Lumen 설치기가 관리하는 Codex 프로필과 대시보드의 Codex 실행 명령은 `web_search = "disabled"`를 사용한다. Lumen API 키는 공급자가 실행하는 도구를 403 `server_tool_not_allowed_for_key`로 거절하며, SDK 튜토리얼에 클라이언트 도구 호출과 거절되는 서버 도구를 정리했다.
+- Codex profiles managed by the Lumen installers and the dashboard Codex commands use `web_search = "disabled"`. Lumen API keys refuse provider-executed tools with 403 `server_tool_not_allowed_for_key`; the SDK tutorial documents client tool calling and the refused server tools.
+- 채팅 설정 사용량은 행과 합계를 결제 주체(개인 지갑·도메인 풀)로 표시한다. 기본 보기는 모든 결제 주체에 걸친 내 사용량이며, 도메인 매니저는 "내 사용량 / 도메인 사용량"을 전환해 도메인 풀 사용량(`scope=domain`)을 볼 수 있다. Lumen이 권한을 거절(403 `domain_manager_required`)하면 안내와 함께 내 사용량으로 돌아간다. 사용량 BFF 응답은 모두 `no-store`다.
+- Chat settings usage labels rows and totals by payer (personal wallet or domain pool). The default view is your own usage across every payer; domain managers can switch between "My usage" and "Domain usage" to see the domain pool (`scope=domain`). If Lumen refuses (403 `domain_manager_required`), the page returns to your own usage with a notice. All usage BFF responses are `no-store`.
+- 채팅 헤더와 채팅 설정은 현재 도메인의 선불 풀(`domain_pool`)을 결제 주체와 관계없이 모든 구성원에게 보여 준다. 헤더는 풀 잔액과 도메인 풀 월 한도 사용률(막대)을 표시하고, 내 월 한도가 있으면 함께 표시한다. 풀이 없는 도메인(개인 도메인 포함)에는 풀 줄을 표시하지 않으며, `domain_pool`이 없는 이전 Lumen에서는 기존 표시를 유지한다.
+- The chat header and chat settings show the current domain's prepaid pool (`domain_pool`) to every member regardless of who paid. The header shows the pool balance and domain pool monthly limit usage (bar), plus your own monthly limit when one is set. Domains without a pool (including the Personal domain) show no pool line, and older Lumen without `domain_pool` keeps the previous display.
+
+### Deployment
+
+- Lumen 0.6.21 이상이 필요하다(Vault, 도메인 크레딧 풀, 서비스 키 발급 정책, 충전 원장 조회, 모델 `domain_billing`). Lumen을 먼저 배포하며, 두 배포 사이에는 1.32.28의 메모리 설정 화면과 대시보드 메모리·Vault 도구가 동작하지 않는다.
+- 새 설정: `[services] lumen_ingress_secret`(`SERVICE_LUMEN_INGRESS_SECRET`, 32바이트 이상)은 Lumen의 `LUMEN_AFTERGLOW_INGRESS_SECRET`과 같은 값이어야 한다. Kolla는 보호된 plugin secrets 파일의 `lumen_afterglow_ingress_secret` 하나에서 두 서비스에 전달하며, append-only 초기화 도구 `generate_ingress_secret`이 비어 있을 때만 채운다. `[services] lumen_external_url`(`SERVICE_LUMEN_EXTERNAL_URL`, Kolla `lumen_external_url`)은 CLI 설치기의 공개 Lumen 주소다. 비워 두면 자동 설정 명령을 표시하지 않는다.
+- 새 DB migration은 없다. 공개 `/install/lumen.sh`·`/install/lumen.ps1`은 frontend가 backend `/api/v1/install/*`로 전달하므로 새 HAProxy 규칙이 필요 없다.
+- Requires Lumen 0.6.21 or later (Vault, domain credit pools, service-key issuance policy, top-up ledger lookup, model `domain_billing`). Deploy Lumen first; between the two rollouts the 1.32.28 memory settings page and dashboard memory/Vault tools do not work.
+- New settings: `[services] lumen_ingress_secret` (`SERVICE_LUMEN_INGRESS_SECRET`, at least 32 bytes) must equal Lumen's `LUMEN_AFTERGLOW_INGRESS_SECRET`. Kolla passes one `lumen_afterglow_ingress_secret` from the protected plugin secrets file to both services; the append-only initializer `generate_ingress_secret` fills it only when unset. `[services] lumen_external_url` (`SERVICE_LUMEN_EXTERNAL_URL`, Kolla `lumen_external_url`) is the public Lumen base for CLI installers; empty hides the automatic setup commands.
+- No new DB migration. Public `/install/lumen.sh` and `/install/lumen.ps1` are served by the frontend through the backend's `/api/v1/install/*`, so no new HAProxy rule is needed.
+
 ## [1.32.28] - 2026-11-18
 
 ### Added

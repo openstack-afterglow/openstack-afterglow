@@ -4,7 +4,7 @@ import { siteConfig } from '$lib/config/site';
 import { auth, getAuthVerificationEpoch, isMockAuthActive, logoutInProgress, projectSwitching, recordAuthServiceFailure, setAuth } from '$lib/stores/auth';
 import type { AuthState } from '$lib/stores/auth';
 import { refreshAuthState, sessionScopeKey, type SessionStateUpdate } from '$lib/utils/authSession';
-import { ApiError, decodeProviderCallbackError, type ProviderEntryTicket } from '$lib/api/errors';
+import { ApiError, decodeImagePricingNotReady, decodeProviderCallbackError, type ImagePricingNotReady, type ProviderEntryTicket } from '$lib/api/errors';
 import { isDocsPath } from '$lib/docs/paths';
 import { t as tt } from '$lib/i18n/ns/tutorial';
 import { t } from '$lib/i18n/ns/shared';
@@ -608,10 +608,12 @@ async function request<T>(
 		let code: string | undefined;
 		let linkTicket: { link_token: string; domain_id: string } | undefined;
 		let entryTicket: ProviderEntryTicket | undefined;
+		let imagePricingNotReady: ImagePricingNotReady | undefined;
 		try {
 			const body = await res.json();
 			detail = formatErrorDetail(body, res.statusText);
 			({ code, linkTicket, entryTicket } = decodeProviderCallbackError(body));
+			imagePricingNotReady = decodeImagePricingNotReady(body);
 			if (!code && res.status === 403 && (body?.detail === 'signup_approval_pending' || body?.detail === 'signup_approval_rejected')) code = body.detail;
 			// Never serialize a bearer ticket into an error message or alert, even if malformed.
 			if (code === 'account_link_required' || code === 'account_entry_required') detail = code;
@@ -624,7 +626,7 @@ async function request<T>(
 		if (res.status === 403 && code === 'system_admin_required' && /^\/api\/v1\/admin(?:\/|$|[?#])/.test(path)) {
 			void handleAdminForbidden();
 		}
-		throw new ApiError(res.status, detail, code, linkTicket, entryTicket);
+		throw new ApiError(res.status, detail, code, linkTicket, entryTicket, imagePricingNotReady);
 	}
 
 	if (res.status === 204) return undefined as T;
@@ -1269,10 +1271,13 @@ export const api = {
 	},
 	prefetch: prefetchJson,
 	clearPrefetchCache,
-	post: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: ApiMutationOptions) => {
+	post: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: ApiMutationOptions & { idempotencyKey?: string }) => {
 		const scope = captureRequestScope(token, projectId);
 		return withMutationInvalidation(scope, () =>
-			request<T>(path, { method: 'POST', body: JSON.stringify(body), signal: opts?.signal, cache: opts?.cache }, token, projectId, { ...opts, baseUrl: scope.baseUrl })
+			request<T>(path, {
+				method: 'POST', body: JSON.stringify(body), signal: opts?.signal, cache: opts?.cache,
+				headers: opts?.idempotencyKey === undefined ? undefined : { 'Idempotency-Key': opts.idempotencyKey },
+			}, token, projectId, { ...opts, baseUrl: scope.baseUrl })
 		);
 	},
 	put: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: ApiMutationOptions) => {
@@ -1490,7 +1495,7 @@ export const api = {
 function bindExperienceApi(experience: ExperienceContext | undefined) {
 	return {
 		get: <T>(path: string, token?: string, projectId?: string, opts?: ApiReadOptions): Promise<T> => api.get<T>(path, token, projectId, { ...opts, experience: opts?.experience ?? experience }),
-		post: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: ApiMutationOptions): Promise<T> => api.post<T>(path, body, token, projectId, { ...opts, experience: opts?.experience ?? experience }),
+		post: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: Parameters<typeof api.post>[4]): Promise<T> => api.post<T>(path, body, token, projectId, { ...opts, experience: opts?.experience ?? experience }),
 		put: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: ApiMutationOptions): Promise<T> => api.put<T>(path, body, token, projectId, { ...opts, experience: opts?.experience ?? experience }),
 		patch: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: ApiMutationOptions): Promise<T> => api.patch<T>(path, body, token, projectId, { ...opts, experience: opts?.experience ?? experience }),
 		delete: <T>(path: string, token?: string, projectId?: string, opts?: ApiMutationOptions): Promise<T> => api.delete<T>(path, token, projectId, { ...opts, experience: opts?.experience ?? experience }),

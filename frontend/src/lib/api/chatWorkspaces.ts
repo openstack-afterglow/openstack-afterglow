@@ -63,17 +63,6 @@ export function buildWorkspacePayload(form: WorkspaceForm): WorkspacePayload {
 	return payload;
 }
 
-/** 사용자 장기 기억 항목. */
-export interface Memory {
-	id: number;
-	user_id?: string;
-	content: string;
-	category: 'interest' | 'development' | 'habit' | 'preference' | 'general';
-	is_active: boolean;
-	created_at?: string | null;
-	updated_at?: string | null;
-}
-
 /** 대화 수 계산에 필요한 최소 형태(workspace_id 만 참조). */
 export interface ConversationRef {
 	workspace_id: number | null;

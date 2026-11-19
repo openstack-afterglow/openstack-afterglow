@@ -714,8 +714,6 @@
 - `frontend/static/fonts/ibm-plex/LICENSE.txt`
 - `frontend/static/fonts/pretendard/LICENSE.txt`
 - `frontend/static/fonts/pretendard/PretendardVariable.woff2`
-- `frontend/static/install/lumen.ps1`
-- `frontend/static/install/lumen.sh`
 - `frontend/static/logos/CentOS.png`
 - `frontend/static/logos/Cirros.png`
 - `frontend/static/logos/Fedora.png`

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Public contract: sh -s -- [CODEX_BASE_URL ANTHROPIC_BASE_URL]
+# The dashboard embeds its configured Lumen endpoints in the installer.
 # Requires macOS/Linux, Python 3.11+, and a controlling terminal.
 # LUMEN_CA_BUNDLE optionally selects an operator-trusted PEM bundle.
 # Codex terminal defaults live in $CODEX_HOME/lumen-cli.config.toml, selected by
@@ -7,10 +7,9 @@
 # is requested; both configs share path validation, private backups and updates.
 set +x
 set +v
-exec python3 - "$@" <<'LUMEN_PY'
+exec python3 - <<'LUMEN_PY'
 import copy
 import hashlib
-import ipaddress
 import json
 import math
 import os
@@ -23,7 +22,6 @@ import stat
 import sys
 import termios
 from pathlib import Path
-from urllib.parse import urlsplit
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
 
@@ -94,28 +92,6 @@ class Terminal:
             termios.tcsetattr(self.fd, termios.TCSANOW, self.settings)
         finally:
             os.close(self.fd)
-
-
-def public_url(value):
-    try:
-        require(isinstance(value, str) and len(value) <= 2048)
-        require(re.fullmatch(r'https://[A-Za-z0-9.\[\]:/-]+(?:[A-Za-z0-9._~/-]*)', value))
-        require('?' not in value and '#' not in value and '@' not in value)
-        parsed = urlsplit(value)
-        require(parsed.scheme == 'https' and parsed.hostname and not parsed.username)
-        require(parsed.port is None or 1 <= parsed.port <= 65535)
-        require(not parsed.netloc.endswith(':'))
-        host = parsed.hostname
-        try:
-            ipaddress.ip_address(host)
-        except ValueError:
-            labels = host.rstrip('.').split('.')
-            require(len(host) <= 253)
-            require(all(re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?', label) for label in labels))
-        require(re.fullmatch(r'/[A-Za-z0-9._~/-]*', parsed.path) or not parsed.path)
-        return value.rstrip('/')
-    except (Rejected, ValueError):
-        raise Rejected('Invalid HTTPS endpoint.') from None
 
 
 def model_id(value):
@@ -1101,16 +1077,11 @@ def profile(text, block):
 
 def run():
     require(sys.platform in ('darwin', 'linux'))
-    require(len(sys.argv) in (1, 3))
+    codex = __LUMEN_CODEX_URL_LITERAL__
+    anthropic = __LUMEN_ANTHROPIC_URL_LITERAL__
     tty = None
     files = Files()
     try:
-        if len(sys.argv) == 3:
-            codex, anthropic = map(public_url, sys.argv[1:])
-        else:
-            tty = Terminal()
-            codex = public_url(tty.prompt('Codex HTTPS base URL: '))
-            anthropic = public_url(tty.prompt('Anthropic HTTPS base URL: '))
         home = absolute(os.environ.get('HOME', ''))
         codex_home = absolute(os.environ.get('CODEX_HOME', str(home / '.codex')))
         zdotdir = absolute(os.environ.get('ZDOTDIR', str(home)))
@@ -1211,8 +1182,10 @@ def run():
             # An installer-owned provider table: profile files layer over
             # config.toml, so desktop [model_providers.lumen] headers would
             # otherwise be inherited by every CLI role request.
+            # Lumen refuses provider-hosted tools for API keys; Codex otherwise
+            # declares hosted web_search on every Responses request.
             settings = {'model_provider': 'lumen-cli', 'model': selected['id'],
-                        'model_catalog_json': str(models_path)}
+                        'model_catalog_json': str(models_path), 'web_search': 'disabled'}
             cli_updates[path] = codex_config(cli_texts[path], codex, settings, 'lumen-cli', clear_selector=True)
         quote = shlex.quote
         block = START + '\n' + '''case "$-" in *x*) _lumen_trace=1 ;; *) _lumen_trace=0 ;; esac

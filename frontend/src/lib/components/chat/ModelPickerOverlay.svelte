@@ -10,12 +10,15 @@
 	import Field from '$lib/components/ui/Field.svelte';
 	import { t as commonT } from '$lib/i18n/ns/common';
 	import { compileRegexSearch, matchesRegexSearch } from '$lib/utils/regexSearch';
+	import ProviderModelSelect from './ProviderModelSelect.svelte';
+	import { modelBillingReason } from '$lib/api/modelDomainBilling';
+	const uid = $props.id();
 
 	interface Props {
 		open: boolean;
 		models: AvailableModel[];
-		value: string;
-		onSelect: (modelName: string) => void;
+		value: number | null;
+		onSelect: (row: AvailableModel) => void;
 		onClose: () => void;
 		onRefresh?: () => void;
 		refreshing?: boolean;
@@ -24,34 +27,12 @@
 	let { open, models, value, onSelect, onClose, onRefresh, refreshing = false, refreshError = '' }: Props = $props();
 
 	let query = $state('');
-	let activeProvider = $state<number | null>(null);
+	let activeProvider = $state<string | null>(null);
 	let activeProviderName = $state<string | null>(null);
 
 	function providerLabel(provider: string | null): string {
-		return provider === null ? t('modelPicker.otherProvider') : provider;
+		return provider ?? t('modelPicker.otherProvider');
 	}
-	interface Group {
-		providerId: number;
-		provider: string | null;
-		models: AvailableModel[];
-	}
-	const providerCounts = $derived.by(() => {
-		const counts = new Map<number, { id: number; name: string | null; count: number }>();
-		for (const model of models) {
-			const provider = counts.get(model.provider_id);
-			if (provider) provider.count++;
-			else counts.set(model.provider_id, { id: model.provider_id, name: model.provider ?? null, count: 1 });
-		}
-		return counts;
-	});
-	const providers = $derived.by(() => {
-		const available = [...providerCounts.values()];
-		if (activeProvider !== null && !providerCounts.has(activeProvider)) {
-			available.push({ id: activeProvider, name: activeProviderName, count: 0 });
-		}
-		return available;
-	});
-	const showProviderNav = $derived(providers.length > 1 || activeProvider !== null);
 
 	function apiModelName(model: AvailableModel): string {
 		return model.api_model_name || model.model_name;
@@ -61,24 +42,15 @@
 		return model.api_provider || model.provider || 'unknown';
 	}
 	const compiledQuery = $derived(compileRegexSearch(query));
-	const grouped = $derived.by((): Group[] => {
-		const match = (m: AvailableModel) =>
-			matchesRegexSearch(compiledQuery, [
-				m.display_name, m.model_name, apiModelName(m), apiProvider(m), m.provider ?? ''
-			]) && (activeProvider === null || m.provider_id === activeProvider);
-		const byProvider = new Map<number, Group>();
-		for (const m of models) {
-			if (!match(m)) continue;
-			const group = byProvider.get(m.provider_id);
-			if (group) group.models.push(m);
-			else byProvider.set(m.provider_id, { providerId: m.provider_id, provider: m.provider ?? null, models: [m] });
-		}
-		return [...byProvider.values()];
-	});
-	const total = $derived(grouped.reduce((n, g) => n + g.models.length, 0));
+	function matchesModel(model: AvailableModel): boolean {
+		return matchesRegexSearch(compiledQuery, [
+			model.display_name, model.model_name, apiModelName(model), apiProvider(model), model.provider ?? ''
+		]);
+	}
 
-	function pick(m: AvailableModel) {
-		onSelect(m.model_name);
+	function pick(m: AvailableModel | null) {
+		if (!m || modelBillingReason(m) !== null) return;
+		onSelect(m);
 		onClose();
 	}
 
@@ -134,6 +106,13 @@
 		</Field>
 		<p id="model-picker-help" class="help"><RichText segments={t.rich('modelPicker.help')} /></p>
 
+		<ProviderModelSelect {models} {value} onSelect={pick} modelLabel={t('modelPicker.select')}>
+		{#snippet picker(groups, select)}
+			{@const providers = activeProvider !== null && !groups.some((group) => group.key === activeProvider)
+				? [...groups, { key: activeProvider, label: activeProviderName, models: [] }] : groups}
+			{@const showProviderNav = providers.length > 1 || activeProvider !== null}
+			{@const grouped = groups.filter((group) => activeProvider === null || group.key === activeProvider)
+				.map((group) => ({ ...group, models: group.models.filter(matchesModel) })).filter((group) => group.models.length)}
 		<div class="picker-body" class:with-providers={showProviderNav}>
 			{#if showProviderNav}
 				<nav class="provider-nav" aria-label={t('modelPicker.providers')}>
@@ -146,41 +125,47 @@
 						<span>{t('modelPicker.all')}</span>
 						<span class="provider-count">{models.length}</span>
 					</button>
-					{#each providers as provider (provider.id)}
+					{#each providers as provider (provider.key)}
 						<button
 							type="button"
-							class:active={activeProvider === provider.id}
-							aria-pressed={activeProvider === provider.id}
-							onclick={() => { activeProvider = provider.id; activeProviderName = provider.name; }}
+							class:active={activeProvider === provider.key}
+							aria-pressed={activeProvider === provider.key}
+							onclick={() => { activeProvider = provider.key; activeProviderName = provider.label; }}
 						>
-							<span>{providerLabel(provider.name)}</span>
-							<span class="provider-count">{provider.count}</span>
+							<span>{providerLabel(provider.label)}</span>
+							<span class="provider-count">{provider.models.length}</span>
 						</button>
 					{/each}
 				</nav>
 			{/if}
 			<div class="list">
-				{#if total === 0}
+				{#if grouped.length === 0}
 					<p class="empty">{t('modelPicker.noResults')}</p>
 				{:else}
-					{#each grouped as g (g.providerId)}
-						<div class="group-label">{providerLabel(g.provider)}</div>
+					{#each grouped as g (g.key)}
+						<div class="group-label">{providerLabel(g.label)}</div>
 						{#each g.models as m (m.id)}
-							<div class="model-row" class:active={m.model_name === value}>
+							{@const reason = modelBillingReason(m)}
+							<div class="model-row" class:active={m.id === value} class:unready={reason !== null}>
 								<button
 									type="button"
 									class="model-select"
 									aria-label={t('modelPicker.selectModel', { name: m.display_name })}
-									aria-pressed={m.model_name === value}
-									onclick={() => pick(m)}
+									aria-pressed={m.id === value}
+									aria-disabled={reason !== null}
+									aria-describedby={reason === null ? undefined : `${uid}-billing-${m.id}`}
+									onclick={() => select(m)}
 								>
 									<span class="model-main">
 										<span class="model-name" title={m.display_name}>{m.display_name}</span>
 										<span class="model-id"><RichText segments={t.rich('modelPicker.apiId', { id: apiModelName(m) })} /></span>
 										<span class="model-provider"><RichText segments={t.rich('modelPicker.apiProvider', { provider: apiProvider(m) })} /></span>
+										{#if reason !== null}
+											<span class="model-billing" id={`${uid}-billing-${m.id}`}>{reason}</span>
+										{/if}
 									</span>
 									<span class="model-caps"><ModelCapabilityBadges caps={m.capabilities} size="xs" /></span>
-									{#if m.model_name === value}
+									{#if m.id === value}
 										<svg class="check" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round" /></svg>
 									{/if}
 								</button>
@@ -200,6 +185,8 @@
 				{/if}
 			</div>
 		</div>
+		{/snippet}
+		</ProviderModelSelect>
 	</div>
 {/if}
 
@@ -436,6 +423,17 @@
 	}
 	.model-provider :global(code) {
 		font-family: var(--font-mono);
+	}
+	.model-billing {
+		font-size: 0.72rem;
+		color: var(--color-state-warning);
+		overflow-wrap: anywhere;
+	}
+	.model-row.unready .model-select {
+		cursor: not-allowed;
+	}
+	.model-row.unready .model-name {
+		color: var(--color-ink-2);
 	}
 	.check {
 		grid-column: 2;

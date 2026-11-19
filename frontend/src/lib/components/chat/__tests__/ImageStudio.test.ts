@@ -28,7 +28,7 @@ vi.mock('$lib/api/imageStudio', async (original) => ({
 	imageStudioApi: api
 }));
 const ready = {
-	id: 1, model_name: 'image-model', display_name: 'Image Model', provider_api_key_configured: true,
+	id: 1, model_kind: 'image', model_name: 'image-model', display_name: 'Image Model', provider_api_key_configured: true,
 	capabilities: { feature_gates: { image_output: { available: true, mode: 'native', pricing_available: true, reason_code: null } } }
 };
 const owner = {
@@ -117,7 +117,7 @@ describe('Image Studio', () => {
 		await fireEvent.change(screen.getByLabelText(t('imageStudio.options.complexity')), { target: { value: 'high' } });
 		await fireEvent.click(create);
 		await waitFor(() => expect(api.submit.mock.calls[0]?.slice(0, 2)).toEqual(['generations', {
-			model_id: '1', prompt: 'Forest', size: '1024x1024', quality: 'max', n: 1, output_format: 'jpeg', output_compression: 0, complexity: 'high'
+			model_id: '1', model_row_id: 1, prompt: 'Forest', size: '1024x1024', quality: 'max', n: 1, output_format: 'jpeg', output_compression: 0, complexity: 'high'
 		}]));
 		expect(await screen.findByText(/0.211335/)).toBeTruthy();
 	});
@@ -157,7 +157,7 @@ describe('Image Studio', () => {
 		await fireEvent.change(screen.getByLabelText(t('imageStudio.options.format')), { target: { value: format } });
 		await fireEvent.click(screen.getByRole('button', { name: t('imageStudio.createImage') }));
 		await waitFor(() => expect(api.submit.mock.calls[0]?.[1]).toEqual({
-			model_id: '1', prompt: 'Forest', size: '1024x1024', quality: 'high', output_format: format,
+			model_id: '1', model_row_id: 1, prompt: 'Forest', size: '1024x1024', quality: 'high', output_format: format,
 			...(format === 'gif' ? { n: 2, frame_count: 9, frame_duration_ms: 200 } : { n: 1 })
 		}));
 		expect((await screen.findByRole('img', { name: t('imageStudio.generatedImage') })).getAttribute('src')).toBe('blob:preview');
@@ -224,7 +224,7 @@ describe('Image Studio', () => {
 		expect(create).toHaveProperty('disabled', false);
 		await fireEvent.click(create);
 		await waitFor(() => expect(api.submit.mock.calls[0]?.slice(0, 2)).toEqual([
-			'edits', { model_id: '1', prompt: 'A tree', size: '1024x1024', quality: 'high', n: 1, input_asset_id: 'ready-source' }
+			'edits', { model_id: '1', model_row_id: 1, prompt: 'A tree', size: '1024x1024', quality: 'high', n: 1, input_asset_id: 'ready-source' }
 		]));
 	});
 
@@ -260,7 +260,7 @@ describe('Image Studio', () => {
 		await fireEvent.change(screen.getByLabelText(t('imageStudio.advanced.fidelity')), { target: { value: 'high' } });
 		await fireEvent.click(create);
 		await waitFor(() => expect(api.submit.mock.calls[0]?.[1]).toEqual({
-			model_id: '1', prompt: 'A tree', size: '1024x1024', quality: 'high', n: 1, output_format: 'gif',
+			model_id: '1', model_row_id: 1, prompt: 'A tree', size: '1024x1024', quality: 'high', n: 1, output_format: 'gif',
 			frame_count: 9, frame_duration_ms: 200, input_asset_ids: ['first.png', 'second.png'],
 			markup_asset_id: 'markup.png', moderation: 'low', input_fidelity: 'high'
 		}));
@@ -553,7 +553,7 @@ describe('Image Studio', () => {
 		expect((screen.getByRole('combobox', { name: t('imageStudio.qualityLabel') }) as HTMLSelectElement).value).toBe('high');
 		await fireEvent.click(screen.getByRole('button', { name: t('imageStudio.createImage') }));
 		await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(2));
-		expect(api.submit.mock.calls[1][1]).toEqual({ model_id: '1', prompt: `My unchanged draft\n\n스타일: ${style.instruction}`, size: '1024x1024', quality: 'high', n: 1 });
+		expect(api.submit.mock.calls[1][1]).toEqual({ model_id: '1', model_row_id: 1, prompt: `My unchanged draft\n\n스타일: ${style.instruction}`, size: '1024x1024', quality: 'high', n: 1 });
 		expect(api.submit.mock.calls[1][3]).toBe(first[3]);
 	});
 
@@ -747,15 +747,24 @@ describe('Image Studio', () => {
 		await waitFor(() => expect(api.submit).toHaveBeenCalledWith('edits', expect.objectContaining({ input_asset_id: 'input-1', prompt: 'make it warmer' }), { token: 'token', projectId: 'project-1' }, expect.any(String), expect.any(AbortSignal)));
 	});
 
-	it('limits Gemini to one image and resets quantity when switching models', async () => {
-		api.models.mockResolvedValue([ready, { ...ready, id: 2, model_name: 'gemini-image', display_name: 'Gemini Image', api_provider: 'gemini' }]);
+	it('resets quantity and submits the exact same-name model row after switching providers', async () => {
+		api.models.mockResolvedValue([{ ...ready, provider_id: 1, provider: 'OpenAI' }, { ...ready, id: 2, provider_id: 2, provider: 'Gemini' }]);
 		api.capabilities.mockImplementation(async (id: number) => ({ available_image_variants: ['1024x1024:high'], max_image_count: id === 2 ? 1 : 4 }));
 		render(ImageStudio);
-		await screen.findByRole('option', { name: 'Gemini Image' });
+		await screen.findByRole('option', { name: '3' });
 		await fireEvent.change(screen.getByRole('combobox', { name: '이미지 수' }), { target: { value: '3' } });
+		await fireEvent.input(screen.getByLabelText(t('imageStudio.prompt')), { target: { value: 'Forest' } });
+		const create = screen.getByRole('button', { name: t('imageStudio.createImage') });
+		await fireEvent.change(screen.getByRole('combobox', { name: t('modelPicker.providers') }), { target: { value: '2' } });
+		expect(create).toHaveProperty('disabled', true);
 		await fireEvent.change(screen.getByRole('combobox', { name: '이미지 모델' }), { target: { value: '2' } });
 		await waitFor(() => expect((screen.getByRole('combobox', { name: '이미지 수' }) as HTMLSelectElement).value).toBe('1'));
 		expect(screen.queryByRole('option', { name: '3' })).toBeNull();
+		await waitFor(() => expect(create).toHaveProperty('disabled', false));
+		await fireEvent.click(create);
+		expect(api.submit).toHaveBeenCalledWith('generations', {
+			model_id: '2', model_row_id: 2, prompt: 'Forest', size: '1024x1024', quality: 'high', n: 1
+		}, expect.anything(), expect.any(String), expect.any(AbortSignal));
 	});
 
 	it('reuses an intent key after a lost response but changes it when the draft changes', async () => {

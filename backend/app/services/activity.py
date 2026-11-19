@@ -405,7 +405,9 @@ async def list_for_user(
                     ActivityLog.resource_type.not_in(("request", "ui", "experience", "unknown", "auth")),
                     or_(
                         ~ActivityLog.resource_type.startswith("chat_", autoescape=True),
-                        ActivityLog.resource_type.in_(("chat_api_key", "chat_git_credential")),
+                        ActivityLog.resource_type.in_(
+                            ("chat_api_key", "chat_service_key", "chat_domain_pool", "chat_git_credential")
+                        ),
                     ),
                     ActivityLog.action.regexp_match(_USER_MUTATION_ACTION_PATTERN),
                 ),

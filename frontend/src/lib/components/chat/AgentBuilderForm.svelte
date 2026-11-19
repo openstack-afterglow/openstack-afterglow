@@ -6,6 +6,10 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import { t } from '$lib/i18n/ns/chat-settings';
 	import RichText from '$lib/i18n/RichText.svelte';
+	import { t as studioT } from '$lib/i18n/ns/chat-studio';
+	import { resolveCatalogModel } from '$lib/api/modelCatalog';
+	import { modelBillingReason } from '$lib/api/modelDomainBilling';
+	import ProviderModelSelect from './ProviderModelSelect.svelte';
 
 	interface Props {
 		form: AgentForm;
@@ -31,6 +35,13 @@
 	}: Props = $props();
 
 	const canSubmit = $derived(form.name.trim().length > 0 && !saving && !disabled);
+	const selectedModel = $derived(resolveCatalogModel(models, form.model_row_id, form.model_name));
+	const selectedModelBlock = $derived(selectedModel ? modelBillingReason(selectedModel) : null);
+
+	function selectModel(row: AvailableModel | null) {
+		form.model_row_id = row?.id ?? null;
+		form.model_name = row?.model_name ?? '';
+	}
 </script>
 
 <form
@@ -74,15 +85,22 @@
 	</label>
 
 	<div class="row three">
-		<label class="field">
-			<span class="lbl">{t('agentBuilder.model.label')}</span>
-			<select class="inp" bind:value={form.model_name}>
-				<option value="">{t('agentBuilder.model.default')}</option>
-				{#each models as m (m.model_name)}
-					<option value={m.model_name}>{m.display_name}{m.provider ? ` · ${m.provider}` : ''}</option>
-				{/each}
-			</select>
-		</label>
+		<div class="grid min-w-0 gap-2">
+			<ProviderModelSelect {models} value={selectedModel?.id ?? null} disabled={disabled || saving}
+				modelLabel={t('agentBuilder.model.label')}
+				placeholder={t('agentBuilder.model.default')} onSelect={selectModel} />
+			{#if (form.model_name || form.model_row_id != null) && !selectedModel}
+				<p class="empty">{studioT('modelSelector.unavailable')}</p>
+				<Button variant="ghost" size="sm" disabled={disabled || saving} onclick={() => selectModel(null)}>
+					{t('agentBuilder.model.default')}
+				</Button>
+			{:else if selectedModelBlock}
+				<p class="empty" role="status">{selectedModelBlock}</p>
+				<Button variant="ghost" size="sm" disabled={disabled || saving} onclick={() => selectModel(null)}>
+					{t('agentBuilder.model.default')}
+				</Button>
+			{/if}
+		</div>
 		<label class="field">
 			<span class="lbl">{t('agentBuilder.temperature.label')}</span>
 			<input class="inp" bind:value={form.temperature} inputmode="decimal" placeholder={t('agentBuilder.temperature.placeholder')} />

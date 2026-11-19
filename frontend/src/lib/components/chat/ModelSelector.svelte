@@ -1,15 +1,19 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/chat-studio';
+	import { t as panelT } from '$lib/i18n/ns/chat-panel';
 	import type { AvailableModel } from '$lib/api/chatTree';
 	import Field from '$lib/components/ui/Field.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
+	import ProviderModelSelect from './ProviderModelSelect.svelte';
 	import { t as commonT } from '$lib/i18n/ns/common';
 	import { compileRegexSearch, matchesRegexSearch } from '$lib/utils/regexSearch';
+	import { modelBillingReady } from '$lib/api/modelDomainBilling';
 	const uid = $props.id();
 
 	interface Props {
 		models: AvailableModel[];
-		value?: string;
-		onSelect: (modelName: string) => void;
+		value?: number | null;
+		onSelect: (model: AvailableModel) => void;
 		/** 컴팩트: 재생성 인라인용 아이콘 트리거 */
 		compact?: boolean;
 		disabled?: boolean;
@@ -20,7 +24,7 @@
 	}
 	let {
 		models,
-		value = '',
+		value = null,
 		onSelect,
 		compact = false,
 		disabled = false,
@@ -35,13 +39,14 @@
 	let open = $state(false);
 	let dropUp = $state(false);
 	let filter = $state('');
+	let draftId = $state<number | null>(null);
 	let root = $state<HTMLDivElement | null>(null);
 	let triggerEl = $state<HTMLButtonElement | null>(null);
 	let searchEl = $state<HTMLInputElement | null>(null);
 	const searchId = `${uid}-model-search`;
 
 	const showSearch = $derived(searchable ?? !compact);
-	const current = $derived(models.find((m) => m.model_name === value) ?? null);
+	const current = $derived(models.find((m) => m.id === value) ?? null);
 	const label = $derived(current?.display_name ?? placeholder ?? t('modelSelector.select'));
 	const compiledFilter = $derived(compileRegexSearch(filter));
 	const filtered = $derived(models.filter((model) =>
@@ -50,6 +55,7 @@
 			model.api_provider ?? '', model.provider ?? ''
 		])
 	));
+	const draft = $derived(filtered.find((model) => model.id === draftId && modelBillingReady(model)));
 
 	function toggle() {
 		if (disabled || models.length === 0) return;
@@ -65,12 +71,14 @@
 				dropUp = false;
 			}
 			filter = '';
+			draftId = value;
 		}
 		open = !open;
 	}
-	function choose(name: string) {
+	function choose() {
+		if (!draft) return;
 		open = false;
-		onSelect(name);
+		onSelect(draft);
 	}
 	function onWindowClick(e: MouseEvent) {
 		if (root && !root.contains(e.target as Node)) open = false;
@@ -94,7 +102,7 @@
 		class:compact
 		bind:this={triggerEl}
 		{disabled}
-		aria-haspopup="listbox"
+		aria-controls={open ? `${uid}-model-menu` : undefined}
 		aria-expanded={open}
 		title={compact ? t('modelSelector.regenerate') : label}
 		onclick={toggle}
@@ -113,7 +121,7 @@
 	</button>
 
 	{#if open}
-		<div class="menu" class:right={align === 'right'} class:up={dropUp} role="listbox" aria-label={t('modelSelector.select')}>
+		<div id={`${uid}-model-menu`} class="menu" class:right={align === 'right'} class:up={dropUp}>
 			{#if showSearch && models.length > 0}
 				<Field for={searchId} label={t('modelSelector.search')} help={commonT('table.regexHelp')} error={compiledFilter.error ? commonT('table.regexError') : undefined} class="px-3 py-2">
 					<div class="search">
@@ -122,36 +130,17 @@
 					</div>
 				</Field>
 			{/if}
-			<ul class="items">
-				{#if models.length === 0}
-					<li class="empty">{t('modelSelector.unavailable')}</li>
-				{:else if filtered.length === 0}
-					<li class="empty">{t('modelSelector.noResults')}</li>
+			<div class="picker">
+				{#if filtered.length === 0}
+					<p class="empty">{t('modelSelector.noResults')}</p>
 				{:else}
-					{#each filtered as m (m.model_name)}
-						<li>
-							<button
-								type="button"
-								role="option"
-								aria-selected={m.model_name === value}
-								class="item"
-								class:active={m.model_name === value}
-								onclick={() => choose(m.model_name)}
-							>
-								<span class="item-main">
-									<span class="item-label">{m.display_name}</span>
-									{#if m.provider}<span class="item-provider">{m.provider}</span>{/if}
-								</span>
-								{#if m.model_name === value}
-									<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2">
-										<path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round" />
-									</svg>
-								{/if}
-							</button>
-						</li>
-					{/each}
+					<ProviderModelSelect models={filtered} value={draftId} modelLabel={t('modelSelector.select')}
+						onSelect={(row) => { draftId = row?.id ?? null; }} />
+					<Button variant="secondary" size="sm" onclick={choose} disabled={!draft}>
+						{compact ? panelT('message.regenerate') : t('modelSelector.select')}
+					</Button>
 				{/if}
-			</ul>
+			</div>
 		</div>
 	{/if}
 </div>
@@ -251,54 +240,11 @@
 	.search input::placeholder {
 		color: var(--color-ink-3);
 	}
-	.items {
-		flex: 1;
-		min-height: 0;
+	.picker {
+		display: grid;
+		gap: 0.5rem;
 		overflow-y: auto;
-		margin: 0;
-		padding: 0;
-		list-style: none;
-	}
-	.item {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.6rem;
-		width: 100%;
-		padding: 0.45rem 0.55rem;
-		border-radius: 0.4rem;
-		background: transparent;
-		border: none;
-		text-align: left;
-		font-size: 0.8125rem;
-		color: var(--color-ink-1);
-		cursor: pointer;
-		transition: background 0.12s, color 0.12s;
-	}
-	.item:hover {
-		background: var(--color-surface-sunken);
-		color: var(--color-ink-0);
-	}
-	.item.active {
-		color: var(--color-accent);
-	}
-	.item-main {
-		display: flex;
-		flex-direction: column;
-		gap: 0.05rem;
-		min-width: 0;
-	}
-	.item-label {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.item-provider {
-		font-size: 0.68rem;
-		color: var(--color-ink-2);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		padding: 0.5rem;
 	}
 	.empty {
 		padding: 0.5rem 0.55rem;

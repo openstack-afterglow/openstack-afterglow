@@ -72,6 +72,8 @@
 	"items.clusterTemplates": "Mẫu cụm",
 	"items.chatStats": "Thống kê trò chuyện",
 	"items.userQuotas": "Hạn ngạch người dùng",
+	"items.lumenDomainPools": "Quỹ tín dụng theo miền",
+	"items.lumenServiceKeys": "Danh sách khóa dịch vụ",
 	"items.modelSettings": "Cài đặt mô hình",
 	"items.providerSettings": "Cài đặt nhà cung cấp",
 	"items.toolSettings": "Cài đặt công cụ",

@@ -3,9 +3,10 @@
 	import { page } from '$app/stores';
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
+	import { chatDomainScope, chatHistoryStorageOwner } from '$lib/stores/chatDomainScope';
 	import { derived } from 'svelte/store';
 	import { siteConfig } from '$lib/config/site';
-	import { serviceCapabilities } from '$lib/stores/servicePermissions';
+	import { serviceCapabilities, serviceDenials } from '$lib/stores/servicePermissions';
 	import { chatRequestPermission, permissionReason, textOnlyToolPolicy } from '$lib/api/lumenPermissions';
 	import { onChatModelsInvalidated } from '$lib/stores/chatModels';
 	import {
@@ -15,6 +16,8 @@
 	} from '$lib/stores/managedSandboxTools';
 	import { t as mcpT } from '$lib/i18n/ns/mcp-gallery';
 	import { api, ApiError } from '$lib/api/client';
+	import { dashboardCreditMessage, domainBillingErrorMessage } from '$lib/api/chatDomainBilling';
+	import { personalWorkspace } from '$lib/stores/personalWorkspace';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
 	import { t } from '$lib/i18n/ns/chat-panel';
@@ -39,7 +42,17 @@
 	} from '$lib/api/chatMetrics';
 	import type { ToolActivityItem } from '$lib/api/chatToolActivity';
 	import { aggregateCitations } from '$lib/api/chatCitations';
-	import { effortForModel, normalizeEffort } from '$lib/api/chatEffort';
+	import { normalizeEffort } from '$lib/api/chatEffort';
+	import { persistChatModel, resolveCatalogModel, restoreChatModel } from '$lib/api/modelCatalog';
+	import {
+		agentModelBlockedMessage,
+		domainBillingAdmissionMessage,
+		modelBillingFallbackNotice,
+		modelBillingReady,
+		modelBillingReason,
+		noReadyModelsGuidance,
+		resolveReadySelection
+	} from '$lib/api/modelDomainBilling';
 	import { createChatRevealBuffer } from '$lib/api/chatRevealBuffer';
 	import { createChatRunAttachment } from '$lib/api/chatRunAttachment';
 	import { taskLabelForStage, taskLabelForTool } from '$lib/api/chatTaskLabels';
@@ -162,6 +175,7 @@
 	});
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
+	const historyOwner = $derived(chatHistoryStorageOwner($auth));
 	const canChat = $derived($serviceCapabilities('lumen-chat_user'));
 	const canTools = $derived($serviceCapabilities('lumen-tools_user'));
 
@@ -183,8 +197,9 @@
 	let modelsRefreshing = $state(false);
 	let modelsError = $state('');
 	let modelRequestGeneration = 0;
-	let modelScope = '';
-	let selectedModel = $state('');
+	let selectedModelId = $state<number | null>(null);
+	/** Explains why a remembered or conversation model was replaced (domain billing not ready). */
+	let modelNotice = $state<string | null>(null);
 	let effort = $state('auto'); // auto=provider 기본, none=명시적 비활성.
 	let searchEnabled = $state(false);
 	let attachments = $state<ChatAttachment[]>([]); // 입력창 첨부(업로드 진행/완료)
@@ -198,61 +213,55 @@
 	let selectedSkillIds = $state<number[]>([]);
 	let composerAnchor = $state<HTMLDivElement | null>(null);
 
-	interface ToolScope {
-		token: string | null;
-		userId: string | null;
-		projectId: string | null;
-		enabled: boolean;
-		mcpEnabled: boolean;
-	}
-	let toolScope = $state.raw<ToolScope | null>(null);
 	let cloudTools = $state<CloudToolsCatalogue | null>(null);
-	let toolRequestGeneration = 0;
 	let toolController: AbortController | null = null;
+	let cloudScopeRevision = $state(0);
+	let toolOwner: typeof $chatDomainScope | null = null;
 
-	function ownsTools(owner: ToolScope | null): owner is ToolScope & { token: string; projectId: string } {
-		return owner !== null && owner === toolScope && owner.enabled && !!owner.token && !!owner.projectId;
-	}
-
-	onMount(() => {
-		// A batched A → B → A must still discard A's pending catalog response.
-		const unsubscribe = derived([auth, authReady, projectSwitching, siteConfig, serviceCapabilities], ([actor, ready, switching, config, allows]): ToolScope => ({
-			token: actor.token,
-			userId: actor.userId,
-			projectId: actor.projectId,
-			enabled: ready && !switching && allows('lumen-tools_user'),
-			mcpEnabled: config.services.mcp,
-		})).subscribe((next) => {
-			if (toolScope?.token === next.token && toolScope?.userId === next.userId && toolScope?.projectId === next.projectId && toolScope?.enabled === next.enabled && toolScope?.mcpEnabled === next.mcpEnabled) return;
-			toolController?.abort();
-			toolController = null;
-			toolScope = next;
-			availableTools = [];
-			availableMcp = [];
-			availableSkills = [];
-			cloudTools = null;
-			selectedToolIds = null;
-			selectedMcpIds = null;
-			selectedSkillIds = [];
+	$effect(() => {
+		const owner = $chatDomainScope;
+		const denied = $serviceDenials('lumen-tools_user');
+		const ready = $authReady && !$projectSwitching && canTools;
+		untrack(() => {
+			if (toolOwner && (toolOwner !== owner || denied)) {
+				toolController?.abort();
+				toolOwner = null;
+				availableTools = [];
+				availableMcp = [];
+				availableSkills = [];
+				selectedToolIds = null;
+				selectedMcpIds = null;
+				selectedSkillIds = [];
+			}
+			if (owner.key && ready && !toolOwner && token && projectId) {
+				toolOwner = owner;
+				void loadToolsAndMcp(owner, token, projectId);
+			}
 		});
-		return () => {
-			unsubscribe();
-			toolController?.abort();
-			toolController = null;
-			toolScope = null;
-		};
 	});
 
 	$effect(() => {
-		const owner = toolScope;
-		untrack(() => { void loadToolsAndMcp(owner); });
+		const revision = cloudScopeRevision;
+		const requestToken = token;
+		const requestProject = projectId;
+		const enabled = $authReady && !$projectSwitching && canTools && $siteConfig.services.mcp;
+		cloudTools = null;
+		if (!enabled || !requestToken || !requestProject) return;
+		const controller = new AbortController();
+		void api.get<CloudToolsCatalogue>('/api/v1/chat/cloud-tools', requestToken, requestProject, {
+			refresh: true, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]), suppressAuthRedirect: true
+		}).then((catalogue) => {
+			if (revision === cloudScopeRevision && !controller.signal.aborted && token === requestToken && projectId === requestProject &&
+				!$projectSwitching && canTools && catalogue?.enabled === true && catalogue.project_id === requestProject) cloudTools = catalogue;
+		}).catch(() => {});
+		return () => controller.abort();
 	});
 
 	let activeConvId = $state<string | null>(null);
 
-	function selectedFeatureOptions(modelName = activeModelName) {
+	function selectedFeatureOptions(model = selectedModelObj) {
 		const features = defaultChatFeatureOptions();
-		const caps = models.find((model) => model.model_name === modelName)?.capabilities;
+		const caps = model?.capabilities;
 		const searchGate = caps?.feature_gates?.web_search;
 		if (caps?.web_search && searchGate?.mode === 'native' && (caps.web_search_required || (searchEnabled && searchGate.available && searchGate.pricing_available))) {
 			features.web_search.enabled = true;
@@ -269,7 +278,6 @@
 		return features;
 	}
 	let selectionGeneration = 0;
-	let restoredConversationProjectId: string | null = null;
 	let allMessages = $state<ChatMsg[]>([]);
 	let activeLeafId = $state<string | null>(null);
 	let input = $state('');
@@ -360,8 +368,22 @@
 
 
 	// 현재 선택 모델의 능력(배지·게이팅). 에이전트 바인딩 시 에이전트 모델 기준.
-	const activeModelName = $derived(activeAgent?.model_name || selectedModel);
-	const selectedModelObj = $derived(models.find((m) => m.model_name === activeModelName) ?? null);
+	const selectedModelObj = $derived(activeAgent && (activeAgent.model_row_id != null || activeAgent.model_name)
+		? resolveCatalogModel(models, activeAgent.model_row_id, activeAgent.model_name)
+		: resolveCatalogModel(models, selectedModelId));
+	const agentModelBlock = $derived(activeAgent && selectedModelObj ? agentModelBlockedMessage(selectedModelObj) : null);
+	const noReadyModels = $derived(models.length > 0 && !models.some(modelBillingReady));
+	const activeModelName = $derived(selectedModelObj?.model_name ?? activeAgent?.model_name ?? '');
+	const modelLabel = $derived.by(() => {
+		const model = selectedModelObj;
+		if (!model) return activeModelName || t('panel.model.select');
+		const sameLabel = models.some((row) => row.id !== model.id && row.display_name === model.display_name);
+		return sameLabel ? `${model.display_name} · ${model.provider ?? model.provider_type}` : model.display_name;
+	});
+
+	function modelRequest(model: AvailableModel) {
+		return { model_id: model.model_name, model_row_id: model.id };
+	}
 	$effect(() => {
 		const caps = selectedModelObj?.capabilities;
 		if (!caps?.web_search || caps.feature_gates?.web_search?.mode !== 'native') searchEnabled = false;
@@ -377,18 +399,26 @@
 		if (normalized !== effort) effort = normalized;
 	});
 
-	const _LAST_MODEL_KEY = 'chat:lastModel';
-	function persistLastModel(name: string) {
+	function chooseModel(model: AvailableModel) {
+		if (!modelBillingReady(model)) return;
+		selectedModelId = model.id;
+		modelNotice = null;
 		try {
-			if (typeof localStorage !== 'undefined' && name) localStorage.setItem(_LAST_MODEL_KEY, name);
+			if (typeof localStorage !== 'undefined') persistChatModel(localStorage, model.id);
 		} catch {
 			/* localStorage 불가 환경 무시 */
 		}
 	}
-	function chooseModel(name: string) {
-		if (!name) return;
-		selectedModel = name;
-		persistLastModel(name);
+
+	/** Applies a candidate selection, never keeping a model Lumen would refuse for domain billing. */
+	function selectReadyModel(candidate: AvailableModel | null | undefined) {
+		const { model, displaced } = resolveReadySelection(models, candidate);
+		selectedModelId = model?.id ?? null;
+		modelNotice = displaced ? modelBillingFallbackNotice(displaced, model) : null;
+	}
+
+	function modelBlockedError(model: AvailableModel): string | null {
+		return activeAgent ? agentModelBlockedMessage(model) : modelBillingReason(model);
 	}
 
 	// Compact layouts keep the history control inside the chat header; desktop keeps the sidebar inline.
@@ -423,8 +453,7 @@
 		path: string;
 		body: unknown;
 		idempotencyKey: string;
-		modelName: string;
-		effectiveModelName: string;
+		model: AvailableModel;
 		sandboxOwnerKey: string;
 	};
 	let failedSubmission = $state<FailedPersistentSubmission | null>(null);
@@ -444,6 +473,7 @@
 
 	onDestroy(() => {
 		destroyed = true;
+		toolController?.abort();
 		for (const frame of revealFrames) cancelAnimationFrame(frame);
 		streamAttachment.detach();
 		teardownAllTitlePolling();
@@ -680,7 +710,7 @@
 	function tempId(): string {
 		return `tmp-${tmpSeq++}`;
 	}
-	function newAssistantDraft(model: string | null, fresh = true): DisplayMessage {
+	function newAssistantDraft(model: string | null, fresh = true, rowId?: number): DisplayMessage {
 		return {
 			id: tempId(),
 			conversation_id: activeConvId ?? '',
@@ -688,6 +718,7 @@
 			parent_id: null,
 			content: '',
 			model_name: model,
+			execution: rowId === undefined ? undefined : { model_row_id: rowId },
 			created_at: null,
 			streaming: true,
 			sessionEntrance: fresh ? freshMessageEntrance() : undefined,
@@ -696,9 +727,11 @@
 		};
 	}
 	async function refreshServerRunSnapshot(): Promise<ChatRunDescriptor[]> {
-		if (!token || !projectId) return [];
+		const requestToken = token, requestProject = projectId, generation = streamGeneration;
+		if (!requestToken || !requestProject || $projectSwitching) return [];
 		try {
-			const payload = await api.get<unknown[]>('/api/v1/chat/runs?active=true', token, projectId);
+			const payload = await api.get<unknown[]>('/api/v1/chat/runs?active=true', requestToken, requestProject);
+			if (destroyed || generation !== streamGeneration || projectId !== requestProject || $projectSwitching) return [];
 			const runs = payload.map(parseChatRunDescriptor);
 			runningConversationIds = new Set(
 				runs.flatMap((run) => (run.conversation_id ? [run.conversation_id] : []))
@@ -915,11 +948,10 @@
 	async function refreshConversationsMetadata() {
 		if (!token || !projectId || destroyed) return;
 		const reqEpoch = localMutationEpoch;
-		const reqProjectId = projectId;
-		const reqToken = token;
+		const owner = $chatDomainScope;
 		try {
 			const loaded = await api.get<Conversation[]>('/api/v1/chat/conversations', token, projectId);
-			if (destroyed || projectId !== reqProjectId || token !== reqToken) return;
+			if (destroyed || owner !== $chatDomainScope) return;
 			if (reqEpoch !== localMutationEpoch) {
 				scheduleMetadataRefresh();
 				return;
@@ -930,10 +962,10 @@
 		}
 	}
 	async function restoreInitialSelection() {
-		if (!token || !projectId) return;
-		if (restoredConversationProjectId === projectId) return;
-		const reqProjectId = projectId;
-		const reqToken = token;
+		if (!token || !projectId || !historyOwner) return;
+		const owner = $chatDomainScope;
+		const requestProject = projectId;
+		const storageOwner = historyOwner;
 		const capturedSelectionGeneration = selectionGeneration;
 		const capturedMutationEpoch = localMutationEpoch;
 		const capturedActiveConversationId = activeConvId;
@@ -942,7 +974,7 @@
 				api.get<Conversation[]>('/api/v1/chat/conversations', token, projectId),
 				refreshServerRunSnapshot()
 			]);
-			if (destroyed || projectId !== reqProjectId || token !== reqToken) return;
+			if (destroyed || owner !== $chatDomainScope) return;
 			if (
 				selectionGeneration !== capturedSelectionGeneration ||
 				localMutationEpoch !== capturedMutationEpoch ||
@@ -958,27 +990,28 @@
 				return;
 			}
 			reconcileConversationsList(loaded, capturedMutationEpoch);
-			restoredConversationProjectId = projectId;
 			if (projectRoute !== undefined || initialWorkspaceId !== null) {
-				if (initialWorkspaceId !== null) clearActiveConversationId(projectId);
+				if (initialWorkspaceId !== null) clearActiveConversationId(storageOwner);
 				return;
 			}
 			let savedThread: string | null = null;
-			try { savedThread = sessionStorage.getItem(tempThreadStorageKey()); } catch { /* Storage is optional. */ }
+			if (requestProject === projectId && !$projectSwitching) {
+				try { savedThread = sessionStorage.getItem(tempThreadStorageKey()); } catch { /* Storage is optional. */ }
+			}
 			if (savedThread) {
 				await restoreTemporaryThread(savedThread, capturedSelectionGeneration);
 				return;
 			}
-			const savedId = loadActiveConversationId(projectId);
+			const savedId = loadActiveConversationId(storageOwner);
 			const savedConversation = savedId ? conversations.find((c) => c.id === savedId) : undefined;
-			const activeConversation = activeRuns
+			const activeConversation = (requestProject === projectId ? activeRuns : [])
 				.map((run) => (run.conversation_id ? conversations.find((c) => c.id === run.conversation_id) : undefined))
 				.find((c): c is Conversation => Boolean(c));
 			const conversation = savedConversation ?? activeConversation;
 			if (conversation) void selectConversation(conversation);
-			else if (savedId) clearActiveConversationId(projectId);
+			else if (savedId) clearActiveConversationId(storageOwner);
 		} catch (e) {
-			error = e instanceof Error ? e.message : t('panel.errors.loadConversations');
+			if (!destroyed && owner === $chatDomainScope) error = e instanceof Error ? e.message : t('panel.errors.loadConversations');
 		}
 	}
 
@@ -1137,36 +1170,44 @@
 	}
 	async function searchConversations(query: string): Promise<Conversation[]> {
 		if (!token || !projectId) return [];
+		const owner = $chatDomainScope;
 		const params = new URLSearchParams({ q: query, limit: '20' });
-		return api.get<Conversation[]>(`/api/v1/chat/conversations/search?${params}`, token, projectId);
+		const result = await api.get<Conversation[]>(`/api/v1/chat/conversations/search?${params}`, token, projectId);
+		return !destroyed && owner === $chatDomainScope ? result : [];
 	}
 	async function loadModels() {
 		const generation = ++modelRequestGeneration;
 		const requestToken = token;
 		const requestProject = projectId;
-		if (!requestToken || !requestProject || destroyed) return;
+		if (!requestToken || !requestProject || destroyed || $projectSwitching) return;
+		const owner = $chatDomainScope;
+		const current = () => !destroyed && owner === $chatDomainScope && generation === modelRequestGeneration
+			&& token === requestToken && projectId === requestProject && !$projectSwitching;
 		const experience = beginExperienceLoad('lumen', 'resource.list');
 		experienceState(experience, 'loading', 0);
 		modelsRefreshing = true;
 		modelsError = '';
 		try {
 			const loaded = await api.withExperience(experience).get<AvailableModel[]>('/api/v1/chat/models', requestToken, requestProject);
-			if (destroyed || generation !== modelRequestGeneration || token !== requestToken || projectId !== requestProject) { experienceDiscarded(experience, 'stale'); return; }
-			models = loaded;
-			if (!models.some((model) => model.model_name === selectedModel)) {
-				let last: string | null = null;
+			if (!current()) { experienceDiscarded(experience, 'stale'); return; }
+			models = loaded.filter((model) => model.model_kind === undefined || model.model_kind === 'text');
+			const selected = resolveCatalogModel(models, selectedModelId);
+			if (selectedModelId === null || !selected) {
+				let saved: AvailableModel | null | undefined;
 				try {
-					last = typeof localStorage !== 'undefined' ? localStorage.getItem(_LAST_MODEL_KEY) : null;
+					if (typeof localStorage !== 'undefined') saved = restoreChatModel(models, localStorage);
 				} catch {
 					// Browser storage is optional.
 				}
-				selectedModel = last && models.some((model) => model.model_name === last)
-					? last : models[0]?.model_name ?? '';
+				selectReadyModel(saved);
+				syncSelectedModel();
+			} else if (!modelBillingReady(selected)) {
+				selectReadyModel(selected);
 			}
 			experienceState(experience, models.length ? 'ready' : 'empty', 0);
-			void experienceApplied(experience, {}, () => !destroyed && generation === modelRequestGeneration && token === requestToken && projectId === requestProject);
+			void experienceApplied(experience, {}, current);
 		} catch (caught) {
-			if (!destroyed && generation === modelRequestGeneration && token === requestToken && projectId === requestProject) {
+			if (current()) {
 				// ApiError.message may be an unparsed proxy body; never display it here.
 				modelsError = caught instanceof ApiError
 					? t('panel.errors.refreshModelsHttp', { status: caught.status })
@@ -1174,10 +1215,10 @@
 				experienceState(experience, 'error', 0);
 				experienceMessage(experience, { ...resolveExperienceMessage('chat-panel', caught instanceof ApiError ? 'panel.errors.refreshModelsHttp' : 'panel.errors.refreshModels'), tone: 'danger' });
 				const displayedError = modelsError;
-				void experienceApplied(experience, {}, () => !destroyed && generation === modelRequestGeneration && token === requestToken && projectId === requestProject && modelPickerOpen && modelsError === displayedError);
+				void experienceApplied(experience, {}, () => current() && modelPickerOpen && modelsError === displayedError);
 			}
 		} finally {
-			if (!destroyed && generation === modelRequestGeneration && token === requestToken && projectId === requestProject) modelsRefreshing = false;
+			if (current()) modelsRefreshing = false;
 		}
 	}
 	function normalizeMessagePage(page: MessagesResponse): MessagesResponse {
@@ -1196,11 +1237,10 @@
 		convId: string,
 		selection: number,
 		mutationEpoch: number,
-		requestToken: string,
-		requestProjectId: string
+		owner: typeof $chatDomainScope
 	): boolean {
 		return !destroyed && !tempMode && activeConvId === convId && selectionGeneration === selection &&
-			localMutationEpoch === mutationEpoch && token === requestToken && projectId === requestProjectId;
+			localMutationEpoch === mutationEpoch && owner === $chatDomainScope;
 	}
 
 	function applyHistoryPages(pages: MessagesResponse[], clearNewActivity: boolean): void {
@@ -1234,6 +1274,7 @@
 		const convId = activeConvId;
 		const requestToken = token;
 		const requestProjectId = projectId;
+		const owner = $chatDomainScope;
 		if (!convId || !requestToken || !requestProjectId || historyLoading) return false;
 		const mutationEpoch = localMutationEpoch;
 		historyLoading = true;
@@ -1241,17 +1282,17 @@
 		try {
 			const params = new URLSearchParams({ anchor: 'latest', limit: String(HISTORY_PAGE_SIZE) });
 			const page = await requestMessagePage(convId, params, requestToken, requestProjectId, experience);
-			if (!historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) { experienceDiscarded(experience, 'stale'); return false; }
+			if (!historyRequestIsCurrent(convId, selection, mutationEpoch, owner)) { experienceDiscarded(experience, 'stale'); return false; }
 			applyHistoryPages([page], true);
 			experienceState(experience, allMessages.length ? 'ready' : 'empty', 1);
-			void experienceApplied(experience, {}, () => historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId));
+			void experienceApplied(experience, {}, () => historyRequestIsCurrent(convId, selection, mutationEpoch, owner));
 			return true;
 		} catch (cause) {
-			if (historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) {
+			if (historyRequestIsCurrent(convId, selection, mutationEpoch, owner)) {
 				error = cause instanceof Error ? cause.message : t('panel.errors.loadHistory');
 				experienceState(experience, 'error', 1);
 				const displayedError = error;
-				void experienceApplied(experience, {}, () => historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId) && error === displayedError);
+				void experienceApplied(experience, {}, () => historyRequestIsCurrent(convId, selection, mutationEpoch, owner) && error === displayedError);
 			}
 			return false;
 		} finally {
@@ -1270,6 +1311,7 @@
 		const hasMore = direction === 'before' ? historyHasBefore : historyHasAfter;
 		const requestToken = token;
 		const requestProjectId = projectId;
+		const owner = $chatDomainScope;
 		if (!convId || !cursor || !hasMore || !requestToken || !requestProjectId || historyLoading) return;
 		const selection = selectionGeneration;
 		const mutationEpoch = localMutationEpoch;
@@ -1281,7 +1323,7 @@
 				requestToken,
 				requestProjectId
 			);
-			if (!historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) return;
+			if (!historyRequestIsCurrent(convId, selection, mutationEpoch, owner)) return;
 			const next = direction === 'before' ? [page, ...historyPages] : [...historyPages, page];
 			if (next.length > HISTORY_WINDOW_PAGES) {
 				if (direction === 'before') next.pop();
@@ -1289,7 +1331,7 @@
 			}
 			applyHistoryPages(next, false);
 		} catch (cause) {
-			if (!historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) return;
+			if (!historyRequestIsCurrent(convId, selection, mutationEpoch, owner)) return;
 			if (cause instanceof ApiError && cause.status === 409) {
 				error = t('panel.errors.historyChanged');
 				try {
@@ -1299,11 +1341,11 @@
 						requestToken,
 						requestProjectId
 					);
-					if (historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) {
+					if (historyRequestIsCurrent(convId, selection, mutationEpoch, owner)) {
 						applyHistoryPages([latest], true);
 					}
 				} catch (recoveryCause) {
-					if (historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) {
+					if (historyRequestIsCurrent(convId, selection, mutationEpoch, owner)) {
 						error = recoveryCause instanceof Error ? recoveryCause.message : t('panel.errors.loadLatestHistory');
 					}
 				}
@@ -1330,14 +1372,18 @@
 	}
 
 	function syncSelectedModel() {
-		const modelName = lastAssistantModel(allMessages);
-		if (modelName && models.some((model) => model.model_name === modelName)) selectedModel = modelName;
+		const message = lastAssistantModel(allMessages);
+		const legacyName = message?.model_name ?? activeConv?.model_name;
+		const rowId = message?.execution?.model_row_id;
+		if (rowId != null || legacyName) selectReadyModel(resolveCatalogModel(models, rowId, legacyName) ?? null);
 	}
 
 	async function loadUsage() {
 		if (!token || !projectId) return;
+		const requestToken = token, requestProject = projectId, generation = streamGeneration;
 		try {
-			usage = await api.get<ChatUsage>('/api/v1/chat/usage', token, projectId);
+			const next = await api.get<ChatUsage>('/api/v1/chat/usage', requestToken, requestProject);
+			if (!destroyed && requestProject === projectId && generation === streamGeneration && !$projectSwitching) usage = next;
 		} catch {
 			/* 사용량 위젯은 실패해도 채팅에 영향 없음 */
 		}
@@ -1345,8 +1391,11 @@
 
 	async function loadAgents() {
 		if (!token || !projectId) return;
+		const owner = $chatDomainScope;
 		try {
-			agents = await api.get<Agent[]>('/api/v1/chat/agents', token, projectId);
+			const next = await api.get<Agent[]>('/api/v1/chat/agents', token, projectId);
+			if (destroyed || owner !== $chatDomainScope) return;
+			agents = next;
 			// 바인딩된 에이전트가 삭제/변경됐으면 동기화
 			if (activeAgent) {
 				const fresh = agents.find((a) => a.id === activeAgent!.id);
@@ -1359,30 +1408,18 @@
 
 	async function loadWorkspaces() {
 		if (!token || !projectId) return;
+		const owner = $chatDomainScope;
 		try {
-			workspaces = await api.get<Workspace[]>('/api/v1/chat/workspaces', token, projectId);
+			const next = await api.get<Workspace[]>('/api/v1/chat/workspaces', token, projectId);
+			if (!destroyed && owner === $chatDomainScope) workspaces = next;
 		} catch {
 			/* 프로젝트 로드 실패는 채팅 자체를 막지 않음 */
 		}
 	}
-	async function loadToolsAndMcp(owner: ToolScope | null) {
-		if (!ownsTools(owner)) return;
-		const request = ++toolRequestGeneration;
-		toolController?.abort();
+	async function loadToolsAndMcp(owner: typeof $chatDomainScope, requestToken: string, requestProject: string) {
 		const controller = new AbortController();
 		toolController = controller;
-		const current = () => ownsTools(owner) && request === toolRequestGeneration && !controller.signal.aborted;
-		cloudTools = null;
-		if (owner.mcpEnabled) {
-			try {
-				const catalogue = await api.get<CloudToolsCatalogue>('/api/v1/chat/cloud-tools', owner.token, owner.projectId, { refresh: true, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]), suppressAuthRedirect: true });
-				if (!current()) return;
-				if (catalogue?.enabled === true && catalogue.project_id === owner.projectId) cloudTools = catalogue;
-			} catch {
-				if (!current()) return;
-				cloudTools = null;
-			}
-		}
+		const current = () => !destroyed && owner === $chatDomainScope && !controller.signal.aborted;
 		// Keep catalogue requests sequential to avoid exhausting the chat DB pool.
 		for (const [path, publish] of [
 			['/api/v1/chat/custom-tools', (items: { id: number; name: string }[]) => { availableTools = items; }],
@@ -1391,7 +1428,7 @@
 		] as const) {
 			if (!current()) return;
 			try {
-				const items = await api.get<{ id: number; name: string }[]>(path, owner.token, owner.projectId, { refresh: true, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]), suppressAuthRedirect: true });
+				const items = await api.get<{ id: number; name: string }[]>(path, requestToken, requestProject, { refresh: true, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]), suppressAuthRedirect: true });
 				if (!current()) return;
 				publish(items);
 			} catch {
@@ -1479,10 +1516,6 @@
 	function bindAgent(agent: Agent) {
 		if (!canChat || !canTools) return;
 		activeAgent = agent;
-		// 에이전트가 모델을 소유 → 상단 셀렉터에도 반영(모델이 목록에 있으면)
-		if (agent.model_name && models.some((m) => m.model_name === agent.model_name)) {
-			selectedModel = agent.model_name;
-		}
 	}
 	function unbindAgent() {
 		activeAgent = null;
@@ -1505,8 +1538,8 @@
 		metricsById.clear(); // 런타임 tok/s 계측값은 대화 전환 시 초기화(누적 방지)
 		allMessages = [];
 		activeConvId = conv.id;
-		if (projectId) saveActiveConversationId(projectId, conv.id);
-		if (conv.model_name) selectedModel = conv.model_name;
+		if (historyOwner) saveActiveConversationId(historyOwner, conv.id);
+		if (conv.model_name) selectedModelId = resolveCatalogModel(models, null, conv.model_name)?.id ?? null;
 		error = null;
 		contextError = null;
 		contextPhase = 'ready';
@@ -1536,7 +1569,7 @@
 		metricsById.clear();
 		activeConvId = null;
 		newlyCreatedConversationId = null;
-		if (projectId) clearActiveConversationId(projectId);
+		if (historyOwner) clearActiveConversationId(historyOwner);
 		allMessages = [];
 		activeLeafId = null;
 		tempMessages = [];
@@ -1570,7 +1603,7 @@
 		historyNewActivity = false;
 		historyLoading = false;
 		rememberTempThread(null);
-		if (projectId) clearActiveConversationId(projectId);
+		if (historyOwner) clearActiveConversationId(historyOwner);
 		activeConvId = null;
 		allMessages = [];
 		activeLeafId = null;
@@ -1613,12 +1646,13 @@
 		const temp = tempMode;
 		const scopeId = temp ? tempThreadId : activeConvId;
 		const agentId = activeAgent ? String(activeAgent.id) : null;
+		const route = selectedModelObj ? modelRequest(selectedModelObj) : null;
 		const key = JSON.stringify({
 			projectId,
 			token,
 			temp,
 			scopeId,
-			model: selectedModel,
+			model: route,
 			effort,
 			agentId,
 			skills: selectedSkillIds,
@@ -1632,7 +1666,7 @@
 				? `/api/v1/chat/temp-threads/${tempThreadId}/context-preview`
 				: `/api/v1/chat/conversations/${activeConvId}/context-preview`,
 			body: {
-				model_id: selectedModel,
+				...route,
 				features,
 				reasoning_effort: effort,
 				agent_id: agentId ?? undefined,
@@ -1662,7 +1696,7 @@
 	async function executeContextPreview(options?: { emptyDraft?: boolean; experience?: ExperienceContext }): Promise<ContextState | null> {
 		if (streaming || destroyed || !token || !projectId) return null;
 		const hasScope = Boolean(activeConvId || (tempMode && tempThreadId));
-		if (!hasScope) {
+		if (!hasScope || !selectedModelObj) {
 			invalidateContextPreview();
 			contextState = null;
 			return null;
@@ -1747,7 +1781,7 @@
 	$effect(() => {
 		const _in = input;
 		const _att = attachments;
-		const _model = selectedModel;
+		const _model = selectedModelObj;
 		const _agent = activeAgent;
 		const _tools = selectedToolIds;
 		const _mcp = selectedMcpIds;
@@ -1758,7 +1792,7 @@
 		contextState = null;
 		contextError = null;
 		invalidateContextPreview();
-		if (!hasContextScope || streaming || !token || !projectId) return;
+		if (!hasContextScope || !_model || streaming || !token || !projectId) return;
 
 		untrack(() => {
 			scheduleDebouncedContextPreview();
@@ -1770,7 +1804,14 @@
 		if (!token || !projectId || streaming || preparingRun || manualCompacting || destroyed) return;
 		const hasScope = Boolean(activeConvId || (tempMode && tempThreadId));
 		if (!hasScope) return;
-		const prepared = await prepareRunTools(activeModelName);
+		const model = selectedModelObj;
+		if (!model) return;
+		const blocked = modelBlockedError(model);
+		if (blocked) {
+			contextError = blocked;
+			return;
+		}
+		const prepared = await prepareRunTools(model.id);
 		if (!prepared || !ownsRunTools(prepared)) return;
 
 		const experience = beginExperienceAction('lumen', 'start', 'shared.stream');
@@ -1789,7 +1830,7 @@
 			: `/api/v1/chat/conversations/${activeConvId}/compactions`;
 
 		const body = {
-			model_id: selectedModel,
+			...modelRequest(model),
 			features: selectedFeatureOptions(),
 			reasoning_effort: effort,
 			agent_id: activeAgent ? String(activeAgent.id) : undefined,
@@ -1807,7 +1848,7 @@
 		const generation = streamGeneration;
 
 		try {
-			assertRunTools(prepared, activeModelName);
+			assertRunTools(prepared, selectedModelObj?.id);
 			preparingRun = false;
 			const descriptor = await createChatRun(path, body, {
 				token,
@@ -1911,20 +1952,20 @@
 			'/api/v1/chat/conversations',
 			{
 				title: null,
-				model_name: selectedModel || null,
+				model_name: (prepared?.frozenSnapshot ? prepared.frozenSnapshot.model.model_name : activeModelName) || null,
 				workspace_id: wsId
 			},
 			token,
 			projectId
 		);
 		// The native POST may outlive its originating owner or conversation view.
-		if (prepared) assertRunTools(prepared, prepared.frozenSnapshot ? prepared.modelName : activeModelName);
+		if (prepared) assertRunTools(prepared, prepared.frozenSnapshot ? prepared.modelRowId : selectedModelObj?.id);
 		pendingWorkspaceId = null;
 		activeConvId = conv.id;
 		localMutationEpoch += 1;
 		newlyCreatedConversationId = conv.id;
 		newlyCreatedConversationEpoch = localMutationEpoch;
-		if (projectId) saveActiveConversationId(projectId, conv.id);
+		if (historyOwner) saveActiveConversationId(historyOwner, conv.id);
 		conversations = [conv, ...conversations.filter((c) => c.id !== conv.id)];
 		checkAndStartPendingTitlePolling();
 		void executeContextPreview({ experience });
@@ -1967,7 +2008,11 @@
 		let runState = createRunViewState(descriptor.run_id);
 		const knownApprovalSeq = draft.execution?.run_id === descriptor.run_id ? draft.execution.last_seq ?? 0 : 0;
 		if (draft.execution?.run_id === descriptor.run_id) runState.startedAt = draft.execution.started_at ?? null;
-		draft.execution = { ...(draft.execution?.run_id === descriptor.run_id ? draft.execution : {}), run_id: descriptor.run_id, status: descriptor.status };
+		draft.execution = {
+			...(draft.execution?.run_id === undefined || draft.execution.run_id === descriptor.run_id ? draft.execution : {}),
+			run_id: descriptor.run_id,
+			status: descriptor.status
+		};
 		const reveal = createChatRevealBuffer({
 			reducedMotion: prefersReducedMotion()
 		});
@@ -2235,6 +2280,8 @@
 	}
 
 	function chatFailureMessage(caught: unknown, fallback: string): string {
+		const billingMessage = dashboardCreditMessage(caught) ?? domainBillingErrorMessage(caught) ?? domainBillingAdmissionMessage(caught);
+		if (billingMessage) return billingMessage;
 		if (caught instanceof ManagedSandboxSelectionError) return managedSandboxIssueMessage(caught.code, caught.names);
 		if (caught instanceof ChatHttpError) return sandboxNativeErrorMessage(caught.message.trim()) ?? t('panel.errors.httpFailure', { status: caught.status, detail: caught.message });
 		if (caught instanceof ApiError) return t('panel.errors.httpFailure', { status: caught.status, detail: fallback });
@@ -2242,7 +2289,7 @@
 	}
 
 	function runFailureMessage(payload: { error_code: string; safe_message: string }, runId: string): string {
-		const sandboxMessage = sandboxNativeErrorMessage(payload.error_code);
+		const sandboxMessage = dashboardCreditMessage(payload.error_code) ?? domainBillingErrorMessage(payload.error_code) ?? sandboxNativeErrorMessage(payload.error_code);
 		if (sandboxMessage) return sandboxMessage;
 		const code = /^[\w.-]{1,80}$/.test(payload.error_code) ? payload.error_code : 'run_failed';
 		const detail = payload.safe_message.trim();
@@ -2255,8 +2302,8 @@
 		sandbox: PreparedSandboxTools;
 		generation: number;
 		selection: number;
-		modelName: string;
-		frozenSnapshot: boolean;
+		modelRowId: number;
+		frozenSnapshot?: FailedPersistentSubmission;
 		onAdmit?: () => void;
 	};
 	type FrozenRetryScope = {
@@ -2275,18 +2322,18 @@
 		return ownsRunPreparation(prepared.generation, prepared.selection, prepared.sandbox.ownerKey);
 	}
 
-	function assertRunTools(prepared: PreparedRunTools, modelName: string): void {
+	function assertRunTools(prepared: PreparedRunTools, modelRowId: number | undefined): void {
 		assertPreparedSandboxTools(prepared.sandbox);
 		if (!ownsRunTools(prepared)) {
 			throw new ManagedSandboxSelectionError('owner_changed', []);
 		}
-		if (prepared.modelName !== modelName) throw new ManagedSandboxSelectionError('selection_changed', []);
-		if (prepared.sandbox.names.length && !models.find((model) => model.model_name === modelName)?.capabilities?.tool_call) {
+		if (prepared.modelRowId !== modelRowId) throw new ManagedSandboxSelectionError('selection_changed', []);
+		if (prepared.sandbox.names.length && !resolveCatalogModel(models, modelRowId)?.capabilities?.tool_call) {
 			throw new SandboxModelUnsupportedError(mcpT('selectionModelUnsupported'));
 		}
 	}
 
-	async function prepareRunTools(modelName: string, snapshot?: FailedPersistentSubmission): Promise<PreparedRunTools | null> {
+	async function prepareRunTools(modelRowId: number, snapshot?: FailedPersistentSubmission): Promise<PreparedRunTools | null> {
 		if (preparingRun) return null;
 		preparingRun = true;
 		const generation = streamGeneration;
@@ -2295,8 +2342,8 @@
 		try {
 			// Store captures owner and selection synchronously, then refreshes availability.
 			const sandbox = await prepareManagedSandboxTools();
-			const prepared = { sandbox, generation, selection, modelName, frozenSnapshot: snapshot !== undefined };
-			assertRunTools(prepared, modelName);
+			const prepared = { sandbox, generation, selection, modelRowId, frozenSnapshot: snapshot };
+			assertRunTools(prepared, modelRowId);
 			if (snapshot) {
 				if (snapshot.sandboxOwnerKey !== sandbox.ownerKey) throw new ManagedSandboxSelectionError('owner_changed', []);
 				const savedNames = (snapshot.body as { features?: ReturnType<typeof selectedFeatureOptions> }).features?.tool_policy.enabled_sandbox_tools ?? [];
@@ -2333,11 +2380,11 @@
 		try {
 			const denied = chatRequestPermission(body, $serviceCapabilities);
 			if (denied) throw new Error(permissionReason(denied));
-			const modelId = (body as { model_id?: string } | null)?.model_id;
-			if (!canTools && models.find((model) => model.model_name === modelId)?.capabilities?.web_search_required) throw new Error(permissionReason('lumen-tools_user'));
+			const modelRowId = (body as { model_row_id?: number } | null)?.model_row_id;
+			if (!canTools && resolveCatalogModel(models, modelRowId)?.capabilities?.web_search_required) throw new Error(permissionReason('lumen-tools_user'));
 			if (!prepared) throw new ManagedSandboxSelectionError('selection_changed', []);
 			if ('sandbox' in prepared) {
-				assertRunTools(prepared, prepared.frozenSnapshot ? prepared.modelName : activeAgent?.model_name || modelId || activeModelName);
+				assertRunTools(prepared, modelRowId);
 				const requestedNames = (body as { features?: ReturnType<typeof selectedFeatureOptions> } | null)?.features?.tool_policy.enabled_sandbox_tools;
 				if (requestedNames && (requestedNames.length !== prepared.sandbox.names.length || requestedNames.some((name, index) => name !== prepared.sandbox.names[index]))) {
 					throw new ManagedSandboxSelectionError('selection_changed', []);
@@ -2410,7 +2457,7 @@
 				return;
 			}
 
-			const draft = newAssistantDraft(activeConv?.model_name ?? selectedModel, false);
+			const draft = newAssistantDraft(activeConv?.model_name ?? activeModelName, false);
 			invalidateContextPreview();
 			streaming = true;
 			currentRun = descriptor;
@@ -2489,8 +2536,14 @@
 		}
 		const text = input.trim();
 		if (!text || streaming || preparingRun || !token || !projectId) return;
-		if (!selectedModel) {
-			error = t('panel.errors.noModels');
+		const model = selectedModelObj;
+		if (!model) {
+			error = noReadyModels ? noReadyModelsGuidance() : t('panel.errors.noModels');
+			return;
+		}
+		const blocked = modelBlockedError(model);
+		if (blocked) {
+			error = blocked;
 			return;
 		}
 		error = null;
@@ -2503,8 +2556,8 @@
 		const draftInput = input;
 		const draftAttachments = attachments;
 		const inputParts: UserInputPart[] = [{ type: 'text', text }, ...toInputParts(draftAttachments)];
-		const requestFeatures = selectedFeatureOptions();
-		const prepared = await prepareRunTools(activeModelName);
+		const requestFeatures = selectedFeatureOptions(model);
+		const prepared = await prepareRunTools(model.id);
 		if (!prepared || !ownsRunTools(prepared)) return;
 		if (!tempMode && activeConvId && historyHasAfter) {
 			const loadedLatest = await replaceHistoryWindow(selectionGeneration, experience);
@@ -2512,7 +2565,7 @@
 			if (!loadedLatest) { preparingRun = false; return; }
 		}
 		try {
-			assertRunTools(prepared, activeModelName);
+			assertRunTools(prepared, selectedModelObj?.id);
 		} catch (caught) {
 			if (!ownsRunTools(prepared)) { experienceDiscarded(experience, destroyed ? 'unmounted' : 'stale'); return; }
 			preparingRun = false;
@@ -2525,7 +2578,7 @@
 		};
 		const clientTimezone = browserTimezone();
 
-		if (tempMode) return sendTemp(text, inputParts, submittedAtMs, prepared, experience);
+		if (tempMode) return sendTemp(text, inputParts, submittedAtMs, prepared, model, experience);
 
 		invalidateContextPreview();
 		streaming = true;
@@ -2538,7 +2591,7 @@
 			endStream();
 			preparingRun = false;
 			try {
-				assertRunTools(prepared, activeModelName);
+				assertRunTools(prepared, selectedModelObj?.id);
 			} catch (caught) {
 				error = chatFailureMessage(caught, t('panel.errors.runFailed'));
 				return;
@@ -2560,7 +2613,7 @@
 				path: '',
 				body: {
 					parts: inputParts,
-					model_id: selectedModel,
+					...modelRequest(model),
 					features: requestFeatures,
 					reasoning_effort: effort,
 					agent_id: activeAgent?.id,
@@ -2568,8 +2621,7 @@
 					client_timezone: clientTimezone,
 				},
 				idempotencyKey: crypto.randomUUID(),
-				modelName: selectedModel,
-				effectiveModelName: prepared.modelName,
+				model,
 				sandboxOwnerKey: prepared.sandbox.ownerKey
 			};
 			return;
@@ -2590,14 +2642,14 @@
 			content: text,
 			created_at: null
 		};
-		stream = { base: [...activePath, userMsg], assistant: newAssistantDraft(selectedModel), conversationId: convId, temp: false };
+		stream = { base: [...activePath, userMsg], assistant: newAssistantDraft(model.model_name, true, model.id), conversationId: convId, temp: false };
 		// $state 프록시를 경유해 mutate 해야 반응성이 발생한다(raw draft 직접 쓰기는 트랩 우회).
 		const live = stream.assistant;
 
 		const path = `/api/v1/chat/conversations/${convId}/completions`;
 		const body = {
 			parts: inputParts,
-			model_id: selectedModel,
+			...modelRequest(model),
 			features: requestFeatures,
 			reasoning_effort: effort,
 			agent_id: activeAgent?.id,
@@ -2635,8 +2687,7 @@
 				path,
 				body,
 				idempotencyKey,
-				modelName: selectedModel,
-				effectiveModelName: prepared.modelName,
+				model,
 				sandboxOwnerKey: prepared.sandbox.ownerKey
 			};
 		}
@@ -2647,6 +2698,7 @@
 		inputParts: UserInputPart[],
 		submittedAtMs: number,
 		prepared: PreparedRunTools,
+		model: AvailableModel,
 		experience?: ExperienceContext
 	) {
 		const userMsg: DisplayMessage = {
@@ -2662,15 +2714,15 @@
 		tempMessages = history;
 		invalidateContextPreview();
 		streaming = true;
-		stream = { base: history, assistant: newAssistantDraft(selectedModel), conversationId: null, temp: true };
+		stream = { base: history, assistant: newAssistantDraft(model.model_name, true, model.id), conversationId: null, temp: true };
 		const live = stream.assistant; // 프록시 경유(반응성)
 
 		await runStream(
 			'/api/v1/chat/temp-completions',
 			{
 				parts: inputParts,
-				model_id: selectedModel,
-				features: selectedFeatureOptions(),
+				...modelRequest(model),
+				features: selectedFeatureOptions(model),
 				temp_thread_id: tempThreadId,
 				reasoning_effort: effort,
 				skill_ids: selectedSkillIds,
@@ -2698,8 +2750,8 @@
 	}
 
 	// --- 재생성 ---
-	async function regenerate(messageId: string, modelName: string) {
-		if (!canChat) return;
+	async function regenerate(messageId: string, choice: AvailableModel | null) {
+		if (!canChat || $personalWorkspace) return;
 		if (streaming || preparingRun || tempMode || !activeConvId || !token || !projectId) return;
 		const conversationId = activeConvId;
 		error = null;
@@ -2707,20 +2759,27 @@
 		if (idx === -1) return;
 		const experience = beginExperienceAction('lumen', 'retry', 'shared.stream');
 		const submittedAtMs = performance.now();
-		const prepared = await prepareRunTools(activeAgent?.model_name || modelName || selectedModel);
+		const model = choice ?? selectedModelObj;
+		if (!model) return;
+		const blocked = modelBlockedError(model);
+		if (blocked) {
+			error = blocked;
+			return;
+		}
+		const prepared = await prepareRunTools(model.id);
 		if (!prepared || !ownsRunTools(prepared)) return;
 		invalidateContextPreview();
 		streaming = true;
-		stream = { base: activePath.slice(0, idx), assistant: newAssistantDraft(modelName || selectedModel), conversationId, temp: false };
+		stream = { base: activePath.slice(0, idx), assistant: newAssistantDraft(model.model_name, true, model.id), conversationId, temp: false };
 		const live = stream.assistant; // 프록시 경유(반응성)
 
 		await runStream(
 			`/api/v1/chat/conversations/${conversationId}/messages/${messageId}/regenerate`,
 			{
-				model_id: modelName || selectedModel,
-				features: selectedFeatureOptions(activeAgent?.model_name || modelName || selectedModel),
+				...modelRequest(model),
+				features: selectedFeatureOptions(model),
 				// 재생성 모델은 composer 모델과 다를 수 있으므로 실제 실행 모델 기준으로 정규화한다.
-				reasoning_effort: effortForModel(effort, models, activeAgent?.model_name || modelName || selectedModel),
+				reasoning_effort: normalizeEffort(effort, model.capabilities, model.reasoning_none_supported),
 				client_timezone: browserTimezone(),
 				skill_ids: selectedSkillIds,
 			},
@@ -2744,14 +2803,14 @@
 	}
 
 	async function retryFailedTurn(messageId: string) {
-		if (!canChat) return;
+		if (!canChat || $personalWorkspace) return;
 		if (streaming || preparingRun || tempMode || !token || !projectId) return;
 		const experience = beginExperienceAction('lumen', 'retry', 'shared.stream');
 		if (failedSubmission?.message.id === messageId) {
 			const submission = failedSubmission;
 			const submittedAtMs = performance.now();
 			error = null;
-			const prepared = await prepareRunTools(submission.effectiveModelName, submission);
+			const prepared = await prepareRunTools(submission.model.id, submission);
 			if (!prepared || !ownsRunTools(prepared)) return;
 			invalidateContextPreview();
 			streaming = true;
@@ -2782,7 +2841,7 @@
 			};
 			stream = {
 				base: [...activePath, userMsg],
-				assistant: newAssistantDraft(submission.modelName),
+				assistant: newAssistantDraft(submission.model.model_name, true, submission.model.id),
 				conversationId: convId,
 				temp: false
 			};
@@ -2828,14 +2887,14 @@
 		streaming = true;
 		stream = {
 			base: activePath.slice(0, idx + 1),
-			assistant: newAssistantDraft(selectedModel),
+			assistant: newAssistantDraft(resolveCatalogModel(models, message.execution?.model_row_id)?.model_name ?? null, true, message.execution?.model_row_id ?? undefined),
 			conversationId,
 			temp: false
 		};
 		const live = stream.assistant;
 		await runStream(
 			`/api/v1/chat/conversations/${conversationId}/runs/${targetRunId}/retry`,
-			{},
+			message.execution?.model_row_id == null ? {} : { model_row_id: message.execution.model_row_id },
 			live,
 			async () => {
 				setConversationRun(conversationId, false);
@@ -2906,19 +2965,22 @@
 	async function deleteConversation(conv: Conversation) {
 		if (!$serviceCapabilities('lumen-history_editor')) return;
 		if (streaming || !token || !projectId) return;
+		const owner = $chatDomainScope;
+		const current = () => !destroyed && owner === $chatDomainScope;
 		const label = conv.title?.trim();
 		const message = label ? t('panel.dialog.deleteNamedConversation', { name: label }) : t('panel.dialog.deleteConversation');
 		if (!(await confirmDialog(message))) return;
-		if (!$serviceCapabilities('lumen-history_editor')) return;
+		if (!current() || $projectSwitching || !$serviceCapabilities('lumen-history_editor')) return;
 		try {
 			await api.delete(`/api/v1/chat/conversations/${conv.id}`, token, projectId);
+			if (!current()) return;
 			localMutationEpoch += 1;
 			pendingTitleTrackers.delete(conv.id);
 			conversations = conversations.filter((c) => c.id !== conv.id);
 			if (activeConvId === conv.id) newConversation();
 			toast.success(t('panel.toast.conversationDeleted'));
 		} catch (e) {
-			error = e instanceof Error ? e.message : t('panel.errors.deleteConversation');
+			if (current()) error = e instanceof Error ? e.message : t('panel.errors.deleteConversation');
 		}
 	}
 
@@ -2961,27 +3023,79 @@
 		return () => document.removeEventListener('keydown', onKeydown);
 	});
 
-	// 최초 로드 — 초기 동시 쿼리 폭주가 chat DB 커넥션 풀(size 5)을 고갈시켜
-	// 경합/플래핑(503)을 유발하므로 2파도로 나눈다: 핵심(첫 화면) 먼저 동시, 보조는 그 뒤 순차.
+	// Shared reads start once per domain owner. Project-specific run, model and usage reads
+	// keep the selected project and do not reset the shared transcript or tool selection.
+	let loadedDomain: typeof $chatDomainScope | null = null;
+	let loadedProject: string | undefined;
+	let loadedModelToken: string | undefined;
+	onMount(() => {
+		let previousToken = token;
+		let previousProject = projectId;
+		let previousOwner = $chatDomainScope;
+		return derived([auth, projectSwitching, chatDomainScope], ([actor, switching, owner]) => ({
+			project: actor.projectId ?? undefined, token: actor.token ?? undefined, switching, owner
+		})).subscribe(({ project, token: nextToken, switching, owner }) => {
+				if (switching || owner !== previousOwner || project !== previousProject || nextToken !== previousToken) cloudScopeRevision += 1;
+				previousToken = nextToken;
+				if (switching || owner !== previousOwner || project !== previousProject) {
+					previousOwner = owner;
+					loadedProject = undefined;
+					++modelRequestGeneration;
+					detachLocalStream();
+					pendingToolApprovals = [];
+					runningConversationIds = new Set();
+					usage = null;
+				}
+				if (owner !== loadedDomain && loadedDomain !== null) {
+					selectionGeneration += 1;
+					teardownAllTitlePolling();
+					conversations = []; workspaces = []; agents = []; activeAgent = null;
+					activeConvId = null; activeLeafId = null; historyPages = []; allMessages = [];
+					historyLoading = false; historyNewActivity = false; newlyCreatedConversationId = null;
+					input = ''; error = null; pendingWorkspaceId = null;
+					selectedModelId = null;
+				}
+				if (project !== previousProject) {
+					models = [];
+					previousProject = project;
+					failedSubmission = null;
+					attachments = [];
+					if (tempMode) {
+						tempMode = false;
+						tempThreadId = null;
+						tempMessages = [];
+						error = null;
+					}
+				}
+			});
+	});
+
 	$effect(() => {
-		void [token, projectId];
+		const owner = $chatDomainScope;
+		const requestProject = projectId;
+		const requestToken = token;
+		if (!owner.key || !requestToken || !requestProject || !$authReady || $projectSwitching) return;
 		untrack(() => {
-			invalidateContextPreview();
-			teardownAllTitlePolling();
-			const scope = `${$auth.userId ?? ''}:${projectId ?? ''}`;
-			if (!token || scope !== modelScope) {
-				models = [];
-				selectedModel = '';
-				modelsRefreshing = false;
-				modelsError = '';
-				modelScope = scope;
+			if (loadedDomain !== owner) {
+				loadedDomain = owner;
+				loadedProject = requestProject;
+				loadedModelToken = requestToken;
+				void (async () => {
+					await Promise.allSettled([restoreInitialSelection(), loadModels(), loadUsage()]);
+					if (destroyed || owner !== $chatDomainScope) return;
+					await loadAgents();
+					if (!destroyed && owner === $chatDomainScope) await loadWorkspaces();
+				})();
+			} else if (loadedProject !== requestProject) {
+				loadedProject = requestProject;
+				loadedModelToken = requestToken;
+				void loadModels();
+				void loadUsage();
+				void refreshServerRunSnapshot();
+			} else if (loadedModelToken !== requestToken) {
+				loadedModelToken = requestToken;
+				void loadModels();
 			}
-			void (async () => {
-				await Promise.allSettled([restoreInitialSelection(), loadModels(), loadUsage()]);
-				// 보조: 에이전트·프로젝트·확장(tool/MCP/skill)은 초기 버스트에서 제외해 풀 경합 완화.
-				await loadAgents();
-				await loadWorkspaces();
-			})();
 		});
 	});
 </script>
@@ -3082,7 +3196,7 @@
 						onclick={() => (modelPickerOpen = true)}
 						title={t('panel.model.select')}
 					>
-						<span class="model-btn-name">{selectedModelObj?.display_name || activeModelName || t('panel.model.select')}</span>
+						<span class="model-btn-name">{modelLabel}</span>
 						<span class="model-btn-caps"><ModelCapabilityBadges caps={selectedModelObj?.capabilities} size="xs" iconsOnly /></span>
 						<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round" /></svg>
 					</button>
@@ -3099,6 +3213,17 @@
 				{#if modelLocked}
 					<span class="model-lock-hint">{t('panel.model.agentControls')}</span>
 				{/if}
+				<!-- Persistent status region so inserted billing notices are announced. -->
+				<div class="model-billing-notices" role="status">
+					{#if agentModelBlock}
+						<p>{agentModelBlock}</p>
+					{:else if !activeAgent && modelNotice}
+						<p>{modelNotice}</p>
+					{/if}
+					{#if noReadyModels}
+						<p>{noReadyModelsGuidance()}</p>
+					{/if}
+				</div>
 			</div>
 			<div class="head-right">
 					{@render historyToggle()}
@@ -3131,6 +3256,7 @@
 		<div class="chat-workspace" class:empty-workspace={isEmpty && !treeLoading && !historyLoading} class:expanded-composer={expandedComposer} class:temp-mode={tempMode}>
 		<ChatWindow
 			actionsDisabled={!canChat}
+			runActionsDisabled={$personalWorkspace}
 			activePath={displayPath}
 			unpositionedTemporaryRuns={tempMode ? tempUnpositionedRuns : []}
 			hasMoreTemporaryRuns={tempMode && tempRunHistoryHasMore}
@@ -3182,7 +3308,7 @@
 					bind:selectedSkillIds
 					availableTools={canTools ? availableTools : []}
 					availableMcp={canTools ? availableMcp : []}
-					cloudTools={canTools && toolScope?.mcpEnabled ? cloudTools : null}
+					cloudTools={canTools && $siteConfig.services.mcp ? cloudTools : null}
 					availableSkills={canTools ? availableSkills : []}
 					availableAgents={canTools ? agents : []}
 					onSelectAgent={(agentId) => {
@@ -3245,7 +3371,7 @@
 <ModelPickerOverlay
 	open={modelPickerOpen}
 	{models}
-	value={activeModelName}
+	value={selectedModelObj?.id ?? null}
 	onSelect={chooseModel}
 	onClose={() => (modelPickerOpen = false)}
 	onRefresh={() => void loadModels()}
@@ -3429,6 +3555,16 @@
 	.model-lock-hint {
 		font-size: 0.66rem;
 		color: var(--color-ink-2);
+	}
+	.model-billing-notices {
+		display: grid;
+		gap: 0.15rem;
+		max-width: 40rem;
+		font-size: 0.72rem;
+		color: var(--color-state-warning);
+	}
+	.model-billing-notices p {
+		margin: 0;
 	}
 	.chat-workspace {
 		display: flex;

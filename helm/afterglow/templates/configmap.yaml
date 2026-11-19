@@ -170,6 +170,7 @@ data:
     {{- range $svc := list "magnum" "manila" "zun" "cloud_shell" "k3s" "swift" "trove" "barbican" "mcp" }}
     {{ $svc }} = {{ index $.Values.services $svc }}
     {{- end }}
+    lumen_external_url = {{ .Values.services.lumenExternalUrl | quote }}
 
     [cloud_shell]
     service_project_id = {{ .Values.cloudShell.serviceProjectId | quote }}

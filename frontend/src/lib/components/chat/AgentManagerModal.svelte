@@ -1,8 +1,10 @@
 <script lang="ts">
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
-	import { auth } from '$lib/stores/auth';
+	import { onDestroy, untrack } from 'svelte';
+	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
+	import { chatDomainScope } from '$lib/stores/chatDomainScope';
 	import { api, ApiError } from '$lib/api/client';
-	import { serviceCapabilities } from '$lib/stores/servicePermissions';
+	import { serviceCapabilities, serviceDenials } from '$lib/stores/servicePermissions';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
@@ -19,6 +21,7 @@
 		type AgentForm
 	} from '$lib/api/chatAgents';
 	import type { AvailableModel } from '$lib/api/chatTree';
+	import { resolveCatalogModel } from '$lib/api/modelCatalog';
 	import { t } from '$lib/i18n/ns/chat-studio';
 
 	interface Props {
@@ -36,17 +39,21 @@
 	let mcps = $state<AgentExtension[]>([]);
 	let tools = $state<AgentExtension[]>([]);
 	let loading = $state(true);
-	let loadedAgentScope = $state('');
-	const agentScope = $derived(JSON.stringify([token, projectId]));
+	let loadedAgentScope = $state(-1);
+	const agentScope = $derived($chatDomainScope.revision);
+	let loadGeneration = 0;
+	let destroyed = false;
+	onDestroy(() => { destroyed = true; });
 	let mode = $state<'list' | 'form'>('list');
 	let editingId = $state<number | null>(null);
 	let form = $state<AgentForm>(emptyAgentForm());
 	let saving = $state(false);
 
 	async function load() {
-		if (!token) return;
-		const requestToken = token;
-		const requestProject = projectId;
+		if (!token || !projectId || !$authReady || $projectSwitching || !$chatDomainScope.key) return;
+		const requestScope = agentScope;
+		const request = ++loadGeneration;
+		const current = () => !destroyed && requestScope === agentScope && request === loadGeneration;
 		const includePrivate = $serviceCapabilities('lumen-agents_editor');
 		loading = true;
 		try {
@@ -55,25 +62,39 @@
 				api.get<AgentExtension[]>('/api/v1/chat/mcp-servers', token, projectId),
 				api.get<AgentExtension[]>('/api/v1/chat/custom-tools', token, projectId)
 			]);
-			if (requestToken !== token || requestProject !== projectId || (includePrivate && !$serviceCapabilities('lumen-agents_editor'))) return;
+			if (!current() || (includePrivate && $serviceDenials('lumen-agents_editor'))) return;
 			agents = ags;
 			mcps = ms;
 			tools = ts;
-			loadedAgentScope = JSON.stringify([requestToken, requestProject]);
+			loadedAgentScope = requestScope;
 		} catch {
-			toast.error(t('agentManager.loadFailed'));
+			if (current()) toast.error(t('agentManager.loadFailed'));
 		} finally {
-			loading = false;
+			if (current()) loading = false;
 		}
 	}
 
-	// 모달이 열릴 때 로드하고 목록 뷰로 초기화
+	let openScope = -1;
+	let includedPrivate = false;
 	$effect(() => {
-		if (open) {
-			mode = 'list';
-			editingId = null;
+		const ready = $authReady && !$projectSwitching;
+		const scope = agentScope;
+		const granted = $serviceCapabilities('lumen-agents_editor');
+		const denied = $serviceDenials('lumen-agents_editor');
+		if (!open) { openScope = -1; return; }
+		if (!ready) return;
+		untrack(() => {
+			if (openScope !== scope) {
+				openScope = scope;
+				mode = 'list';
+				editingId = null;
+				form = emptyAgentForm();
+				agents = []; mcps = []; tools = []; saving = false;
+			} else if (!(granted && !includedPrivate) && !(denied && includedPrivate)) return;
+			if (denied) { agents = []; mode = 'list'; editingId = null; form = emptyAgentForm(); }
+			includedPrivate = granted;
 			void load();
-		}
+		});
 	});
 
 	function startCreate() {
@@ -91,38 +112,52 @@
 
 	async function submit() {
 		if (!$serviceCapabilities('lumen-agents_editor')) return;
-		if (!token) return;
+		if (!token || !projectId || !$authReady || $projectSwitching) return;
+		const requestScope = agentScope;
+		const current = () => !destroyed && requestScope === agentScope;
 		saving = true;
 		try {
-			const payload = buildAgentPayload(form);
+			const selected = resolveCatalogModel(models, form.model_row_id, form.model_name);
+			const payload = buildAgentPayload(selected ? { ...form, model_name: selected.model_name, model_row_id: selected.id } : form);
+			if (editingId !== null && !selected && form.model_row_id !== null) {
+				// Preserve an unavailable or ambiguous legacy pin when editing unrelated fields.
+				delete payload.model_name;
+				delete payload.model_row_id;
+			}
 			if (editingId !== null) {
 				await api.patch(`/api/v1/chat/agents/${editingId}`, payload, token, projectId);
+				if (!current()) return;
 				toast.success(t('agentManager.updated'));
 			} else {
 				await api.post('/api/v1/chat/agents', payload, token, projectId);
+				if (!current()) return;
 				toast.success(t('agentManager.created'));
 			}
 			mode = 'list';
 			await load();
-			onChanged?.();
+			if (current()) onChanged?.();
 		} catch (e) {
-			toast.error(e instanceof ApiError ? e.message : t('agentManager.saveFailed'));
+			if (current()) toast.error(e instanceof ApiError ? e.message : t('agentManager.saveFailed'));
 		} finally {
-			saving = false;
+			if (current()) saving = false;
 		}
 	}
 
 	async function remove(a: Agent) {
 		if (!token) return;
+		const requestScope = agentScope;
+		const current = () => !destroyed && requestScope === agentScope;
 		if (!(await confirmDialog(t('agentManager.deleteConfirm', { name: a.name })))) return;
-		if (!$serviceCapabilities('lumen-resources_admin')) return;
+		if (!current() || !$authReady || $projectSwitching || !$serviceCapabilities('lumen-resources_admin')) return;
 		try {
 			await api.delete(`/api/v1/chat/agents/${a.id}`, token, projectId);
+			if (!current()) return;
 			await load();
+			if (!current()) return;
 			onChanged?.();
 			toast.success(t('agentManager.deleted'));
 		} catch {
-			toast.error(t('agentManager.deleteFailed'));
+			if (current()) toast.error(t('agentManager.deleteFailed'));
 		}
 	}
 </script>

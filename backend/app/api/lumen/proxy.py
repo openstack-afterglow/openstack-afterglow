@@ -1,5 +1,6 @@
 """Authenticated proxy for browser-facing Lumen API routes."""
 
+import re
 from collections.abc import AsyncIterator, Callable
 from typing import Literal
 
@@ -8,7 +9,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.routing import APIRoute
 from pydantic import BaseModel
 
-from app.api.deps import get_token_info
+from app.api.deps import get_token_info, require_domain_manager
 from app.api.identity.mcp_access import _require_browser_mutation
 from app.config import get_settings
 from app.services.mcp_control_plane import authority, credential_state, defaults, lumen, registry
@@ -18,7 +19,49 @@ from app.services.service_proxy import get_policy_capabilities, proxy
 
 _PROXY_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
 _NO_STORE = {"Cache-Control": "no-store", "Pragma": "no-cache"}
+_DOMAIN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
+# Lumen accepts 1-120 header characters; Afterglow mints UUIDs, so only path-safe keys are looked up.
+_IDEMPOTENCY_KEY = re.compile(r"[A-Za-z0-9_-]{1,120}")
 _DECISIONS_MAX_BODY_BYTES = 20 * 1024 * 1024
+_VAULT_METHODS = {
+    "notes": ("GET", "POST"),
+    "search": ("GET",),
+    "document": ("GET",),
+    "short-term": ("GET", "PUT"),
+    "profile": ("GET", "PUT"),
+    "coding-standards": ("GET", "PUT"),
+}
+
+
+def _credential_or_pool_route(parts: list[str]) -> tuple[str, ...] | None:
+    """Allowed browser methods; an empty tuple denies unknown descendants."""
+    if parts[:1] in (["api-keys"], ["service-keys"]):
+        if len(parts) == 1:
+            return ("GET", "POST")
+        if parts[1:] == ["issuance-policy"]:
+            return ("GET",)
+        if parts[1].isascii() and parts[1].isdecimal():
+            if len(parts) == 2:
+                return ("PATCH", "DELETE") if parts[0] == "api-keys" else ("DELETE",)
+            if parts[2:] == ["limits"]:
+                return ("PATCH",)
+        return ()
+    if parts[:1] == ["domain-pool"]:
+        return ("GET", "PATCH") if len(parts) == 1 else ()
+    if parts[:2] == ["admin", "domain-pools"]:
+        if len(parts) == 2:
+            return ("GET",)
+        if _DOMAIN_ID.fullmatch(parts[2]):
+            if len(parts) == 3:
+                return ("PATCH",)
+            if parts[3:] == ["topups"]:
+                return ("POST",)
+            if len(parts) == 5 and parts[3] == "topups" and _IDEMPOTENCY_KEY.fullmatch(parts[4]):
+                return ("GET",)
+        return ()
+    if parts[:2] == ["admin", "service-keys"]:
+        return ("GET",) if len(parts) == 2 else ()
+    return None
 
 
 async def _bounded_decisions_body(request: Request) -> AsyncIterator[bytes]:
@@ -71,12 +114,20 @@ class _PrivateLumenRoute(APIRoute):
             private = (
                 _noncanonical_path(parts)
                 or source_response
-                or parts[:1] in (["embeddings"], ["decisions"])
+                # Personal and domain-pool usage are caller-private in every view.
+                or parts[:1] == ["usage"]
+                or _credential_or_pool_route(parts) is not None
+                or parts[:1] in (["embeddings"], ["decisions"], ["vault"])
                 or parts[:3] == ["admin", "models", "native-catalog"]
                 or (bool(parts) and parts[0].startswith("mcp-"))
                 or parts[:2] == ["admin", "providers"]
                 or (len(parts) >= 2 and parts[0] == "admin" and parts[1].startswith("mcp-"))
-                or (len(parts) >= 3 and parts[0] == "domains" and parts[2] == "mcp-connections")
+                or parts[:1] == ["archived-connections"]
+                or (
+                    len(parts) >= 3
+                    and parts[0] == "domains"
+                    and parts[2] in {"mcp-connections", "archived-connections"}
+                )
             )
             try:
                 response = await handler(request)
@@ -202,6 +253,27 @@ async def disable_cloud_tools(request: Request) -> Response:
     return await cloud_tools(request)
 
 
+async def _proxy_vault(parts: list[str], request: Request) -> Response:
+    """Limit the browser surface to dashboard Vault operations."""
+    tail = parts[1:]
+    allowed = _VAULT_METHODS.get(tail[0]) if len(tail) == 1 else None
+    if len(tail) >= 2 and tail[0] == "notes" and tail[1].isascii() and tail[1].isdecimal():
+        if len(tail) == 2:
+            allowed = ("GET", "PATCH")
+        elif tail[2:] == ["revisions"]:
+            allowed = ("GET",)
+    if allowed is None:
+        raise HTTPException(status_code=404, detail="Lumen browser route not found")
+    if request.method not in allowed:
+        raise HTTPException(status_code=405, detail="Method not allowed", headers={"Allow": ", ".join(allowed)})
+
+    principal = await current_service_principal(request)
+    native = await get_policy_capabilities("lumen", principal)
+    leaf = "lumen-history_reader" if request.method == "GET" else "lumen-history_editor"
+    require_service_permission({**principal, "service_permissions": {"lumen": native["capabilities"]}}, leaf)
+    return await proxy("lumen", request, "/v1/" + "/".join(parts))
+
+
 @router.api_route("", methods=_PROXY_METHODS)
 @router.api_route("/{path:path}", methods=_PROXY_METHODS)
 async def proxy_lumen(path: str = "", *, request: Request) -> Response:
@@ -209,8 +281,19 @@ async def proxy_lumen(path: str = "", *, request: Request) -> Response:
     if _noncanonical_path(parts):
         # Authorization and forwarding must interpret the exact same namespace.
         raise HTTPException(status_code=400, detail="Non-canonical Lumen API path", headers=_NO_STORE)
+    if parts[:1] == ["vault"]:
+        return await _proxy_vault(parts, request)
     if parts[:4] == ["admin", "models", "pricing", "models-dev"]:
         raise HTTPException(status_code=404, detail="Lumen browser route not found", headers=_NO_STORE)
+    credential_or_pool = _credential_or_pool_route(parts)
+    if credential_or_pool == ():
+        raise HTTPException(status_code=404, detail="Lumen browser route not found")
+    if credential_or_pool is not None and request.method not in credential_or_pool:
+        raise HTTPException(
+            status_code=405, detail="Method not allowed", headers={"Allow": ", ".join(credential_or_pool)}
+        )
+    if parts[:1] in (["service-keys"], ["domain-pool"]):
+        await require_domain_manager(request.state.token_info)
     expected_method = {"decisions": "POST", "admin/models/native-catalog": "GET"}.get(path)
     if expected_method is not None and request.method != expected_method:
         raise HTTPException(
@@ -236,4 +319,6 @@ async def proxy_lumen(path: str = "", *, request: Request) -> Response:
         return await proxy("lumen", request, upstream_path, read_timeout=310.0)
     if path == "decisions":
         return await proxy("lumen", request, upstream_path, read_timeout=125.0, prepare_body=_bounded_decisions_body)
+    if credential_or_pool is not None:
+        return await proxy("lumen", request, upstream_path, sensitive=True)
     return await proxy("lumen", request, upstream_path)

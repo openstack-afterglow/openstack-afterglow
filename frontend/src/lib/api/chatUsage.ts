@@ -1,4 +1,18 @@
 /** Built-in AI usage API types and cumulative source summaries. */
+import { ApiError } from './errors';
+
+/** Who paid for a usage row: the caller's own wallet or the domain credit pool. */
+export type BillingScope = 'user' | 'domain';
+/** `self` is the caller's own usage across every payer; `domain` is the pool (managers only). */
+export type UsageView = 'self' | 'domain';
+
+export interface UsagePayer {
+	billing_scope: BillingScope;
+	credited_cost: number;
+	prompt_tokens: number;
+	completion_tokens: number;
+	request_count: number;
+}
 
 export interface UsageBySource {
 	source: string; // web | api | system
@@ -27,6 +41,7 @@ export interface TimeseriesRow {
 	total_tokens: number;
 	credited_cost: number;
 	request_count: number;
+	credited_cost_by_payer?: Partial<Record<BillingScope, number>>;
 }
 
 export interface KeyUsage {
@@ -36,6 +51,7 @@ export interface KeyUsage {
 	total_tokens: number;
 	credited_cost: number;
 	request_count: number;
+	billing_scope?: BillingScope;
 }
 
 export interface ApiKey {
@@ -69,4 +85,14 @@ export interface ApiKeyIssuancePolicy {
 /** by_source 목록에서 특정 소스의 항목(없으면 0 기본). */
 export function sourceRow(by: readonly UsageBySource[], source: string): UsageBySource {
 	return by.find((s) => s.source === source) ?? { source, tokens: 0, credited_cost: 0, request_count: 0 };
+}
+
+/** Usage path for the selected view; the default view sends no scope. */
+export function usagePath(path: string, view: UsageView): string {
+	return view === 'self' ? path : `${path}${path.includes('?') ? '&' : '?'}scope=domain`;
+}
+
+/** Lumen refuses the domain view once live domain-manager authority is gone. */
+export function domainViewDenied(cause: unknown): boolean {
+	return cause instanceof ApiError && cause.status === 403 && (cause.code ?? cause.message) === 'domain_manager_required';
 }

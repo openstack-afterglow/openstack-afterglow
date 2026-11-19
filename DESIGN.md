@@ -18,11 +18,15 @@ Decision Studio keeps separate drafts when switching between OpenAI and Gemini m
 
 Gemini validation identifies the question and field, links the summary to the invalid input, and focuses that input on submit. Removing a rubric row focuses its neighbour. Editor rows and remove buttons use the same one-based numbering; result legends still show the provider's zero-based score scale.
 
+Chat, agent, and Studio model pickers scope the model choices by provider. Existing chat overlay grouping, search, and copy actions stay available. Compact regeneration and Studio/agent forms use visibly labelled native controls; a different provider clears the prior model choice. Displayed readiness remains based on catalog and capability data, not the presence of an option.
+
 인스턴스 사용 일정은 현재 종료일과 승인 대기 요청을 별도로 표시한다. 날짜 단축과 한 달 이내 사유 있는 연장을 구분하고, 사유가 부적절하면 관리자가 별도 확인할 수 있으며 승인 대기는 만료를 미루지 않음을 안내한다. 도메인 manager 정책과 도메인/프로젝트 검토 목록은 현재 권한·scope를 따르고 결과 불명은 명시적 재조회 전 재전송하지 않는다. 기존 form·상태·alert primitives와9locale를 사용한다.
 
 Drover 작업의 초기 비결정 progress는 전체 track 너비에 분산한다. 이후 관측된 단계 기반 추정치와 native 보고 진행률은 구분하며, authoritative terminal 전100%를 표시하지 않는다. 생성 modal 최소화 뒤 동일 소유자·프로젝트의 하단 dock에서 상태를 계속 볼 수 있고, 실제 terminal 전에는 완전히 닫지 않는다. 연결 유실과 operation ID 미수신은 unknown이며 재시도·성공으로 합성하지 않는다. Dock은 기존 upload 표시와 겹치지 않고 좁은 화면에서도 조작할 수 있다.
 
-OAuth 연결 카드와 삭제 확인은 client ID 기반 저장 이름 대신 지역화된 OAuth 이름+현재 목록 순번을 사용한다. Origin은 발급 project 대신 승인 도메인의 현재 이름+ID로 표시해 동명 도메인을 구분하고, 확인 불가 시 현재/home domain을 대신 넣지 않는다. 저장된 승인 프로젝트는 이름으로 계속 표시하며 만료·접근 상한·클라이언트 관측·exact grant 제거를 유지한다. 순번은 영구 식별자가 아니고 도메인 이름은 승인 당시 snapshot이 아니다. 개인 API 키의 발급 project·일회성 평문은 바꾸지 않는다.
+OAuth 연결 카드와 삭제 확인은 client ID 기반 저장 이름 대신 지역화된 OAuth 이름+현재 목록 순번을 사용한다. Origin은 발급 project 대신 승인 도메인의 현재 이름+ID로 표시해 동명 도메인을 구분하고, 확인 불가 시 현재/home domain을 대신 넣지 않는다. 저장된 승인 프로젝트는 이름으로 계속 표시하며 만료·접근 상한·클라이언트 관측·exact grant 제거를 유지한다. 순번은 영구 식별자가 아니고 도메인 이름은 승인 당시 snapshot이 아니다.
+
+Lumen 개인 키에는 발급 프로젝트 선택이 없고, 서비스 키·풀 설정은 검증된 현재 도메인 매니저에게만 표시한다. 두 키 종류 모두 발급 직후 닫기 가능한 일회성 비밀 dialog를 공유한다. 도메인 사용량은 사용자 본인 키 과금과 구분하고 풀의 선불 잔액·예약·한도를 실제 값으로 표시한다. 관리자는 충전 전에 정확한 도메인 ID·금액·메모를 확인한다. 결과 불명은 별도 오류로 표시하며 같은 의도의 키와 변경 불가능한 본문으로만 재시도한다. 기존 Card·FormModal·ConfirmDialog·Field·Alert와9locale를 사용한다.
 
 MCP 권한 preview는 `프로젝트의 클라우드 권한`과 `이 연결에 허용할 접근`을 별도 label/StatusChip 행으로 표시한다. Member가 read key를 선택해도 관리 가능한 프로젝트의 상태는 남고 연결의 읽기 제한만 바뀐다. 프로젝트 인증 범위 검증 실패는 단일 scope 안내로 표시해 서비스별 추가 역할 요구처럼 보이지 않게 하며, 검증된 scope에서의 개별 native 정책 오류는 그 서비스에만 남긴다. Reader와 unknown은 관리로 추정하지 않는다. 모든 도메인의 `Default` 프로젝트는 MCP 선택 목록에 나타나지 않으며 별도 placeholder나 새 시각 요소를 만들지 않는다. 클라이언트 관측의 이름·버전·신고/추정 근거·privacy와9locale·모바일 줄바꿈 계약은 유지한다.
 
@@ -405,6 +409,10 @@ The new-chat project footer preserves its existing inset surface in dark mode. I
 Lumen의 CLI 연결 안내는 키·공개 모델 ID·endpoint 확인, Codex/Claude Code 자동 설정, 선택한 클라이언트의 수동 설정을 순서대로 구분한다. 전체 키·모델 ID 같은 필수 확인 항목은 기존 ink 토큰과 굵기로 강조하고 설정 경로·환경 변수는 mono inset으로 구별한다. 각 명령은 독립 code region과 이름 있는 `Button` 복사 동작을 갖고, 긴 설치/TOML 명령의 가로 스크롤은 code region 안에만 둔다. 짧은 Codex 명령과 macOS/Linux CA 경로는 좁은 화면에서도 전체를 읽을 수 있게 감싼다. 스크립트 보기 링크는 복사와 분리하며 guide에는 키 입력 필드를 두지 않는다. Mobile/tablet/desktop에서 같은 설정과 복사 동작을 제공하며 새 palette·layer·motion token은 만들지 않는다.
 
 Lumen MCP settings separate the always-visible built-in Afterglow card, administrator-reviewed server catalogue and existing personal registration. Neutral **활성화** opens `FormModal`; project, read/manage or provider OAuth scopes and destination appear before the one warm **승인하고 활성화** action. GET/open/cancel never approve. Pending authority disables approval; management is unavailable without current write permission. Activated or OAuth-pending opt-ins retain an explicit **비활성화** action. Cards stack copy/actions below 768px and align rows above it; config changes require fresh consent.
+
+Agent Vault keeps chat settings' existing surface hierarchy. Show the read-only `memory.md` preview and explicit copy/download separately from the note list. Use the existing fields and buttons for type filters and search; wrap rows, scope pills, and actions without hiding them on narrow viewports. One scoped modal creates a note. The inline viewer keeps revision bodies read-only and leaves the user's draft intact on a hash conflict until they explicitly choose the latest version or merge. Append-only types never show a replacement action. No new palette, layer, or motion token is introduced.
+
+The Vault chat-project picker uses `SearchSelect` and distinguishes the domain/global default from one chat project. Workspace-scoped creation names the selected chat project and does not offer a global scope. Hide the domain/global `memory.md` preview while inspecting workspace-private notes. Changing domains clears the picker and any private draft.
 
 API-key creation starts from one **새 API 키** trigger, not a permanently visible issuance form. `FormModal` composes `SearchSelect`, `Field`, `TextInput`, native expiry select and `ToggleGroup` for target project, optional name, expiry, all/restricted/read-only scopes and monthly credit limit. Show the selected project's verified ceiling while loading/error/denial blocks submit. Cancel/Escape discards drafts and no key is created until submit. Revoked rows are hidden by default with a separate **전체 보기 / 활성만 보기** count toggle, not an issuance switch; they have no mutation controls. Expired unrevoked keys remain labeled. Light/dark panels remain opaque and scroll inside the existing modal at all widths; no new token, layer or motion primitive is introduced.
 

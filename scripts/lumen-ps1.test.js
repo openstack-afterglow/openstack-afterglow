@@ -25,7 +25,8 @@ if (process.env.PWSH) {
 	assert.equal(available.status, 0, `PWSH runtime unavailable: ${available.error || available.stderr}`);
 }
 const missingRuntime = available.status !== 0 ? "PowerShell unavailable: parser and behavior checks were not executed (set PWSH to a runtime path)" : false;
-const installer = path.resolve(__dirname, "../frontend/static/install/lumen.ps1");
+const installer = path.resolve(__dirname, "../backend/app/data/lumen.ps1.template");
+const template = fs.readFileSync(installer, "utf8");
 const psLiteral = (value) => `'${value.replaceAll("'", "''")}'`;
 // Keep generated test scripts ASCII so Windows PowerShell 5.1 reads them unchanged.
 const asciiJson = (value) => JSON.stringify(value).replace(/[\u007f-\uffff]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
@@ -35,9 +36,13 @@ const middleDot = " \u00b7 ";
 function run(code, { definitions = true, env = {} } = {}) {
 	const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "lumen-ps1-")));
 	const script = path.join(dir, "behavior.ps1");
+	const sourcePath = path.join(dir, "lumen.ps1");
+	fs.writeFileSync(sourcePath, template
+		.replace("__LUMEN_CODEX_URL_LITERAL__", psLiteral("https://lumen.example/v1"))
+		.replace("__LUMEN_ANTHROPIC_URL_LITERAL__", psLiteral("https://lumen.example")));
 	const bootstrap = `
 $ErrorActionPreference = 'Stop'
-$sourcePath = ${psLiteral(installer)}
+$sourcePath = ${psLiteral(sourcePath)}
 $work = ${psLiteral(dir)}
 $tokens = $null; $parseErrors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile($sourcePath, [ref] $tokens, [ref] $parseErrors)
@@ -47,7 +52,7 @@ ${code}
 `;
 	fs.writeFileSync(script, bootstrap);
 	try {
-		const result = spawnSync(pwsh, ["-NoLogo", "-NoProfile", "-NonInteractive", "-File", script], { cwd: dir, encoding: "utf8", env: runtimeEnvironment(dir, env), timeout: 120000 });
+		const result = spawnSync(pwsh, ["-NoLogo", "-NoProfile", "-NonInteractive", "-File", script], { cwd: dir, encoding: "utf8", env: runtimeEnvironment(dir, env), maxBuffer: 8 * 1024 * 1024, timeout: 120000 });
 		assert.equal(result.status, 0, result.error ? String(result.error) : result.stderr + result.stdout);
 		return JSON.parse(result.stdout.trim());
 	} finally {
@@ -344,7 +349,7 @@ $again = Update-LumenToml $changed 'https://lumen.example/v1'
 behavior("native role profile files select route, provider and catalog without changing nested profiles", () => {
 	const result = run(`
 $catalog = Join-Path $work 'codex home\\lumen-models.json'
-$original = "model = 'old'\nmodel_provider = 'openai'\nmodel_catalog_json = '/old/catalog.json'\n[profiles.work]\nmodel = 'work'"
+$original = "model = 'old'\nmodel_provider = 'openai'\nmodel_catalog_json = '/old/catalog.json'\nweb_search = 'live'\n[profiles.work]\nmodel = 'work'"
 $changed = Update-LumenToml $original 'https://lumen.example/v1' 'lumen/7/11' $true $catalog
 $empty = Update-LumenToml '' 'https://lumen.example/v1' 'lumen/7/12' $true $catalog
 $only = Update-LumenToml '# comment without newline' 'https://lumen.example/v1' 'lumen/7/11' $true $catalog
@@ -360,9 +365,11 @@ $refused = @(
 		assert.ok(root.includes(`model = "${route}"`));
 		assert.ok(root.includes('model_provider = "lumen-cli"'));
 		assert.ok(root.includes(`model_catalog_json = ${result.catalog}`));
+		assert.equal(root.match(/^web_search = "disabled"$/gm)?.length, 1);
 		assert.ok(value.includes("[model_providers.lumen-cli]"));
 	}
 	assert.ok(!result.changed.includes("/old/catalog.json"));
+	assert.ok(!result.changed.includes("'live'"));
 	assert.ok(result.changed.includes("[profiles.work]\nmodel = 'work'"));
 	assert.equal(result.again, result.changed);
 	assert.deepEqual(result.refused, [true, true, true]);
@@ -379,7 +386,7 @@ $empty = Update-LumenToml '' 'https://lumen.example/v1' 'gpt-5.6-sol'
 	assert.ok(result.unchangedDefaults.startsWith(result.original));
 	assert.ok(result.changed.startsWith("model = \"gpt-5.6-sol\"\nmodel_provider = 'openai'"));
 	assert.ok(!result.empty.includes("model_provider ="));
-	for (const value of [result.unchangedDefaults, result.changed, result.empty]) assert.ok(!value.includes("model_catalog_json"));
+	for (const value of [result.unchangedDefaults, result.changed, result.empty]) assert.ok(!value.includes("model_catalog_json") && !value.includes("web_search"));
 	assert.ok(result.changed.includes("[profiles.work]\nmodel = 'work'"));
 	assert.equal(result.again, result.changed);
 });
@@ -942,7 +949,9 @@ $codexHome = Join-Path $work 'codex'
 $profilePath = Join-Path $work 'profile.ps1'
 $PROFILE = [pscustomobject] @{ CurrentUserAllHosts = $profilePath }
 $env:CODEX_HOME = $codexHome
-$env:LUMEN_ANTHROPIC_BASE_URL = 'https://lumen.example'
+$env:LUMEN_CODEX_BASE_URL = 'https://ignored.example/v1'
+$env:LUMEN_ANTHROPIC_BASE_URL = 'https://ignored.example'
+$installTemplate = $ast.Find({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Invoke-LumenInstall' }, $true).Extent.Text
 Remove-Item Env:LUMEN_CA_BUNDLE, Env:CODEX_CA_CERTIFICATE -ErrorAction SilentlyContinue
 $tracked = @(@('config.toml', 'lumen-cli.config.toml', 'lumen-sol.config.toml', 'lumen-luna.config.toml', 'lumen-models.json') | ForEach-Object { Join-Path $codexHome $_ }) + @($profilePath)
 function Assert-LumenWindows { }
@@ -971,7 +980,8 @@ function Reset-Seeds {
 }
 function Invoke-TestInstall([string] $Url, [string[]] $Answers = @(), [string] $Secret = ${psLiteral(testKey)}, [bool] $SaveFails = $false) {
  Reset-Seeds
- $env:LUMEN_CODEX_BASE_URL = $Url
+ $definition = $installTemplate.Replace("'https://lumen.example/v1'", (ConvertTo-LumenPsLiteral $Url)).Replace("'https://lumen.example'", (ConvertTo-LumenPsLiteral ($Url -replace '/v1$', '')))
+ . ([scriptblock]::Create($definition))
  $script:answers = $Answers; $script:answerIndex = 0; $script:prompts = @(); $script:secret = $Secret; $script:keySaves = 0; $script:saveFails = $SaveFails
  $before = Get-Snapshot
  $script:hostLines = @(); $message = ''
@@ -1178,6 +1188,7 @@ $desktopFiles = @{ config = (Read-Installed 'config.toml'); cli = (Read-Installe
 			assert.ok(files.profile.includes(`$env:ANTHROPIC_DEFAULT_${role}_MODEL = '${route}'`), role);
 		}
 		assert.ok(files.profile.includes("$env:ANTHROPIC_MODEL = 'opus'"));
+		assert.ok(files.profile.includes(`$env:ANTHROPIC_BASE_URL = '${base}/ok'`));
 		assert.ok(!files.profile.includes(testKey));
 
 		// A different assignment keeps every role distinct (no collapse to one
@@ -1302,8 +1313,6 @@ $warning = & ([scriptblock]::Create($foreign)) 3>&1 | Out-String
 behavior("installer preflights every native destination before requesting or persisting a credential", () => {
 	const result = run(`
 $env:CODEX_HOME = Join-Path $work 'codex'
-$env:LUMEN_CODEX_BASE_URL = 'https://lumen.example/v1'
-$env:LUMEN_ANTHROPIC_BASE_URL = 'https://lumen.example'
 [void] [IO.Directory]::CreateDirectory($env:CODEX_HOME)
 $configPath = Join-Path $env:CODEX_HOME 'config.toml'
 $cliConfigPath = Join-Path $env:CODEX_HOME 'lumen-cli.config.toml'

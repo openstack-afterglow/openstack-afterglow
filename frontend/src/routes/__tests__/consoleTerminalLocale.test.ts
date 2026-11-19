@@ -1,11 +1,12 @@
 import { cleanup, render, waitFor } from '@testing-library/svelte';
-import { tick } from 'svelte';
+import { createRawSnippet, tick } from 'svelte';
 import type * as StoreModule from 'svelte/store';
 import type { Writable } from 'svelte/store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { page } from '$app/stores';
 import { initLocale, setLocale } from '$lib/i18n/runtime.svelte';
 import Harness from './_ConsoleTerminalLocaleHarness.svelte';
+import DashboardLayout from '../dashboard/+layout.svelte';
 import { auth, projectSwitching } from '$lib/stores/auth';
 
 // Mock factories run before imports; their terminal/socket state must exist at that boundary.
@@ -186,5 +187,44 @@ describe('console terminal lifetime across language changes', () => {
 		expect(sockets).toHaveLength(duringSwitch);
 		projectSwitching.set(false);
 		await waitFor(() => expect(sockets).toHaveLength(duringSwitch + 1));
+	});
+});
+
+describe('dashboard chat route lifetime', () => {
+	beforeEach(() => {
+		auth.update(state => ({ ...state, token: 'synthetic-token', projectId: 'project', domainId: 'domain-1' }));
+		projectSwitching.set(false);
+	});
+	afterEach(cleanup);
+
+	it.each([
+		'/dashboard/chat', '/dashboard/chat/settings', '/dashboard/chat/tools',
+		'/dashboard/chat/projects', '/dashboard/chat/projects/[id]'
+	])('retains %s within a domain but remounts on a domain change', async (id) => {
+		routePage.set({ url: new URL(`http://localhost${id.replace('[id]', '1')}`), route: { id } });
+		const children = createRawSnippet(() => ({ render: () => '<div data-chat-child></div>' }));
+		const { container } = render(DashboardLayout, { children });
+		const child = container.querySelector('[data-chat-child]');
+		const wrapper = child?.parentElement;
+		expect(child).not.toBeNull();
+
+		projectSwitching.set(true);
+		await tick();
+		expect(container.querySelector('[data-chat-child]')).toBe(child);
+		expect(wrapper?.classList.contains('hidden')).toBe(true);
+		expect(wrapper?.inert).toBe(true);
+		auth.update(state => ({ ...state, token: 'new-project-token', projectId: 'other-project' }));
+		projectSwitching.set(false);
+		await tick();
+		expect(container.querySelector('[data-chat-child]')).toBe(child);
+		expect(wrapper?.classList.contains('hidden')).toBe(false);
+		expect(wrapper?.inert).toBe(false);
+
+		auth.update(state => ({ ...state, domainId: 'domain-2', projectId: 'foreign-project' }));
+		await tick();
+		expect(child?.isConnected).toBe(false);
+		const next = container.querySelector('[data-chat-child]');
+		expect(next).not.toBeNull();
+		expect(next).not.toBe(child);
 	});
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { t } from '$lib/i18n/ns/instance';
+import { getStatusLabel } from '$lib/config/statusColors';
 import type { PortInfo } from '$lib/types/networks';
 import type { SecurityGroupRule } from '$lib/types/securityGroup';
 import { buildInstanceIsoScene } from '../instanceIsoScene';
@@ -25,7 +26,11 @@ const groups = [
 	{ id: 'trusted', name: 'trusted-clients', rules: [rule('unapplied', { port_range_min: 12345, port_range_max: 12345 })] },
 ];
 const input = {
-	instance, ports: [first, second], networks: [{ id: 'lan', name: 'front-net' }, { id: 'data', name: 'data-net' }, { id: 'unattached', name: 'unused' }],
+	instance, ports: [first, second],
+	networks: [
+		{ id: 'lan', name: 'front-net', is_external: true }, { id: 'data', name: 'data-net', is_shared: true },
+		{ id: 'unattached', name: 'unused', is_external: false, is_shared: false },
+	],
 	floatingIps: [
 		{ id: 'fip', port_id: first.id, status: 'ACTIVE', fixed_ip_address: '192.0.2.4', floating_ip_address: '203.0.113.9' },
 		{ id: 'other', port_id: 'not-this-vm', status: 'ACTIVE', fixed_ip_address: null, floating_ip_address: '203.0.113.10' },
@@ -38,11 +43,13 @@ describe('buildInstanceIsoScene', () => {
 	it('shows the instance boundary, all observed ports and only port-associated floating IPs', () => {
 		const { scene, details } = buildInstanceIsoScene(input);
 		expect(scene.platforms.map(platform => platform.id)).toEqual(['policy', 'network:lan', 'network:data']);
+		expect(scene.platforms.slice(1).map(platform => platform.kind)).toEqual(['external-network', 'shared-network']);
 		expect(scene.platforms[0]).toMatchObject({ style: 'zone', sublabel: 'infra, SSH' });
 		expect(scene.nodes[0]).toMatchObject({ id: 'instance:vm', platformId: 'policy', badges: [{ text: t('network.iso.managed') }] });
 		expect(scene.nodes.find(node => node.id === 'port:port-a')).toMatchObject({ sublabel: '192.0.2.4, 2001:db8::4', platformId: 'network:lan', status: 'ok' });
 		expect(scene.nodes.find(node => node.id === 'port:port-b')).toMatchObject({
-			platformId: 'network:data', status: undefined, badges: [{ text: 'DOWN' }],
+			platformId: 'network:data', status: undefined,
+			badges: [{ text: getStatusLabel('DOWN') }],
 		});
 		expect(scene.edges).toContainEqual(expect.objectContaining({ from: 'port:port-a', to: 'floating:external', label: '203.0.113.9' }));
 		expect(scene.edges.some(edge => edge.label === '203.0.113.10')).toBe(false);
@@ -56,6 +63,11 @@ describe('buildInstanceIsoScene', () => {
 		const slab = scene.platforms.find(platform => platform.id === 'network:lan')!;
 		const internet = scene.nodes.find(node => node.id === 'floating:external')!;
 		expect(internet.x + internet.y).toBeGreaterThan(slab.x + slab.w + slab.y + slab.h);
+	});
+
+	it('does not infer a network kind when the catalog has no classification', () => {
+		const { scene } = buildInstanceIsoScene({ ...input, networks: [{ id: 'lan', name: 'front-net' }] });
+		expect(scene.platforms.slice(1).map(platform => platform.kind)).toEqual([undefined, undefined]);
 	});
 
 	it('shows open internet SSH, a remote group, IPv6 and egress-all using the saved rule union', () => {

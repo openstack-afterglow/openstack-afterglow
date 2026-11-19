@@ -205,7 +205,10 @@ the retired distribution is installed. This documents a conditional migration,
 not an observed production installation or rollout.
 
 Prepare `/etc/kolla/config/afterglow/globals.yml` and `secrets.yml`, preserving
-existing values, then register the installed assets:
+existing values. To enable Afterglow ingress signing, use the
+[protected shared-key initializer](../README.md#configuration-setup) for both
+new and existing installations. Register the installed assets after preparing
+the plugin inputs:
 
 ```bash
 AFTERGLOW_OPERATOR_LOCK=/absolute/path/to/the/synced/operator/uv.lock \

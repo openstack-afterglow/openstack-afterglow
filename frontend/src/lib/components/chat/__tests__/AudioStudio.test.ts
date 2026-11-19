@@ -409,7 +409,7 @@ describe('Audio Studio', () => {
 		expect((screen.getByRole('switch', { name: t('audioStudio.timestamps') }) as HTMLInputElement).checked).toBe(true);
 		await fireEvent.click(screen.getByRole('button', { name: t('audioStudio.convertToText') }));
 		await screen.findByText('둘째 문장');
-		expect(calls.transcribe.mock.calls[0][0]).toEqual({ model_id: '19', input_asset_id: 'scanned-asset', language: 'ja', timestamp_granularities: ['segment'] });
+		expect(calls.transcribe.mock.calls[0][0]).toEqual({ model_id: '19', model_row_id: 19, input_asset_id: 'scanned-asset', language: 'ja', timestamp_granularities: ['segment'] });
 		const srt = screen.getByRole('link', { name: t('audioStudio.downloadSrt') });
 		expect(await readBlob(blobAt(srt.getAttribute('href')))).toContain('00:00:01,200 --> 00:00:03,800\n인식된 문장');
 		await fireEvent.click(screen.getByRole('button', { name: t('audioStudio.insertIntoChat') }));
@@ -444,7 +444,7 @@ describe('Audio Studio', () => {
 		expect(blobAt(speechUrl).size).toBe(16);
 		expect(link.getAttribute('download')).toBe('speech.wav');
 		expect(screen.getByLabelText('생성된 음성').getAttribute('src')).toBe(speechUrl);
-		expect(calls.speech.mock.calls[0][0]).toMatchObject({ model_id: '17', input: 'Hello world', voice: 'nova', response_format: 'wav' });
+		expect(calls.speech.mock.calls[0][0]).toMatchObject({ model_id: '17', model_row_id: 17, input: 'Hello world', voice: 'nova', response_format: 'wav' });
 		expect(calls.speech.mock.calls[1][2]).toBe(calls.speech.mock.calls[0][2]);
 		expect(calls.speech.mock.calls[1][2]).toMatch(/^[0-9a-f-]{36}$/);
 		await fireEvent.click(screen.getByRole('tab', { name: '음성 → 텍스트' }));
@@ -460,10 +460,15 @@ describe('Audio Studio', () => {
 	});
 
 	it('uses the selected Gemini model voice and WAV-only format from capabilities', async () => {
-		calls.models.mockImplementation(async (kind: 'tts' | 'stt') => kind === 'tts' ? [model('tts'), { ...model('tts'), id: 18, model_name: 'gemini-speech', display_name: 'Gemini speech' }] : [model('stt')]);
+		calls.models.mockImplementation(async (kind: 'tts' | 'stt') => kind === 'tts'
+			? [{ ...model('tts'), provider_id: 1, provider: 'OpenAI' }, { ...model('tts'), id: 18, provider_id: 2, provider: 'Gemini' }]
+			: [model('stt')]);
 		calls.capabilities.mockImplementation(async (kind: 'tts' | 'stt', id: number) => kind === 'tts' && id === 18 ? { ...capability(kind, id), available_voices: ['Puck', 'Zephyr'], available_formats: ['wav'] } : capability(kind, id));
 		render(AudioStudio);
 		await screen.findByText('음성 생성 경로와 가격이 준비되었습니다.');
+		await fireEvent.change(screen.getByRole('combobox', { name: t('modelPicker.providers') }), { target: { value: '2' } });
+		expect(screen.getByLabelText('음성 모델')).toHaveProperty('value', '');
+		expect(screen.queryByRole('radio', { name: 'alloy' })).toBeNull();
 		await fireEvent.change(screen.getByLabelText('음성 모델'), { target: { value: '18' } });
 		await waitFor(() => expect((screen.getByRole('radio', { name: 'Puck' }) as HTMLInputElement).checked).toBe(true));
 		expect(screen.queryByRole('radio', { name: 'alloy' })).toBeNull();
@@ -472,7 +477,23 @@ describe('Audio Studio', () => {
 		expect(screen.queryByRole('option', { name: 'MP3' })).toBeNull();
 		await fireEvent.input(screen.getByRole('textbox', { name: /읽을 텍스트/ }), { target: { value: 'Hello Gemini' } });
 		await fireEvent.click(screen.getByRole('button', { name: '음성 생성' }));
-		await waitFor(() => expect(calls.speech).toHaveBeenCalledWith({ model_id: '18', input: 'Hello Gemini', voice: 'Puck', response_format: 'wav' }, { token: 'token', projectId: 'project-1' }, expect.any(String), expect.any(AbortSignal)));
+		await waitFor(() => expect(calls.speech).toHaveBeenCalledWith({ model_id: '18', model_row_id: 18, input: 'Hello Gemini', voice: 'Puck', response_format: 'wav' }, { token: 'token', projectId: 'project-1' }, expect.any(String), expect.any(AbortSignal)));
+	});
+
+	it('keeps an uploaded source and submits the exact STT row after switching providers', async () => {
+		calls.models.mockImplementation(async (kind: 'tts' | 'stt') => kind === 'stt'
+			? [{ ...model('stt'), provider_id: 1, provider: 'OpenAI' }, { ...model('stt'), id: 29, provider_id: 2, provider: 'Second OpenAI account' }]
+			: [model('tts')]);
+		render(AudioStudio);
+		await openStt();
+		await chooseAudio(new File(['FAKE-WAV'], 'voice.wav', { type: 'audio/wav' }));
+		const convert = screen.getByRole('button', { name: t('audioStudio.convertToText') });
+		await fireEvent.change(screen.getByRole('combobox', { name: t('modelPicker.providers') }), { target: { value: '2' } });
+		expect(convert).toHaveProperty('disabled', true);
+		await fireEvent.change(screen.getByLabelText(t('audioStudio.transcriptionModel')), { target: { value: '29' } });
+		await screen.findByText(t('audioStudio.transcriptionReady'));
+		await fireEvent.click(convert);
+		expect(calls.transcribe).toHaveBeenCalledWith({ model_id: '29', model_row_id: 29, input_asset_id: 'scanned-asset', timestamp_granularities: ['segment'] }, { token: 'token', projectId: 'project-1' }, expect.any(String), expect.any(AbortSignal));
 	});
 
 	it('example text only fills an empty draft', async () => {
@@ -503,7 +524,7 @@ describe('Audio Studio', () => {
 		await screen.findByText('lost transcription');
 		await fireEvent.click(screen.getByRole('button', { name: '텍스트로 변환' }));
 		await screen.findByText('둘째 문장');
-		expect(calls.transcribe.mock.calls[0][0]).toEqual({ model_id: '19', input_asset_id: 'scanned-asset', language: 'ko', timestamp_granularities: ['segment'] });
+		expect(calls.transcribe.mock.calls[0][0]).toEqual({ model_id: '19', model_row_id: 19, input_asset_id: 'scanned-asset', language: 'ko', timestamp_granularities: ['segment'] });
 		expect(calls.transcribe.mock.calls[1][2]).toBe(calls.transcribe.mock.calls[0][2]);
 		expect(calls.transcribe.mock.calls[1][2]).toMatch(/^[0-9a-f-]{36}$/);
 		const first = within(screen.getAllByRole('row')[1]);
@@ -560,7 +581,7 @@ describe('Audio Studio', () => {
 		await chooseAudio(new File(['FAKE-WAV'], 'voice.wav', { type: 'audio/wav' }));
 		await fireEvent.click(screen.getByRole('button', { name: '텍스트로 변환' }));
 		await screen.findByText('평문 결과');
-		expect(calls.transcribe.mock.calls[0][0]).toEqual({ model_id: '19', input_asset_id: 'scanned-asset' });
+		expect(calls.transcribe.mock.calls[0][0]).toEqual({ model_id: '19', model_row_id: 19, input_asset_id: 'scanned-asset' });
 		const txt = screen.getByRole('link', { name: '텍스트 다운로드' });
 		expect(txt.getAttribute('download')).toBe('voice.txt');
 		expect(await readBlob(blobAt(txt.getAttribute('href')))).toBe('평문 결과');

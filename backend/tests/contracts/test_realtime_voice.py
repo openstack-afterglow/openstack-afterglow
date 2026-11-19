@@ -22,7 +22,7 @@ from websockets.exceptions import ConnectionClosed
 from websockets.sync.server import serve
 
 from app.api.deps import get_token_info
-from app.api.lumen.realtime import router
+from app.api.lumen.realtime import _browser_close, router
 from app.services import ws_ticket
 
 
@@ -34,18 +34,18 @@ async def _authenticated(request: Request):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("kind", "image_hint", "frame_hint", "image_input"),
+    ("model_fields", "kind", "image_hint", "frame_hint", "image_input"),
     [
-        (None, None, None, False),
-        ("conversation", True, 2_097_152, True),
-        ("conversation", True, 65_536, False),
-        ("transcription", None, None, False),
-        ("translation", None, None, False),
-        ("live", True, 2_097_152, False),
+        ({"model_id": "12"}, None, None, None, False),
+        ({"model_id": "12", "model_row_id": 12, "provider_id": 3}, "conversation", True, 2_097_152, True),
+        ({"model_id": "12", "model_row_id": None}, "conversation", True, 65_536, False),
+        ({"model_row_id": 23}, "transcription", None, None, False),
+        ({"model_row_id": 34, "provider_id": "openai"}, "translation", None, None, False),
+        ({"model_id": "configured-live", "model_row_id": 45}, "live", True, 2_097_152, False),
     ],
 )
 async def test_realtime_admission_returns_only_project_bound_browser_ticket(
-    monkeypatch, kind, image_hint, frame_hint, image_input
+    monkeypatch, model_fields, kind, image_hint, frame_hint, image_input
 ):
     app = FastAPI()
     app.include_router(router, prefix="/api/v1/chat")
@@ -81,7 +81,7 @@ async def test_realtime_admission_returns_only_project_bound_browser_ticket(
         response = await browser.post(
             "/api/v1/chat/realtime/sessions",
             json={
-                "model_id": "12",
+                **model_fields,
                 **({"voice": "alloy"} if kind not in {"transcription", "translation"} else {}),
                 **({"output_language": "pt-BR"} if kind == "translation" else {}),
                 **({"instructions": "Speak slowly"} if kind == "live" else {}),
@@ -104,17 +104,18 @@ async def test_realtime_admission_returns_only_project_bound_browser_ticket(
     assert upstream[0].headers["x-project-id"] == "owned-project"
     assert upstream[0].headers["Idempotency-Key"] == key
     payload = json.loads(upstream[0].content)
-    assert payload["kind"] == (kind or "conversation")
-    assert payload["voice"] == (None if kind in {"transcription", "translation"} else "alloy")
-    if kind == "translation":
-        assert payload["output_language"] == "pt-BR"
-    else:
-        assert "output_language" not in payload
-    assert payload["instructions"] == ("Speak slowly" if kind == "live" else None)
-    if kind == "conversation":
-        assert payload["reasoning_effort"] == "xhigh"
-    else:
-        assert "reasoning_effort" not in payload
+    assert payload == {
+        "provider_id": None,
+        **{name: value for name, value in model_fields.items() if value is not None},
+        "kind": kind or "conversation",
+        "voice": None if kind in {"transcription", "translation"} else "alloy",
+        "instructions": "Speak slowly" if kind == "live" else None,
+        "max_duration_seconds": 300,
+        **({"output_language": "pt-BR"} if kind == "translation" else {}),
+        **({"reasoning_effort": "xhigh"} if kind == "conversation" else {}),
+    }
+    if "model_row_id" in payload:
+        assert type(payload["model_row_id"]) is int
     issue.assert_awaited_once_with(
         "chat-realtime",
         {
@@ -297,22 +298,101 @@ def test_realtime_relay_preserves_admitted_large_messages_and_rejects_overflow(
     ]
 
 
+@pytest.mark.parametrize(
+    ("lumen_code", "lumen_reason", "browser_code", "browser_reason"),
+    [
+        (4429, "domain_credit_insufficient", 4429, "domain_credit_insufficient"),
+        (1008, "policy", 1008, "policy"),
+        (1000, "", 1000, ""),
+        # Codes outside the relayed set never pass through, and neither does their text.
+        (3000, "Traceback: internal detail", 1011, ""),
+        (1003, "unsupported", 1011, ""),
+    ],
+)
+def test_realtime_relay_bounds_lumen_close_code_and_reason(
+    monkeypatch, lumen_code, lumen_reason, browser_code, browser_reason
+):
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1/chat")
+
+    def lumen(websocket):
+        websocket.recv(timeout=5)
+        websocket.close(code=lumen_code, reason=lumen_reason)
+
+    with serve(lumen, "127.0.0.1", 0) as server:
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            monkeypatch.setattr(
+                ws_ticket,
+                "consume_ticket",
+                AsyncMock(
+                    return_value={"session_id": str(uuid4()), "connect_token": "private-lumen-token-" + "1" * 20}
+                ),
+            )
+            monkeypatch.setattr("app.api.lumen.realtime._origin_allowed", lambda origin: True)
+            monkeypatch.setattr(
+                "app.services.service_proxy.resolve_service_endpoint",
+                AsyncMock(return_value=f"http://127.0.0.1:{server.socket.getsockname()[1]}"),
+            )
+            with (
+                TestClient(app) as browser,
+                browser.websocket_connect(
+                    "/api/v1/chat/realtime/ws?ticket=opaque", headers={"origin": "https://console.example"}
+                ) as socket,
+            ):
+                socket.send_text('{"type":"session.update"}')
+                result = socket.receive()
+        finally:
+            server.shutdown()
+            thread.join(timeout=5)
+    assert (result["type"], result["code"], result.get("reason") or "") == (
+        "websocket.close",
+        browser_code,
+        browser_reason,
+    )
+
+
+def test_realtime_close_reason_keeps_whole_characters_within_123_bytes():
+    # A peer cannot send more than 123 bytes, so the bound is checked directly.
+    assert _browser_close(4429, "é" * 62) == (4429, "é" * 61)
+    assert _browser_close(None, "domain_credit_insufficient") == (1011, "")
+    assert _browser_close(5000, "domain_credit_insufficient") == (1011, "")
+
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize("kind", ["voice", "unknown", "", None])
-async def test_realtime_admission_rejects_invalid_kind_before_native_request(monkeypatch, kind):
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"model_id": "12", "kind": "voice"},
+        {"model_id": "12", "kind": "unknown"},
+        {"model_id": "12", "kind": ""},
+        {"model_id": "12", "kind": None},
+        {},
+        {"model_id": None, "model_row_id": None},
+        {"model_id": "", "model_row_id": 12},
+        {"model_id": "x" * 191},
+        {"model_id": "12", "model_row_id": 0},
+        {"model_id": "12", "model_row_id": 2**63},
+        {"model_id": "12", "model_row_id": True},
+        {"model_id": "12", "model_row_id": 12.0},
+        {"model_id": "12", "model_row_id": "12"},
+    ],
+)
+async def test_realtime_admission_rejects_invalid_selection_or_kind_before_native_request(monkeypatch, payload):
     app = FastAPI()
     app.include_router(router, prefix="/api/v1/chat")
     app.dependency_overrides[get_token_info] = _authenticated
-    authorize = AsyncMock(side_effect=AssertionError("invalid kind must not reach service authorization"))
+    authorize = AsyncMock(side_effect=AssertionError("invalid payload must not reach service authorization"))
     monkeypatch.setattr("app.api.lumen.realtime.authorize_service_request", authorize)
-    endpoint = AsyncMock(side_effect=AssertionError("invalid kind must not reach Lumen"))
+    endpoint = AsyncMock(side_effect=AssertionError("invalid payload must not reach Lumen"))
     monkeypatch.setattr("app.services.service_proxy._get_internal_endpoint", endpoint)
     issue = AsyncMock()
     monkeypatch.setattr(ws_ticket, "issue_ticket", issue)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as browser:
         response = await browser.post(
             "/api/v1/chat/realtime/sessions",
-            json={"model_id": "12", "kind": kind},
+            json=payload,
             headers={"Idempotency-Key": str(uuid4())},
         )
     assert response.status_code == 422

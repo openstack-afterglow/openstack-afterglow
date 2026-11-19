@@ -7,6 +7,7 @@
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import VmCreatePanel from '$lib/components/VmCreatePanel.svelte';
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
+	import { chatDomainScope } from '$lib/stores/chatDomainScope';
 	import { createPrivateViewScope } from '$lib/utils/privateViewScope';
 	import { sessionScopeKey } from '$lib/utils/authSession';
 	import { projectList } from '$lib/stores/projectList';
@@ -15,6 +16,13 @@
 	import { getLocale } from '$lib/i18n/runtime.svelte';
 	let { children } = $props();
 	const privateViewScope = createPrivateViewScope();
+	const domainChat = $derived(
+		$page.route.id === '/dashboard/chat'
+		|| $page.route.id === '/dashboard/chat/tools'
+		|| $page.route.id === '/dashboard/chat/settings'
+		|| $page.route.id === '/dashboard/chat/projects'
+		|| $page.route.id === '/dashboard/chat/projects/[id]'
+	);
 	// Terminal routes own live sockets and scrollback; language is display state, not their lifetime.
 	const pageLocaleKey = $derived(
 		$page.route.id === '/dashboard/containers/instances/[id]'
@@ -54,8 +62,8 @@
 	<Sidebar />
 	<main bind:this={mainEl} id="main-content" tabindex="-1" class="min-w-0 flex-1 overflow-y-auto pt-[var(--app-header-height)] focus:outline-none focus-visible:shadow-[var(--focus-ring)]">
 		<div class={$authReady && !$projectSwitching ? 'contents' : 'hidden'} inert={!$authReady || $projectSwitching}>
-			{#key `${pageLocaleKey}:${$privateViewScope}`}
-				{#if !$projectSwitching}{@render children()}{/if}
+			{#key `${pageLocaleKey}:${domainChat ? `chat:${$chatDomainScope.revision}` : `project:${$privateViewScope}`}`}
+				{#if domainChat ? $chatDomainScope.key : !$projectSwitching}{@render children()}{/if}
 			{/key}
 		</div>
 	</main>

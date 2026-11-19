@@ -360,6 +360,31 @@ No production synchronization or deployment is performed by this source change.
    Populate generated 64-hex keys and database/Keystone passwords without
    printing or committing them.
 
+   To enable signed Afterglow ingress, run the packaged initializer as the
+   deployment user against the **real** private file, not its `globals.d` link.
+   This is also the update step for an existing secrets file without the key:
+
+   ```bash
+   /etc/kolla/.venv/bin/python \
+     /etc/kolla/.venv/share/afterglow/kolla/operator/afterglow_kolla_operator/generate_ingress_secret.py \
+     /etc/kolla/config/afterglow/secrets.yml
+   ```
+
+   The initializer appends a random 64-hex value if
+   `lumen_afterglow_ingress_secret` is absent, or replaces a simple top-level
+   null entry. It leaves other bytes, including comments and inline Vault
+   values, untouched. If the edit cannot preserve the mapping, set the key
+   manually in the protected file. The initializer refuses to write if the key
+   already has a non-null value, including an explicitly empty (`""`) value.
+   It never prints credentials. Do not reinstall the sample over an existing file.
+   Publish this one variable from the protected plugin secrets file, not from
+   inventory, stock passwords, or service-specific overrides. The Afterglow
+   role writes `[services] lumen_ingress_secret` in private backend TOML; the
+   compatible package-owned Lumen role sets `LUMEN_AFTERGLOW_INGRESS_SECRET`
+   for its API. Verify both deployed versions support the contract before
+   enabling it. Nonempty values must be at least 32 UTF-8 bytes. Leaving it
+   unset or explicitly empty disables signing.
+
 These two files are sufficient for a normal deployment. The role derives the
 service topology and required runtime values from Kolla plus the plugin
 globals/secrets, then generates and mounts the configuration needed by each
@@ -398,6 +423,9 @@ Missing inputs leave the regenerated native defaults unchanged. A backend key
 explicitly set to `false`, `0`, `""`, or an array replaces that generated value;
 arrays are replaced, not appended. Removing a key restores the newly generated
 native value on the next run.
+The shared `lumen_afterglow_ingress_secret` is an exception: do not put a
+different `[services].lumen_ingress_secret` in the operator TOML. The role
+rejects a conflicting override before writing generated configuration.
 
 The role parses both original TOML sources before replacing any runtime output.
 It removes the obsolete `[builder].ssh_private_key` from the private merged result
@@ -698,6 +726,17 @@ frontend (no loopback router is needed since each service exposes a single
 API path). Disabling the toggle removes the plugin-owned `.cfg` fragment and
 external-frontend-map entry on the next `reconfigure`. The Kolla external TLS
 certificate must cover each enabled hostname.
+
+Afterglow uses the existing `lumen_external_url` in Kolla globals to render the
+dashboard CLI installers at backend startup. Set it to the public HTTPS Lumen
+base without `/v1`, for example `https://lumen.dmslab.re.kr`. Operator TOML
+`[services] lumen_external_url` can override the Kolla default. An empty value
+disables automatic setup; the internal and Keystone endpoints are not fallbacks.
+
+The public `/install/lumen.sh` and `/install/lumen.ps1` downloads reach the
+frontend through Kolla's default router branch. That route forwards only to the
+backend's `/api/v1/install/*` endpoints through `BACKEND_INTERNAL_ORIGIN`, so no
+HAProxy rule is needed.
 
 ### Lumen PostgreSQL Mode
 

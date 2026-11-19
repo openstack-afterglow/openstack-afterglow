@@ -8,11 +8,15 @@
 	import { Alert, Button, CompactResourceCard, Field, PageShell, ResponsiveTable, SelectInput, TextareaInput, TextInput, TableShell } from '$lib/components/ui';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
+	import PersonalWorkspaceNotice from './PersonalWorkspaceNotice.svelte';
+	import { personalWorkspace } from '$lib/stores/personalWorkspace';
+	import { dashboardCreditMessage } from '$lib/api/chatDomainBilling';
+	import ProviderModelSelect from './ProviderModelSelect.svelte';
 	import { t } from '$lib/i18n/ns/chat-studio';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
 	let models = $state<EmbeddingModel[]>([]);
-	let selected = $state('');
+	let selected = $state<number | null>(null);
 	let capabilities = $state<EmbeddingCapabilities | null>(null);
 	let rows = $state([{ id: 0, text: '' }]);
 	let nextRow = 1;
@@ -34,7 +38,7 @@
 	let embeddingRequest: AbortController | null = null;
 	const scope = $derived($authReady && !$projectSwitching && $auth.token && $auth.projectId && $auth.userId ? { token: $auth.token, projectId: $auth.projectId } : null);
 	const allowed = $derived(Boolean(scope) && $serviceCapabilities('lumen-chat_user'));
-	const model = $derived(models.find((item) => String(item.id) === selected));
+	const model = $derived(models.find((item) => item.id === selected));
 	const readiness = $derived(embeddingReadiness(model, capabilities));
 	const maxInputs = $derived(capabilities?.max_inputs ?? 16);
 	const parsedDimensions = $derived(dimensions.trim() ? Number(dimensions) : undefined);
@@ -43,12 +47,14 @@
 		|| (capabilities.max_dimensions !== null && parsedDimensions > capabilities.max_dimensions)
 		|| (capabilities.allowed_dimensions != null && !capabilities.allowed_dimensions.includes(parsedDimensions))
 	))) ? t(capabilities?.allowed_dimensions ? 'embeddingStudio.dimensionChoiceInvalid' : 'embeddingStudio.dimensionInvalid') : '');
-	const ready = $derived(allowed && !loading && !checking && !busy && !loadError && !readiness && !dimensionError
+	const ready = $derived(allowed && !$personalWorkspace && !loading && !checking && !busy && !loadError && !readiness && !dimensionError
 		&& rows.length >= 1 && rows.length <= maxInputs && rows.every((row) => Boolean(row.text.trim())));
 	const matrix = $derived(result ? cosineMatrix(result) : []);
 	const resultJson = $derived(result ? JSON.stringify(result, null, 2) : '');
 
 	function message(cause: unknown): string {
+		const credit = dashboardCreditMessage(cause);
+		if (credit) return credit;
 		if (cause instanceof ApiError) {
 			if (cause.status === 401 || cause.status === 403) return t('embeddingStudio.projectDenied');
 			if (cause.status === 402) return t('embeddingStudio.quotaInsufficient');
@@ -69,7 +75,7 @@
 		generation++;
 		modelRequest?.abort(); capabilityRequest?.abort(); cancel(false);
 		modelRequest = null; capabilityRequest = null;
-		clearResult(); models = []; selected = ''; capabilities = null;
+		clearResult(); models = []; selected = null; capabilities = null;
 		rows = [{ id: nextRow++, text: '' }]; dimensions = ''; dimensionBadInput = false;
 		loading = false; checking = false; loadError = ''; failure = '';
 	}
@@ -89,11 +95,11 @@
 		modelRequest?.abort(); capabilityRequest?.abort(); cancel(false);
 		const request = new AbortController(); modelRequest = request;
 		const epoch = generation, owner = activeOwner, requestScope = scope;
-		loading = true; loadError = ''; capabilities = null; selected = ''; clearResult();
+		loading = true; loadError = ''; capabilities = null; selected = null; clearResult();
 		try {
 			const list = await embeddingStudioApi.models(requestScope, request.signal);
 			if (request.signal.aborted || epoch !== generation || owner !== activeOwner || !allowed) return;
-			models = list; selected = list[0] ? String(list[0].id) : '';
+			models = list; selected = list[0]?.id ?? null;
 		} catch (cause) {
 			if (!request.signal.aborted && epoch === generation && owner === activeOwner && allowed) loadError = message(cause);
 		} finally {
@@ -108,10 +114,10 @@
 		checking = true; capabilities = null; dimensions = ''; dimensionBadInput = false; loadError = ''; clearResult();
 		try {
 			const value = await embeddingStudioApi.capabilities(id, requestScope, request.signal);
-			if (request.signal.aborted || capabilityRequest !== request || epoch !== generation || owner !== activeOwner || !allowed || selected !== String(id)) return;
+			if (request.signal.aborted || capabilityRequest !== request || epoch !== generation || owner !== activeOwner || !allowed || selected !== id) return;
 			capabilities = value;
 		} catch (cause) {
-			if (!request.signal.aborted && capabilityRequest === request && epoch === generation && owner === activeOwner && allowed && selected === String(id)) loadError = message(cause);
+			if (!request.signal.aborted && capabilityRequest === request && epoch === generation && owner === activeOwner && allowed && selected === id) loadError = message(cause);
 		} finally {
 			if (capabilityRequest === request) { capabilityRequest = null; checking = false; }
 		}
@@ -123,13 +129,13 @@
 	$effect(() => {
 		const id = selected, enabled = allowed;
 		untrack(() => {
-			if (enabled && id && capabilities?.model_id !== Number(id) && !checking) void loadCapabilities(Number(id));
+			if (enabled && id !== null && capabilities?.model_id !== id && !checking) void loadCapabilities(id);
 		});
 	});
-	function selectModel(event: Event) {
+	function selectModel(row: EmbeddingModel | null) {
 		if (!allowed || busy) return;
 		capabilityRequest?.abort(); capabilityRequest = null; checking = false;
-		capabilities = null; selected = (event.currentTarget as HTMLSelectElement).value;
+		capabilities = null; selected = row?.id ?? null;
 		dimensions = ''; dimensionBadInput = false; loadError = ''; failure = ''; clearResult();
 	}
 	async function embed() {
@@ -181,6 +187,7 @@
 <svelte:head><title>{t('embeddingStudio.title')}</title></svelte:head>
 <PageShell>
 	<LumenPermissionNotice leaves={['lumen-chat_user']} />
+	<PersonalWorkspaceNotice />
 	<div class="studio">
 		<header class="header">
 			<div><h1>{t('embeddingStudio.title')}</h1><p class="muted">{t('embeddingStudio.description')}</p></div>
@@ -202,13 +209,13 @@
 			</section>
 			<aside class="settings" aria-labelledby="embedding-settings-heading">
 				<h2 id="embedding-settings-heading">{t('embeddingStudio.settings')}</h2>
-				<Field label={t('embeddingStudio.model')} for="embedding-model"><SelectInput id="embedding-model" value={selected} onchange={selectModel} disabled={!allowed || loading || busy}><option value="">{t('embeddingStudio.selectModel')}</option>{#each models as item (item.id)}<option value={String(item.id)}>{item.display_name}</option>{/each}</SelectInput></Field>
+				<ProviderModelSelect {models} value={selected} onSelect={selectModel} modelLabel={t('embeddingStudio.model')} placeholder={t('embeddingStudio.selectModel')} id="embedding-model" disabled={!allowed || loading || busy} />
 				{#if allowed}
 					{#if loading || checking}<LoadingState variant="inline" label={t('embeddingStudio.checking')} />
 					{:else if loadError}<Alert tone="danger">{loadError}<Button variant="subtle" onclick={() => void loadModels()}>{t('embeddingStudio.reload')}</Button></Alert>
 					{:else if !models.length}<Alert tone="warning">{t('embeddingStudio.noModels')}</Alert>
 					{:else if readiness}<Alert tone="warning">{readiness}</Alert>
-					{:else}<p role="status" class="muted">{t('embeddingStudio.ready')}</p>{/if}
+					{:else if !$personalWorkspace}<p role="status" class="muted">{t('embeddingStudio.ready')}</p>{/if}
 				{/if}
 				{#if allowed && capabilities?.supports_dimensions}
 					<Field label={t('embeddingStudio.dimensions')} for="embedding-dimensions" error={dimensionError} help={capabilities.allowed_dimensions

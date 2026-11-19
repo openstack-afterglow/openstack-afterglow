@@ -119,11 +119,12 @@ export function buildWaygateIsoScene({ server, clients, attachments, networks, n
 		const id = `attachment:${attachment.id}`;
 		const network = networkById.get(attachment.network_id);
 		const tone: IsoTone = network?.is_external ? 'external' : network?.is_shared ? 'shared' : 'internal';
+		const kind = network && (network.is_external ? 'external-network' : network.is_shared ? 'shared-network' : 'internal-network');
 		const depth = Math.floor(index / 2) * 1.45;
 		const right = index % 2 === 0;
 		const sublabel = [attachment.cidr, attachment.status !== 'ACTIVE' ? getStatusLabel(attachment.status) : undefined]
 			.filter(Boolean).join(' · ') || undefined;
-		scene.platforms.push({ id, label: network?.name || attachment.network_id, sublabel,
+		scene.platforms.push({ id, label: network?.name || attachment.network_id, sublabel, kind,
 			x: depth + (right ? 1.28 : -0.08), y: depth + (right ? -0.08 : 1.28), w: 1.33, h: 1.33, style: 'slab', tone });
 		targets.set(id, { kind: 'attachment', id: attachment.id });
 		const edge: IsoEdge = { id: `link:${id}`, from: serverId, to: id, kind: 'link', tone,
