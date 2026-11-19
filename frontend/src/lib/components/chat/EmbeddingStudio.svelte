@@ -8,6 +8,9 @@
 	import { Alert, Button, CompactResourceCard, Field, PageShell, ResponsiveTable, SelectInput, TextareaInput, TextInput, TableShell } from '$lib/components/ui';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
+	import PersonalWorkspaceNotice from './PersonalWorkspaceNotice.svelte';
+	import { personalWorkspace } from '$lib/stores/personalWorkspace';
+	import { dashboardCreditMessage } from '$lib/api/chatDomainBilling';
 	import ProviderModelSelect from './ProviderModelSelect.svelte';
 	import { t } from '$lib/i18n/ns/chat-studio';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
@@ -44,12 +47,14 @@
 		|| (capabilities.max_dimensions !== null && parsedDimensions > capabilities.max_dimensions)
 		|| (capabilities.allowed_dimensions != null && !capabilities.allowed_dimensions.includes(parsedDimensions))
 	))) ? t(capabilities?.allowed_dimensions ? 'embeddingStudio.dimensionChoiceInvalid' : 'embeddingStudio.dimensionInvalid') : '');
-	const ready = $derived(allowed && !loading && !checking && !busy && !loadError && !readiness && !dimensionError
+	const ready = $derived(allowed && !$personalWorkspace && !loading && !checking && !busy && !loadError && !readiness && !dimensionError
 		&& rows.length >= 1 && rows.length <= maxInputs && rows.every((row) => Boolean(row.text.trim())));
 	const matrix = $derived(result ? cosineMatrix(result) : []);
 	const resultJson = $derived(result ? JSON.stringify(result, null, 2) : '');
 
 	function message(cause: unknown): string {
+		const credit = dashboardCreditMessage(cause);
+		if (credit) return credit;
 		if (cause instanceof ApiError) {
 			if (cause.status === 401 || cause.status === 403) return t('embeddingStudio.projectDenied');
 			if (cause.status === 402) return t('embeddingStudio.quotaInsufficient');
@@ -182,6 +187,7 @@
 <svelte:head><title>{t('embeddingStudio.title')}</title></svelte:head>
 <PageShell>
 	<LumenPermissionNotice leaves={['lumen-chat_user']} />
+	<PersonalWorkspaceNotice />
 	<div class="studio">
 		<header class="header">
 			<div><h1>{t('embeddingStudio.title')}</h1><p class="muted">{t('embeddingStudio.description')}</p></div>
@@ -209,7 +215,7 @@
 					{:else if loadError}<Alert tone="danger">{loadError}<Button variant="subtle" onclick={() => void loadModels()}>{t('embeddingStudio.reload')}</Button></Alert>
 					{:else if !models.length}<Alert tone="warning">{t('embeddingStudio.noModels')}</Alert>
 					{:else if readiness}<Alert tone="warning">{readiness}</Alert>
-					{:else}<p role="status" class="muted">{t('embeddingStudio.ready')}</p>{/if}
+					{:else if !$personalWorkspace}<p role="status" class="muted">{t('embeddingStudio.ready')}</p>{/if}
 				{/if}
 				{#if allowed && capabilities?.supports_dimensions}
 					<Field label={t('embeddingStudio.dimensions')} for="embedding-dimensions" error={dimensionError} help={capabilities.allowed_dimensions

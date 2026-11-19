@@ -5,6 +5,8 @@ import type * as EmbeddingModule from '$lib/api/embeddingStudio';
 import EmbeddingStudio from '../EmbeddingStudio.svelte';
 import { t } from '$lib/i18n/ns/chat-studio';
 import { intlLocale } from '$lib/i18n/runtime.svelte';
+import { t as t2 } from '$lib/i18n/ns/chat-settings';
+import { ApiError } from '$lib/api/errors';
 
 const calls = vi.hoisted(() => ({ models: vi.fn(), capabilities: vi.fn(), embed: vi.fn() }));
 vi.mock('$lib/api/embeddingStudio', async (original) => ({ ...await original<typeof EmbeddingModule>(), embeddingStudioApi: calls }));
@@ -222,5 +224,33 @@ describe('Embedding Studio', () => {
 		expect(embedButton().hasAttribute('disabled')).toBe(true);
 		await fireEvent.click(embedButton());
 		expect(calls.embed).not.toHaveBeenCalled();
+	});
+});
+
+describe('Embedding Studio in the Personal domain', () => {
+	const workIn = (kind: 'personal' | 'organization') => setVerifiedLumenActor({ ...user('project-1'), availableDomains: [{ id: 'domain-1', name: 'Domain', kind }] });
+
+	it('shows the missing-pool notice and never runs, while models stay inspectable', async () => {
+		workIn('personal');
+		render(EmbeddingStudio);
+		await waitFor(() => expect(calls.capabilities).toHaveBeenCalled());
+		expect(screen.getByText(t2('dashboardChat.personalUnavailable'))).toBeTruthy();
+		expect(screen.getByRole('button', { name: t2('dashboardChat.switchWorkspace') })).toBeTruthy();
+		expect(screen.queryByText(t('embeddingStudio.ready'))).toBeNull();
+		await fireEvent.input(input(1), { target: { value: 'personal input' } });
+		expect(embedButton().hasAttribute('disabled')).toBe(true);
+		await fireEvent.submit(embedButton().closest('form')!);
+		expect(calls.embed).not.toHaveBeenCalled();
+	});
+
+	it('runs in an organization and maps an unfunded pool to a top-up request', async () => {
+		workIn('organization');
+		calls.embed.mockRejectedValue(new ApiError(429, 'domain_credit_insufficient'));
+		render(EmbeddingStudio);
+		await screen.findByText(t('embeddingStudio.ready'));
+		expect(screen.queryByText(t2('dashboardChat.personalUnavailable'))).toBeNull();
+		await fireEvent.input(input(1), { target: { value: 'organization input' } });
+		await fireEvent.click(embedButton());
+		expect(await screen.findByText(t2('dashboardChat.organizationCreditInsufficient'))).toBeTruthy();
 	});
 });

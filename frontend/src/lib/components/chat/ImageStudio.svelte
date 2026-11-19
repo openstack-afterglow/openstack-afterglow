@@ -14,6 +14,9 @@
 	import { t as chatT } from '$lib/i18n/ns/chat-panel';
 	import { serviceCapabilities, serviceDenials } from '$lib/stores/servicePermissions';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
+	import PersonalWorkspaceNotice from './PersonalWorkspaceNotice.svelte';
+	import { personalWorkspace } from '$lib/stores/personalWorkspace';
+	import { dashboardCreditMessage } from '$lib/api/chatDomainBilling';
 	import ProviderModelSelect from './ProviderModelSelect.svelte';
 	import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState } from '$lib/utils/experience';
 
@@ -149,7 +152,7 @@
 		};
 	});
 	const requestFingerprint = $derived(JSON.stringify([storageKey, imageRequest, editFields]));
-	const canSubmit = $derived(imagesAllowed && !readiness && !modelsLoading && !capabilitiesLoading && variantReady && !busy && Boolean(composedPrompt) &&
+	const canSubmit = $derived(imagesAllowed && !$personalWorkspace && !readiness && !modelsLoading && !capabilitiesLoading && variantReady && !busy && Boolean(composedPrompt) &&
 		!attachmentConflict && attachments.every(({ id }) => Boolean(id)));
 	const estimate = $derived.by(() => {
 		const rate = capabilities?.image_output_price_per_million;
@@ -305,6 +308,8 @@
 		} catch { return []; }
 	}
 	function message(cause: unknown): string {
+		const credit = dashboardCreditMessage(cause);
+		if (credit) return credit;
 		if (cause instanceof ApiError) {
 			if (cause.status === 401 || cause.status === 403) return t('imageStudio.projectDenied');
 			if (cause.status === 402) return t('imageStudio.quotaInsufficient');
@@ -647,6 +652,7 @@
 
 <PageShell>
 	<LumenPermissionNotice leaves={['lumen-images_user', 'lumen-assets_editor']} />
+	<PersonalWorkspaceNotice />
 	<div class="studio">
 		<header class="studio-header">
 			<svg class="studio-mark" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5" /><circle cx="15.5" cy="9" r="1.75" /><path d="m3.5 17 5-5.5 4 4 2.5-2.5 5.5 5.5" /></svg>
@@ -754,7 +760,7 @@
 					{:else if readiness}<Alert tone="warning" title={t('imageStudio.notReady')}>{readiness}</Alert>
 					{:else if capabilitiesError}<Alert tone="danger" title={t('imageStudio.optionsLoadFailed')}>{capabilitiesError} <Button variant="subtle" disabled={!imagesAllowed} onclick={() => imagesAllowed && chosenModel && scope && loadCapabilities(chosenModel, scope, ++capabilityRequest)}>{t('imageStudio.retry')}</Button></Alert>
 					{:else if !variantReady}<Alert tone="warning">{t('imageStudio.variantUnavailable')}</Alert>
-					{:else}<p role="status" class="muted">{t('imageStudio.ready')}</p>{/if}
+					{:else if !$personalWorkspace}<p role="status" class="muted">{t('imageStudio.ready')}</p>{/if}
 				{/if}
 			</div>
 		</form>

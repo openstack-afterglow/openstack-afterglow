@@ -2798,3 +2798,71 @@ describe('ChatPanel explicit sandbox selection', () => {
 		}
 	});
 });
+
+describe('ChatPanel in the Personal domain', () => {
+	const personalNotice = '개인 프로젝트에서는 대시보드 채팅을 사용할 수 없습니다. 조직(도메인)을 만들거나 조직 프로젝트로 전환해 사용하세요.';
+	function workIn(kind: 'personal' | 'organization', canCreateDomain = false) {
+		setVerifiedLumenActor({ ...get(auth), canCreateDomain, availableDomains: [{ id: 'domain-1', name: 'Domain', kind }] });
+	}
+	function withHistoryAndAgents() {
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation((path: string, ...args: unknown[]) => {
+			if (path === '/api/v1/chat/conversations') return Promise.resolve([{ id: 'kept', title: 'Personal history', model_name: 'model-1', workspace_id: null, updated_at: at }]);
+			if (path === '/api/v1/chat/agents') return Promise.resolve([{ id: 17, name: 'Personal agent', model_name: 'model-1', mcp_ids: [], tool_ids: [], visibility: 'private' }]);
+			if (path === '/api/v1/chat/models') return Promise.resolve([{ id: 1, provider_id: 11, model_name: 'model-1', display_name: 'Model 1', capabilities: { tool_call: true } }]);
+			return fallback(path, ...args);
+		});
+	}
+
+	it('explains the missing pool up front, blocks send, and keeps history and agents usable', async () => {
+		workIn('personal');
+		withHistoryAndAgents();
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		expect(screen.getByText(personalNotice)).toBeTruthy();
+		expect(screen.getByRole('button', { name: '프로젝트 전환' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: '조직 만들기' })).toBeNull();
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Billed nowhere' } });
+		const send = screen.getByRole('button', { name: '전송' });
+		expect(send.hasAttribute('disabled')).toBe(true);
+		expect(document.getElementById(send.getAttribute('aria-describedby')!)?.textContent).toBe(personalNotice);
+		await fireEvent.click(send);
+		await fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
+		expect(mocks.createRun).not.toHaveBeenCalled();
+		expect(mocks.post).not.toHaveBeenCalled();
+
+		await fireEvent.click(screen.getByTitle('에이전트 선택'));
+		await fireEvent.click(await screen.findByRole('menuitem', { name: /Personal agent/ }));
+		await fireEvent.click(await screen.findByRole('button', { name: '대화 기록과 설정 열기' }));
+		expect(await screen.findByText('Personal history')).toBeTruthy();
+	});
+
+	it('offers organization creation only under the existing create-domain policy', async () => {
+		workIn('personal', true);
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		expect(screen.getByRole('button', { name: '조직 만들기' })).toBeTruthy();
+	});
+
+	it('leaves organization projects unaffected', async () => {
+		workIn('organization', true);
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		expect(screen.queryByText(personalNotice)).toBeNull();
+		await fireEvent.click(screen.getByTitle('저장되지 않는 임시 채팅'));
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Organization message' } });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		await waitFor(() => expect(mocks.createRun).toHaveBeenCalled());
+	});
+
+	it('asks organization members to request a top-up when Lumen refuses the domain pool', async () => {
+		workIn('organization');
+		mocks.createRun.mockRejectedValue(Object.assign(new mocks.ChatHttpError('Request failed', 402), { code: 'domain_credit_insufficient' }));
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		await fireEvent.click(screen.getByTitle('저장되지 않는 임시 채팅'));
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Unfunded' } });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		expect(await screen.findByText('도메인 크레딧이 부족합니다. 도메인 관리자 또는 시스템 관리자에게 충전을 요청하세요.')).toBeTruthy();
+	});
+});
