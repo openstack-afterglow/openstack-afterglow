@@ -341,7 +341,7 @@ Gemini 지원 범위와 제한:
 
 거부되는 도구가 하나라도 있으면 크레딧 예약이나 provider 호출 전에 `403 server_tool_not_allowed_for_key`로 요청 전체가 거부된다. OpenAI와 Gemini는 오류 코드로, Anthropic과 기존 Claude gateway는 오류 메시지에 이 코드를 넣는다. 웹 검색이 내장된 Perplexity Sonar 모델은 별도로 `model_requires_server_tools`로 거부된다.
 
-Codex CLI 0.170은 Responses 요청마다 호스팅 `web_search` 도구를 기본으로 보낸다. 자동 설정 스크립트는 자신이 관리하는 `lumen-cli`·`lumen-sol`·`lumen-luna` profile에 `web_search = "disabled"`를 쓰며 그 profile에 있던 다른 값은 이 값으로 바꾼다. 데스크톱 `config.toml`의 사용자 설정은 바꾸지 않는다. 직접 실행할 때는 `codex --strict-config -c model_provider=lumen -c web_search=disabled -m "<Responses 모델 ID>"`처럼 지정한다.
+Codex CLI는 Responses 요청마다 호스팅 `web_search` 도구를 기본으로 보낸다(0.160.0과 0.170.0에서 확인). 자동 설정 스크립트는 자신이 관리하는 `lumen-cli`·`lumen-sol`·`lumen-luna` profile에 `web_search = "disabled"`를 쓰며 그 profile에 있던 다른 값은 이 값으로 바꾼다. 데스크톱 `config.toml`의 사용자 설정은 바꾸지 않는다. 직접 실행할 때는 `codex --strict-config -c model_provider=lumen -c web_search=disabled -m "<Responses 모델 ID>"`처럼 지정한다. 두 버전 모두 `--strict-config`에서 이 키를 받아들이고 도구를 보내지 않는다.
 
 OpenAI Python 함수 호출 예:
 

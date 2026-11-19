@@ -247,13 +247,28 @@ describe('ChatPanel', () => {
 		expect(mocks.createRun.mock.calls[0][0]).toBe('/api/v1/chat/conversations/selected-provider/completions');
 	});
 
-	it('keeps the exact provider row when retained chat moves to another project in its domain', async () => {
-		loadDuplicateCatalog();
+	it('keeps the exact provider row and its options during a same-domain project switch', async () => {
+		const fallback = mocks.get.getMockImplementation()!;
+		const capabilities = {
+			reasoning: true,
+			reasoning_options: [{ type: 'effort', values: ['high'] }],
+			web_search: true,
+			feature_gates: { web_search: { available: true, mode: 'native', pricing_available: true, reason_code: null } }
+		};
+		const models = duplicateRows.map((row) => ({ ...row, capabilities }));
+		let resolveProjectModels!: (value: typeof models) => void;
+		const pendingModels = new Promise<typeof models>((resolve) => { resolveProjectModels = resolve; });
+		mocks.get.mockImplementation((path: string, token: string, project: string) => path === '/api/v1/chat/models'
+			? project === 'project-2' ? pendingModels : Promise.resolve(models)
+			: fallback(path, token, project));
 		render(ChatPanel);
 		await fireEvent.click(await screen.findByRole('button', { name: 'Shared model · Provider A' }));
 		const picker = within(screen.getByRole('dialog'));
 		await fireEvent.click(picker.getByRole('button', { name: /Provider B/ }));
 		await fireEvent.click(picker.getByRole('button', { name: 'Shared model 모델 선택' }));
+		await fireEvent.click(await screen.findByRole('button', { name: 'Search 웹 검색' }));
+		await fireEvent.click(screen.getByTitle('추론 강도'));
+		await fireEvent.click(screen.getByRole('option', { name: '높음' }));
 		const composer = screen.getByRole('textbox') as HTMLTextAreaElement;
 		await fireEvent.input(composer, { target: { value: 'Keep provider B' } });
 
@@ -262,6 +277,8 @@ describe('ChatPanel', () => {
 		setVerifiedLumenActor({ ...get(auth), projectId: 'project-2', token: 'selected-token' });
 		projectSwitching.set(false);
 		await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/models', 'selected-token', 'project-2'));
+		expect(screen.queryByRole('button', { name: 'Shared model · Provider B' })).toBeNull();
+		resolveProjectModels(models);
 		await screen.findByRole('button', { name: 'Shared model · Provider B' });
 		expect(screen.getByRole('textbox')).toBe(composer);
 		expect(composer.value).toBe('Keep provider B');
@@ -269,7 +286,10 @@ describe('ChatPanel', () => {
 
 		mocks.post.mockResolvedValue({ id: 'selected-provider', model_name: 'shared-model', workspace_id: null });
 		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
-		await waitFor(() => expect(mocks.createRun.mock.calls[0]?.[1]).toMatchObject({ model_id: 'shared-model', model_row_id: 57 }));
+		await waitFor(() => expect(mocks.createRun.mock.calls[0]?.[1]).toMatchObject({
+			model_id: 'shared-model', model_row_id: 57, reasoning_effort: 'high',
+			features: { web_search: { enabled: true, mode: 'native' } }
+		}));
 		expect(mocks.createRun.mock.calls[0][2]).toMatchObject({ token: 'selected-token', projectId: 'project-2' });
 	});
 

@@ -461,7 +461,7 @@ supports_websockets = false
 printf 'Lumen API key: '; read -rs LUMEN_API_KEY; printf '\n'; export LUMEN_API_KEY
 ```
 
-그다음 실제 모델 ID로 placeholder를 바꿔 **같은 셸**에서 실행한다. CLI override를 쓰면 사용자 기본 provider가 Lumen이 아니어도 이 실행만 Lumen으로 연결한다. Codex 0.170은 기본적으로 provider 호스팅 `web_search` 도구를 함께 보내고 Lumen API 키는 이를 `403 server_tool_not_allowed_for_key`로 거부하므로 `-c web_search=disabled`를 함께 지정한다.
+그다음 실제 모델 ID로 placeholder를 바꿔 **같은 셸**에서 실행한다. CLI override를 쓰면 사용자 기본 provider가 Lumen이 아니어도 이 실행만 Lumen으로 연결한다. Codex CLI는 기본적으로 provider 호스팅 `web_search` 도구를 함께 보내고 Lumen API 키는 이를 `403 server_tool_not_allowed_for_key`로 거부하므로 `-c web_search=disabled`를 함께 지정한다. 이 설정은 Codex CLI 0.160.0과 0.170.0에서 `--strict-config`와 함께 동작함을 확인했다.
 
 ```bash
 codex --strict-config -c model_provider=lumen -c web_search=disabled -m "replace-with-active-Responses-model-ID"
