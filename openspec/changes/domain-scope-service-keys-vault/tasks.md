@@ -28,6 +28,6 @@
 
 ## 6. Integration and verification
 
-- [ ] Lumen 0.6.21 integrated (scope, billing, keys, models, vault) with schema snapshot, reviews and gate; agent-vault SQL backends reviewed.
-- [ ] Afterglow experience catalog regenerated, ARCHITECTURE stamped, isolated `npm run test:gate`, browser proof.
+- [x] Lumen 0.6.21 integrated (scope, billing, keys, models, vault) with schema snapshot, reviews and gate; agent-vault SQL backends reviewed.
+- [x] Afterglow experience catalog regenerated, ARCHITECTURE stamped, isolated `npm run test:gate`, browser proof.
 - [ ] Owner-approved domain pool opening top-ups, Lumen then Afterglow rollout, production verification.
