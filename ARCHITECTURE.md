@@ -2306,8 +2306,8 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 {
   "schema_version": 1,
   "source_sha256": "f74282826592d7ed7fbdc005104d5db1e289f34b224fe3fb9eda7767635c4d24",
-  "reviewed_at": "2026-11-19T04:00:22Z",
-  "summary": "Domain pool summary: ChatUsageWidget and ChatSettings read the caller's current domain pool from Lumen's domain_pool (any member; exists:false hides it) via currentDomainPool, falling back to the domain-billed summary only on older Lumen; the header bar follows the pool monthly limit and keeps the personal monthly limit as a separate line."
+  "reviewed_at": "2026-11-19T04:06:58Z",
+  "summary": "Merge origin/dev (Afterglow 1.32.28 rollout receipts, docs only) into the 1.32.29 integration; version line keeps 1.32.29 release preparation"
 }
 ```
 <!-- architecture-review:end -->
