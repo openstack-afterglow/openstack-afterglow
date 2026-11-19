@@ -2341,7 +2341,7 @@
 									{/if}
 								</div>
 							{/if}
-							<div class="mt-0.5 text-xs text-[var(--color-ink-3)]">
+							<div class="mt-0.5 text-xs text-ink-2">
 								<div class="break-all"><RichText segments={t.rich('pricing.apiIdentity', { id: publicModelName(m), provider: m.api_provider })} /></div>
 								{#if m.model_name !== publicModelName(m)}
 									<div class="mt-0.5 break-all">{#snippet rich103markup1(text: string)}<code class="font-mono">{text}</code>{/snippet}<RichText segments={t.rich('configuration.internalRoutingIdentifier', { v0: m.model_name })} tags={{ markup1: rich103markup1 }} /></div>

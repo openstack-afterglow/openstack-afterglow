@@ -506,7 +506,7 @@ claude` : '');
 	{#if loading && !keyListLoaded}
 		<LoadingState label={t('apiKeys.loading')} />
 	{:else if visibleKeys.length === 0}
-		<p class="px-1 text-sm text-[var(--color-ink-3)]">{t('apiKeys.empty')}</p>
+		<p class="px-1 text-sm text-ink-2">{t('apiKeys.empty')}</p>
 	{:else}
 		<div class="space-y-2">
 			{#each visibleKeys as k (k.id)}
@@ -518,7 +518,7 @@ claude` : '');
 								{#if !k.is_active}<span class="rounded bg-line px-1.5 py-0.5 text-xs text-ink-2">{t('apiKeys.revoked')}</span>
 								{:else if k.expires_at && Date.parse(k.expires_at) <= Date.now()}<span class="rounded bg-surface-sunken px-1.5 py-0.5 text-xs text-state-warning-text">{t('apiKeys.expired')}</span>{/if}
 							</div>
-							<div class="mt-0.5 font-mono text-xs text-[var(--color-ink-3)]">
+							<div class="mt-0.5 font-mono text-xs text-ink-2">
 								{k.key_prefix}…{#if k.last_used_at} · {t('apiKeys.lastUsed', { date: new Date(k.last_used_at).toLocaleString(intlLocale()) })}{:else} · {t('apiKeys.unused')}{/if}
 							</div>
 							<p class="mt-1 text-xs text-ink-2">{k.expires_at ? t('apiKeys.expiresAt', { date: new Date(k.expires_at).toLocaleString(intlLocale()) }) : t('apiKeys.expiry.never')}</p>
