@@ -62,6 +62,18 @@ export interface ChatUsage {
 	monthly_used_credits?: string;
 	effective_monthly_limit_credits?: string | null;
 	is_active?: boolean;
+	/** The caller's current domain pool (aggregates only); absent on older Lumen. */
+	domain_pool?: DomainPoolSummary | null;
+}
+
+export interface DomainPoolSummary {
+	domain_id: string;
+	exists: boolean;
+	funded: boolean;
+	balance_credits: string | number | null;
+	reserved_credits: string | number | null;
+	monthly_used_credits: string | number | null;
+	effective_monthly_limit_credits: string | number | null;
 }
 
 export interface ChatMessage {

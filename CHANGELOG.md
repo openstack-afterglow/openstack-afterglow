@@ -48,6 +48,8 @@
 - Codex profiles managed by the Lumen installers and the dashboard Codex commands use `web_search = "disabled"`. Lumen API keys refuse provider-executed tools with 403 `server_tool_not_allowed_for_key`; the SDK tutorial documents client tool calling and the refused server tools.
 - 채팅 설정 사용량은 행과 합계를 결제 주체(개인 지갑·도메인 풀)로 표시한다. 기본 보기는 모든 결제 주체에 걸친 내 사용량이며, 도메인 매니저는 "내 사용량 / 도메인 사용량"을 전환해 도메인 풀 사용량(`scope=domain`)을 볼 수 있다. Lumen이 권한을 거절(403 `domain_manager_required`)하면 안내와 함께 내 사용량으로 돌아간다. 사용량 BFF 응답은 모두 `no-store`다.
 - Chat settings usage labels rows and totals by payer (personal wallet or domain pool). The default view is your own usage across every payer; domain managers can switch between "My usage" and "Domain usage" to see the domain pool (`scope=domain`). If Lumen refuses (403 `domain_manager_required`), the page returns to your own usage with a notice. All usage BFF responses are `no-store`.
+- 채팅 헤더와 채팅 설정은 현재 도메인의 선불 풀(`domain_pool`)을 결제 주체와 관계없이 모든 구성원에게 보여 준다. 헤더는 풀 잔액과 도메인 풀 월 한도 사용률(막대)을 표시하고, 내 월 한도가 있으면 함께 표시한다. 풀이 없는 도메인(개인 도메인 포함)에는 풀 줄을 표시하지 않으며, `domain_pool`이 없는 이전 Lumen에서는 기존 표시를 유지한다.
+- The chat header and chat settings show the current domain's prepaid pool (`domain_pool`) to every member regardless of who paid. The header shows the pool balance and domain pool monthly limit usage (bar), plus your own monthly limit when one is set. Domains without a pool (including the Personal domain) show no pool line, and older Lumen without `domain_pool` keeps the previous display.
 
 ### Deployment
 

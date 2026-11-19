@@ -173,4 +173,31 @@ describe('ChatSettings usage views', () => {
 		await waitFor(() => expect(usageCalls().at(-1)).not.toContain('scope='));
 		expect(await screen.findByText(t('usage.payerSummary', { credits: '1.25', requests: 3 }))).toBeTruthy();
 	});
+
+	it.each([false, true])('shows the current domain pool card from domain_pool in the personal view (manager: %s)', async (isDomainManager) => {
+		actor(isDomainManager);
+		const personal = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation(async (path: string) => path === '/api/v1/chat/usage' ? {
+			...summary('self'), quota_used: 3, quota_max: 50,
+			domain_pool: { domain_id: 'domain-1', exists: true, funded: true, balance_credits: '25.50000000', reserved_credits: '1.00000000', monthly_used_credits: '30.00000000', effective_monthly_limit_credits: null },
+		} : personal(path));
+		render(ChatSettings);
+		const card = (await screen.findByRole('heading', { name: t('domainBilling.title') })).parentElement as HTMLElement;
+		expect(within(card).getByText('25.5')).toBeTruthy();
+		expect(within(card).getByText(t('domainBilling.noLimit'))).toBeTruthy();
+		// The caller's own monthly limit is still listed beside the pool.
+		expect(screen.getByText(t('settings.usage.monthlyQuota', { used: '3', limit: '50' }))).toBeTruthy();
+	});
+
+	it('shows no pool card when the current domain has no pool', async () => {
+		actor(false);
+		const personal = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation(async (path: string) => path === '/api/v1/chat/usage' ? {
+			...summary('self'),
+			domain_pool: { domain_id: 'domain-1', exists: false, funded: false, balance_credits: '0', reserved_credits: '0', monthly_used_credits: '0', effective_monthly_limit_credits: null },
+		} : personal(path));
+		render(ChatSettings);
+		await screen.findByRole('heading', { level: 3, name: t('usage.byPayerTitle') });
+		expect(screen.queryByRole('heading', { name: t('domainBilling.title') })).toBeNull();
+	});
 });
