@@ -79,8 +79,8 @@
 
 ### Deployment
 
-- 새 DB migration, 설정 키, Lumen 요구 버전 변경은 없다.
-- No new DB migration, configuration key or Lumen requirement.
+- DMS Lab 컨트롤러 3대에 Afterglow 1.32.28을 15:29:16–15:31:14 UTC에 배포했다. Lumen은 0.6.20 그대로이며 새 DB migration, 설정 키, Lumen 요구 버전 변경은 없다. [릴리즈 노트](https://github.com/openstack-afterglow/openstack-afterglow/releases/tag/1.32.28) 및 [`docs/testing.md`](docs/testing.md)에 배포·복구 수신증과 운영 UI 검증 한계를 기록했다.
+- Deployed Afterglow 1.32.28 to three DMS Lab controllers at 15:29:16–15:31:14 UTC. Lumen remains at 0.6.20. No new DB migration, configuration key or Lumen requirement. See the [release](https://github.com/openstack-afterglow/openstack-afterglow/releases/tag/1.32.28) and [`docs/testing.md`](docs/testing.md) for rollout and recovery receipts and production UI verification limits.
 
 ## [1.32.27] - 2026-11-18
 
