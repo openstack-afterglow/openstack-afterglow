@@ -8,5 +8,5 @@
 ## 2. Verification
 
 - [x] Focused vitest suites, i18n check, svelte-check on touched files; synthetic browser proof of instance and Drover grids.
-- [ ] Isolated `npm run test:gate`.
+- [x] Isolated `npm run test:gate` on 48b91dae: backend 15,702 passed / 107 skipped, frontend 8,782 passed, contracts 329, functional 301 passed / 46 skipped, Ruff clean.
 - [ ] Production verification after release and rollout (instance with ports/volumes/shares, Drover cluster, provider key pool against Lumen with the new fields).
