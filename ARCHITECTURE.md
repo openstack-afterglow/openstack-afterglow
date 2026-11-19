@@ -2304,9 +2304,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "80c9c981ea6912770f71416016cbd2920d6127a032193dbe83381f7085476164",
-  "reviewed_at": "2026-11-19T03:45:26Z",
-  "summary": "Afterglow 1.32.29 release prep: version bump and version line, CHANGELOG with deployment notes (Lumen 0.6.21 requirement, ingress secret, lumen_external_url), personal-domain chat guidance, realtime close relay, cross-tab top-up recovery, Codex web_search disabled in installers, SDK tool-calling docs; archive lumen-sdk-tutorials"
+  "source_sha256": "6c251e9d859f20311d25c26986b887ed342067da55e20f093db16740d64116b8",
+  "reviewed_at": "2026-11-19T03:53:18Z",
+  "summary": "Chat usage views: ChatSettings/ChatUsagePanel label rows and totals by payer (billing_scope, by_payer, credited_cost_by_payer); domain managers switch to scope=domain on every usage call with 403 domain_manager_required fallback; Lumen proxy forwards scope and marks all usage responses no-store. Reviewed chatUsage.ts, chatTree.ts, ChatSettings.svelte, ChatUsagePanel.svelte, proxy.py."
 }
 ```
 <!-- architecture-review:end -->

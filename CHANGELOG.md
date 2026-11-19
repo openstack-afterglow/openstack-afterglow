@@ -46,6 +46,8 @@
 - Domain pool top-ups persist a per-admin, per-domain recovery record (idempotency key, amount, note) in the browser before sending and send nothing if it cannot be stored. A top-up whose reply was lost is rechecked against the Lumen ledger; until confirmed, only a same-key retry is offered. Tabs serialize top-ups per domain with Web Locks and never clear another key's record.
 - Lumen 설치기가 관리하는 Codex 프로필과 대시보드의 Codex 실행 명령은 `web_search = "disabled"`를 사용한다. Lumen API 키는 공급자가 실행하는 도구를 403 `server_tool_not_allowed_for_key`로 거절하며, SDK 튜토리얼에 클라이언트 도구 호출과 거절되는 서버 도구를 정리했다.
 - Codex profiles managed by the Lumen installers and the dashboard Codex commands use `web_search = "disabled"`. Lumen API keys refuse provider-executed tools with 403 `server_tool_not_allowed_for_key`; the SDK tutorial documents client tool calling and the refused server tools.
+- 채팅 설정 사용량은 행과 합계를 결제 주체(개인 지갑·도메인 풀)로 표시한다. 기본 보기는 모든 결제 주체에 걸친 내 사용량이며, 도메인 매니저는 "내 사용량 / 도메인 사용량"을 전환해 도메인 풀 사용량(`scope=domain`)을 볼 수 있다. Lumen이 권한을 거절(403 `domain_manager_required`)하면 안내와 함께 내 사용량으로 돌아간다. 사용량 BFF 응답은 모두 `no-store`다.
+- Chat settings usage labels rows and totals by payer (personal wallet or domain pool). The default view is your own usage across every payer; domain managers can switch between "My usage" and "Domain usage" to see the domain pool (`scope=domain`). If Lumen refuses (403 `domain_manager_required`), the page returns to your own usage with a notice. All usage BFF responses are `no-store`.
 
 ### Deployment
 

@@ -1,5 +1,6 @@
 import { t } from '$lib/i18n/ns/chat-panel';
 import type { ModelCapabilities } from './chatContracts';
+import type { BillingScope, UsagePayer, UsageView } from './chatUsage';
 import { aggregateCitations } from './chatCitations';
 import {
 	mergeToolActivity,
@@ -51,7 +52,10 @@ export interface ChatUsage {
 	quota_used: number;
 	quota_max: number;
 	quota_weekly_max: number;
-	billing_scope?: 'domain' | 'user';
+	/** `self` = the caller's usage across every payer; `domain` = the pool (managers only). */
+	view?: UsageView;
+	billing_scope?: BillingScope;
+	by_payer?: UsagePayer[];
 	payer_domain_id?: string | null;
 	balance_credits?: string | number | null;
 	reserved_credits?: string | number | null;
