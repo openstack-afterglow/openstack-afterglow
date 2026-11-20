@@ -50,6 +50,8 @@ const model = {
 };
 const second = { ...model, id: 71, display_name: 'Second', model_name: 'openai/second', sort_order: 0, is_title_model: false };
 const hidden = { ...model, id: 20, provider_id: 2, display_name: 'Hidden', model_name: 'openai/hidden', sort_order: 100, is_title_model: false };
+const image = { ...second, id: 72, display_name: 'Image', model_name: 'openai/image', model_kind: 'image', sort_order: 5 };
+const tabStorageKey = 'afterglow.admin.models.kindTab';
 let providers: typeof nim[];
 let models: typeof model[];
 
@@ -96,6 +98,7 @@ async function dragModel(source: HTMLElement, target: HTMLElement, edge: 'before
 
 beforeEach(() => {
 	vi.resetAllMocks();
+	localStorage.removeItem(tabStorageKey);
 	mocks.auth.set({ token: 'token', projectId: 'project' });
 	mocks.authReady.set(true); mocks.projectSwitching.set(false);
 	providers = [{ ...nim }, { ...empty }, { ...other }];
@@ -206,14 +209,16 @@ describe('provider catalog administration', () => {
 
 	it('uses rank then ID ordering for provider rows, all provider controls and registered models', async () => {
 		providers = [{ ...nim, sort_order: 0 }, { ...empty, sort_order: 0 }, { ...other, sort_order: 5 }];
-		models = [{ ...model, sort_order: 0 }, { ...second, sort_order: 0 }, { ...hidden }];
+		models = [{ ...model, sort_order: 0 }, { ...second, sort_order: 0 }, { ...hidden }, { ...second, id: 90, provider_id: 9, display_name: 'Third group' }];
 		const view = render(ProviderPage);
 		await screen.findByText('NVIDIA NIM');
 		expect(Array.from(view.container.querySelectorAll('[data-provider-id]'), (row) => Number(row.getAttribute('data-provider-id')))).toEqual([7, 9, 2]);
 		view.unmount();
 		const modelView = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
-		expect(rowOrder(modelView.container)).toEqual([70, 71, 20]);
+		const panel = screen.getByRole('tabpanel', { name: '텍스트 (4)' });
+		expect(within(panel).getAllByRole('heading').map((heading) => heading.textContent)).toEqual(['NVIDIA NIM', 'Empty', 'Other']);
+		expect(rowOrder(modelView.container)).toEqual([70, 71, 90, 20]);
 		expect(within(screen.getByLabelText('등록 모델 프로바이더 필터')).getAllByRole('option').slice(1).map((option) => option.textContent)).toEqual(['NVIDIA NIM', 'Empty', 'Other']);
 		await fireEvent.click(screen.getByRole('button', { name: '+ 모델 추가' }));
 		expect(within(screen.getByLabelText('조회 프로바이더')).getAllByRole('option').slice(1).map((option) => option.textContent)).toEqual(['NVIDIA NIM', 'Empty', 'Other']);
@@ -221,7 +226,8 @@ describe('provider catalog administration', () => {
 		expect(within(screen.getByLabelText('조회 프로바이더')).getAllByRole('option').slice(1).map((option) => option.textContent)).toEqual(['NVIDIA NIM', 'Empty', 'Other']);
 	});
 
-	it('clears selection on registered filter changes and bulk deletes only visible models independently of creation selection', async () => {
+	it('clears selection on provider changes and bulk deletes only models shown in the active tab', async () => {
+		models.push(image);
 		const view = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
 		await fireEvent.click(screen.getByRole('checkbox', { name: 'Hidden 선택' }));
@@ -233,10 +239,10 @@ describe('provider catalog administration', () => {
 		for (const action of ['가격 수정', '기능 수정', 'Nemotron 위로 이동', 'Nemotron 아래로 이동', '비활성화', '제목요약 해제', '삭제']) {
 			expect(within(modelRow(70)).getByRole('button', { name: action })).toBeTruthy();
 		}
-		await fireEvent.click(screen.getByRole('checkbox', { name: '전체 선택' }));
+		await fireEvent.click(screen.getByRole('checkbox', { name: '현재 탭에 표시된 모델 전체 선택' }));
 		await fireEvent.click(screen.getByRole('button', { name: '선택 삭제 (2)' }));
 		await waitFor(() => expect(rowOrder(view.container)).toEqual([]));
-		expect(models.map((row) => row.id)).toEqual([20]);
+		expect(models.map((row) => row.id)).toEqual([20, 72]);
 		await fireEvent.change(screen.getByLabelText('등록 모델 프로바이더 필터'), { target: { value: '' } });
 		expect((await screen.findByRole('checkbox', { name: 'Hidden 선택' }) as HTMLInputElement).checked).toBe(false);
 	});
@@ -246,7 +252,7 @@ describe('provider catalog administration', () => {
 		mocks.confirm.mockReturnValueOnce(confirmation.promise);
 		render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
-		await fireEvent.click(screen.getByRole('checkbox', { name: '전체 선택' }));
+		await fireEvent.click(screen.getByRole('checkbox', { name: '현재 탭에 표시된 모델 전체 선택' }));
 		await fireEvent.click(screen.getByRole('button', { name: '선택 삭제 (3)' }));
 		await fireEvent.change(screen.getByLabelText('등록 모델 프로바이더 필터'), { target: { value: '2' } });
 		confirmation.resolve(true);
@@ -289,17 +295,28 @@ describe('provider catalog administration', () => {
 		expect(rowOrder(reloaded.container)).toEqual([20, 71, 70]);
 	});
 
-	it('permutes kind-filtered visible slots without moving hidden models or another provider', async () => {
-		models.push({ ...model, id: 72, display_name: 'Image', model_name: 'openai/image', model_kind: 'image', sort_order: 5 });
+	it.each(['drag', 'keyboard'])('sends complete provider lists and preserves hidden-kind slots during %s reorder', async (method) => {
+		models.push(image);
 		const view = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
-		await fireEvent.change(screen.getByLabelText('등록 모델 종류 필터'), { target: { value: 'text' } });
-		await dragModel(modelRow(70), modelRow(71), 'before');
-		await waitFor(() => expect(modelRow(70).getAttribute('draggable')).toBe('true'));
+		expect(rowOrder(view.container)).toEqual([20, 71, 70]);
+		if (method === 'drag') {
+			await dragModel(modelRow(70), modelRow(71), 'before');
+		} else {
+			await fireEvent.click(within(modelRow(70)).getByRole('button', { name: 'Nemotron 위로 이동' }));
+		}
+		const list = screen.getByRole('list', { name: 'NVIDIA NIM' });
+		await waitFor(() => expect(list.getAttribute('aria-busy')).toBe('false'));
 		expect(rowOrder(view.container)).toEqual([20, 70, 71]);
-		await fireEvent.change(screen.getByLabelText('등록 모델 종류 필터'), { target: { value: '' } });
-		expect(rowOrder(view.container)).toEqual([20, 70, 72, 71]);
+		expect(mocks.post).toHaveBeenCalledExactlyOnceWith('/api/v1/chat/admin/models/reorder', {
+			provider_id: 7, expected_model_ids: [71, 72, 70], model_ids: [70, 72, 71]
+		}, 'token', 'project');
 		expect(models.find((row) => row.id === 20)?.sort_order).toBe(100);
+		expect(models.find((row) => row.id === 72)?.sort_order).toBe(1);
+		await fireEvent.click(screen.getByRole('tab', { name: '이미지 (1)' }));
+		expect(rowOrder(view.container)).toEqual([72]);
+		expect((within(modelRow(72)).getByRole('button', { name: 'Image 위로 이동' }) as HTMLButtonElement).disabled).toBe(true);
+		expect((within(modelRow(72)).getByRole('button', { name: 'Image 아래로 이동' }) as HTMLButtonElement).disabled).toBe(true);
 	});
 
 	it('restores server order after a conflict, keeps concurrent price changes and permits a keyboard/touch retry', async () => {
@@ -322,7 +339,8 @@ describe('provider catalog administration', () => {
 		expect(within(modelRow(70)).getByRole('button', { name: '제목요약 지정' })).toBeTruthy();
 	});
 
-	it('ignores cross-provider drops, drags starting on a control, canceled drags and filter changes mid-drag', async () => {
+	it('ignores cross-provider drops, control starts, canceled drags and tab changes mid-drag', async () => {
+		models.push(image);
 		const view = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
 		await dragModel(modelRow(70), modelRow(20), 'before');
@@ -333,11 +351,14 @@ describe('provider catalog administration', () => {
 		await dragEvent(modelRow(70), 'dragend');
 		await dragEvent(modelRow(71), 'drop', { clientY: -1 });
 		await startDrag(modelRow(70));
-		await fireEvent.change(screen.getByLabelText('등록 모델 종류 필터'), { target: { value: 'text' } });
+		await fireEvent.click(screen.getByRole('tab', { name: '이미지 (1)' }));
+		expect((await dragEvent(modelRow(72), 'dragover', { clientY: -1 })).defaultPrevented).toBe(false);
+		await dragEvent(modelRow(72), 'drop', { clientY: -1 });
+		await fireEvent.click(screen.getByRole('tab', { name: '텍스트 (3)' }));
 		await dragEvent(modelRow(71), 'drop', { clientY: -1 });
 		expect(rowOrder(view.container)).toEqual([20, 71, 70]);
 		expect(mocks.post).not.toHaveBeenCalled();
-		await fireEvent.click(control);
+		await fireEvent.click(within(modelRow(70)).getByRole('button', { name: '가격 수정' }));
 		expect((within(screen.getByRole('dialog')).getByLabelText('입력') as HTMLInputElement).value).toBe('1.25');
 	});
 
@@ -350,7 +371,7 @@ describe('provider catalog administration', () => {
 		});
 		const view = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
-		const list = screen.getByRole('list', { name: '등록 모델 표시 순서' });
+		const list = screen.getByRole('list', { name: 'NVIDIA NIM' });
 		const card = modelRow(70);
 		await fireEvent.click(within(card).getByRole('button', { name: 'Nemotron 위로 이동' }));
 		expect(rowOrder(view.container)).toEqual([20, 71, 70, 72]);
@@ -375,7 +396,7 @@ describe('provider catalog administration', () => {
 	it('keeps the exposed list during reconciliation and ignores a stale read when another move is queued', async () => {
 		const view = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
-		const list = screen.getByRole('list', { name: '등록 모델 표시 순서' });
+		const list = screen.getByRole('list', { name: 'NVIDIA NIM' });
 		const card = modelRow(70);
 		const read = deferred<typeof models>();
 		mocks.get.mockImplementationOnce(async (path: string) => {
@@ -408,7 +429,7 @@ describe('provider catalog administration', () => {
 		await fireEvent.click(within(modelRow(20)).getByRole('button', { name: 'Hidden 아래로 이동' }));
 		expect(rowOrder(view.container)).toEqual([21, 20, 70, 71]);
 		pending.resolve();
-		await waitFor(() => expect(screen.getByRole('list', { name: '등록 모델 표시 순서' }).getAttribute('aria-busy')).toBe('false'));
+		await waitFor(() => expect(screen.getByRole('list', { name: 'NVIDIA NIM' }).getAttribute('aria-busy')).toBe('false'));
 		view.unmount();
 		const reloaded = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
@@ -427,7 +448,7 @@ describe('provider catalog administration', () => {
 		});
 		const view = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
-		const list = screen.getByRole('list', { name: '등록 모델 표시 순서' });
+		const list = screen.getByRole('list', { name: 'NVIDIA NIM' });
 		const card = modelRow(70);
 		await fireEvent.click(within(card).getByRole('button', { name: 'Nemotron 위로 이동' }));
 		await fireEvent.click(within(card).getByRole('button', { name: 'Nemotron 위로 이동' }));

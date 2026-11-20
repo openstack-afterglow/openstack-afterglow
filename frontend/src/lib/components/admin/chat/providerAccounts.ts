@@ -37,6 +37,11 @@ export interface ProviderAccount extends PoolEntry {
 	quota_group: string | null;
 	credentials: ProviderCredential[];
 }
+
+export function comparePoolOrder(a: PoolEntry, b: PoolEntry): number {
+	return a.priority - b.priority || a.id - b.id;
+}
+
 export interface ProbeModel {
 	id: number;
 	provider_id: number;

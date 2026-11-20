@@ -13,7 +13,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
-	import { allowedDeviceUri, eligibility, eligibilityDraft, localTimestamp, safeEndpoint, sumLedgerCosts, summarizeAccountUsage, type RelayPage, type AccountProvider, type ProviderAccount, type ProviderCredential, type AccountUsage, type DeviceAttempt, type ProbeModel, type ProbeResult } from './providerAccounts';
+	import { allowedDeviceUri, comparePoolOrder, eligibility, eligibilityDraft, localTimestamp, safeEndpoint, sumLedgerCosts, summarizeAccountUsage, type RelayPage, type AccountProvider, type ProviderAccount, type ProviderCredential, type AccountUsage, type DeviceAttempt, type ProbeModel, type ProbeResult, type PoolEntry } from './providerAccounts';
 
 	type UsageSummary = ReturnType<typeof summarizeAccountUsage>;
 	type UsageRead = { status: 'loading' | 'failed' } | { status: 'loaded'; summary: UsageSummary };
@@ -25,7 +25,8 @@
 	let loading = $state(false);
 	let busy = $state(false);
 	let error = $state('');
-	let policy = $state('priority');
+	let policy = $state<NonNullable<AccountProvider['selection_policy']>>('priority');
+	let savedPolicy = $state<AccountProvider['selection_policy']>();
 	let selected = $state('');
 	let usage = $state<Record<number, UsageRead>>({});
 	let histories = $state<Record<number, RelayPage>>({});
@@ -87,6 +88,7 @@
 		if (identity !== authIdentity) { authIdentity = identity; reset(); }
 	});
 	$effect(() => {
+		savedPolicy = provider.selection_policy;
 		const identity = JSON.stringify([provider.id, provider.auth_mode, provider.provider_type, provider.api_base, provider.is_active, token, projectId]);
 		if (identity === propScopeIdentity) return;
 		propScopeIdentity = identity;
@@ -134,13 +136,19 @@
 		try {
 			const result = await api.get<ProviderAccount[]>(`${ctx.base}/accounts`, ctx.token, ctx.project);
 			if (ctx.current() && request === readGeneration) {
-				accounts = result;
-				void loadAllUsage(result, ctx, request);
+				const ordered = result
+					.map((account) => ({ ...account, credentials: [...account.credentials].sort(comparePoolOrder) }))
+					.sort(comparePoolOrder);
+				accounts = ordered;
+				void loadAllUsage(ordered, ctx, request);
 			}
 		} catch (caught) { if (ctx.current() && request === readGeneration) { error = caught instanceof ApiError && caught.status === 404 ? t('accounts.poolUnavailable') : failure(caught); listFailed = true; } }
 		finally { if (ctx.current() && request === readGeneration) loading = false; }
 	}
-	export function show() { reset(); open = true; policy = provider.selection_policy ?? 'priority'; selected = provider.selected_credential_id?.toString() ?? ''; void load(); }
+	export function show() {
+		reset(); open = true; savedPolicy = provider.selection_policy; policy = savedPolicy ?? 'priority';
+		selected = provider.selected_credential_id?.toString() ?? ''; void load();
+	}
 	function close() { reset(); }
 	async function mutate(action: (ctx: ReturnType<typeof context>) => Promise<unknown>, after?: () => void) {
 		if (busy || !open || !token) return;
@@ -199,7 +207,8 @@
 	}
 	async function savePolicy() {
 		if (policy === 'explicit' && !credentials.some(({ credential }) => String(credential.id) === selected)) { error = t('accounts.selectCredential'); return; }
-		await mutate((ctx) => api.patch(ctx.base, { selection_policy: policy, selected_credential_id: policy === 'explicit' ? Number(selected) : null }, ctx.token, ctx.project));
+		const nextPolicy = policy;
+		await mutate((ctx) => api.patch(ctx.base, { selection_policy: nextPolicy, selected_credential_id: nextPolicy === 'explicit' ? Number(selected) : null }, ctx.token, ctx.project), () => { savedPolicy = nextPolicy; });
 	}
 	async function loadAllUsage(entries: ProviderAccount[], ctx: ReturnType<typeof context>, request: number) {
 		for (const { id } of entries) usage[id] = { status: 'loading' };
@@ -309,6 +318,23 @@
 	}
 </script>
 
+{#snippet setting(label: string, value: string | number, help: string)}
+	<div class="min-w-0">
+		<dt class="inline font-medium text-[var(--color-ink-0)]">{label}</dt>
+		<dd class="inline">
+			<span class="ms-1.5 tabular-nums [overflow-wrap:anywhere] text-[var(--color-ink-1)]">{value}</span>
+			<span class="mt-0.5 block text-[var(--color-ink-2)]">{help}</span>
+		</dd>
+	</div>
+{/snippet}
+
+{#snippet routingSettings(entry: PoolEntry)}
+	{@render setting(t('accounts.priority'), entry.priority, t('accounts.priorityHelp'))}
+	{@render setting(t('accounts.weight'), entry.weight, t('accounts.weightHelp'))}
+	{@render setting(t('accounts.modelIds'), eligibilityDraft(entry.allowed_model_ids) || t('accounts.unrestricted'), t('accounts.modelIdsHelp'))}
+	{@render setting(t('accounts.operations'), eligibilityDraft(entry.allowed_capabilities) || t('accounts.unrestricted'), t('accounts.operationsHelp'))}
+{/snippet}
+
 <Button variant="outline" size="sm" onclick={show}>{t('accounts.manage')}</Button>
 <Modal bind:open onClose={close} ariaLabel={t('accounts.manage')}>
 	<div class="max-h-[calc(100dvh-2rem)] w-[min(58rem,calc(100vw-2rem))] max-w-full overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-4 sm:p-6">
@@ -325,6 +351,7 @@
 			{#if policy === 'explicit'}<Field label={t('accounts.selectedCredential')} for="pool-credential"><SelectInput id="pool-credential" bind:value={selected} disabled={busy}><option value="">{t('accounts.selectCredential')}</option>{#each credentials as item (item.credential.id)}<option value={String(item.credential.id)}>{credentialPathIdentity(item.account, item.credential)}</option>{/each}</SelectInput></Field>{/if}
 		</div>
 		<p class="mt-2 text-xs text-[var(--color-ink-2)]">{t('accounts.policyHelp')}</p>
+		{#if savedPolicy === 'priority'}<p class="mt-1 text-xs text-[var(--color-ink-2)]">{t('accounts.selectionOrderHelp')}</p>{/if}
 		<div class="mt-3 flex flex-wrap gap-2"><Button variant="secondary" size="sm" disabled={busy || loading || listFailed} onclick={savePolicy}>{t('accounts.savePolicy')}</Button><Button size="sm" disabled={busy || loading || listFailed} onclick={() => editAccount()}>{t('accounts.addAccount')}</Button><Button variant="ghost" size="sm" disabled={busy || loading} onclick={() => { error = ''; void load(); }}>{t('configuration.refreshAll')}</Button></div>
 		{#if editor}
 			<form class="mt-4 space-y-3 rounded-lg border border-[var(--color-line)] p-4" onsubmit={saveEntry} aria-label={t(editor.kind === 'account' ? 'accounts.accountEditor' : 'accounts.credentialEditor')}>
@@ -388,15 +415,25 @@
 		{#if loading}<LoadingState variant={accounts.length ? 'inline' : 'section'} label={t('accounts.loading')} />{/if}
 		{#if !loading && !listFailed && accounts.length === 0}<p class="mt-4 text-sm text-[var(--color-ink-2)]">{t('accounts.empty')}</p>{/if}
 		<div class="mt-4 space-y-4">
-			{#each accounts as account (account.id)}
+			{#each accounts as account, accountIndex (account.id)}
 				{@const usageRead = usage[account.id]}
 				{@const accountUsage = usageRead?.status === 'loaded' ? usageRead.summary : null}
 				{@const usageMonth = monthLabel(accountUsage?.period ?? null)}
 				<section class="rounded-lg border border-[var(--color-line)] p-3 sm:p-4" aria-label={accountIdentity(account)}>
-					<div class="flex flex-wrap items-center justify-between gap-2"><div class="flex min-w-0 flex-wrap items-center gap-2"><h4 class="break-words font-medium text-[var(--color-ink-0)]">{accountIdentity(account)}</h4><Pill tone={account.is_active ? 'success' : 'neutral'}>{account.is_active ? t('configuration.active') : t('configuration.inactive')}</Pill></div><div class="flex flex-wrap gap-2"><Button variant="ghost" size="sm" disabled={busy} onclick={() => editAccount(account)}>{t('accounts.edit')}</Button><Button variant="ghost" size="sm" disabled={busy} onclick={() => mutate((ctx) => api.patch(`${ctx.base}/accounts/${account.id}`, { is_active: !account.is_active }, ctx.token, ctx.project))}>{account.is_active ? t('configuration.deactivate') : t('configuration.activate')}</Button><Button variant="danger-outline" size="sm" disabled={busy} onclick={() => remove(account)}>{t('configuration.delete')}</Button></div></div>
+					<div class="flex flex-wrap items-center justify-between gap-2">
+						<div class="flex min-w-0 flex-wrap items-center gap-2">
+							<h4 class="break-words font-medium text-[var(--color-ink-0)]">{accountIdentity(account)}</h4>
+							<Pill tone={account.is_active ? 'success' : 'neutral'}>{account.is_active ? t('configuration.active') : t('configuration.inactive')}</Pill>
+							{#if savedPolicy === 'priority'}<Pill size="xs">{t('accounts.selectionOrder', { order: accountIndex + 1 })}</Pill>{/if}
+						</div>
+						<div class="flex flex-wrap gap-2"><Button variant="ghost" size="sm" disabled={busy} onclick={() => editAccount(account)}>{t('accounts.edit')}</Button><Button variant="ghost" size="sm" disabled={busy} onclick={() => mutate((ctx) => api.patch(`${ctx.base}/accounts/${account.id}`, { is_active: !account.is_active }, ctx.token, ctx.project))}>{account.is_active ? t('configuration.deactivate') : t('configuration.activate')}</Button><Button variant="danger-outline" size="sm" disabled={busy} onclick={() => remove(account)}>{t('configuration.delete')}</Button></div>
+					</div>
 					<p class="mt-1 text-xs text-[var(--color-ink-2)]">{t('accounts.registered', { date: registrationTime(account.created_at) })}</p>
-					<p class="mt-2 break-all text-xs text-[var(--color-ink-2)]">{t('accounts.poolSummary', { priority: account.priority, weight: account.weight })} · {t('accounts.quotaGroup')}: {account.quota_group ?? t('accounts.unset')}</p>
-					<p class="mt-1 break-all text-xs text-[var(--color-ink-2)]">{t('accounts.modelIds')}: {eligibilityDraft(account.allowed_model_ids) || t('accounts.unrestricted')} · {t('accounts.operations')}: {eligibilityDraft(account.allowed_capabilities) || t('accounts.unrestricted')}</p>
+					<h5 class="mt-3 text-xs font-medium text-[var(--color-ink-1)]">{t('accounts.accountEditor')}</h5>
+					<dl class="mt-2 grid gap-x-4 gap-y-2.5 text-xs sm:grid-cols-2 lg:grid-cols-3">
+						{@render routingSettings(account)}
+						{@render setting(t('accounts.quotaGroup'), account.quota_group ?? t('accounts.unset'), t('accounts.quotaGroupHelp'))}
+					</dl>
 					<p class="mt-2 text-sm font-medium tabular-nums text-[var(--color-ink-0)]">{t('accounts.accountMonthTotal', { amount: displayLedgerAmount(accountUsage?.monthCost ?? null) })}</p>
 					<div class="mt-3 flex flex-wrap items-center gap-2">
 						<Button variant="secondary" size="sm" disabled={busy} onclick={() => editCredential(account.id)}>{t('accounts.addCredential')}</Button>
@@ -410,22 +447,44 @@
 						{@const row = accountUsage.deleted}
 						<p class="mt-2 text-xs tabular-nums text-[var(--color-ink-2)]">{t('accounts.deletedCredentialUsage', { usage: displayUsage({ requests: row.requests, input: row.prompt_tokens, output: row.completion_tokens, cost: row.raw_cost }) })}</p>
 					{/if}
-					{#each account.credentials as credential (credential.id)}
+					{#each account.credentials as credential, keyIndex (credential.id)}
 						{@const observedProbe = probeResults[probeKey(credential)]}
 						{@const keyUsage = accountUsage?.keys.get(credential.id)}
 						<div class="mt-3 border-t border-[var(--color-line)] pt-3" data-credential-id={credential.id}>
-							<div class="flex flex-wrap items-center gap-2"><span class="break-words text-sm font-medium text-[var(--color-ink-0)]">{credentialIdentity(credential)}</span><Pill size="xs" tone={credential.is_active ? 'success' : 'neutral'}>{credential.is_active ? t('configuration.active') : t('configuration.inactive')}</Pill><Pill size="xs" tone={credential.auth_mode === 'api_key' ? credential.api_key_configured ? 'success' : 'warning' : credential.subscription_status === 'configured' ? 'success' : 'warning'}>{credential.auth_mode === 'api_key' ? credential.api_key_configured ? t('configuration.keyConfigured') : t('configuration.noKey') : credential.subscription_status === 'configured' ? t('configuration.connected') : credential.subscription_status === 'reauth_required' ? t('configuration.reconnectRequired') : t('configuration.authenticationNotConnected')}</Pill></div>
+							<div class="flex flex-wrap items-center gap-2">
+								<span class="break-words text-sm font-medium text-[var(--color-ink-0)]">{credentialIdentity(credential)}</span>
+								<Pill size="xs" tone={credential.is_active ? 'success' : 'neutral'}>{credential.is_active ? t('configuration.active') : t('configuration.inactive')}</Pill>
+								{#if savedPolicy === 'priority'}<Pill size="xs">{t('accounts.selectionOrder', { order: keyIndex + 1 })}</Pill>{/if}
+							</div>
 							<p class="mt-1 text-xs text-[var(--color-ink-2)]">{t('accounts.registered', { date: registrationTime(credential.created_at) })}</p>
-							<p class="mt-2 text-xs font-medium tabular-nums text-[var(--color-ink-1)]">{t('accounts.monthUsage', { period: usageMonth, usage: displayUsage(keyUsage?.month) })}</p>
-							<p class="mt-1 text-xs tabular-nums text-[var(--color-ink-2)]">{t('accounts.allTimeUsage', { usage: displayUsage(keyUsage?.allTime) })}</p>
+							<dl class="mt-2 grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-x-3 gap-y-1 border-y border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-2.5 py-2 text-xs text-[var(--color-ink-0)] sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+								<dt class="font-medium">{usageMonth}</dt>
+								<dd class="min-w-0 tabular-nums [overflow-wrap:anywhere]">{displayUsage(keyUsage?.month)}</dd>
+								<dt class="font-medium">{t('accounts.allTimeUsage')}</dt>
+								<dd class="min-w-0 tabular-nums [overflow-wrap:anywhere]">{displayUsage(keyUsage?.allTime)}</dd>
+							</dl>
 							{#if keyUsage?.lastUsed}<p class="mt-1 text-xs text-[var(--color-ink-2)]">{t('accounts.lastUsed', { time: displayTime(keyUsage.lastUsed) })}</p>{/if}
 							<h5 class="mt-2 text-xs font-medium text-[var(--color-ink-1)]">{t('accounts.currentConnection')}</h5>
 							<p class="mt-1 break-all text-xs text-[var(--color-ink-2)]">{t('accounts.connectionIdentity', { provider: provider.id, account: account.id, credential: credential.id })}</p>
-							<p class="mt-1 break-all text-xs text-[var(--color-ink-2)]">{t('accounts.currentEndpoint')}: {safeEndpoint(provider.api_base) ?? t('accounts.providerDefaultEndpoint')}</p>
 							<p class="mt-1 text-xs text-[var(--color-ink-2)]">{t('accounts.eligibilityNotice')}</p>
-							<p class="mt-1 break-all text-xs text-[var(--color-ink-2)]">{t('accounts.poolSummary', { priority: credential.priority, weight: credential.weight })} · {t('accounts.generation', { generation: credential.generation })}{credential.api_key_env ? ` · ${credential.api_key_env}` : ''}</p>
-							<p class="mt-1 break-all text-xs text-[var(--color-ink-2)]">{t('accounts.modelIds')}: {eligibilityDraft(credential.allowed_model_ids) || t('accounts.unrestricted')} · {t('accounts.operations')}: {eligibilityDraft(credential.allowed_capabilities) || t('accounts.unrestricted')}</p>
-							<p class="mt-1 break-all text-xs text-[var(--color-ink-2)]">{t('configuration.expirationTime')}: {displayTime(credential.expires_at)} · {t('accounts.cooldown')}: {displayTime(credential.cooldown_until)}{credential.subscription_expires_at ? ` · ${t('configuration.credentialExpiry', { v0: displayTime(credential.subscription_expires_at) })}` : ''}</p>
+							<dl class="mt-2 grid gap-x-4 gap-y-2.5 text-xs sm:grid-cols-2 lg:grid-cols-3">
+								{@render setting(t('accounts.currentEndpoint'), safeEndpoint(provider.api_base) ?? t('accounts.providerDefaultEndpoint'), t('accounts.currentEndpointHelp'))}
+								{#if credential.auth_mode === 'api_key'}
+									{@render setting(t('configuration.apiKey'), credential.api_key_configured ? t('configuration.keyConfigured') : t('configuration.noKey'), t('accounts.keyConfiguredHelp'))}
+									{#if credential.api_key_env}
+										{@render setting(t('accounts.environmentName'), credential.api_key_env, t('accounts.environmentNameHelp'))}
+									{/if}
+								{:else}
+									{@render setting(t('configuration.subscriptionAuthentication'), t(credential.subscription_status === 'configured' ? 'configuration.connected' : credential.subscription_status === 'reauth_required' ? 'configuration.reconnectRequired' : 'configuration.authenticationNotConnected'), t('accounts.subscriptionStatusHelp'))}
+									{#if credential.subscription_expires_at}
+										{@render setting(t('accounts.subscriptionExpiryLabel'), displayTime(credential.subscription_expires_at), t('accounts.subscriptionExpiryHelp'))}
+									{/if}
+								{/if}
+								{@render routingSettings(credential)}
+								{@render setting(t('configuration.expirationTime'), displayTime(credential.expires_at), t('accounts.expiryHelp'))}
+								{@render setting(t('accounts.cooldown'), displayTime(credential.cooldown_until), t('accounts.cooldownHelp'))}
+								{@render setting(t('accounts.generation'), credential.generation, t('accounts.generationHelp'))}
+							</dl>
 							{#if observedProbe}
 								<div class="mt-2 space-y-1" data-probe-status={observedProbe.status}><Pill size="xs" tone={observedProbe.status === 'connected' ? 'success' : 'danger'}>{t(observedProbe.status === 'connected' ? 'accounts.probeConnected' : 'accounts.probeFailed')}</Pill><p class="break-all text-xs text-[var(--color-ink-2)]">{t('accounts.probeModel')}: #{observedProbe.model_id} · {displayTime(observedProbe.checked_at)}</p></div>
 							{:else}<p class="mt-1 text-xs text-[var(--color-ink-2)]">{t('accounts.probeUntested')}</p>{/if}

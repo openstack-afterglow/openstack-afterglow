@@ -1585,6 +1585,12 @@ Afterglow Embedding Studio is a session-authenticated text-to-vector surface, se
 
 Provider key pool identity and spend: the panel labels the Lumen provider account (the named group owning keys, priority and quota group) and each API key (credential) with typed `ID` captions and a fully labelled `provider/account/API key` identity line, so an account `default` and a key `default` are unambiguous. It shows each account and key `created_at` and, from `GET .../accounts/{id}/usage`, the UTC calendar-month ledger requests, tokens and USD per key, a last-used time and account/provider month totals summed as exact decimals. Usage loads sequentially when the modal opens. A key absent from a successful usage response is zero; a failed read or a Lumen response without `month_*`/`created_at` (older than the Lumen release that added them) is shown as unknown, never zero. Figures are Lumen ledger allocations, not provider invoices.
 
+Key pool settings and order: every account and key setting (priority, weight, quota group, allowed model IDs and operations, expiry, cooldown end, generation, current endpoint, API-key state) renders as a labelled `<dl>` entry with a visible one-line explanation drawn from the existing Lumen routing semantics (lower priority first, account then key; weight only for the weighted policy; blank unrestricted, `-` denies all). Accounts and each account's keys are sorted by priority then ID, and `선택 순서 N` appears only when the stored policy is `priority` (weighted and explicit policies claim no order). Each key shows the UTC month row and the all-time row in one aligned summary; unknown stays unknown.
+
+Model settings tabs: `ChatConfiguration.svelte` groups registered models into tabs by model kind (only kinds that have models, with counts, shared accessible tab component). The last tab is remembered in `afterglow.admin.models.kindTab`. Within a tab, models are grouped by provider in the admin-defined provider order (`sort_order`, then provider ID) and the existing model display order. The provider filter and the select-all checkbox apply only to the visible tab; drag and keyboard reordering works only inside one provider of the tab, and the reorder request is built from the provider's complete ordered ID list so models hidden by the tab keep their positions. The separate kind filter select is replaced by the tabs.
+
+Usage trend cards: the dashboard `사용 추세` cards and the `/dashboard/usage` cards no longer render the chart-data table disclosure or telemetry source, native-state and native-policy lines. Empty, partial and failed readings remain short status text; the VM monitoring and admin charts keep the chart-data table for accessibility and gap/unit review.
+
 BFF 경로 `/api/v1/chat/admin/providers/{provider_id}/accounts...`는 `backend/app/api/lumen/proxy.py`에서 기존 caller/project-scoped `/v1/admin/providers/{provider_id}/accounts...`로 전달하며 최종 native human system-admin 검사는 Lumen에 남는다. Provider subtree 성공/처리된 오류에 no-store/Pragma:no-cache를 붙이고 provider-admin transport 실패는 URL/예외/본문 없이 기록한다. API key/token/ciphertext는 metadata로 읽어오지 않는다. Panel은 입력 secret을 transient state에만 두고 submit/close/auth/session/project/provider 변경·destroy에서 지우며 epoch/read-generation으로 stale 완료와 device polling을 fence한다. Nine locale catalogs(en/ko/ja/zh-CN/bn/ms/nb/sw/vi)의 같은 관리자 UI를 사용한다. OAuth protocol 지원은 consumer subscription의 public multiuser pooling 허가가 아니다.
 
 명시적 credential 연결 검사는 기존 BFF의 `POST /api/v1/chat/admin/providers/{provider_id}/accounts/{account_id}/credentials/{credential_id}/probe`를 사용한다. Native Lumen은 현재 system 권위·정확한 endpoint/account/credential generation·활성 text 모델·operation eligibility를 검증하고, 기존 `provider_client`에서 32-token/30초 한도의 단일 요청만 보낸다. 지원 metadata가 있을 때 JSON ping/pong을 사용하고 그렇지 않으면 전송 전에 plain ping을 선택하며 전송 뒤 재시도·다른 키 fallback은 없다. 반환은 상태·안전한 사유·model/generation·검사 시각·지연뿐이다. UI는 키별 관측 결과와 저장된 키의 존재를 구분하고 scope/credential/model 변경 뒤 stale 결과를 폐기한다. 검사에는 provider 비용이 발생할 수 있고 자동 health poll·새 DB/schema·Afterglow 추론 엔진은 추가하지 않는다. 기존027 coordinated cutover와 matching native runtime은 여전히 운영 선행 조건이다.
@@ -2311,9 +2317,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "732a36d6ad77bd2e7e94903c2928ecc5bb896f6005e9e9999c9c9dfbbe87657a",
-  "reviewed_at": "2026-11-19T18:43:56Z",
-  "summary": "Instance grid draws per-port security groups plus attached volumes and file shares, Drover cluster grid, provider key pool identity, registration date and monthly usage, dashboard trend disclosure removal"
+  "source_sha256": "e472f725f8cebb0946e302e1b827974f24a4b202ce703420ed426c3726578c67",
+  "reviewed_at": "2026-11-20T03:51:04Z",
+  "summary": "Model settings kind tabs, key pool settings explanations and priority order, usage page telemetry line removal"
 }
 ```
 <!-- architecture-review:end -->
