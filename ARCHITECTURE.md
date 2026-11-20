@@ -2317,9 +2317,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "ea048d9d32298412ad144d1116051525a694fa0cb722e7669d15887453519227",
-  "reviewed_at": "2026-11-20T08:31:07Z",
-  "summary": "Removed the chart-data disclosure from every Bklit chart and the source/status text from VM monitoring cards; docs, OpenSpec and nine locales updated"
+  "source_sha256": "4bff7d0d198146c6cc1b43693cd6de7333972b6a89e9cd43d1b71a6ef7dc1eee",
+  "reviewed_at": "2026-11-20T08:42:02Z",
+  "summary": "frontend README chart guidance matches the removed chart-data disclosure"
 }
 ```
 <!-- architecture-review:end -->
