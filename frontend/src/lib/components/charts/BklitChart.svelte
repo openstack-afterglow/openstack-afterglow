@@ -1,15 +1,9 @@
 <script lang="ts">
-	import { createObservationView } from '$lib/components/admin/observation/observationView.svelte';
-	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
-	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
 	import { onMount } from 'svelte';
 	import { REDUCED_MOTION_QUERY } from '$lib/design/tokens';
 	import { t } from '$lib/i18n/ns/common';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import type { ChartMount, ChartSpec } from './types';
-	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
-	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
-	import TableShell from '$lib/components/ui/TableShell.svelte';
 
 	interface Props {
 		spec: ChartSpec;
@@ -17,18 +11,13 @@
 		width?: number;
 		label?: string;
 		decorative?: boolean;
-		showData?: boolean;
-		xLabel?: string;
 		class?: string;
 	}
-	let { spec, height, width, label, decorative = false, showData, xLabel, class: className = '' }: Props = $props();
+	let { spec, height, width, label, decorative = false, class: className = '' }: Props = $props();
 	let element: HTMLDivElement;
 	let chart = $state.raw<ChartMount>();
 	let reducedMotion = $state(false);
 	let failed = $state(false);
-	let dataOpen = $state(false);
-	const seriesSpec = $derived(spec.kind === 'time-series' || spec.kind === 'bar' ? spec : null);
-	const canShowData = $derived(!decorative && !!seriesSpec && (showData ?? !seriesSpec.compact));
 
 	function snapshotSpec(): ChartSpec {
 		// Snapshot only data: callbacks are intentionally shared, not cloneable state.
@@ -74,22 +63,6 @@
 		const next = snapshotSpec();
 		chart?.update(next, { height, locale: intlLocale(), reducedMotion });
 	});
-
-	function category(value: string | number | null | undefined): string {
-		if (seriesSpec?.kind === 'time-series' && typeof value === 'number') {
-			return seriesSpec.formatTime?.(value) ?? new Date(value).toLocaleString(intlLocale());
-		}
-		if (seriesSpec?.kind === 'bar' && value != null) {
-			return seriesSpec.formatCategory?.(String(value), 'detail') ?? String(value);
-		}
-		return value == null ? '—' : String(value);
-	}
-
-	function number(value: string | number | null | undefined): string {
-		if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
-		return seriesSpec?.formatValue?.(value) ?? value.toLocaleString(intlLocale());
-	}
-	const chartDataView = createObservationView(() => seriesSpec?.data ?? [], () => [{ key: 'category', label: xLabel ?? (seriesSpec?.kind === 'time-series' ? t('chart.time') : t('chart.category')), value: row => seriesSpec ? row[seriesSpec.xKey] : null, format: value => category(typeof value === 'boolean' ? String(value) : value) }, ...(seriesSpec?.series ?? []).map(series => ({ key: series.key, label: series.label, value: (row: Record<string, string | number | null | undefined>) => row[series.key] }))]);
 </script>
 
 <div
@@ -102,32 +75,4 @@
 >
 	<div class="bklit-chart-plot" style:height={`${height}px`} bind:this={element}></div>
 	{#if failed && !decorative}<p class="mt-2 text-[length:var(--type-support)] text-state-danger-text" role="status">{t('chart.error')}</p>{/if}
-	{#if canShowData && seriesSpec}
-		<details class="mt-2 text-[length:var(--type-support)] text-ink-2" bind:open={dataOpen}>
-			<summary class="w-fit cursor-pointer rounded-sm py-2 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]">{t('chart.data')}</summary>
-				<ObservationTable model={chartDataView}>
-{#snippet children(tableView)}
-<ResponsiveTable embedded>
-					{#snippet cards()}
-						{#each tableView.rows as row}
-							{#snippet remainingSeries()}<dl>{#each seriesSpec.series.slice(2) as series}<div><dt>{series.label}</dt><dd>{number(row[series.key])}</dd></div>{/each}</dl>{/snippet}
-							<CompactResourceCard details={seriesSpec.series.length > 2 ? remainingSeries : undefined}>
-								<p class="font-medium text-ink-0">{category(row[seriesSpec.xKey])}</p>
-								<dl>{#each seriesSpec.series.slice(0, 2) as series}<div><dt>{series.label}</dt><dd>{number(row[series.key])}</dd></div>{/each}</dl>
-							</CompactResourceCard>
-						{/each}
-					{/snippet}
-				<!-- The overflow region remains keyboard-scrollable when the data table is wide. -->
-				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-				<div class="max-h-64 overflow-auto" tabindex="0" role="region" aria-label={label ?? t('chart.data')}>
-					<TableShell density="compact" class="min-w-max"><table>
-						<thead><tr><TableColumnHeader view={tableView} columnKey="category" />{#each seriesSpec.series as series}<TableColumnHeader view={tableView} columnKey={series.key} />{/each}</tr></thead>
-						<tbody>{#each tableView.rows as row}<tr><th class="font-normal" scope="row">{category(row[seriesSpec.xKey])}</th>{#each seriesSpec.series as series}<td>{number(row[series.key])}</td>{/each}</tr>{/each}</tbody>
-					</table></TableShell>
-				</div>
-				</ResponsiveTable>
-{/snippet}
-</ObservationTable>
-		</details>
-	{/if}
 </div>

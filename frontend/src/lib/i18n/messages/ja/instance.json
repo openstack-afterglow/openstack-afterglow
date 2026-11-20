@@ -104,8 +104,6 @@
 	"metrics.diskAllocation": "ディスク割当量",
 	"metrics.swapIn": "スワップ入力",
 	"metrics.swapOut": "スワップ出力",
-	"metrics.noSource": "測定ソースなし",
-	"metrics.fallback": "Exporter代替ソース",
 	"metrics.status": "{status, select, available {利用可能} partial {一部収集} not_configured {未設定} forbidden {権限なし} unavailable {利用不可} not_collected {未収集} other {不明}}",
 	"header.latestFault": "最新のエラー（管理者）",
 	"header.migrationInProgress": "マイグレーション実行中",

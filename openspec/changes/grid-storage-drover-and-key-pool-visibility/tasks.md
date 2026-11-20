@@ -12,10 +12,15 @@
 
 ## 3. Admin and usage follow-ups (PR #118, a64c43cc)
 
-- [x] `/dashboard/usage` trend cards and per-instance rows: remove telemetry source, native-state and native-policy lines; keep empty/partial/failed status text. VM monitoring and admin charts deliberately keep the chart-data table.
+- [x] `/dashboard/usage` trend cards and per-instance rows: remove telemetry source, native-state and native-policy lines; keep empty/partial/failed status text. (VM monitoring and admin charts kept the chart-data table here; section 3b removes it.)
 - [x] API key pool: every account/key setting (priority, weight, quota group, allowed model IDs and operations, expiry, cooldown end, generation, current endpoint, key state) as a labelled entry with an explanation; accounts and keys sorted by priority then ID; `선택 순서 N` only under the priority policy; aligned month/all-time summary per key.
 - [x] Model settings: tabs per model kind (only kinds with models, counts), provider-grouped lists in `sort_order`/ID order, last tab remembered, provider filter and select-all scoped to the visible tab, reorder payload built from the provider's full list.
 - [x] Isolated `npm run test:gate` on a64c43cc: backend 15,702 passed / 107 skipped, frontend 8,789 passed, contracts 329, functional 301 passed / 46 skipped, Ruff clean; browser proof on mockup data (desktop and 390 px).
+
+## 3b. Remaining trend chart disclosures (owner confirmed all usage trend graphs)
+
+- [x] `BklitChart` loses the chart-data table disclosure (`showData`, `xLabel`, `chart.data/time/category` keys in nine locales; `chart.error` no longer points to a table). `MetricsPanel` drops the per-chart and stats-row `source · status · unit · Gnocchi: status` text and keeps one partial-coverage warning. Tests that read values from the removed table now read the chart spec or the card's latest value (admin chat stats, chat usage panel, native telemetry history, MetricsPanel, observability).
+- [x] Full `vitest run` 8,789 passed, `svelte-check` 0 errors, `i18n:check` 0 errors; browser proof on mockup data at 1365 px and 390 px (VM monitoring cards have no chart-data disclosure and no source/status text; no horizontal overflow).
 
 ## 4. Production
 

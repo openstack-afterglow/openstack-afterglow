@@ -104,8 +104,6 @@
 	"metrics.diskAllocation": "Disk allocation",
 	"metrics.swapIn": "Swap in",
 	"metrics.swapOut": "Swap out",
-	"metrics.noSource": "No measurement source",
-	"metrics.fallback": "Exporter fallback",
 	"metrics.status": "{status, select, available {Available} partial {Partial coverage} not_configured {Not configured} forbidden {Not permitted} unavailable {Unavailable} not_collected {Not collected} other {Unknown}}",
 	"header.latestFault": "Latest fault (admin)",
 	"header.migrationInProgress": "Migration in progress",

@@ -50,7 +50,7 @@
 		<Button variant="secondary" onclick={() => { selected = ''; hovered = null; }}>{t('map.clear')}</Button>
 	</div>
 	<div class="mt-3 w-full" bind:clientWidth={mapWidth}>
-		<BklitChart spec={mapSpec} height={mapWidth / 2} label={t('map.label')} showData={false} />
+		<BklitChart spec={mapSpec} height={mapWidth / 2} label={t('map.label')} />
 	</div>
 	<div class="flex flex-wrap gap-3 text-xs text-ink-2" aria-label={t('map.legend')}>
 		<span class="flex items-center gap-1"><i class="legend-chip no-data"></i>{t('noObservations')}</span>

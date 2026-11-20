@@ -1,8 +1,15 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writable } from 'svelte/store';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn() }));
+type UsageSnapshot = { data: Record<string, unknown>[] };
+const mocks = vi.hoisted(() => ({ get: vi.fn(), charts: [] as { data: Record<string, unknown>[] }[] }));
+vi.mock('$lib/components/charts/runtime', () => ({
+	mountChart: (_element: unknown, spec: UsageSnapshot) => {
+		mocks.charts.push(spec);
+		return { update: (next: UsageSnapshot) => { mocks.charts.push(next); }, destroy: () => undefined };
+	},
+}));
 vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', projectId: 'project' }) }));
 vi.mock('$lib/api/client', () => ({ api: { get: mocks.get } }));
 import ChatUsagePanel from '../ChatUsagePanel.svelte';
@@ -25,11 +32,10 @@ describe('chat usage token distribution', () => {
 		const chart = await screen.findByRole('group', { name: '사용량 추이' });
 		expect(screen.getByRole('heading', { level: 3, name: '사용량 추이' })).toBeTruthy();
 		expect(container.querySelector('.rounded-lg.border')).toBeNull();
-		const details = chart.querySelector('details')!;
-		details.open = true;
-		await fireEvent(details, new Event('toggle'));
-		const values = [...chart.querySelectorAll('tbody tr')].map(row => [...row.querySelectorAll('td')].map(cell => cell.textContent));
-		expect(values).toEqual([['—', '50'], ['—', '—'], ['0', '—']]);
+		expect(chart.querySelector('details')).toBeNull();
+		await waitFor(() => expect(mocks.charts.at(-1)).toBeDefined());
+		const spec = mocks.charts.at(-1);
+		expect(spec?.data.map(row => [row.web ?? null, row.api ?? null])).toEqual([[null, 50], [null, null], [0, null]]);
 		const selectedBucket = screen.getByRole('button', { pressed: true });
 		expect(selectedBucket.className).toContain('--color-surface-selected');
 		const nextBucket = screen.getAllByRole('button', { pressed: false })[0];

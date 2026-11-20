@@ -104,8 +104,6 @@
 	"metrics.diskAllocation": "디스크 할당량",
 	"metrics.swapIn": "스왑 입력",
 	"metrics.swapOut": "스왑 출력",
-	"metrics.noSource": "측정 소스 없음",
-	"metrics.fallback": "Exporter 대체 소스",
 	"metrics.status": "{status, select, available {사용 가능} partial {일부 수집} not_configured {미설정} forbidden {권한 없음} unavailable {사용 불가} not_collected {미수집} other {알 수 없음}}",
 	"header.latestFault": "최근 오류 (관리자)",
 	"header.migrationInProgress": "마이그레이션 진행 중",

@@ -104,8 +104,6 @@
 	"metrics.diskAllocation": "ডিস্ক বরাদ্দ",
 	"metrics.swapIn": "সোয়াপ ইন",
 	"metrics.swapOut": "সোয়াপ আউট",
-	"metrics.noSource": "পরিমাপের কোনো উৎস নেই",
-	"metrics.fallback": "এক্সপোর্টারের মাধ্যমে বিকল্প সংগ্রহ",
 	"metrics.status": "{status, select, available {উপলব্ধ} partial {আংশিক পরিধি} not_configured {কনফিগার করা হয়নি} forbidden {অনুমতি নেই} unavailable {উপলব্ধ নয়} not_collected {সংগ্রহ করা হয়নি} other {অজানা}}",
 	"header.latestFault": "সর্বশেষ ত্রুটি (প্রশাসক)",
 	"header.migrationInProgress": "মাইগ্রেশন চলছে",

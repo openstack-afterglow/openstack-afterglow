@@ -104,8 +104,6 @@
 	"metrics.diskAllocation": "Disktildeling",
 	"metrics.swapIn": "Inn fra veksleminne",
 	"metrics.swapOut": "Ut til veksleminne",
-	"metrics.noSource": "Ingen målekilde",
-	"metrics.fallback": "Reservekilde fra eksportør",
 	"metrics.status": "{status, select, available {Tilgjengelig} partial {Delvis dekning} not_configured {Ikke konfigurert} forbidden {Ikke tillatt} unavailable {Utilgjengelig} not_collected {Ikke samlet inn} other {Ukjent}}",
 	"header.latestFault": "Siste feil (administrator)",
 	"header.migrationInProgress": "Migrering pågår",

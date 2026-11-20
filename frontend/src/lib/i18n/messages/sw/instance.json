@@ -104,8 +104,6 @@
 	"metrics.diskAllocation": "Mgao wa diski",
 	"metrics.swapIn": "Kuingiza kutoka swap",
 	"metrics.swapOut": "Kutoa kwenda swap",
-	"metrics.noSource": "Hakuna chanzo cha vipimo",
-	"metrics.fallback": "Chanzo mbadala cha exporter",
 	"metrics.status": "{status, select, available {Inapatikana} partial {Upeo usiokamilika} not_configured {Haijasanidiwa} forbidden {Hairuhusiwi} unavailable {Haipatikani} not_collected {Haijakusanywa} other {Haijulikani}}",
 	"header.latestFault": "Hitilafu ya karibuni (msimamizi)",
 	"header.migrationInProgress": "Uhamishaji unaendelea",

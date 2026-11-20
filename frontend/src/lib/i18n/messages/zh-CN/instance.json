@@ -104,8 +104,6 @@
 	"metrics.diskAllocation": "磁盘分配量",
 	"metrics.swapIn": "交换读入",
 	"metrics.swapOut": "交换写出",
-	"metrics.noSource": "无测量来源",
-	"metrics.fallback": "Exporter 回退来源",
 	"metrics.status": "{status, select, available {可用} partial {部分采集} not_configured {未配置} forbidden {无权限} unavailable {不可用} not_collected {未采集} other {未知}}",
 	"header.latestFault": "最近错误（管理员）",
 	"header.migrationInProgress": "正在迁移",

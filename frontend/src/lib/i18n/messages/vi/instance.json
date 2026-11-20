@@ -104,8 +104,6 @@
 	"metrics.diskAllocation": "Phân bổ đĩa",
 	"metrics.swapIn": "Đọc vào từ vùng hoán đổi",
 	"metrics.swapOut": "Ghi ra vùng hoán đổi",
-	"metrics.noSource": "Không có nguồn đo",
-	"metrics.fallback": "Nguồn dự phòng exporter",
 	"metrics.status": "{status, select, available {Có sẵn} partial {Phạm vi bao phủ một phần} not_configured {Chưa cấu hình} forbidden {Không được phép} unavailable {Không khả dụng} not_collected {Chưa thu thập} other {Không xác định}}",
 	"header.latestFault": "Lỗi gần nhất (quản trị viên)",
 	"header.migrationInProgress": "Đang di chuyển",
