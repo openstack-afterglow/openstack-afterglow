@@ -7,22 +7,32 @@
 
 ## [Unreleased]
 
+## [1.32.30] - 2026-11-20
+
 ### Added
 
 - 관리자 모델 설정을 모델 종류별 탭(텍스트·음성·이미지 등, 모델이 있는 종류만)으로 나누고, 탭 안에서는 프로바이더 순서로 묶어 보여 줍니다. 마지막 탭을 브라우저에 기억합니다.
+- Admin model settings are split into per-kind tabs (text, audio, image and so on, only kinds that have models), with models grouped by provider inside a tab. The last tab is remembered in the browser.
 - API 키 풀 관리의 계정·키 설정(우선순위, 가중치, 할당량 그룹, 허용 모델 ID·작업, 만료·대기 종료 시각, 세대, 현재 엔드포인트, 키 상태)을 항목명과 설명으로 표시하고, 계정과 키를 우선순위 순으로 정렬해 `선택 순서`를 표시합니다.
+- The API key pool shows each account and key setting (priority, weight, quota group, allowed model IDs and operations, expiry, cooldown end, generation, current endpoint, key state) with a name and explanation, sorts accounts and keys by priority, and shows `선택 순서` (selection order) under the priority policy.
 - Drover 클러스터 상세에 격자/목록 보기를 추가했습니다. 컨트롤 플레인·워커 VM이 같은 네트워크 슬래브에 놓이고, 포트별 보안 그룹, Kubernetes Service 포트, 연결된 Cinder 볼륨(부트/CSI는 이름 기반 추정), Manila 연결, 최근 측정 RX/TX를 보여 줍니다. PVC/PV 바인딩은 Drover가 제공하지 않아 알 수 없음으로 표시합니다.
+- Drover cluster detail adds a grid/list view. Control-plane and worker VMs share network slabs and show per-port security groups, Kubernetes Service ports, attached Cinder volumes (boot/CSI inferred from names), Manila associations and the latest measured RX/TX. PVC/PV bindings are shown as unknown because Drover does not report them.
 - 인스턴스 네트워크 격자에 연결된 볼륨과 파일 공유(Manila) 노드를 추가했습니다. 기록된 연결이며 게스트 마운트나 트래픽을 보장하지 않습니다.
+- The instance network grid adds attached volume and file share (Manila) nodes. They are recorded attachments, not guest mounts or traffic.
 - 공급자 API 키 풀에 계정과 API 키를 구분하는 라벨, 등록일, 키별 이번 달(UTC) 원장 사용량과 마지막 사용 시각, 계정·공급자 월 합계를 추가했습니다. 해당 필드가 없는 이전 Lumen에서는 `알 수 없음`으로 표시합니다.
+- The provider key pool adds labels that tell accounts from API keys, registration dates, per-key UTC month ledger usage and last use, and account and provider month totals. Lumen versions without these fields show `알 수 없음` (unknown).
 
 ### Changed
 
 - 인스턴스 격자의 보안 그룹을 인스턴스 전체 영역이 아니라 각 포트의 네트워크 슬래브 위 포트 옆에 그립니다. 외부 소스·egress 노드는 선택한 그룹에서만 펼칩니다. 인스턴스 상세는 파일 공유 연결 조회를 폴링마다 한 번 더 호출합니다.
+- The instance grid draws security groups beside each port on its network slab instead of one instance-wide zone, and expands external sources and egress only for the selected group. Instance detail makes one more file share association read per poll.
 
 ### Removed
 
 - 대시보드 사용 추세 카드의 “차트 데이터 보기”와 “텔레메트리 수집 상태” 펼침을 제거했습니다. 오류·부분 수집·갱신 실패 상태는 짧은 문구로 유지합니다.
+- The dashboard usage trend cards no longer show the chart data and telemetry collection disclosures. Error, partial and refresh-failure states stay as short text.
 - `/dashboard/usage` 추세 카드와 인스턴스별 행에서 텔레메트리 소스·네이티브 상태·네이티브 범위 안내 줄을 제거했습니다. 수집 안 됨·부분 수집·실패 상태 문구는 유지합니다.
+- The `/dashboard/usage` trend cards and per-instance rows drop the telemetry source, native state and native scope lines. No-data, partial and failure text stays.
 
 ## [1.32.29] - 2026-11-19
 
