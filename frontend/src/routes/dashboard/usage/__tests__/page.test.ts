@@ -142,25 +142,23 @@ describe('usage loading boundaries', () => {
 		await screen.findByText(instance.name);
 		const cpu = within(screen.getByRole('group', { name: 'vCPU 7d 추세' }));
 		expect(cpu.getByText('0.0')).toBeTruthy();
-		expect(cpu.getByText('네이티브 텔레메트리 · Gnocchi')).toBeTruthy();
+		expect(cpu.queryByText(/Gnocchi|Prometheus/)).toBeNull();
 		expect(cpu.getByText('부분 수집 · 일부 표본 또는 리소스 누락')).toBeTruthy();
 		const ram = within(screen.getByRole('group', { name: 'RAM 7d 추세' }));
 		expect(ram.getByText('해당 메트릭의 텔레메트리 미수집')).toBeTruthy();
 		expect(ram.queryByText('0.0')).toBeNull();
 		const disk = within(screen.getByRole('group', { name: '게스트 파일시스템 7d 추세' }));
 		expect(disk.getByText('min 22.0% · max 22.0%')).toBeTruthy();
-		expect(disk.getByText('Exporter 대체 수집 · Prometheus')).toBeTruthy();
-		expect(disk.getByText('네이티브 텔레메트리: 메트릭 수집 미설정')).toBeTruthy();
+		expect(disk.queryByText(/Gnocchi|Prometheus|네이티브 텔레메트리/)).toBeNull();
 		const network = within(screen.getByRole('group', { name: '네트워크 7d 추세' }));
 		expect(network.getByText('2048.0')).toBeTruthy();
 		expect(network.getByText('KiB/s')).toBeTruthy();
 		expect(network.queryByText('MiB/s')).toBeNull();
-		expect(screen.getByText('네이티브 범위는 현재 사용자 정책에 표시되는 리소스로 제한됩니다.')).toBeTruthy();
+		expect(screen.queryByText(/네이티브 범위는/)).toBeNull();
 		const row = within(screen.getByRole('row', { name: /measured-instance/ }));
 		expect(row.getByText('0%')).toBeTruthy();
 		expect(row.getByText('42%')).toBeTruthy();
-		expect(row.getByText('네이티브 텔레메트리 · Gnocchi')).toBeTruthy();
-		expect(row.getByText('Exporter 대체 수집 · Prometheus')).toBeTruthy();
+		expect(row.queryByText(/Gnocchi|Prometheus/)).toBeNull();
 	});
 
 	it('does not paint unavailable row metrics as zero or measured values', async () => {

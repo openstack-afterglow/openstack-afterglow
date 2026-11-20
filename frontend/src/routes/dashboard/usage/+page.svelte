@@ -194,13 +194,6 @@
 		return lower.startsWith('g1.') || lower.startsWith('gpu');
 	}
 
-	function telemetrySource(source: string): string {
-		if (source === 'gnocchi') return t('telemetry.native');
-		if (source === 'prometheus') return t('telemetry.fallback');
-		if (source === 'mixed') return t('telemetry.mixed');
-		return t('telemetry.source', { source });
-	}
-
 	function telemetryStatus(status: string): string {
 		if (status === 'partial') return t('telemetry.partial');
 		if (status === 'not_configured') return t('usage.notConfigured');
@@ -217,13 +210,9 @@
 	const observationView0 = createObservationView(() => (data?.top_instances ?? []), () => ([{ key: 'rank', label: '#', value: row => instanceRanks.get(row.id) }, { key: 'instance', label: t('usage.instance'), value: row => row.name }, { key: 'flavor', label: t('usage.flavor'), value: row => row.flavor_display_name || row.flavor_name }, { key: 'cpu', label: 'vCPU', value: row => usageValue(row.cpu_pct, row.cpu_status) }, { key: 'ram', label: 'RAM', value: row => usageValue(row.ram_pct, row.ram_status) }, { key: 'status', label: t('usage.status'), value: row => row.status }]));
 </script>
 
-	{#snippet usageTelemetry(source: string | null, status: string, nativeStatus: string | null, hasValue: boolean)}
-		{#if source}<p class="mt-1 text-xs text-ink-2">{telemetrySource(source)}</p>{/if}
+	{#snippet usageTelemetry(status: string, hasValue: boolean)}
 		{#if !hasValue || status !== 'available'}
 			<p class="mt-1 text-xs text-ink-2">{telemetryStatus(status)}</p>
-		{/if}
-		{#if source && source !== 'gnocchi' && nativeStatus && nativeStatus !== 'available'}
-			<p class="mt-1 text-xs text-ink-2">{t('telemetry.nativeState', { status: telemetryStatus(nativeStatus) })}</p>
 		{/if}
 	{/snippet}
 <PageShell class="space-y-6">
@@ -260,9 +249,6 @@
 		<Alert tone="danger">{error}</Alert>
 	{:else if data}
 		<!-- Observed utilization only; missing telemetry stays empty. -->
-		{#if trendData?.scope === 'native_policy'}
-			<p class="text-xs text-ink-2">{t('telemetry.nativePolicy')}</p>
-		{/if}
 		<div class="grid grid-cols-1 sm:grid-cols-4 gap-3.5">
 			{#if trendLoading}<LoadingState variant="inline" class="sm:col-span-4" label={t('usage.loadingTrend')} />{/if}
 			{#each [
@@ -302,14 +288,8 @@
 							<p class="text-xs text-ink-2">{t('telemetry.noData')}</p>
 						{/if}
 					</div>
-					{#if rawSeries?.source}
-						<p class="text-xs text-ink-2">{telemetrySource(rawSeries.source)}</p>
-					{/if}
 					{#if hasData && rawSeries?.status === 'partial'}
 						<p class="text-xs text-state-warning-text">{t('telemetry.partial')}</p>
-					{/if}
-					{#if rawSeries?.source && rawSeries.source !== 'gnocchi' && rawSeries.native_status && rawSeries.native_status !== 'available'}
-						<p class="text-xs text-ink-2">{t('telemetry.nativeState', { status: telemetryStatus(rawSeries.native_status) })}</p>
 					{/if}
 					{#if hasData}
 						<p class="text-xs tabular-nums text-[var(--color-ink-2)]">
@@ -332,7 +312,7 @@
 					{@const cpuPct = usageValue(inst.cpu_pct, inst.cpu_status)}{@const ramPct = usageValue(inst.ram_pct, inst.ram_status)}
 					<CompactResourceCard><div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{instanceRanks.get(inst.id) ?? i + 1}. {inst.name}</h3><StatusChip status={inst.status} /></div>
 						<p class="text-xs tabular-nums">vCPU: {inst.vcpus} · {cpuPct !== null ? `${cpuPct.toFixed(0)}%` : '—'}</p><p class="text-xs tabular-nums">RAM: {Math.round(inst.ram_mb / 1024)} GB · {ramPct !== null ? `${ramPct.toFixed(0)}%` : '—'}</p>
-						{#snippet details()}<p class="text-xs font-mono">{inst.flavor_display_name ?? inst.flavor_name}</p>{#if isGpu(inst.flavor_name)}<Pill tone="accent">GPU</Pill>{/if}{@render usageTelemetry(inst.cpu_source, inst.cpu_status, inst.cpu_native_status, cpuPct !== null)}{@render usageTelemetry(inst.ram_source, inst.ram_status, inst.ram_native_status, ramPct !== null)}{/snippet}
+						{#snippet details()}<p class="text-xs font-mono">{inst.flavor_display_name ?? inst.flavor_name}</p>{#if isGpu(inst.flavor_name)}<Pill tone="accent">GPU</Pill>{/if}{@render usageTelemetry(inst.cpu_status, cpuPct !== null)}{@render usageTelemetry(inst.ram_status, ramPct !== null)}{/snippet}
 					</CompactResourceCard>
 				{/each}{/snippet}
 				<div class="mt-4 overflow-x-auto">
@@ -374,7 +354,7 @@
 												</div>
 											{/if}
 										</div>
-										{@render usageTelemetry(inst.cpu_source, inst.cpu_status, inst.cpu_native_status, cpuPct !== null)}
+										{@render usageTelemetry(inst.cpu_status, cpuPct !== null)}
 									</td>
 									<td class="py-2.5 pr-4">
 										<div class="flex items-center gap-2">
@@ -388,7 +368,7 @@
 												</div>
 											{/if}
 										</div>
-										{@render usageTelemetry(inst.ram_source, inst.ram_status, inst.ram_native_status, ramPct !== null)}
+										{@render usageTelemetry(inst.ram_status, ramPct !== null)}
 									</td>
 									<td class="py-2.5">
 										<StatusChip status={inst.status} />

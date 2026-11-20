@@ -25,12 +25,16 @@ const embeddingEntry: NativeCatalogEntry = {
 function tutorialEntry(id: string, displayName: string, source: string, overrides: Partial<NativeCatalogEntry> = {}): NativeCatalogEntry {
 	return { ...catalogEntry, id, display_name: displayName, source_urls: [source], capabilities: { tool_call: true }, ...overrides };
 }
+const imageEntry = tutorialEntry('gpt-image-1.5', 'GPT Image · Tutorial', catalogEntry.source_urls[0], {
+	kind: 'image', token_pricing: null,
+	media_pricing: { billing_basis: 'unit', image_per_unit: '0.04', reservation_usd: '0.10' }
+});
 const nativeCatalog: NativeCatalog = {
 	schema_version: 1, catalog_version: version,
 	providers: [
 		{ provider_type: 'openai', display_name: 'OpenAI', pricing_sources: catalogEntry.source_urls, models: [
 			catalogEntry, embeddingEntry,
-			tutorialEntry('gpt-image-1.5', 'GPT Image · Tutorial', catalogEntry.source_urls[0], { kind: 'image', token_pricing: null, media_pricing: { billing_basis: 'unit', image_per_unit: '0.04', reservation_usd: '0.10' } }),
+			imageEntry,
 			tutorialEntry('tutorial-openai-preview', 'Preview · Synthetic', catalogEntry.source_urls[0], { status: 'preview' }),
 			tutorialEntry('tutorial-openai-deprecated', 'Deprecated · Synthetic', catalogEntry.source_urls[0], { status: 'deprecated' }),
 			tutorialEntry('tutorial-openai-page-two', 'Additional model · Synthetic', catalogEntry.source_urls[0]),
@@ -53,13 +57,37 @@ const nativeCatalog: NativeCatalog = {
 	],
 };
 const providers = [
-	{ id: 7, name: 'OpenAI · Tutorial', provider_type: 'openai', provider_family: 'native', api_provider: 'openai', sort_order: 0, api_base: null, auth_mode: 'api_key', has_api_key: true, has_credentials: true, auth_status: 'configured', is_active: true, margin_multiplier: 1, billing_capability: 'openai_admin_usage', has_billing_admin_key: false },
+	{ id: 7, name: 'OpenAI · Tutorial', provider_type: 'openai', provider_family: 'native', api_provider: 'openai', sort_order: 0, api_base: null, auth_mode: 'api_key', selection_policy: 'priority', has_api_key: true, has_credentials: true, auth_status: 'configured', is_active: true, margin_multiplier: 1, billing_capability: 'openai_admin_usage', has_billing_admin_key: false },
 	{ id: 8, name: 'Compatible · Tutorial', provider_type: 'openai', provider_family: 'compatible', api_provider: 'tutorial-compatible', sort_order: 1, api_base: 'https://compatible.example.invalid/v1', auth_mode: 'api_key', has_api_key: true, has_credentials: true, auth_status: 'configured', is_active: true, margin_multiplier: 1, billing_capability: null, has_billing_admin_key: false },
 ];
+const tutorialKey = (id: number, accountId: number, name: string, createdAt: string, priority: number) => ({
+	id, account_id: accountId, name, created_at: createdAt, priority, auth_mode: 'api_key', generation: 1, is_active: true, weight: 1,
+	api_key_configured: true, api_key_source: 'database', api_key_env: null, subscription_status: 'disconnected', subscription_expires_at: null,
+	allowed_model_ids: null, allowed_capabilities: null, expires_at: null, cooldown_until: null
+});
+// Deliberately unsorted so the tutorial exercises the same ordering as the admin panel.
+const tutorialAccounts = [
+	{ id: 15, provider_id: 7, name: 'backup', created_at: '2026-11-03T09:00:00Z', is_active: true, priority: 1, weight: 1, quota_group: 'backup', allowed_model_ids: null, allowed_capabilities: null, credentials: [tutorialKey(31, 15, 'default', '2026-11-03T09:05:00Z', 0)] },
+	{ id: 14, provider_id: 7, name: 'default', created_at: '2026-09-02T01:10:00Z', is_active: true, priority: 0, weight: 1, quota_group: null, allowed_model_ids: null, allowed_capabilities: null, credentials: [tutorialKey(22, 14, 'team-plan', '2026-10-18T05:30:00Z', 2), tutorialKey(2, 14, 'default', '2026-09-02T01:12:00Z', 0)] },
+];
+const tutorialUsagePeriod = { kind: 'calendar_month', start: '2026-11-01T00:00:00Z', end: '2026-12-01T00:00:00Z', timezone: 'UTC' };
+const tutorialUsageRow = {
+	credential_id: 2, month_requests: 42, month_prompt_tokens: 18200, month_completion_tokens: 6100, month_raw_cost: '1.2345',
+	requests: 310, prompt_tokens: 120000, completion_tokens: 41000, raw_cost: '9.8765', last_used_at: '2026-11-19T14:20:00Z'
+};
 function initialModels(): Record<string, unknown>[] {
 	return [
 		{ id: 43, provider_id: 7, provider_family: 'native', api_provider: 'openai', sort_order: 0, model_name: 'gpt-6-luna', api_model_name: 'gpt-6-luna', display_name: 'GPT-6 Luna · Tutorial', model_kind: 'text', is_active: true, is_title_model: false, is_memory_model: false, input_price_per_million: null, output_price_per_million: null, cache_read_price_per_million: null, cache_write_price_per_million: null, cache_write_1h_price_per_million: null, effective_input_price_per_million: '0.10', effective_output_price_per_million: '0.50', effective_price_source: 'native_catalog', price_source: null, price_origin: 'native_catalog', catalog_version: version, catalog_entry: { id: catalogEntry.id, status: catalogEntry.status, verified_at: version, source_urls: catalogEntry.source_urls }, media_pricing: null, capabilities: null, effective_capabilities: catalogEntry.capabilities, capability_source: null, effective_capability_source: 'native_catalog' },
 		{ id: 44, provider_id: 8, provider_family: 'compatible', api_provider: 'tutorial-compatible', sort_order: 0, model_name: 'tutorial-custom-model', api_model_name: 'tutorial-custom-model', display_name: 'Compatible model · Tutorial', model_kind: 'text', is_active: true, is_title_model: false, is_memory_model: false, input_price_per_million: '1.00', output_price_per_million: '2.00', cache_read_price_per_million: null, cache_write_price_per_million: null, cache_write_1h_price_per_million: null, effective_input_price_per_million: '1.00', effective_output_price_per_million: '2.00', effective_price_source: 'manual', price_source: 'manual', price_origin: 'manual', catalog_version: null, catalog_entry: null, media_pricing: null, capabilities: null, effective_capabilities: { tool_call: false, vision: false, decisions: false }, capability_source: null, effective_capability_source: 'default' },
+		...[{ id: 45, entry: imageEntry }, { id: 42, entry: embeddingEntry }].map(({ id, entry }, index) => ({
+			id, provider_id: 7, provider_family: 'native', api_provider: 'openai', sort_order: index + 1,
+			model_name: entry.id, api_model_name: entry.id, display_name: entry.display_name, model_kind: entry.kind,
+			is_active: false, input_price_per_million: null, output_price_per_million: null,
+			effective_input_price_per_million: entry.token_pricing?.input ?? null, effective_output_price_per_million: null,
+			effective_price_source: 'native_catalog', price_origin: 'native_catalog', catalog_version: version,
+			catalog_entry: { id: entry.id, status: entry.status, verified_at: version, source_urls: entry.source_urls },
+			effective_media_pricing: entry.media_pricing
+		})),
 	];
 }
 let models = initialModels();
@@ -75,6 +103,13 @@ export function mockNativeProviders(method: string, path: string, params: URLSea
 		if (method === 'GET' && path === '/api/v1/chat/admin/providers') return providers;
 		if (method === 'GET' && path === '/api/v1/chat/admin/models') return models;
 		if (method === 'GET' && path === '/api/v1/chat/admin/providers/billing') return [];
+		const accountsPath = path.match(/^\/api\/v1\/chat\/admin\/providers\/7\/accounts(?:\/(\d+)\/usage)?$/);
+		if (method === 'GET' && accountsPath) {
+			if (accountsPath[1] === undefined) return tutorialAccounts;
+			const accountId = Number(accountsPath[1]);
+			if (!tutorialAccounts.some(({ id }) => id === accountId)) throw new ApiError(404, 'Not found');
+			return { provider_id: 7, account_id: accountId, period: tutorialUsagePeriod, credentials: accountId === 14 ? [tutorialUsageRow] : [] };
+		}
 		const modelId = path.match(/^\/api\/v1\/chat\/admin\/models\/(\d+)$/)?.[1];
 		if (method === 'PATCH' && modelId) {
 			const model = models.find(item => item.id === Number(modelId));

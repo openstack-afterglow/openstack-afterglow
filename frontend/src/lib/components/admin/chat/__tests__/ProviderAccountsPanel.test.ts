@@ -16,8 +16,11 @@ vi.mock('$lib/i18n/ns/admin-chat', () => {
   const copy = new Set([
     'identityHelp', 'accountIdentity', 'credentialIdentity', 'credentialPathIdentity', 'connectionIdentity',
     'confirmAccountDelete', 'confirmCredentialDelete', 'confirmDisconnect', 'registered', 'unknownValue',
-    'thisMonth', 'monthPeriod', 'monthUsage', 'allTimeUsage', 'deletedCredentialUsage', 'usageFigures', 'lastUsed',
+    'thisMonth', 'monthPeriod', 'allTimeUsage', 'deletedCredentialUsage', 'usageFigures', 'lastUsed',
     'accountMonthTotal', 'providerMonthTotal', 'usdAmount', 'usageLoading', 'usageFailed',
+    'selectionOrder', 'priorityHelp', 'weightHelp', 'quotaGroupHelp', 'modelIdsHelp', 'operationsHelp', 'expiryHelp',
+    'cooldownHelp', 'generation', 'generationHelp', 'currentEndpointHelp', 'keyConfiguredHelp', 'environmentNameHelp',
+    'subscriptionStatusHelp', 'subscriptionExpiryLabel', 'subscriptionExpiryHelp',
   ].map((key) => `accounts.${key}`));
   return { t: (key: string, values?: Record<string, unknown>) => {
     if (copy.has(key)) {
@@ -61,6 +64,14 @@ async function openPanel(props: Record<string, unknown> = {}) {
   return component;
 }
 function accountRegion() { return within(screen.getByRole('region', { name: accountName })); }
+type TextQueries = Pick<typeof screen, 'getByText'>;
+function description(scope: TextQueries, term: string) {
+  const label = scope.getByText(term, { selector: 'dt' });
+  const detail = label.nextElementSibling;
+  expect(label.closest('dl')).not.toBeNull();
+  expect(detail?.tagName).toBe('DD');
+  return detail;
+}
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 beforeEach(() => {
   vi.clearAllMocks();
@@ -136,6 +147,77 @@ describe('endpoint account management', () => {
     expect(body).not.toHaveProperty('api_key');
   });
 
+  it.each(['priority', 'weighted', 'explicit'] as const)('sorts both lists by priority then ID under %s', async (selection_policy) => {
+    records[0].credentials = [
+      { ...credential, id: 100, name: 'Later priority', priority: 2 },
+      { ...credential, id: 102, name: 'Tied priority' },
+      credential,
+    ];
+    records.unshift(
+      { ...account, id: 10, name: 'Later account', priority: 4, credentials: [] },
+      { ...account, id: 12, name: 'Tied account', credentials: [] },
+    );
+    await openPanel({ provider: { ...provider, selection_policy } });
+    const sections = screen.getAllByRole('region', { name: /^Account .* \(ID \d+\)$/ });
+    expect(sections.map((section) => section.getAttribute('aria-label'))).toEqual([
+      accountName, 'Account Tied account (ID 12)', 'Account Later account (ID 10)',
+    ]);
+    const keys = [...sections[0].querySelectorAll('[data-credential-id]')];
+    expect(keys.map((key) => key.getAttribute('data-credential-id'))).toEqual(['101', '102', '100']);
+    if (selection_policy === 'priority') {
+      sections.forEach((section, index) => expect(section.querySelector('h4')?.parentElement?.textContent).toContain(`Selection order ${index + 1}`));
+      keys.forEach((key, index) => expect(within(key as HTMLElement).getByText(`Selection order ${index + 1}`)).toBeTruthy());
+    } else {
+      expect(screen.queryByText(/^Selection order \d+$/)).toBeNull();
+    }
+  });
+
+  it('changes selection badges only after saving the policy successfully', async () => {
+    await openPanel();
+    await fireEvent.change(screen.getByLabelText('accounts.selectionPolicy'), { target: { value: 'weighted' } });
+    expect(screen.getAllByText('Selection order 1')).toHaveLength(2);
+    mocks.patch.mockRejectedValueOnce(new mocks.ApiError('conflict', 409));
+    await fireEvent.click(screen.getByRole('button', { name: 'accounts.savePolicy' }));
+    await screen.findByText('accounts.requestFailed 409');
+    expect(screen.getAllByText('Selection order 1')).toHaveLength(2);
+    await fireEvent.click(screen.getByRole('button', { name: 'accounts.savePolicy' }));
+    await waitFor(() => expect(screen.queryByText('Selection order 1')).toBeNull());
+  });
+
+  it('pairs account and key settings with their values and visible help', async () => {
+    const expiry = '2030-01-01T12:00:00Z';
+    const cooldown = '2029-01-01T12:00:00Z';
+    Object.assign(records[0], { quota_group: 'team-pool', allowed_model_ids: [] });
+    Object.assign(records[0].credentials[0], { api_key_env: 'TUTORIAL_API_KEY', allowed_model_ids: [43], allowed_capabilities: ['chat'], expires_at: expiry, cooldown_until: cooldown });
+    await openPanel();
+    const accountSettings = within(accountRegion().getByRole('heading', { name: 'accounts.accountEditor' }).nextElementSibling as HTMLElement);
+    const key = credentialRegion();
+    const commonSettings = [
+      ['accounts.priority', '0', 'accounts.priorityHelp'],
+      ['accounts.weight', '1', 'accounts.weightHelp'],
+    ] as const;
+    function expectSetting(scope: TextQueries, label: string, value: string, help: keyof typeof messages) {
+      const detail = within(description(scope, label) as HTMLElement);
+      expect(detail.getByText(value)).toBeTruthy();
+      expect(detail.getByText(messages[help])).toBeTruthy();
+    }
+    for (const [label, value, help] of commonSettings) {
+      expectSetting(accountSettings, label, value, help);
+      expectSetting(key, label, value, help);
+    }
+    expectSetting(accountSettings, 'accounts.quotaGroup', 'team-pool', 'accounts.quotaGroupHelp');
+    expectSetting(accountSettings, 'accounts.modelIds', '-', 'accounts.modelIdsHelp');
+    expectSetting(accountSettings, 'accounts.operations', 'accounts.unrestricted', 'accounts.operationsHelp');
+    expectSetting(key, 'accounts.modelIds', '43', 'accounts.modelIdsHelp');
+    expectSetting(key, 'accounts.operations', 'chat', 'accounts.operationsHelp');
+    expectSetting(key, 'configuration.expirationTime', new Date(expiry).toLocaleString('en-US'), 'accounts.expiryHelp');
+    expectSetting(key, 'accounts.cooldown', new Date(cooldown).toLocaleString('en-US'), 'accounts.cooldownHelp');
+    expectSetting(key, 'Generation', '2', 'accounts.generationHelp');
+    expectSetting(key, 'accounts.currentEndpoint', 'accounts.providerDefaultEndpoint', 'accounts.currentEndpointHelp');
+    expectSetting(key, 'configuration.apiKey', 'configuration.keyConfigured', 'accounts.keyConfiguredHelp');
+    expectSetting(key, 'accounts.environmentName', 'TUTORIAL_API_KEY', 'accounts.environmentNameHelp');
+  });
+
   it('distinguishes account and key IDs everywhere and shows both registration times when available', async () => {
     const accountCreated = '2025-01-02T03:04:05+00:00';
     const keyCreated = '2026-10-04T12:30:00+00:00';
@@ -161,8 +243,12 @@ describe('endpoint account management', () => {
   });
 
   it('identifies the exact subscription key in disconnect confirmation', async () => {
-    records[0].credentials[0].auth_mode = 'anthropic_subscription';
+    const expires = '2030-01-01T12:00:00Z';
+    Object.assign(records[0].credentials[0], { auth_mode: 'anthropic_subscription', subscription_status: 'configured', subscription_expires_at: expires });
     await openPanel({ provider: { ...provider, auth_mode: 'anthropic_subscription' } });
+    const key = credentialRegion();
+    expect(description(key, 'configuration.subscriptionAuthentication')?.textContent).toContain(messages['accounts.subscriptionStatusHelp']);
+    expect(description(key, messages['accounts.subscriptionExpiryLabel'])?.textContent).toContain(new Date(expires).toLocaleString('en-US'));
     await fireEvent.click(credentialRegion().getByRole('button', { name: 'configuration.disconnect' }));
     expect(mocks.confirm).toHaveBeenLastCalledWith(`Disconnect ${keyPathName}? Its saved subscription grant will be removed.`);
     expect(mocks.remove).toHaveBeenCalledWith(`${base}/accounts/11/credentials/101/auth`, 'token', 'project');
@@ -172,10 +258,15 @@ describe('endpoint account management', () => {
     records[0].credentials.push({ ...credential, id: 102, name: 'Key B' });
     mocks.get.mockImplementation(async (path: string) => path.endsWith('/usage') ? keyUsage([monthRow, { ...allTimeRow, credential_id: null }]) : structuredClone(records));
     await openPanel();
-    expect(await credentialRegion().findByText(`${monthText}: Ledger requests: 2 · Input 120 · Output 15 · USD 0.1`)).toBeTruthy();
-    expect(credentialRegion().getByText('All time: Ledger requests: 3 · Input 200 · Output 25 · USD 0.125')).toBeTruthy();
+    const month = await credentialRegion().findByText(monthText, { selector: 'dt' });
+    expect(Array.from(month.closest('dl')!.children, (child) => [child.tagName, child.textContent])).toEqual([
+      ['DT', monthText],
+      ['DD', 'Ledger requests: 2 · Input 120 · Output 15 · USD 0.1'],
+      ['DT', 'All time'],
+      ['DD', 'Ledger requests: 3 · Input 200 · Output 25 · USD 0.125'],
+    ]);
     expect(credentialRegion().getByText(`Last used: ${new Date(monthRow.last_used_at).toLocaleString('en-US')}`)).toBeTruthy();
-    expect(credentialRegion(102).getByText(`${monthText}: Ledger requests: 0 · Input 0 · Output 0 · USD 0`)).toBeTruthy();
+    expect(description(credentialRegion(102), monthText)?.textContent).toBe('Ledger requests: 0 · Input 0 · Output 0 · USD 0');
     expect(credentialRegion(102).queryByText(/^Last used:/)).toBeNull();
     expect(accountRegion().getByText('This month, account keys total: USD 0.1')).toBeTruthy();
     expect(accountRegion().getByText('Deleted keys, all time: Ledger requests: 3 · Input 200 · Output 25 · USD 0.125')).toBeTruthy();
@@ -188,8 +279,8 @@ describe('endpoint account management', () => {
       ? { ...legacyUsage, period: reportedPeriod, credentials: [allTimeRow] }
       : structuredClone(records));
     await openPanel();
-    expect(await credentialRegion().findByText('All time: Ledger requests: 3 · Input 200 · Output 25 · USD 0.125')).toBeTruthy();
-    expect(credentialRegion().getByText(`${reportedPeriod ? monthText : 'This month'}: Unknown`)).toBeTruthy();
+    await waitFor(() => expect(description(credentialRegion(), 'All time')?.textContent).toBe('Ledger requests: 3 · Input 200 · Output 25 · USD 0.125'));
+    expect(description(credentialRegion(), reportedPeriod ? monthText : 'This month')?.textContent).toBe('Unknown');
     expect(accountRegion().getAllByText('Registered: Unknown')).toHaveLength(2);
     expect(screen.getByText('This month, provider keys total: Unknown')).toBeTruthy();
   });
@@ -207,9 +298,9 @@ describe('endpoint account management', () => {
     expect(accountRegion().getByRole('button', { name: 'accounts.addCredential' }).hasAttribute('disabled')).toBe(false);
     pending.reject(new mocks.ApiError('irrelevant upstream body', 503));
     expect((await accountRegion().findByRole('alert')).textContent).toContain("Couldn't load account usage");
-    expect(credentialRegion().getByText('This month: Unknown')).toBeTruthy();
-    expect(credentialRegion().getByText('All time: Unknown')).toBeTruthy();
-    expect(await credentialRegion(102).findByText(`${monthText}: Ledger requests: 2 · Input 120 · Output 15 · USD 0.2`)).toBeTruthy();
+    expect(description(credentialRegion(), 'This month')?.textContent).toBe('Unknown');
+    expect(description(credentialRegion(), 'All time')?.textContent).toBe('Unknown');
+    await waitFor(() => expect(description(credentialRegion(102), monthText)?.textContent).toBe('Ledger requests: 2 · Input 120 · Output 15 · USD 0.2'));
     expect(screen.getByText('This month, provider keys total: Unknown')).toBeTruthy();
 
     mocks.get.mockResolvedValueOnce(keyUsage([monthRow]));
@@ -220,7 +311,7 @@ describe('endpoint account management', () => {
 
     mocks.get.mockResolvedValueOnce({ ...keyUsage([monthRow]), period: { ...period, start: period.end, end: '2027-01-01T00:00:00Z' } });
     await fireEvent.click(accountRegion().getByRole('button', { name: 'accounts.usage' }));
-    await credentialRegion().findByText('This month (Dec 1, 2026 – Dec 31, 2026, UTC): Ledger requests: 2 · Input 120 · Output 15 · USD 0.1');
+    await waitFor(() => expect(description(credentialRegion(), 'This month (Dec 1, 2026 – Dec 31, 2026, UTC)')?.textContent).toBe('Ledger requests: 2 · Input 120 · Output 15 · USD 0.1'));
     expect(screen.getByText('This month, provider keys total: Unknown')).toBeTruthy();
   });
 
@@ -266,6 +357,7 @@ describe('endpoint account management', () => {
     expect(screen.getByRole('form', { name: 'accounts.credentialEditor' })).toBeTruthy();
     expect((screen.getByLabelText('configuration.apiKey') as HTMLInputElement).value).toBe('unsaved-private-key');
     expect(screen.getByRole('region', { name: accountName })).toBeTruthy();
+    expect(screen.queryByText('Selection order 1')).toBeNull();
     expect(mocks.get.mock.calls.filter(([path]) => path.endsWith('/accounts'))).toHaveLength(1);
     expect(mocks.patch).not.toHaveBeenCalled();
   });
@@ -424,7 +516,7 @@ describe('settled per-key relay history', () => {
     mocks.get.mockImplementation(async (path: string) => poolRead(path) ?? (path.includes('before_id=7') ? { ...relay(101, 6), items: [{ ...relay().items[0], ledger_id: 6, dispatches: null }] } : { ...relay(path.includes('/102/') ? 102 : 101), next_before_id: path.includes('/101/') ? 7 : null }));
     await openPanel({ provider: { ...provider, api_base: 'https://current-user:current-secret@current.example/v1?key=current-query' } });
     expect(mocks.get.mock.calls.filter(([path]) => path.includes('/relays'))).toHaveLength(0);
-    expect(row().getByText('accounts.currentEndpoint: https://current.example/v1')).toBeTruthy();
+    expect(within(description(row(), 'accounts.currentEndpoint') as HTMLElement).getByText('https://current.example/v1')).toBeTruthy();
     await fireEvent.click(row().getByRole('button', { name: 'accounts.loadRelays' }));
     expect(await row().findByText('accounts.recordedDestination: https://old-key-101.example/v1/chat')).toBeTruthy();
     expect(row().getByText('accounts.relayBoundary')).toBeTruthy();
