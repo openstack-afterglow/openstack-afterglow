@@ -9,6 +9,8 @@ Owner requests (2026-11-20): dashboard usage charts show a "chart data" disclosu
 - **Drover grid:** grid/list view in the cluster main tab: shared network slabs, per-port groups, Service ports, node volumes (boot/CSI inferred), shares, measured RX/TX badges; PVC/PV bindings stay unknown (Drover has no endpoint).
 - **Key pool:** typed account vs API-key IDs, `created_at`, per-key UTC month ledger usage, last use, exact-decimal account/provider totals. Needs Lumen's additive `created_at` and `/usage` month fields; absent fields render as unknown.
 
+- **Admin and usage follow-ups (2026-11-20):** `/dashboard/usage` trend cards lose the telemetry source/native-state lines; the key pool modal explains every setting and orders accounts and keys by priority; model settings are split into per-kind tabs with provider-grouped lists.
+
 ## Non-goals
 
 - No Drover API change; no PVC/PV discovery. No measured traffic on edges. No provider invoice figures.
