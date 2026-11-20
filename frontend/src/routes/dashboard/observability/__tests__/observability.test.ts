@@ -62,7 +62,7 @@ describe('project VM observability', () => {
 		const view = render(Page);
 		await fireEvent.click(await screen.findByRole('button', { name: /own-vm/ }));
 		expect(screen.queryByRole('button', { name: /foreign-vm|unknown-owner/ })).toBeNull();
-		expect(await screen.findByText(/gnocchi · 사용 가능/)).toBeTruthy();
+		await waitFor(() => expect(document.querySelector('[data-instance-metric="cpu"]')).not.toBeNull());
 		expect(mocks.get).toHaveBeenCalledWith('/api/v1/instances', 'token-a', 'project-a', { refresh: false });
 		expect(mocks.get.mock.calls.some(([path, token, project]) => path.startsWith('/api/v1/instances/own-vm/metrics-batch?') && token === 'token-a' && project === 'project-a')).toBe(true);
 		expect(mocks.get.mock.calls.every(([path]) => !path.includes('grafana') && !path.includes('/admin/'))).toBe(true);
@@ -73,9 +73,9 @@ describe('project VM observability', () => {
 	it('clears measurements when search hides the selected instance', async () => {
 		render(Page);
 		await fireEvent.click(await screen.findByRole('button', { name: /own-vm/ }));
-		await screen.findByText(/gnocchi · 사용 가능/);
+		await waitFor(() => expect(document.querySelector('[data-instance-metric="cpu"]')).not.toBeNull());
 		await fireEvent.input(screen.getByRole('searchbox', { name: t('observability.search') }), { target: { value: 'unmatched' } });
-		expect(screen.queryByText(/gnocchi · 사용 가능/)).toBeNull();
+		expect(document.querySelector('[data-instance-metric]')).toBeNull();
 		expect(screen.getByText(t('observability.noResults'))).toBeTruthy();
 	});
 
@@ -120,7 +120,7 @@ describe('project VM observability', () => {
 	it('preserves picker selection and inventory across normal same-owner token rotation', async () => {
 		render(Page);
 		await fireEvent.click(await screen.findByRole('button', { name: /own-vm/ }));
-		await screen.findByText(/gnocchi · 사용 가능/);
+		await waitFor(() => expect(document.querySelector('[data-instance-metric="cpu"]')).not.toBeNull());
 		auth.update(state => ({ ...state, token: 'rotated-token' }));
 		await tick();
 		expect(screen.getByRole('button', { name: /own-vm/ }).getAttribute('aria-pressed')).toBe('true');

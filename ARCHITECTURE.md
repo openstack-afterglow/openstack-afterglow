@@ -1589,7 +1589,7 @@ Key pool settings and order: every account and key setting (priority, weight, qu
 
 Model settings tabs: `ChatConfiguration.svelte` groups registered models into tabs by model kind (only kinds that have models, with counts, shared accessible tab component). The last tab is remembered in `afterglow.admin.models.kindTab`. Within a tab, models are grouped by provider in the admin-defined provider order (`sort_order`, then provider ID) and the existing model display order. The provider filter and the select-all checkbox apply only to the visible tab; drag and keyboard reordering works only inside one provider of the tab, and the reorder request is built from the provider's complete ordered ID list so models hidden by the tab keep their positions. The separate kind filter select is replaced by the tabs.
 
-Usage trend cards: the dashboard `사용 추세` cards and the `/dashboard/usage` cards no longer render the chart-data table disclosure or telemetry source, native-state and native-policy lines. Empty, partial and failed readings remain short status text; the VM monitoring and admin charts keep the chart-data table for accessibility and gap/unit review.
+Usage trend charts: no Bklit chart renders a chart-data table disclosure any more (`BklitChart` has no `showData`/`xLabel` props; the exact values stay in the chart tooltip, the card's latest value and min/avg/max rows, and the page's own tables). The dashboard `사용 추세` cards and the `/dashboard/usage` cards also drop the telemetry source, native-state and native-policy lines, and the VM monitoring cards (`MetricsPanel`, shared by instance detail, `/dashboard/observability` and the admin instance tab) no longer print `source · status · unit · Gnocchi: status` under each chart or beside the min/avg/max row. Empty and failed readings keep their short status text, and a measurement that covers only part of the range still shows the single `일부 수집`-style warning above its chart; fully available metrics show no collection status. The chart group keeps its `aria-label` for assistive technology.
 
 BFF 경로 `/api/v1/chat/admin/providers/{provider_id}/accounts...`는 `backend/app/api/lumen/proxy.py`에서 기존 caller/project-scoped `/v1/admin/providers/{provider_id}/accounts...`로 전달하며 최종 native human system-admin 검사는 Lumen에 남는다. Provider subtree 성공/처리된 오류에 no-store/Pragma:no-cache를 붙이고 provider-admin transport 실패는 URL/예외/본문 없이 기록한다. API key/token/ciphertext는 metadata로 읽어오지 않는다. Panel은 입력 secret을 transient state에만 두고 submit/close/auth/session/project/provider 변경·destroy에서 지우며 epoch/read-generation으로 stale 완료와 device polling을 fence한다. Nine locale catalogs(en/ko/ja/zh-CN/bn/ms/nb/sw/vi)의 같은 관리자 UI를 사용한다. OAuth protocol 지원은 consumer subscription의 public multiuser pooling 허가가 아니다.
 
@@ -2317,9 +2317,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "b9e8d63cc6ed88881a045062e95ab99150b04393678475f654f5eed8fd2a6479",
-  "reviewed_at": "2026-11-20T04:46:12Z",
-  "summary": "Release 1.32.30 version metadata and changelog"
+  "source_sha256": "ea048d9d32298412ad144d1116051525a694fa0cb722e7669d15887453519227",
+  "reviewed_at": "2026-11-20T08:31:07Z",
+  "summary": "Removed the chart-data disclosure from every Bklit chart and the source/status text from VM monitoring cards; docs, OpenSpec and nine locales updated"
 }
 ```
 <!-- architecture-review:end -->

@@ -2,13 +2,20 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get, writable } from 'svelte/store';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn() }));
+type ChartSnapshot = { data: Record<string, unknown>[] };
+const mocks = vi.hoisted(() => ({ get: vi.fn(), charts: [] as { data: Record<string, unknown>[] }[] }));
 vi.mock('$lib/stores/auth', () => {
 	return { auth: writable({ token: 'token', projectId: 'project', userId: 'admin', sessionId: 'session', identityDomainId: 'home', domainId: 'working', isSystemAdmin: true }), authReady: writable(true), projectSwitching: writable(false), logoutInProgress: writable(false) };
 });
 vi.mock('$lib/api/client', () => ({ api: { get: mocks.get }, ApiError: class extends Error {
 	constructor(public status: number, message: string) { super(message); }
 } }));
+vi.mock('$lib/components/charts/runtime', () => ({
+	mountChart: (_element: unknown, spec: ChartSnapshot) => {
+		if (Array.isArray(spec.data)) mocks.charts.push(spec);
+		return { update: (next: ChartSnapshot) => { if (Array.isArray(next.data)) mocks.charts.push(next); }, destroy: () => undefined };
+	},
+}));
 
 import StatsPage from '$lib/components/admin/chat/AdminChatStatsPage.svelte';
 import { auth, authReady, projectSwitching, logoutInProgress } from '$lib/stores/auth';
@@ -87,6 +94,7 @@ describe('chat admin statistics activity', () => {
 	});
 
 	it('stacks measured token sources without inventing zero-valued missing buckets', async () => {
+		mocks.charts.length = 0;
 		const now = new Date();
 		const bucket = `${now.toISOString().slice(0, 10)} ${now.toISOString().slice(11, 13)}:00:00`;
 		mocks.get.mockImplementation((path: string) => path.includes('/timeseries?')
@@ -96,13 +104,11 @@ describe('chat admin statistics activity', () => {
 			] })
 			: Promise.resolve(response));
 		render(StatsPage);
-		const summary = await screen.findByText('차트 데이터 보기');
-		const details = summary.closest('details')!;
-		details.open = true;
-		await fireEvent(details, new Event('toggle'));
-		const rows = [...details.querySelectorAll('tbody tr')];
-		expect([...rows.at(-1)!.querySelectorAll('td')].map(cell => cell.textContent)).toEqual(['80', '50']);
-		expect([...rows.at(-2)!.querySelectorAll('td')].map(cell => cell.textContent)).toEqual(['—', '—']);
+		await waitFor(() => {
+			expect(mocks.charts.at(-1)?.data.at(-1)).toMatchObject({ prompt_tokens: 80, completion_tokens: 50 });
+		});
+		expect(mocks.charts.at(-1)?.data.at(-2)).toMatchObject({ prompt_tokens: null, completion_tokens: null });
+		expect(screen.queryByText('차트 데이터 보기')).toBeNull();
 	});
 
 	it('sends the independent domain and project intersection on overview, chart and user pages', async () => {

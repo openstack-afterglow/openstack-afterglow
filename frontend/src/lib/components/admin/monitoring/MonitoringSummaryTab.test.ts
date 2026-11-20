@@ -1,10 +1,25 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setLocale } from '$lib/i18n/runtime.svelte';
 import { t } from '$lib/i18n/ns/admin-ops';
 import MonitoringSummaryTab, { type MonitoringSummary, type NativeMeter, type SystemTelemetry } from './MonitoringSummaryTab.svelte';
 
-beforeEach(() => { setLocale('en'); });
+type HistoryChart = { spec: { data: { time: number; value: number | null }[]; formatValue: (value: number) => string }; label?: string };
+type HistorySnapshot = HistoryChart['spec'] & { label?: string };
+const mocks = vi.hoisted(() => ({ charts: [] as { data: { time: number; value: number | null }[]; formatValue: (value: number) => string; label?: string }[] }));
+// The component only hands the chart its spec; capturing it keeps the assertion synchronous.
+vi.mock('$lib/components/charts/BklitChart.svelte', () => ({
+	default: (_anchor: unknown, props: HistoryChart) => {
+		const snapshot: HistorySnapshot = { ...props.spec, label: props.label };
+		if (Array.isArray(snapshot.data) && snapshot.data.every(row => 'time' in row)) mocks.charts.push(snapshot);
+		return {};
+	},
+}));
+
+beforeEach(() => {
+	setLocale('en');
+	mocks.charts.length = 0;
+});
 afterEach(() => { cleanup(); setLocale('ko'); });
 
 const meter = (series: NativeMeter['series'], overrides: Partial<NativeMeter> = {}): NativeMeter => ({
@@ -92,12 +107,10 @@ describe('MonitoringSummaryTab', () => {
 		const details = within(group).getByText(t('monitoring.telemetry.history')).closest('details')!;
 		details.open = true;
 		await fireEvent(details, new Event('toggle'));
-		const chart = within(group).getByRole('group', { name: 'Compute A · hardware.cpu.util (%)' });
-		const tableDisclosure = chart.querySelector('details')!;
-		tableDisclosure.open = true;
-		await fireEvent(tableDisclosure, new Event('toggle'));
-		const values = [...chart.querySelectorAll('tbody tr')].map(row => row.querySelector('td')?.textContent);
-		expect(values).toEqual(['7 %', '—', '0 %']);
+		const spec = mocks.charts.at(-1);
+		expect(spec?.label).toBe('Compute A · hardware.cpu.util (%)');
+		expect(spec?.data.map(row => row.time)).toEqual([60_000, 120_000, 180_000]);
+		expect(spec?.data.map(row => row.value === null ? '—' : spec.formatValue(row.value))).toEqual(['7 %', '—', '0 %']);
 	});
 
 	it('shows policy-bounded partial host and storage coverage without making empty meters zero', () => {

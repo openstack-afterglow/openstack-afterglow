@@ -104,8 +104,6 @@
 	"metrics.diskAllocation": "Peruntukan cakera",
 	"metrics.swapIn": "Swap masuk",
 	"metrics.swapOut": "Swap keluar",
-	"metrics.noSource": "Tiada sumber pengukuran",
-	"metrics.fallback": "Sandaran pengeksport",
 	"metrics.status": "{status, select, available {Tersedia} partial {Liputan separa} not_configured {Belum dikonfigurasi} forbidden {Tidak dibenarkan} unavailable {Tidak tersedia} not_collected {Tidak dikumpulkan} other {Tidak diketahui}}",
 	"header.latestFault": "Ralat terkini (pentadbir)",
 	"header.migrationInProgress": "Migrasi sedang berlangsung",

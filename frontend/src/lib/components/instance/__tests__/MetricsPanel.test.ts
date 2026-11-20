@@ -207,43 +207,27 @@ describe('MetricsPanel', () => {
 	});
 
 
-	it('exposes independently timed measurements with explicit gaps and byte-rate units', async () => {
+	function metricCard(key: string): HTMLElement {
+		const card = document.querySelector<HTMLElement>(`[data-instance-metric="${key}"]`);
+		if (!card) throw new Error(`metric card ${key} not rendered`);
+		return card;
+	}
+
+	it('formats the latest byte-rate sample in the metric header', async () => {
 		const batch = makeBatchResponse(FAKE_SERIES);
 		batch.metrics.network_rx.series = [
 			{ ts: 1700000000, value: 1024 },
 			{ ts: 1700000060, value: null },
 			{ ts: 1700000090, value: 2048 },
 		];
-		batch.metrics.network_tx.series = [
-			{ ts: 1700000030, value: 512 },
-			{ ts: 1700000090, value: 768 },
-		];
 		mockGet.mockResolvedValue(batch);
 		render(MetricsPanel, { props: { instanceId: 'inst-1' } });
-		const chart = await screen.findByRole('group', { name: '네트워크 I/O' });
-		const details = chart.querySelector('details')!;
-		details.open = true;
-		await fireEvent(details, new Event('toggle'));
-		const values = [...chart.querySelectorAll('tbody tr')].map(row => [...row.querySelectorAll('td')].map(cell => cell.textContent));
-		expect(values).toEqual([
-			['1.0KB/s', '—'], ['—', '512B/s'], ['—', '—'], ['2.0KB/s', '768B/s'],
-		]);
+		await screen.findByRole('group', { name: '네트워크 I/O' });
+		expect(within(metricCard('network_rx')).getAllByText('2.0KB/s').length).toBeGreaterThan(0);
+		expect(metricCard('network_rx').querySelector('details')).toBeNull();
 	});
 
-	it('keeps full localized dates in metric details when the same clock time occurs on different days', async () => {
-		const samples = [{ ts: 1700000000, value: 0 }, { ts: 1700086400, value: 10 }];
-		mockGet.mockResolvedValue(makeBatchResponse(samples));
-		render(MetricsPanel, { props: { instanceId: 'inst-1' } });
-		const chart = await screen.findByRole('group', { name: t('metrics.cpuUsage') });
-		const details = chart.querySelector('details')!;
-		details.open = true;
-		await fireEvent(details, new Event('toggle'));
-		const timestamps = within(chart).getAllByRole('rowheader').map(cell => cell.textContent);
-		expect(timestamps).toEqual(samples.map(sample => new Date(sample.ts * 1000).toLocaleString(intlLocale())));
-		expect(new Set(timestamps).size).toBe(2);
-	});
-
-	it('distinguishes native zero, fallback, uncollected and native capacity units', async () => {
+	it('shows native zero and capacity units without source or collection-status text', async () => {
 		const batch = makeBatchResponse([{ ts: 1700000000, value: 0 }]);
 		batch.metrics.memory = { series: [], error: null, source: 'gnocchi', unit: '%', status: 'not_collected', native_status: 'not_collected' };
 		batch.metrics.disk_read = { ...batch.metrics.disk_read, source: 'libvirt', native_status: 'forbidden' };
@@ -251,25 +235,29 @@ describe('MetricsPanel', () => {
 		batch.metrics.disk_allocation = { ...batch.metrics.cpu, series: [{ ts: 1700000000, value: 8192 }], unit: 'B' };
 		mockGet.mockImplementation((url: string) => Promise.resolve(url.includes('metrics-summary') ? { monitoring_available: true, stats: {} } : batch));
 		render(MetricsPanel, { props: { instanceId: 'inst-1' } });
-		expect(await screen.findAllByText(/gnocchi · 사용 가능/)).not.toHaveLength(0);
-		expect(await screen.findByText(/libvirt · Exporter 대체 소스.*Gnocchi: 권한 없음/)).toBeTruthy();
-		expect(screen.getByText(/gnocchi · 미수집 · %/)).toBeTruthy();
+		await screen.findByRole('group', { name: t('metrics.cpuUsage') });
+		expect(within(metricCard('cpu')).getAllByText('0.0%').length).toBeGreaterThan(0);
 		expect(screen.queryByRole('group', { name: t('metrics.memoryUsage') })).toBeNull();
-		const cpu = await screen.findByRole('group', { name: t('metrics.cpuUsage') });
-		const cpuData = cpu.querySelector('details')!;
-		cpuData.open = true;
-		await fireEvent(cpuData, new Event('toggle'));
-		expect(within(cpu).getAllByText('0.0%').length).toBeGreaterThan(0);
+		expect(screen.queryByText(/gnocchi|libvirt|Exporter|Gnocchi:/i)).toBeNull();
+		expect(screen.queryByText(t('metrics.status', { status: 'available' }))).toBeNull();
+		expect(document.querySelector('details')).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: t('metrics.nativeMeasurements') }));
-		for (const [label, value] of [[t('metrics.memoryResident'), '512.0 MiB'], [t('metrics.diskAllocation'), '8192.0 B']]) {
-			const chart = await screen.findByRole('group', { name: label });
-			const data = chart.querySelector('details')!;
-			data.open = true;
-			await fireEvent(data, new Event('toggle'));
-			expect(within(chart).getByRole('cell', { name: value })).toBeTruthy();
+		for (const [key, value] of [['memory_resident', '512.0 MiB'], ['disk_allocation', '8192.0 B']]) {
+			await screen.findByRole('group', { name: key === 'memory_resident' ? t('metrics.memoryResident') : t('metrics.diskAllocation') });
+			expect(within(metricCard(key)).getAllByText(value).length).toBeGreaterThan(0);
 		}
 		expect(screen.queryByText('8192.0 B/s')).toBeNull();
-		expect(screen.getAllByText(/Gnocchi: 미수집/).length).toBeGreaterThan(0);
+	});
+
+	it('warns only when a measurement covers part of the range', async () => {
+		const batch = makeBatchResponse([{ ts: 1700000000, value: 12 }]);
+		batch.metrics.cpu.status = 'partial';
+		mockGet.mockImplementation((url: string) => Promise.resolve(url.includes('metrics-summary') ? { monitoring_available: true, stats: {} } : batch));
+		render(MetricsPanel, { props: { instanceId: 'inst-1' } });
+		await screen.findByRole('group', { name: t('metrics.cpuUsage') });
+		const cpu = metricCard('cpu');
+		expect(within(cpu).getByText(t('metrics.status', { status: 'partial' }))).toBeTruthy();
+		expect(within(metricCard('memory')).queryByText(t('metrics.status', { status: 'partial' }))).toBeNull();
 	});
 
 	it('keeps a readable empty native meter uncollected when fallback monitoring is offline', async () => {
@@ -277,7 +265,7 @@ describe('MetricsPanel', () => {
 		batch.metrics.memory.error = 'prometheus_unavailable';
 		mockGet.mockResolvedValue(batch);
 		render(MetricsPanel, { props: { instanceId: 'inst-1' } });
-		expect(await screen.findAllByText(/gnocchi · 미수집/)).not.toHaveLength(0);
+		expect(await screen.findAllByText(t('metrics.empty'))).not.toHaveLength(0);
 		expect(screen.queryByText('prometheus_unavailable')).toBeNull();
 		expect(screen.getAllByText(t('metrics.empty')).length).toBeGreaterThan(0);
 	});
@@ -287,7 +275,6 @@ describe('MetricsPanel', () => {
 		const oldSummary = Promise.withResolvers<unknown>();
 		let previous = true;
 		const current = makeBatchResponse([{ ts: 1700000000, value: 22.7 }]);
-		current.metrics.cpu.source = 'current-source';
 		mockGet.mockImplementation((url: string) => {
 			if (previous) return url.includes('metrics-summary') ? oldSummary.promise : oldBatch.promise;
 			return Promise.resolve(url.includes('metrics-summary') ? { monitoring_available: true, stats: {} } : current);
@@ -303,15 +290,13 @@ describe('MetricsPanel', () => {
 			auth.update((state) => ({ ...state, projectId: 'test-project' }));
 		}
 		else auth.update((state) => ({ ...state, ...(context === 'project' ? { projectId: 'project-b' } : { userId: 'user-b' }) }));
-		expect(await screen.findByText(/current-source/)).toBeTruthy();
+		expect((await screen.findAllByText('22.7%')).length).toBeGreaterThan(0);
 		const stale = makeBatchResponse([{ ts: 1700000000, value: 91.3 }]);
-		stale.metrics.cpu.source = 'old-private-source';
 		oldBatch.resolve(stale);
 		oldSummary.resolve({ monitoring_available: true, stats: { cpu: { min: 91.3, avg: 91.3, max: 91.3, source: 'old-private-summary', unit: '%' } } });
 		await tick();
 		await tick();
-		expect(screen.queryByText(/old-private/)).toBeNull();
 		expect(screen.queryByText('91.3%')).toBeNull();
-		expect(screen.getByText(/current-source/)).toBeTruthy();
+		expect(screen.getAllByText('22.7%').length).toBeGreaterThan(0);
 	});
 });

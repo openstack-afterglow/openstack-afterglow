@@ -41,7 +41,7 @@
   <Card surface="base">
     <h2 class="text-sm font-semibold mb-2">{t('timeline')}</h2>
     <p class="text-xs text-ink-2 tabular-nums mb-2">{t('count')}: {number(0)} – {number(peak)}</p>
-    <BklitChart spec={timelineSpec} height={160} label={t('timeline')} showData={false} />
+    <BklitChart spec={timelineSpec} height={160} label={t('timeline')} />
     {#if timeline.length}<p class="flex justify-between gap-3 text-xs text-ink-2 mt-2"><span>{date(timeline[0].at)}</span><span>{date(timeline[timeline.length - 1].at)}</span></p>{/if}
     <details class="mt-3 text-sm"><summary class="min-h-11 cursor-pointer text-ink-1">{t('timelineDetails')}</summary>
       <div class="max-h-64 overflow-y-auto">

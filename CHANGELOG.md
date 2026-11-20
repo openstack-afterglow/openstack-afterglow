@@ -7,6 +7,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- 모든 차트에서 "차트 데이터 보기" 표를 없앴고, VM 모니터링 카드에서 차트 아래에 표시하던 `소스 · 상태 · 단위 · Gnocchi 상태` 문구와 최소·평균·최대 행의 수집 상태를 제거했습니다. 범위의 일부만 수집된 측정에만 짧은 경고가 남습니다.
+- Every chart no longer renders the "View chart data" table, and the VM monitoring cards drop the `source · status · unit · Gnocchi status` text under each chart and beside the min/avg/max row. Only a measurement that covers part of the range keeps a short warning.
+
 ## [1.32.30] - 2026-11-20
 
 ### Added

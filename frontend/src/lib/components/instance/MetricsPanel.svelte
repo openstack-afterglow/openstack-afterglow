@@ -177,13 +177,6 @@
 	function statusLabel(status: string | null | undefined): string {
 		return t('metrics.status', { status: status ?? 'unknown' });
 	}
-	function metricDescription(metadata: Metadata, unit: string): string {
-		const source = metadata.source ?? t('metrics.noSource');
-		const fallback = metadata.source && metadata.source !== 'gnocchi' && metadata.native_status
-			? ` · ${t('metrics.fallback')}` : '';
-		const native = metadata.native_status ? ` · Gnocchi: ${statusLabel(metadata.native_status)}` : '';
-		return `${source}${fallback} · ${statusLabel(metadata.status)} · ${metadata.unit ?? unit}${native}`;
-	}
 	function hasValues(samples: Series[] | null | undefined): boolean {
 		return samples?.some((sample) => sample.value != null && Number.isFinite(sample.value)) ?? false;
 	}
@@ -288,10 +281,9 @@
 						</span>
 					{/if}
 				</div>
-				<div class="mb-2 min-h-10 space-y-1 text-xs text-ink-2 break-words" aria-live="polite">
-					<p>{chart.extraKey ? `${t('metrics.readLegend')}: ` : ''}{metricDescription(m, chart.unit)}</p>
-					{#if ex}<p>{t('metrics.writeLegend')}: {metricDescription(ex, chart.unit)}</p>{/if}
-				</div>
+				{#if hasValues(m.data) && (m.status === 'partial' || ex?.status === 'partial')}
+					<p class="mb-2 text-xs text-state-warning-text" aria-live="polite">{statusLabel('partial')}</p>
+				{/if}
 
 				<div class="min-h-48">
 				{#if m.data === null}
@@ -329,7 +321,6 @@
 						<span><RichText segments={t.rich('metrics.minimum', { value: '' })} tags={{ strong: statMin }} /></span>
 						<span><RichText segments={t.rich('metrics.average', { value: '' })} tags={{ strong: statAvg }} /></span>
 						<span><RichText segments={t.rich('metrics.maximum', { value: '' })} tags={{ strong: statMax }} /></span>
-						<span>{metricDescription(s, chart.unit)}</span>
 					</div>
 				{/if}
 				</div>
