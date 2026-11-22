@@ -240,7 +240,6 @@
 		<span>{t('sidebar.search')}</span>
 		<kbd>{t('sidebar.searchShortcut')}</kbd>
 	</button>
-	<p class="mx-3 my-1 text-xs text-[var(--color-ink-2)]">{t('sidebar.domainScope')}</p>
 
 	<div class="list">
 		{#if grouped.total === 0 && !grouped.hasGroups}
@@ -563,7 +562,7 @@
 		border: 1px solid var(--color-line);
 		border-radius: 0.3rem;
 		color: var(--color-ink-2);
-		font-size: 0.65rem;
+		font-size: 0.6875rem;
 	}
 	.chat-search-dialog {
 		width: min(100vw - 2rem, 34rem);
@@ -599,7 +598,7 @@
 		border: 1px solid var(--color-line);
 		border-radius: 0.3rem;
 		color: var(--color-ink-2);
-		font-size: 0.65rem;
+		font-size: 0.6875rem;
 	}
 	.chat-search-results {
 		max-height: 24rem;
@@ -627,7 +626,7 @@
 	}
 	.chat-search-results small {
 		color: var(--color-ink-2);
-		font-size: 0.68rem;
+		font-size: 0.6875rem;
 	}
 	.chat-search-empty {
 		margin: 0;
@@ -935,7 +934,7 @@
 		border-radius: 50%;
 		background: var(--color-accent);
 		color: var(--color-action-on-accent);
-		font-size: 0.66rem;
+		font-size: 0.6875rem;
 		font-weight: 700;
 	}
 	.user-name {

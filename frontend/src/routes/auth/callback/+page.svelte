@@ -236,7 +236,7 @@
 	<div class="auth-flow">
 		<header class="auth-flow-heading"><h1>{callbackTitle}</h1></header>
 		{#if loading && !abandoned && !$logoutInProgress && !$projectSwitching}
-			<LoadingState variant="section" label={t('callback.processing')} />
+			<LoadingState variant="section" label={t('callback.processing')} class="callback-progress" />
 		{:else if abandoned || $logoutInProgress || $projectSwitching}
 			<Button href={loginPath} class="w-full">{t('common.backToLogin')}</Button>
 		{:else}
@@ -282,3 +282,9 @@
 		{/if}
 	</div>
 </AuthStudioShell>
+
+<style>
+	/* The heading already announces the state visually; the status keeps its accessible name only. */
+	.auth-flow :global(.loading-state.callback-progress) { position: relative; justify-items: start; padding: 0; text-align: left; }
+	.auth-flow :global(.callback-progress .loading-state__copy) { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+</style>

@@ -1,6 +1,5 @@
 {
 	"landing.story.hero.body": "所需服务汇聚一处，机构设备整合为一朵云。",
-	"landing.story.hero.eyebrow": "A QUIET MOMENT BEFORE WHAT'S NEXT",
 	"landing.story.hero.signature": "AFTERGLOW",
 	"landing.story.hero.pauseMotion": "暂停动画",
 	"landing.story.hero.playMotion": "播放动画",
@@ -227,10 +226,6 @@
 	"mcpConsent.permission.waygateClientsAdmin": "删除 VPN 客户端并撤销访问权限",
 	"mcpConsent.permission.waygateGatewaysAdmin": "删除 VPN 网关并轮换密钥",
 	"mcpConsent.permission.waygateRouting": "管理 VPN 网络连接、路由和凭证转移",
-	"authStudio.login.eyebrow": "YOUR CLOUD. YOUR NEXT CHAPTER.",
-	"authStudio.login.formEyebrow": "WELCOME TO {site}",
-	"authStudio.logout.eyebrow": "UNTIL YOUR NEXT CHAPTER.",
-	"authStudio.logout.formEyebrow": "{site} / SIGN OUT",
 	"authStudio.artLabel": "Afterglow 字符图形",
 	"authStudio.login.headline1": "从想法到执行，",
 	"authStudio.login.headline2": "一个工作空间。",

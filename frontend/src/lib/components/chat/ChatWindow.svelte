@@ -308,9 +308,6 @@
 			<LoadingState variant="surface" label={t('window.loading')} />
 		{:else if empty}
 			<div class="welcome">
-				<div class="welcome-mark">
-					<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7A8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z" stroke-linecap="round" stroke-linejoin="round" /></svg>
-				</div>
 				<h2>{t('window.welcomeTitle')}</h2>
 				<p>{t('window.welcomeDescription')}</p>
 				{#if starterPrompts.length}
@@ -496,18 +493,6 @@
 		justify-content: center;
 		text-align: center;
 		gap: 0.4rem;
-	}
-	.welcome-mark {
-		width: 3.5rem;
-		height: 3.5rem;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		border-radius: 1rem;
-		margin-bottom: 0.6rem;
-		color: var(--color-accent);
-		background: var(--color-surface-sunken);
-		border: 1px solid var(--color-line);
 	}
 	.welcome h2 {
 		margin: 0;

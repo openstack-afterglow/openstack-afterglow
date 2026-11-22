@@ -7,6 +7,15 @@
 
 ## [Unreleased]
 
+- 관리자 모델 설정에서 탭을 AI 프로바이더별로 바꾸고, 모델 종류를 다중 선택 칩으로 필터링합니다. 상단 전체 네이티브 모델 카탈로그는 제거했습니다.
+- Admin model settings now use AI-provider tabs and multi-select model-kind chips. The full native model catalog is removed from the top of the page.
+- 랜딩 페이지에서 히어로 위 영문 문구, 안내 문장의 넓은 자간, 연결선 펄스의 발광 효과, 화살표를 만드는 테두리를 제거하고 가운데 정렬 설명 문단의 줄 길이를 줄였습니다.
+- The landing page drops the tracked eyebrow above the hero, wide tracking on the footer tagline, the glow on link pulses and the border-built arrowheads, and narrows the centered description measure.
+- 로그인·로그아웃 화면의 영문 장식 문구와 `: : CLOUD WORKSPACE : :`, 대시보드 요약 타일의 청록·보라 아이콘 색, Lumen 빈 채팅 화면의 아이콘 타일을 제거했습니다. 좁은 자간 제목과 11px 미만 글자(채팅·프로젝트 라벨)를 정리했습니다.
+- SSO 콜백의 "로그인 처리 중…" 안내가 제목과 진행 표시에 두 번 보이던 것을 한 번만 보이게 하고(접근성 상태 알림은 유지), 진행 표시를 제목과 같은 왼쪽에 맞췄습니다.
+- Login/logout drop the tracked English eyebrows and the decorative `: : CLOUD WORKSPACE : :` index, dashboard stat tiles drop their cyan/violet icon colors, and the empty Lumen chat drops its icon tile. Crushed heading tracking and text under 11px (chat and project label) are corrected.
+- The SSO callback shows "로그인 처리 중…" once instead of twice (the accessible status is kept) and aligns the progress bar with the title.
+
 ## [1.32.31] - 2026-11-22
 
 ### Changed

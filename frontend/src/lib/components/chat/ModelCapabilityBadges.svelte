@@ -72,14 +72,14 @@
 		border: 1px solid var(--color-line);
 		background: var(--color-surface-sunken);
 		color: var(--color-ink-2);
-		font-size: 0.66rem;
+		font-size: 0.6875rem;
 		font-weight: 600;
 		line-height: 1.2;
 		white-space: nowrap;
 	}
 	.badges.xs .badge {
 		padding: 0.08rem 0.32rem;
-		font-size: 0.6rem;
+		font-size: 0.6875rem;
 	}
 	.badge.vision {
 		color: color-mix(in oklab, var(--color-accent) 85%, var(--color-ink-1));

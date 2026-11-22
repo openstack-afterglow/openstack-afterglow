@@ -1,6 +1,5 @@
 {
 	"landing.story.hero.body": "Tjenestene dine på ett sted, institusjonens infrastruktur i én sky.",
-	"landing.story.hero.eyebrow": "A QUIET MOMENT BEFORE WHAT'S NEXT",
 	"landing.story.hero.signature": "AFTERGLOW",
 	"landing.story.hero.pauseMotion": "Sett animasjon på pause",
 	"landing.story.hero.playMotion": "Spill av animasjon",
@@ -227,10 +226,6 @@
 	"mcpConsent.permission.waygateClientsAdmin": "Slett VPN-klienter og tilbakekall tilgang",
 	"mcpConsent.permission.waygateGatewaysAdmin": "Slett VPN-gatewayer og roter nøkler",
 	"mcpConsent.permission.waygateRouting": "Administrer VPN-nettverkstilkoblinger, ruting og overføring av legitimasjon",
-	"authStudio.login.eyebrow": "YOUR CLOUD. YOUR NEXT CHAPTER.",
-	"authStudio.login.formEyebrow": "WELCOME TO {site}",
-	"authStudio.logout.eyebrow": "UNTIL YOUR NEXT CHAPTER.",
-	"authStudio.logout.formEyebrow": "{site} / SIGN OUT",
 	"authStudio.artLabel": "Afterglow tegngrafikk",
 	"authStudio.login.headline1": "Fra idé til gjennomføring,",
 	"authStudio.login.headline2": "ett arbeidsområde.",

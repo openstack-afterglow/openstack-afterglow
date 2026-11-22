@@ -298,13 +298,13 @@
 	.vm-row .status { grid-column: 2 / 4; }
 
 	.link { position: relative; flex: none; align-self: center; width: clamp(1.75rem, 5cqi, 3.5rem); height: 2px; background: var(--color-line-2); transform-origin: left; }
-	.link::after { content: ''; position: absolute; right: 0; top: 50%; width: 0.5rem; height: 0.5rem; border-top: 2px solid var(--color-line-2); border-right: 2px solid var(--color-line-2); transform: translate(0, -50%) rotate(45deg); }
-	.pulse { position: absolute; top: 50%; left: 0; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--color-warm); box-shadow: 0 0 0.75rem var(--color-warm); translate: -50% -50%; opacity: 0; }
+	.link::after { content: ''; position: absolute; right: 0; top: 50%; width: 0.5rem; height: 0.75rem; background: var(--color-line-2); clip-path: polygon(0 0, 100% 50%, 0 100%); translate: 0 -50%; }
+	.pulse { position: absolute; top: 50%; left: 0; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--color-warm); translate: -50% -50%; opacity: 0; }
 
 	@container (max-width: 40rem) {
 		.canvas { flex-direction: column; align-items: stretch; padding: 1.75rem 1rem 1.25rem; gap: 0.5rem; }
 		.link { align-self: center; width: 2px; height: 2rem; transform-origin: top; }
-		.link::after { top: auto; bottom: 0; right: 50%; transform: translate(50%, 0) rotate(135deg); }
+		.link::after { top: auto; bottom: 0; right: 50%; width: 0.75rem; height: 0.5rem; clip-path: polygon(0 0, 100% 0, 50% 100%); translate: 50% 0; }
 		.framed { margin-top: 0.75rem; }
 		.spec-row { grid-template-columns: auto 4.5rem minmax(2rem, 1fr) auto; }
 	}
@@ -352,7 +352,7 @@
 
 	@media (forced-colors: active) {
 		.glyph, .tile { color: CanvasText; }
-		.pulse, .fill, .level, .led { background: CanvasText; box-shadow: none; }
+		.pulse, .fill, .level, .led, .link::after { background: CanvasText; }
 		.curve { stroke: CanvasText; }
 	}
 </style>

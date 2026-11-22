@@ -36,7 +36,8 @@ function model(kind = 'image', pricing: Record<string, unknown> = {}) {
 		cache_read_price_per_million: '0.3000000000', cache_write_price_per_million: '3.75', cache_write_1h_price_per_million: '6',
 		price_source: 'models.dev', models_dev_model_id: 'catalog-model', media_pricing: pricing };
 }
-const tabStorageKey = 'afterglow.admin.models.kindTab';
+const tabStorageKey = 'afterglow.admin.models.providerTab';
+const hiddenKindsStorageKey = 'afterglow.admin.models.hiddenKinds';
 let rows: Record<string, unknown>[];
 let candidates: Record<string, unknown>[];
 async function openEditor() {
@@ -52,6 +53,7 @@ async function openDiscovery() {
 beforeEach(() => {
 	vi.clearAllMocks();
 	localStorage.removeItem(tabStorageKey);
+	localStorage.removeItem(hiddenKindsStorageKey);
 	mocks.scope = { token: 'token', projectId: 'project', isSystemAdmin: true };
 	authReady.set(true); projectSwitching.set(false);
 	rows = []; candidates = [];
@@ -155,44 +157,28 @@ describe('admin multimodal pricing consumer', () => {
 		await fireEvent.click(within(reopened).getByRole('radio', { name: '토큰 단위' }));
 		expect((within(within(reopened).getByRole('group', { name: '이미지 토큰' })).getByLabelText('출력') as HTMLInputElement).value).toBe('40');
 	});
-	it('renders only populated kind tabs, clears selection on activation, and restores the saved kind', async () => {
+	it('shows provider tabs and lets admins toggle visible model kinds', async () => {
 		rows = [model(), { ...model('text'), id: 2, display_name: 'Text model', model_kind: undefined }];
-		const view = render(ModelPage);
-		const tablist = await screen.findByRole('tablist', { name: '등록 모델 종류' });
-		const textTab = within(tablist).getByRole('tab', { name: '텍스트 (1)', selected: true });
-		const imageTab = within(tablist).getByRole('tab', { name: '이미지 (1)', selected: false });
-		expect(within(tablist).getAllByRole('tab')).toEqual([textTab, imageTab]);
-		expect(imageTab.getAttribute('aria-controls')).toBe(document.querySelector('[role="tabpanel"][hidden]')?.id);
-		expect(screen.queryByRole('checkbox', { name: 'Media model 선택' })).toBeNull();
+		render(ModelPage);
+		await screen.findByRole('tab', { name: 'OpenAI', selected: true });
+		const textKind = screen.getByRole('button', { name: '텍스트 · 1', pressed: true });
+		expect(screen.getByRole('button', { name: '이미지 · 1', pressed: true })).toBeTruthy();
 		await fireEvent.click(screen.getByRole('checkbox', { name: 'Text model 선택' }));
 		expect(screen.getByRole('button', { name: '선택 삭제 (1)' })).toBeTruthy();
-
-		textTab.focus();
-		await fireEvent.keyDown(textTab, { key: 'ArrowRight' });
-		await waitFor(() => expect(document.activeElement).toBe(imageTab));
-		expect(textTab.getAttribute('aria-selected')).toBe('true');
-		await fireEvent.keyDown(imageTab, { key: 'Enter' });
-		const imagePanel = screen.getByRole('tabpanel', { name: '이미지 (1)' });
-		expect(within(imagePanel).getByRole('checkbox', { name: 'Media model 선택' })).toBeTruthy();
+		await fireEvent.click(textKind);
+		expect(screen.getByRole('button', { name: '텍스트 · 1', pressed: false })).toBeTruthy();
+		expect(screen.queryByRole('checkbox', { name: 'Text model 선택' })).toBeNull();
 		expect(screen.queryByRole('button', { name: '선택 삭제 (1)' })).toBeNull();
-		await fireEvent.click(textTab);
-		expect((screen.getByRole('checkbox', { name: 'Text model 선택' }) as HTMLInputElement).checked).toBe(false);
-		await fireEvent.click(imageTab);
-		expect(localStorage.getItem(tabStorageKey)).toBe('image');
-
-		view.unmount();
-		render(ModelPage);
-		await screen.findByRole('tab', { name: '이미지 (1)', selected: true });
-		expect(screen.getByRole('tabpanel', { name: '이미지 (1)' })).toBeTruthy();
+		expect(screen.getByRole('checkbox', { name: 'Media model 선택' })).toBeTruthy();
 	});
 
-	it('falls back to the first populated kind when the saved tab has no models', async () => {
-		localStorage.setItem(tabStorageKey, 'text');
-		rows = [model('stt'), { ...model('image'), id: 2, display_name: 'Image model' }];
+	it('falls back to the first provider when saved provider is absent', async () => {
+		localStorage.setItem(tabStorageKey, '99');
+		rows = [model()];
 		render(ModelPage);
-		await screen.findByRole('tab', { name: '이미지 (1)', selected: true });
-		expect(screen.getByRole('checkbox', { name: 'Image model 선택' })).toBeTruthy();
-		expect(screen.getAllByRole('tab')).toHaveLength(2);
+		await screen.findByRole('tab', { name: 'OpenAI', selected: true });
+		expect(screen.getByRole('checkbox', { name: 'Media model 선택' })).toBeTruthy();
+		expect(screen.getAllByRole('tab')).toHaveLength(1);
 	});
 	it('rejects a zero reservation and saves text cache and image token rates independently', async () => {
 		rows = [model('image', { image_per_unit: '0.04' })]; render(ModelPage);
@@ -364,9 +350,9 @@ describe('admin multimodal pricing consumer', () => {
 		await fireEvent.click(within(dialog).getByRole('button', { name: '종류 변경·비활성 저장' }));
 		await waitFor(() => expect(screen.queryByRole('dialog', { name: '모델 종류 수정' })).toBeNull());
 		expect(rows[0]).toMatchObject({ id: 1, model_kind: 'image', is_active: false, input_price_per_million: '2.0000000000', output_price_per_million: '8.0000000000', cache_write_price_per_million: null, cache_write_1h_price_per_million: null, media_pricing: { token_rates: { image: { input_per_million: '8', output_per_million: '30' } } } });
-		await screen.findByRole('tab', { name: '이미지 (1)', selected: true });
-		expect(screen.queryByRole('tab', { name: /^텍스트/ })).toBeNull();
-		expect(within(screen.getByRole('tabpanel', { name: '이미지 (1)' })).getByRole('checkbox', { name: 'Media model 선택' })).toBeTruthy();
+		await screen.findByRole('tab', { name: 'OpenAI', selected: true });
+		expect(screen.getByRole('button', { name: '이미지 · 1', pressed: true })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: '텍스트 · 0' })).toBeNull();
 	});
 	it('keeps the correction draft on server rejection and discards a late result across same-token ABA', async () => {
 		rows = [model('text')]; render(ModelPage);

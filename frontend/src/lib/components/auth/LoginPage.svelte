@@ -6,7 +6,6 @@
 	import { auth, logoutInProgress, projectSwitching, setLoginAuth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import AuthStudioShell from '$lib/components/auth/AuthStudioShell.svelte';
-	import { siteConfig } from '$lib/config/site';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -260,7 +259,6 @@
 		{#if sso}
 			<section class="login-form" aria-labelledby="login-sso-title">
 				<div class="login-heading">
-					<p class="auth-eyebrow" aria-hidden="true">{t('authStudio.login.formEyebrow', { site: $siteConfig.site_name.toUpperCase() })}</p>
 					<h1 id="login-sso-title" tabindex="-1">{td('login.sso.title')}</h1>
 					<p>{td('login.sso.help')}</p>
 				</div>
@@ -287,7 +285,6 @@
 			</section>
 		{:else}
 			<div class="login-heading">
-				<p class="auth-eyebrow" aria-hidden="true">{t('authStudio.login.formEyebrow', { site: $siteConfig.site_name.toUpperCase() })}</p>
 				<h1>{t('authStudio.login.title')}</h1>
 				<p>{t('authStudio.login.subtitle')}</p>
 			</div>
@@ -326,7 +323,7 @@
 
 <style>
 	.login-heading { margin-bottom: 1.25rem; }
-	.login-heading h1 { margin: 0 0 0.65rem; font-size: 1.8rem; line-height: 1.35; font-weight: 500; letter-spacing: -0.055em; word-break: keep-all; overflow-wrap: anywhere; }
+	.login-heading h1 { margin: 0 0 0.65rem; font-size: 1.8rem; line-height: 1.35; font-weight: 500; letter-spacing: -0.03em; word-break: keep-all; overflow-wrap: anywhere; }
 	.login-heading h1:focus { outline: none; }
 	.login-heading p:last-child { margin: 0; font-size: 0.8125rem; line-height: 1.6; color: var(--color-ink-2); }
 	.login-form { display: flex; flex-direction: column; gap: 0.9rem; }
@@ -369,7 +366,7 @@
 	}
 	@media (max-height: 800px) {
 		.login-heading { margin-bottom: 0.75rem; }
-		.login-heading .auth-eyebrow, .login-heading p:last-child { display: none; }
+		.login-heading p:last-child { display: none; }
 		.login-heading h1 { font-size: 1.35rem; line-height: 1.3; margin: 0; }
 		.login-form { gap: 0.6rem; }
 		.login-form :global(input) { height: 44px; }

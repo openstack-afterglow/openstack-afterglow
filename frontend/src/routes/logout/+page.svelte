@@ -3,7 +3,6 @@
 	import AuthStudioShell from '$lib/components/auth/AuthStudioShell.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
-	import { siteConfig } from '$lib/config/site';
 	import { t } from '$lib/i18n/ns/shell';
 	import { t as tp } from '$lib/i18n/ns/public-entry';
 	import { ensureLogoutStarted, logoutProgress, type LogoutStep } from '$lib/utils/logout';
@@ -62,7 +61,6 @@
 <AuthStudioShell variant="logout" localeId="logout-locale" themeId="logout-theme" footerNote={tp('authStudio.logout.footerNote')}>
 	<div class="logout-content">
 		<header class="logout-introduction">
-			<p class="auth-eyebrow" aria-hidden="true">{tp('authStudio.logout.formEyebrow', { site: $siteConfig.site_name.toUpperCase() })}</p>
 			<h1 id="logout-title">{heading}</h1>
 			<p>{$logoutProgress.all ? t('logout.allExplanation') : t('logout.explanation')}</p>
 		</header>
@@ -100,7 +98,7 @@
 
 <style>
 	.logout-content { display: flex; flex-direction: column; gap: 1rem; }
-	.logout-introduction h1 { margin: 0 0 0.65rem; font-size: 1.8rem; line-height: 1.35; font-weight: 500; letter-spacing: -0.055em; word-break: keep-all; text-wrap: balance; }
+	.logout-introduction h1 { margin: 0 0 0.65rem; font-size: 1.8rem; line-height: 1.35; font-weight: 500; letter-spacing: -0.03em; word-break: keep-all; text-wrap: balance; }
 	.logout-introduction p:last-child { margin: 0; font-size: 0.8125rem; line-height: 1.6; color: var(--color-ink-2); }
 	.logout-art { padding: 0.5rem 0; font: 1.2rem var(--font-mono); color: var(--color-warm); white-space: pre; }
 	.logout-steps { margin: 0; }
@@ -125,7 +123,6 @@
 	@media (max-width: 767px) { .logout-introduction h1 { font-size: 1.4rem; } }
 	@media (max-height: 800px) {
 		.logout-content { gap: 0.65rem; }
-		.logout-introduction .auth-eyebrow { display: none; }
 		.logout-introduction h1 { font-size: 1.35rem; line-height: 1.3; margin-bottom: 0.4rem; }
 		.logout-introduction p:last-child { font-size: 0.75rem; }
 		.logout-art { font-size: 1rem; padding: 0; }

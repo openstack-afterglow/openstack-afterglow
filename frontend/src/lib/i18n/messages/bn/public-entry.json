@@ -1,6 +1,5 @@
 {
 	"landing.story.hero.body": "প্রয়োজনীয় সেবাগুলো এক জায়গায়, প্রতিষ্ঠানের অবকাঠামো একটি ক্লাউডে।",
-	"landing.story.hero.eyebrow": "A QUIET MOMENT BEFORE WHAT'S NEXT",
 	"landing.story.hero.signature": "AFTERGLOW",
 	"landing.story.hero.pauseMotion": "অ্যানিমেশন থামান",
 	"landing.story.hero.playMotion": "অ্যানিমেশন চালান",
@@ -227,10 +226,6 @@
 	"mcpConsent.permission.waygateClientsAdmin": "VPN ক্লায়েন্ট মুছুন ও অ্যাক্সেস প্রত্যাহার করুন",
 	"mcpConsent.permission.waygateGatewaysAdmin": "VPN গেটওয়ে মুছুন ও কী রোটেট করুন",
 	"mcpConsent.permission.waygateRouting": "VPN নেটওয়ার্ক সংযোগ, রাউটিং ও ক্রেডেনশিয়াল স্থানান্তর পরিচালনা করুন",
-	"authStudio.login.eyebrow": "YOUR CLOUD. YOUR NEXT CHAPTER.",
-	"authStudio.login.formEyebrow": "WELCOME TO {site}",
-	"authStudio.logout.eyebrow": "UNTIL YOUR NEXT CHAPTER.",
-	"authStudio.logout.formEyebrow": "{site} / SIGN OUT",
 	"authStudio.artLabel": "Afterglow অক্ষর-চিত্র",
 	"authStudio.login.headline1": "ভাবনা থেকে বাস্তবায়ন,",
 	"authStudio.login.headline2": "একটি ওয়ার্কস্পেস।",

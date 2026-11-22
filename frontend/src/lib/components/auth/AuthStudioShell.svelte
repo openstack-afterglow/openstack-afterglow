@@ -45,14 +45,12 @@
 				{motion ? t('landing.story.hero.pauseMotion') : t('landing.story.hero.playMotion')}
 			</button>
 			<div class="auth-identity-copy">
-				<p class="auth-eyebrow" aria-hidden="true">{t(`authStudio.${copyVariant}.eyebrow`)}</p>
 				<p class="auth-identity-headline">{t(`authStudio.${copyVariant}.headline1`)}<br />{t(`authStudio.${copyVariant}.headline2`)}</p>
 				<p class="auth-identity-description">{t(`authStudio.${copyVariant}.description1`)}<br />{t(`authStudio.${copyVariant}.description2`, { site })}</p>
 				{#if variant !== 'logout'}
 					<div class="auth-service-terms" aria-hidden="true">NOVA <span>/</span> NEUTRON <span>/</span> CINDER <span>/</span> LUMEN</div>
 				{/if}
 			</div>
-			{#if variant !== 'logout'}<span class="auth-identity-index" aria-hidden="true">: : CLOUD WORKSPACE : :</span>{/if}
 		</section>
 		<section class="auth-panel">
 			<div class="auth-panel-content">
@@ -114,12 +112,9 @@
 		position: absolute; z-index: 1; left: 0; right: 0; bottom: 5rem;
 		padding: 0 clamp(1.5rem, 4vw, 4.5rem); pointer-events: none;
 	}
-	.auth-eyebrow, .auth-panel-content :global(.auth-eyebrow) {
-		margin: 0 0 1rem; font: 0.625rem var(--font-mono); letter-spacing: 0.18em; color: var(--color-warm-2);
-	}
 	.auth-identity-headline {
 		margin: 0 0 1.1rem; font-size: clamp(1.7rem, 2.6vw, 3rem); font-weight: 400;
-		letter-spacing: -0.055em; line-height: 1.32; word-break: keep-all; overflow-wrap: anywhere;
+		letter-spacing: -0.03em; line-height: 1.32; word-break: keep-all; overflow-wrap: anywhere;
 	}
 	.auth-identity-description { margin: 0; font-size: 0.8125rem; line-height: 1.9; color: var(--color-ink-2); }
 	.auth-service-terms {
@@ -127,10 +122,6 @@
 		font: 0.5625rem var(--font-mono); letter-spacing: 0.13em; color: var(--color-ink-2);
 	}
 	.auth-service-terms span { color: var(--color-warm); }
-	.auth-identity-index {
-		position: absolute; right: 1.25rem; bottom: 1.85rem;
-		font: 0.5625rem var(--font-mono); letter-spacing: 0.1em; color: var(--color-ink-2);
-	}
 
 	.auth-panel {
 		display: grid; place-items: safe center; min-width: 0; min-height: 0; overflow-y: auto;
@@ -142,7 +133,7 @@
 	.auth-panel-content :global(.auth-flow) { display: grid; gap: 1.25rem; min-width: 0; overflow-wrap: anywhere; }
 	.auth-panel-content :global(.auth-flow-heading h1) {
 		margin: 0; font-size: clamp(1.4rem, 2vw, 1.8rem); font-weight: 500;
-		line-height: 1.3; letter-spacing: -0.045em; word-break: keep-all; overflow-wrap: anywhere;
+		line-height: 1.3; letter-spacing: -0.03em; word-break: keep-all; overflow-wrap: anywhere;
 	}
 	.auth-panel-content :global(.auth-flow-heading) { display: grid; gap: 0.65rem; min-width: 0; }
 	.auth-panel-content :global(.auth-flow-heading > p) { margin: 0; font-size: 0.8125rem; line-height: 1.65; color: var(--color-ink-2); }
@@ -175,7 +166,7 @@
 		.auth-identity { border-right: 0; border-bottom: 1px solid var(--color-line); }
 		.auth-identity-copy { bottom: auto; top: 2rem; padding: 0 2.5rem; }
 		.auth-identity-headline { font-size: 1.65rem; }
-		.auth-identity-description, .auth-service-terms, .auth-identity-index { display: none; }
+		.auth-identity-description, .auth-service-terms { display: none; }
 		.auth-motion { left: auto; right: 1.5rem; bottom: 0.5rem; }
 		.auth-panel-content { max-width: 440px; }
 		.auth-footer-note { display: none; }
@@ -187,7 +178,7 @@
 		.auth-brand img { height: 24px; }
 		.auth-layout { grid-template-columns: 1fr; grid-template-rows: minmax(60px, 15%) minmax(0, 1fr); }
 		.auth-identity { border-right: 0; border-bottom: 1px solid var(--color-line); }
-		.auth-identity-copy, .auth-identity-index { display: none; }
+		.auth-identity-copy { display: none; }
 		.auth-motion { left: auto; right: 1rem; bottom: 0.25rem; }
 		.auth-panel { padding: 0.75rem 1.25rem; }
 		.auth-panel-content { max-width: 440px; }
@@ -198,7 +189,7 @@
 		.auth-studio { grid-template-rows: 48px minmax(0, 1fr) 33px; }
 		.auth-footer a { min-height: 32px; }
 		.auth-identity-copy { bottom: 4rem; }
-		.auth-identity-description, .auth-service-terms, .auth-identity-index { display: none; }
+		.auth-identity-description, .auth-service-terms { display: none; }
 		.auth-panel { padding: 0.5rem 1.25rem; }
 		.auth-panel-content :global(.auth-flow) { gap: 0.75rem; }
 		.auth-panel-content :global(.auth-flow-heading h1) { font-size: 1.35rem; }

@@ -1023,7 +1023,7 @@
 	.shortcut-description {
 		overflow: hidden;
 		color: var(--color-ink-2);
-		font-size: 0.68rem;
+		font-size: 0.6875rem;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
@@ -1031,7 +1031,7 @@
 		max-width: 8rem;
 		overflow: hidden;
 		color: var(--color-ink-2);
-		font-size: 0.68rem;
+		font-size: 0.6875rem;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
@@ -1275,7 +1275,7 @@
 	}
 	.plus-head {
 		padding: 0.35rem 0.55rem 0.2rem;
-		font-size: 0.64rem;
+		font-size: 0.6875rem;
 		font-weight: 700;
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
@@ -1357,7 +1357,7 @@
 	}
 	.effort-head {
 		padding: 0.3rem 0.55rem;
-		font-size: 0.66rem;
+		font-size: 0.6875rem;
 		font-weight: 700;
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
@@ -1412,7 +1412,7 @@
 	.hint {
 		margin: 0.5rem 0 0;
 		text-align: center;
-		font-size: 0.6875rem;
+		font-size: 0.75rem;
 		color: var(--color-ink-2);
 	}
 
