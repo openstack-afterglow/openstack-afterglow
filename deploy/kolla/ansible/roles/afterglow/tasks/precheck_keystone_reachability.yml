@@ -1,0 +1,43 @@
+---
+# The backend accepts Kolla's unversioned keystone_internal_url and appends /v3
+# itself. Keystone answers that root with 300 (version discovery) and a /v3 URL
+# with 200, so both are healthy. A bare status is not proof of Keystone: require
+# a discovery document, and keep 5xx, refused connections and TLS errors fatal.
+- name: Precheck | Verify Keystone endpoint from every Afterglow host
+  ansible.builtin.uri:
+    url: "{{ afterglow_effective_config.openstack.auth_url }}"
+    method: GET
+    status_code: [200, 300]
+    return_content: true
+    timeout: 10
+    validate_certs: "{{ not (afterglow_effective_config.openstack.insecure | bool) }}"
+    ca_path: "{{ afterglow_effective_config.openstack.cacert | default(omit, true) }}"
+  register: afterglow_keystone_reachability
+  changed_when: false
+  no_log: true
+  tags: precheck
+  when:
+    - enable_afterglow | bool
+    - inventory_hostname in groups['afterglow']
+
+- name: Precheck | Require a Keystone version discovery document
+  ansible.builtin.assert:
+    that:
+      - >-
+        (afterglow_keystone_reachability.json | default({})) is mapping and
+        (
+          (afterglow_keystone_reachability.status == 200 and
+           afterglow_keystone_reachability.json.get('version', {}).get('id', '') is match('^v3(?:\\.[0-9]+)?$'))
+          or
+          (afterglow_keystone_reachability.status == 300 and
+           afterglow_keystone_reachability.json.get('versions', {}).get('values', [])
+           | selectattr('id', 'match', '^v3(?:\\.[0-9]+)?$') | list | length > 0)
+        )
+    fail_msg: >-
+      The effective openstack.auth_url answered {{ inventory_hostname }} but did not return a
+      Keystone version discovery document. Point it at the Keystone root or its /v3 URL.
+    quiet: true
+  tags: precheck
+  when:
+    - enable_afterglow | bool
+    - inventory_hostname in groups['afterglow']

@@ -7,10 +7,16 @@
 
 ## [Unreleased]
 
+## [1.32.31] - 2026-11-22
+
 ### Changed
 
-- 모든 차트에서 "차트 데이터 보기" 표를 없앴고, VM 모니터링 카드에서 차트 아래에 표시하던 `소스 · 상태 · 단위 · Gnocchi 상태` 문구와 최소·평균·최대 행의 수집 상태를 제거했습니다. 범위의 일부만 수집된 측정에만 짧은 경고가 남습니다.
-- Every chart no longer renders the "View chart data" table, and the VM monitoring cards drop the `source · status · unit · Gnocchi status` text under each chart and beside the min/avg/max row. Only a measurement that covers part of the range keeps a short warning.
+- Kolla 이미지 선택 readiness 오류에 첫 targeted controller를 표시하고, 이미 play에서 빠졌다면 앞선 `fatal`을 확인하도록 안내합니다.
+- Kolla image-selection readiness errors now name the first targeted controller and direct operators to its earlier `fatal` if it has left the play.
+- Afterglow 사전검사는 유효한 Keystone v3 version document의 HTTP 200과 v3 version discovery의 HTTP 300을 허용합니다. 그 밖의 300, 5xx, 잘못된 응답, TLS·연결 오류는 계속 차단합니다.
+- The Afterglow precheck accepts HTTP 200 with a Keystone v3 version document or HTTP 300 with v3 version discovery. Other 300 responses, 5xx, malformed documents, TLS and connection errors still fail closed.
+- 모든 차트에서 "차트 데이터 보기" 표를 없앴고, VM 모니터링 카드에서 차트 아래 `소스 · 상태 · 단위 · Gnocchi 상태` 문구와 최소·평균·최대 행의 수집 상태를 제거했습니다. 범위 일부만 수집된 측정에는 짧은 경고가 남습니다.
+- Every chart drops its "View chart data" table. VM monitoring cards also remove the `source · status · unit · Gnocchi status` text and collection states beside min/avg/max; partial-coverage measurements retain a short warning.
 
 ## [1.32.30] - 2026-11-20
 

@@ -25,23 +25,10 @@
   tags: precheck
   when: enable_afterglow | bool
 
-- name: Precheck | Verify Keystone public catalog endpoint from every Afterglow host
-  ansible.builtin.uri:
-    url: "{{ afterglow_effective_config.openstack.auth_url }}"
-    method: GET
-    status_code: 200
-    return_content: false
-    timeout: 10
-    validate_certs: "{{ not (afterglow_effective_config.openstack.insecure | bool) }}"
-    ca_path: "{{ afterglow_effective_config.openstack.cacert | default(omit, true) }}"
-  register: afterglow_keystone_reachability
-  changed_when: false
-  no_log: true
+- name: Precheck | Verify Keystone endpoint from every Afterglow host
+  ansible.builtin.include_tasks: precheck_keystone_reachability.yml
   tags: precheck
-  when:
-    - enable_afterglow | bool
-    - inventory_hostname in groups['afterglow']
-
+  when: enable_afterglow | bool
 
 - name: Precheck | Validate Afterglow public frontend origin
   ansible.builtin.assert:

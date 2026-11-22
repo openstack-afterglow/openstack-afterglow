@@ -1987,7 +1987,7 @@ Kolla 2025.2 환경에서 Afterglow, Drover, Waygate, Lumen, Palimpsest의 appli
 
 Kolla 기본값처럼 registry 사용자명이 null 또는 빈 문자열이면 일반 이미지와 Cloud Shell 이미지 모두 익명으로 descriptor를 해석한다. 명시적 사용자명이 있을 때만 자격증명을 전달한다.
 
-Kolla Afterglow precheck는 Cloud Shell 또는 Manila가 활성화되면 각 Afterglow controller의 toolbox에 Kolla `openstack_auth_cloud`를 복제한 CLI `kolla` cloud를 준비하고 password override를 병합한다. Kolla 2026.1의 `openstack_auth`는 password-only일 수 있으므로 직접 `openstack.cloud` 호출은 auth와 `openstack_auth_cloud`를 모두 지정하고, `service-ks-register`는 Kolla role이 같은 cloud selector를 적용한다. CLI precheck는 준비된 cloud로 Manila microversion/API 및 Cloud Shell native 접근을 확인한다. Manila client 설치는 Manila 활성화 시에만 수행한다.
+Kolla Afterglow precheck는 Cloud Shell 또는 Manila가 활성화되면 각 Afterglow controller의 toolbox에 Kolla `openstack_auth_cloud`를 복제한 CLI `kolla` cloud를 준비하고 password override를 병합한다. Kolla 2026.1의 `openstack_auth`는 password-only일 수 있으므로 직접 `openstack.cloud` 호출은 auth와 `openstack_auth_cloud`를 모두 지정하고, `service-ks-register`는 Kolla role이 같은 cloud selector를 적용한다. CLI precheck는 준비된 cloud로 Manila microversion/API 및 Cloud Shell native 접근을 확인한다. Manila client 설치는 Manila 활성화 시에만 수행한다. Keystone reachability accepts HTTP 200 only with a v3 version document or HTTP 300 only with a v3 version-discovery document; it remains fail-closed for non-v3 responses, 5xx, TLS and connection errors, allowing Kolla's unversioned default without a globals.d override.
 
 태그를 생략한 image ref도 implicit `latest`이며 registry port는 tag로 취급하지 않는다. Native Kolla globals/CLI extra-vars는 `set_fact`보다 우선하므로 해석한 digest를 덮어쓰는 mutable/bare `*_image_ref`는 역할 실행 전에 차단한다. 채널 선택은 `*_image_tag`로 하고 명시적인 version/digest rollback pin은 그대로 유지한다.
 
@@ -1997,7 +1997,7 @@ First-target transient fact의 readiness는 `afterglow_image_ref_selection_servi
 
 채널 선택은 실제 native Kolla parser/globals/extra-vars와 resolver/task/helper의 25개 회귀 및 격리 registry·두 serial consumer의 arm64/emulated amd64 실행으로 검증했다. Cross-service selection 재사용의 비활성/source-mode 첫 대상 회귀 2개는 수정 전 실패·수정 후 통과했다. Canonical frontend image를 빌드했고 최종 task로 채널 이동 중 A 고정, 다음 invocation의 B 선택, pull 시 컨테이너 보존, reconfigure 시 두 컨테이너 교체와 `/health` 200을 확인했다. 이 fixture는 실제 application role 전체·운영 Keystone 인증을 대신하지 않는다. 2026-10-03 운영의 기존 immutable pin 11개를 유지한 5서비스 표준 pull은17host changed0/failed0/unreachable0이며 앱30개·HAProxy/ProxySQL/Keepalived9개의 image/id/start/health/restart snapshot은 유지됐다. 설치된 plugin049a0c22에는 새 resolver가 없으므로 이 pull을 채널 코드 운영 승격 또는 재배포 완료로 표기하지 않는다.
 
-`deploy/kolla/site.yml`과 standalone playbook은 서비스 역할 전에 `resolve_image_refs.yml`을 private include한다. `precheck`·`pull`·`deploy`·`reconfigure`·`upgrade`에서 첫 실제 대상 controller가 `resolve_image_refs.py`의 Docker distribution descriptor API로 `latest`/게시된 `stable` 또는 bare ref를 manifest/index digest로 한 번 해석하고, 모든 serial batch가 같은 selection을 사용한다. 다음 invocation은 새로 해석하며, 오류 때 stale/local fallback이나 부분 selection은 없다. 명시적 version/digest pin과 source mode는 registry 조회를 건너뛴다. `genconfig`는 설정 생성이며 이미지 pull·container 교체가 아니다.
+`deploy/kolla/site.yml`과 standalone playbook은 서비스 역할 전에 `resolve_image_refs.yml`을 private include한다. `precheck`·`pull`·`deploy`·`reconfigure`·`upgrade`에서 첫 실제 대상 controller가 `resolve_image_refs.py`의 Docker distribution descriptor API로 `latest`/게시된 `stable` 또는 bare ref를 manifest/index digest로 한 번 해석하고, 모든 serial batch가 같은 selection을 사용한다. 다음 invocation은 새로 해석하며, 오류 때 stale/local fallback이나 부분 selection은 없다. 명시적 version/digest pin과 source mode는 registry 조회를 건너뛴다. `genconfig`는 설정 생성이며 이미지 pull·container 교체가 아니다. Readiness assertion은 첫 targeted controller 이름을 표시하고, 그 호스트가 현재 active play host 목록에서 빠졌다면 원래의 앞선 `fatal`을 확인하도록 안내한다.
 
 Selection은 대상 중 서비스가 활성화된 published-image consumer만의 component 합집합을 준비하고 각 controller에는 그곳에서 활성화된 component ref만 적용한다. Disabled/source-mode host는 registry 입력에 참여하지 않는다. 각 published consumer의 effective image/ref·namespace/tag를 수집해 뒤쪽 controller에만 있는 version/digest rollback pin도 보존하며, 같은 component의 입력이 상충하면 registry·credential command 전에 거부한다(`--limit`으로 분리하거나 설정을 일치시킨다). 따라서 Palimpsest API 3개/worker 1개도 한 번의 frozen selection을 사용한다. 서비스 owner/ready fact는 앞 서비스나 이전 invocation의 selection 재사용을 막고, native globals/CLI extra-vars가 선택한 digest를 덮어쓰면 역할 실행 전에 거부한다. `waygat`는 `waygate`의 명시적 추가 tag이며 image preparation·역할·HAProxy 경로를 함께 선택한다. 역할/패키지/inventory의 정본 이름은 `waygate` 그대로다.
 
@@ -2317,9 +2317,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "4bff7d0d198146c6cc1b43693cd6de7333972b6a89e9cd43d1b71a6ef7dc1eee",
-  "reviewed_at": "2026-11-20T08:42:02Z",
-  "summary": "frontend README chart guidance matches the removed chart-data disclosure"
+  "source_sha256": "a07c37e6b69b6c4c3dff2535129fc43bb269d93ea10a1b84966febdd4bc05eee",
+  "reviewed_at": "2026-11-22T06:56:23Z",
+  "summary": "Afterglow 1.32.31 release candidate: Kolla precheck accepts unversioned Keystone HTTP 300 only with v3 discovery; 200 only with a v3 version document. Other failures remain fail-closed; no globals.d override is required."
 }
 ```
 <!-- architecture-review:end -->

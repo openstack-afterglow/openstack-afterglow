@@ -10,6 +10,7 @@ nav_order: 1
 **Language:** [한국어](../deployment.md) · English
 
 Afterglow supports three deployment modes: Docker Compose (development / small scale), Kubernetes (production), and ArgoCD (GitOps).
+If an image-selection readiness error appears on a remaining controller, check whether the first targeted controller failed earlier and inspect its first `fatal` in the output. Selection runs only on the first targeted controller, so this error can be secondary to the original failure.
 
 ### Automatic-backup system account activation
 
@@ -557,6 +558,7 @@ helm template afterglow helm/afterglow --namespace afterglow \
 ## kolla-ansible Deployment
 
 For multi-controller OpenStack environments, Afterglow and its sibling services (Drover, Waygate, Lumen, Palimpsest) can be deployed using Kolla-Ansible with the provided roles and playbooks.
+Keystone's unversioned default endpoint can return HTTP `300` for version discovery. The Afterglow precheck accepts that response only when it advertises a v3 version; an explicit `/v3` endpoint may return `200`. Non-Keystone 300 responses, 5xx, malformed discovery documents, TLS errors and connection failures still block reconfiguration. This supports Kolla defaults without requiring `globals.d` overrides.
 
 ### Scheduled volume backups across controllers
 

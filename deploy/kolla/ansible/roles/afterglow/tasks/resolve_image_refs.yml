@@ -177,7 +177,9 @@
           - hostvars[ansible_play_hosts_all[0]].afterglow_image_ref_selection_service | default('') == afterglow_image_ref_service
         fail_msg: >-
           Image reference selection for {{ afterglow_image_ref_service }} did not complete
-          on the first targeted controller. Refusing unresolved, stale or other-service inputs.
+          on the first targeted controller ({{ ansible_play_hosts_all[0] }}). Refusing unresolved, stale or other-service inputs.
+          {{ ('The first controller is no longer active in this play, so this may be a secondary failure; inspect its first fatal earlier in the output.')
+             if ansible_play_hosts_all[0] not in ansible_play_hosts else '' }}
         quiet: true
 
     - name: Image references | Apply frozen references to locally enabled components

@@ -5,6 +5,7 @@
 Afterglow는 Docker Compose(개발/소규모), Kubernetes(프로덕션), ArgoCD(GitOps) 세 가지 배포 방식을 지원합니다.
 
 Kolla 표준 `reconfigure`는 Cloud Shell 또는 Manila 활성 시 toolbox CLI의 인증 설정을 각 검사보다 먼저 준비한다. 애플리케이션 이미지의 `latest` 자동 선택은 명시적 `*_image_ref`와 버전 pin이 없는 경우에만 적용되며, datastore pin과 migration 전 복구 검증은 별도로 유지한다.
+Kolla 이미지 선택의 readiness 오류가 남은 controller에서 발생하면, 첫 targeted controller가 앞선 태스크에서 실패했는지 확인하고 출력에서 그 호스트의 첫 `fatal`을 찾습니다. 선택은 첫 targeted controller에서만 실행되므로 이 오류는 원래 실패의 2차 증상일 수 있습니다.
 Kolla의 `afterglow_backend_workers`는 backend **호스트당** Uvicorn 프로세스 수이며 기본값은 기존과 같은 `1`이다. 양의 정수만 허용한다. 증설 전 프로세스별 DB 연결 풀·메모리·백그라운드 작업과 스트림 재연결을 검증하고, 별도 승인된 reconfigure에서 적용한다. 설정 변경만으로 운영에 반영되지 않는다. 자세한 내용은 `deploy/kolla/README.md`를 참조한다.
 현재 `/api/v1/metrics`의 counter·histogram은 프로세스별이며 multiprocess collector가 없다. 워커가 여러 개면 scrape마다 다른 registry에 도달할 수 있으므로 이 지표만으로 전체 처리량이나 p95/p99를 판단하지 않는다. 워커 수 비교에는 외부 부하 생성기 또는 ingress의 요청 시간과 스트림 첫 이벤트·완료 시간을 사용한다.
 
@@ -1435,6 +1436,7 @@ kolla-ansible reconfigure -i multinode --limit control --tags afterglow,lumen,wa
 ```
 
 각 명령의 전체 recap과 대상별 이미지 digest·health를 확인하고, 공개 readiness와 실제 사용자 경로를 별도로 검증합니다. 두 명령의 inventory/tag에 포함되지 않는 별도 plugin 호스트는 성공으로 간주하지 않고 별도 확인·승인합니다. 실행 전에는 공유 DB writer, migration 및 복구 조건을 확인하고 기존 설정·키·데이터를 보존합니다. 과거 1.30.22의 `--limit` 없는 실행과 `--skip-tags haproxy`는 당시 배포 receipt이며 현재 기본 명령이 아닙니다.
+Keystone의 버전 없는 기본 endpoint는 version discovery용 HTTP `300`과 v3 목록을 반환할 수 있습니다. Afterglow precheck는 v3가 확인되는 유효한 Keystone `300` 또는 `/v3`의 `200`을 허용합니다. 그 외 300 응답, 5xx, malformed discovery 문서, TLS·연결 오류는 계속 차단합니다. 이 동작은 `globals.d` override 없이 Kolla 기본값을 사용할 수 있게 하며 운영자 설정을 재생성하거나 제거하지 않습니다.
 
 **Kolla toolbox 인증 (2026.1 이상):** Kolla의 `openstack_auth`는 bootstrap용 password만 제공할 수 있다. `openstack.cloud` 호출에는 `auth: "{{ openstack_auth }}"`와 `cloud: "{{ openstack_auth_cloud }}"`를 함께 전달한다. CLI용 `kolla` 항목은 각 Afterglow controller의 toolbox에서 Kolla가 만든 `openstack_auth_cloud` 항목을 복제하고 password override만 병합해야 한다. controller1에만 설정하지 않는다. Manila precheck의 `share list --limit 1`은 설정된 microversion과 native 인증·endpoint 접근을 함께 확인하며, 실패하면 자세한 오류는 `no_log` 상태로 확인 가능한 인증정보를 출력하지 말고 별도 읽기 전용 toolbox 명령으로 진단한다.
 

@@ -2,7 +2,8 @@ const assert = require("node:assert/strict")
 const fs = require("node:fs")
 const path = require("node:path")
 const os = require("node:os")
-const { spawnSync } = require("node:child_process")
+const http = require("node:http")
+const { spawn, spawnSync } = require("node:child_process")
 const test = require("node:test")
 
 const root = path.resolve(__dirname, "..")
@@ -246,6 +247,96 @@ print(json.dumps({'status': result.returncode,
 		fs.rmSync(dir, { recursive: true, force: true })
 	}
 }
+async function runKeystoneReachabilityFixture({ status, body, route = "/v3", listen = true }) {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kolla-keystone-reachability-"))
+	let server
+	try {
+		let url = "http://127.0.0.1:1/v3"
+		if (listen) {
+			server = http.createServer((_request, response) => {
+				response.writeHead(status, { "content-type": "application/json" })
+				response.end(JSON.stringify(body))
+			})
+			await new Promise((resolve, reject) => {
+				server.once("error", reject)
+				server.listen(0, "127.0.0.1", resolve)
+			})
+			url = `http://127.0.0.1:${server.address().port}${route}`
+		}
+		const roles = path.join(dir, "roles/afterglow/tasks")
+		fs.mkdirSync(roles, { recursive: true })
+		fs.copyFileSync(path.join(root, "deploy/kolla/ansible/roles/afterglow/tasks/precheck_keystone_reachability.yml"),
+			path.join(roles, "precheck_keystone_reachability.yml"))
+		fs.writeFileSync(path.join(roles, "main.yml"), "- ansible.builtin.import_tasks: precheck_keystone_reachability.yml\n")
+		fs.writeFileSync(path.join(dir, "inventory"),
+			`[afterglow]\nlocalhost ansible_connection=local ansible_python_interpreter=${path.join(runtime, "python")}\n`)
+		fs.writeFileSync(path.join(dir, "ansible.cfg"), "[defaults]\nhost_key_checking=False\nretry_files_enabled=False\n")
+		fs.writeFileSync(path.join(dir, "fixture.yml"), `- hosts: afterglow
+  gather_facts: false
+  vars:
+    enable_afterglow: true
+    afterglow_effective_config:
+      openstack:
+        auth_url: ${url}
+        insecure: true
+        cacert: ""
+  tasks:
+    - ansible.builtin.include_role:
+        name: afterglow
+        tasks_from: precheck_keystone_reachability
+`)
+		const child = spawn(path.join(runtime, "ansible-playbook"),
+			["-i", path.join(dir, "inventory"), path.join(dir, "fixture.yml")], {
+				cwd: dir, encoding: "utf8",
+				env: { ...process.env, PATH: `${runtime}${path.delimiter}${process.env.PATH}`,
+					ANSIBLE_CONFIG: path.join(dir, "ansible.cfg"),
+					ANSIBLE_LOCAL_TEMP: path.join(dir, "tmp"),
+					ANSIBLE_ROLES_PATH: path.join(dir, "roles") },
+			})
+		let output = ""
+		child.stdout.setEncoding("utf8")
+		child.stderr.setEncoding("utf8")
+		child.stdout.on("data", chunk => { output += chunk })
+		child.stderr.on("data", chunk => { output += chunk })
+		const exitCode = await new Promise((resolve, reject) => {
+			const timer = setTimeout(() => child.kill("SIGKILL"), 30000)
+			child.once("error", reject)
+			child.once("close", (code, signal) => {
+				clearTimeout(timer)
+				resolve(code ?? (signal ? 1 : 0))
+			})
+		})
+		return { status: exitCode, output }
+	} finally {
+		if (server?.listening) await new Promise(resolve => server.close(resolve))
+		fs.rmSync(dir, { recursive: true, force: true })
+	}
+}
+
+test("Keystone precheck accepts valid root discovery and /v3 responses", async () => {
+	for (const fixture of [
+		{ status: 300, route: "/", body: { versions: { values: [{ id: "v3.14", status: "stable" }] } } },
+		{ status: 200, route: "/v3", body: { version: { id: "v3.14", status: "stable" } } },
+	]) {
+		const result = await runKeystoneReachabilityFixture(fixture)
+		assert.equal(result.status, 0, result.output)
+	}
+})
+
+test("Keystone precheck rejects 300 responses that do not advertise v3", async () => {
+	const result = await runKeystoneReachabilityFixture({
+		status: 300, route: "/", body: { versions: { values: [{ id: "v2.0", status: "stable" }] } },
+	})
+	assert.notEqual(result.status, 0, result.output)
+	assert.match(result.output, /did not return a Keystone version discovery document/)
+})
+
+test("Keystone precheck rejects server errors and connection failures", async () => {
+	const serverError = await runKeystoneReachabilityFixture({ status: 500, body: { error: "unavailable" } })
+	assert.notEqual(serverError.status, 0, serverError.output)
+	const refused = await runKeystoneReachabilityFixture({ listen: false })
+	assert.notEqual(refused.status, 0, refused.output)
+})
 function expectSuccess(result, selected, haproxy = true, lifecycle = "deploy") {
 	assert.equal(result.status, 0, result.output)
 	assert.deepEqual(new Set(result.evidence.map(row => row.label.split(":")[0])),
@@ -572,6 +663,52 @@ test("moving image_ref from native globals.d also fails closed before role dispa
 	expectSelection(result, [ref])
 })
 
+test("a remaining controller diagnoses when the first targeted controller failed before image selection", () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kolla-selection-failure-"))
+	try {
+		const inventory = path.join(dir, "multinode")
+		const playbook = path.join(dir, "fixture.yml")
+		const interpreter = path.join(runtime, "python")
+		fs.writeFileSync(inventory, `[afterglow]\ncontroller-a ansible_connection=local ansible_python_interpreter=${interpreter}\ncontroller-b ansible_connection=local ansible_python_interpreter=${interpreter}\n`)
+		fs.writeFileSync(playbook, `- name: Earlier play fails first controller
+  hosts: afterglow
+  gather_facts: false
+  max_fail_percentage: 100
+  tasks:
+    - name: Fixture earlier failure
+      ansible.builtin.fail:
+        msg: fixture earlier failure
+      when: inventory_hostname == 'controller-a'
+- name: Afterglow selection play
+  hosts: afterglow
+  gather_facts: false
+  serial: 1
+  max_fail_percentage: 100
+  tasks:
+    - name: Prepare image references
+      ansible.builtin.include_role:
+        name: afterglow
+        tasks_from: resolve_image_refs
+      vars:
+        afterglow_image_ref_service: afterglow
+`)
+		const result = spawnSync(path.join(runtime, "ansible-playbook"), ["-i", inventory, playbook, "-e",
+			JSON.stringify({ enable_afterglow: true, afterglow_backend_image_ref: "fixture.invalid/backend:1.2.3",
+				afterglow_frontend_image_ref: "fixture.invalid/frontend:1.2.3" })], {
+			cwd: dir, encoding: "utf8",
+			env: { ...process.env, ANSIBLE_ROLES_PATH: path.join(root, "deploy/kolla/ansible/roles"),
+				ANSIBLE_LOCAL_TEMP: path.join(dir, "tmp"), PATH: `${runtime}${path.delimiter}${process.env.PATH}` },
+		})
+		const output = `${result.stdout}\n${result.stderr}\n${result.error || ""}`
+		assert.notEqual(result.status, 0, output)
+		assert.match(output, /fatal: \[controller-a\].*fixture earlier failure/)
+		assert.match(output, /first targeted controller \(controller-a\)/)
+		assert.match(output, /secondary failure; inspect its first fatal earlier in the output/)
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true })
+	}
+})
+
 for (const [firstTargetMode, modeVars] of [
 	["disabled", { enable_waygate: "{{ inventory_hostname == 'controller-b' }}" }],
 	["source-mode", { waygate_source_mode: "{{ inventory_hostname == 'controller-a' }}" }],
@@ -581,6 +718,8 @@ for (const [firstTargetMode, modeVars] of [
 			globals: { afterglow_image_tag: "latest", waygate_image_tag: "latest", ...modeVars } })
 		assert.notEqual(result.status, 0, result.output)
 		assert.deepEqual(result.evidence.filter(row => row.label.startsWith("waygate:") && row.host === targetHosts[1]), [], result.output)
+		assert.match(result.output, /first targeted controller \(controller-a\)/)
+		assert.doesNotMatch(result.output, /secondary failure; inspect its first fatal earlier in the output/)
 		expectSelection(result, ["fixture.invalid/afterglow_backend:latest", "fixture.invalid/afterglow_frontend:latest"])
 	})
 }
