@@ -2317,9 +2317,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "a07c37e6b69b6c4c3dff2535129fc43bb269d93ea10a1b84966febdd4bc05eee",
-  "reviewed_at": "2026-11-22T06:56:23Z",
-  "summary": "Afterglow 1.32.31 release candidate: Kolla precheck accepts unversioned Keystone HTTP 300 only with v3 discovery; 200 only with a v3 version document. Other failures remain fail-closed; no globals.d override is required."
+  "source_sha256": "89a3f329f527fb26a9d5266c36664800386ed7a536d0c7e21224aa4c7defda4c",
+  "reviewed_at": "2026-11-22T12:33:44Z",
+  "summary": "UI-only changes reviewed: provider-tab model settings and removed native catalog panel (ARCHITECTURE.md native-providers paragraph updated), landing/auth/chat/dashboard slop cleanup, SSO callback single status. No API, auth, schema or deployment change."
 }
 ```
 <!-- architecture-review:end -->
