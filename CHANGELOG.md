@@ -9,13 +9,13 @@
 
 - 1.32.32 CHANGELOG의 카드 높이 문구를 바로잡았습니다. 사용 추세 카드만 로딩·빈 상태에서 높이가 같고, VM 모니터링 카드는 최소·평균·최대 줄과 범례가 도착하면 높이가 늘어납니다.
 - 문서 안내(가이드 제목 위 중복 문구, 문서 홈 영문 문구), 이미지 저장소 상세·오브젝트 스토리지 브라우저·Notion 전체 동기화 카드의 제목 위 장식 문구를 제거했습니다. 문서 본문·스크린샷 설명의 한 줄 길이는 72자 이내로 제한했습니다.
-- 11px 미만 글자(명령 팔레트, 네트워크 지도, 쿼터 폼 배지, 이미지 저장소 상세 표 머리글, 랜딩 하단 문구)를 11px 이상으로 올렸습니다.
-- 토폴로지 인터페이스 행의 3px 색 띠, 모니터링 목록·폴더 선택의 선택 띠, 채팅 인용문의 3px 띠를 점·배경색으로 바꾸고 사용하지 않는 `GradientText` 컴포넌트를 삭제했습니다.
+- 11px 미만 글자(명령 팔레트, 네트워크 지도, 쿼터 폼 배지, 이미지 저장소 상세 표 머리글, 랜딩 하단 문구, VM 생성 마법사의 10.5px 도움말·프리셋 선택)를 11px 이상으로 올렸습니다.
+- 토폴로지 인터페이스 행의 3px 색 띠는 색 점으로, 모니터링 목록·폴더 선택의 선택 띠는 배경색으로, 채팅 인용문의 3px 띠는 1px 중립 선으로 바꾸고 사용하지 않는 `GradientText` 컴포넌트를 삭제했습니다. 모니터링 목록은 선택 행의 상태 점과 호버 색이 겹치지 않게 했습니다.
 - 채팅 통계·서브넷 사용량·활동·버킷 요약 타일의 장식용 색상을 중립 색으로 통일했습니다. 실패·미과금·풀 밖 IP 같은 의미 있는 색은 유지합니다.
 - Corrected the card-height wording in the 1.32.32 CHANGELOG: only usage-trend cards keep the same height while loading or empty; VM monitoring cards grow when the min/avg/max row and legend arrive.
 - Removed the duplicate label above guide titles, the English label on the docs home, and the decorative labels above the headings in image repository detail, the object-storage browser and the Notion global sync card. Docs body text and screenshot captions are capped at 72 characters per line.
-- Text under 11px (command palette, network map, quota form badges, image repository detail table headers, landing footer) is raised to at least 11px.
-- The 3px color stripe on topology interface rows, the selection stripes in the monitoring list and folder picker, and the 3px chat blockquote stripe are replaced by a dot or a background tint, and the unused `GradientText` component is removed.
+- Text under 11px (command palette, network map, quota form badges, image repository detail table headers, landing footer, and the 10.5px help and preset select in the VM creation wizard) is raised to at least 11px.
+- The 3px color stripe on topology interface rows becomes a color dot, the selection stripes in the monitoring list and folder picker become a background, and the 3px chat blockquote stripe becomes a 1px neutral line; the unused `GradientText` component is removed. The monitoring list keeps the status dot and hover tint distinct from the selected row.
 - Decorative colors on the chat statistics, subnet usage, activity and bucket summary tiles are now neutral. Colors that carry meaning (failed, unpriced, outside-pool IPs) stay.
 
 ## [1.32.32] - 2026-11-22

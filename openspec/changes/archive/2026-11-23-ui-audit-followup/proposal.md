@@ -9,7 +9,7 @@ The 1.32.32 audit left real findings open: decorative eyebrows above headings, t
 - Replace colored `border-left` stripes with a dot (topology interface rows) or background (monitoring list, folder picker, chat blockquote); delete unused `GradientText`.
 - Make decorative `StatTile` accents neutral on chat statistics, subnet usage, activity and bucket summaries; keep semantic rose/emerald.
 - Cap docs prose and screenshot captions at 72ch.
-- Correct the 1.32.32 CHANGELOG card-height wording.
+- Correct the 1.32.32 CHANGELOG card-height wording. Chat blockquotes use a 1px neutral line (not a fill, which would collide with the code-block fill); the monitoring list uses a separate dot token and a hover class that does not override the selected row.
 
 ## Measured
 `/docs/lumen` and `/docs/mcp` at 1280px: maximum paragraph measure 72ch (previously up to 102ch from the audit, 80.6ch captions before the final cap); no horizontal overflow at 390px.

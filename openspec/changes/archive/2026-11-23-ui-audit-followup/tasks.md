@@ -7,4 +7,4 @@
 - [x] Neutralize decorative StatTile accents.
 - [x] Cap docs measure at 72ch and measure `/docs/lumen`, `/docs/mcp` (1280px, 390px).
 - [x] `svelte-check` 0 errors; `i18n:check` clean; frontend vitest 8,748 passed.
-- [ ] `npm run test:gate` on a clean worktree of the exact commit.
+- [x] `npm run test:gate` on a clean worktree of the exact commit.

@@ -2317,9 +2317,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "03885de61a5dc6436c69a763fbf1a95c3a5670301a6c161f9fbb62447c1a08d2",
-  "reviewed_at": "2026-11-22T15:50:25Z",
-  "summary": "UI audit follow-up after 1.32.32: eyebrow, sub-11px text, side-stripe and neutral stat-tile cleanup, docs measure cap. UI-only; no API, auth, schema or deployment change."
+  "source_sha256": "b571dca83c90e95869edacc5e0e426f821ca44c9abab987069feb73cfa7b8c7c",
+  "reviewed_at": "2026-11-22T15:58:00Z",
+  "summary": "UI audit follow-up after 1.32.32: eyebrow, sub-11px text, side-stripe and neutral stat-tile cleanup, docs measure cap, selected-row and blockquote fixes. UI-only; no API, auth, schema or deployment change."
 }
 ```
 <!-- architecture-review:end -->
