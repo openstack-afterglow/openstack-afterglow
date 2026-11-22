@@ -248,5 +248,11 @@
 	"authStudio.logout.description1": "세션과 연결의 실제 정리 상태를",
 	"authStudio.logout.description2": "각 단계에서 확인합니다.",
 	"authStudio.logout.footerNote": "자동 이동 없이 상태를 유지합니다.",
-	"authStudio.footer.workspace": "{site} · Cloud workspace"
+	"authStudio.footer.workspace": "{site} · Cloud workspace",
+	"consoleEntry.eyebrow": "ENTERING {site}",
+	"consoleEntry.opening": "콘솔로 들어가고 있어요",
+	"consoleEntry.ready": "콘솔이 열렸어요",
+	"consoleEntry.step.password": "로그인 확인됨",
+	"consoleEntry.step.sso": "SSO 인증 확인됨",
+	"consoleEntry.step.workspace": "작업 공간 열기"
 }

@@ -12,6 +12,7 @@
 	import Field from '$lib/components/ui/Field.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import AuthStudioShell from '$lib/components/auth/AuthStudioShell.svelte';
+	import { enterConsole } from '$lib/stores/consoleEntry';
 	import type { LoginResponse, ProviderLinkResponse } from '$lib/types/auth';
 	import { loginAuthState, sessionScopeKey, type LoginAuthMapping } from '$lib/utils/authSession';
 	import { freshLoginDestination } from '$lib/utils/mcpConsent';
@@ -97,7 +98,7 @@
 		void observation.applied();
 		setLoginAuth(mapped.state);
 		beginAuthExperience('auth.callback', 'load', () => active).state('loading');
-		await goto(freshLoginDestination(mapped.target), { replaceState: true });
+		await enterConsole(() => goto(freshLoginDestination(mapped.target), { replaceState: true }), 'sso');
 	}
 	async function confirmEntry(event: Event) {
 		event.preventDefault();

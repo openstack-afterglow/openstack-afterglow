@@ -248,5 +248,11 @@
 	"authStudio.logout.description1": "Hali halisi ya kusafisha vipindi na miunganisho",
 	"authStudio.logout.description2": "inathibitishwa kila hatua.",
 	"authStudio.logout.footerNote": "Ukurasa unabaki bila kuelekeza upya kiotomatiki.",
-	"authStudio.footer.workspace": "{site} · Cloud workspace"
+	"authStudio.footer.workspace": "{site} · Cloud workspace",
+	"consoleEntry.eyebrow": "ENTERING {site}",
+	"consoleEntry.opening": "Inaingia kwenye konsoli",
+	"consoleEntry.ready": "Konsoli yako imefunguka",
+	"consoleEntry.step.password": "Kuingia kumethibitishwa",
+	"consoleEntry.step.sso": "Uthibitishaji wa SSO umethibitishwa",
+	"consoleEntry.step.workspace": "Inafungua eneo lako la kazi"
 }

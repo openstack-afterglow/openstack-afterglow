@@ -248,5 +248,11 @@
 	"authStudio.logout.description1": "セッションと接続の実際の整理状態を",
 	"authStudio.logout.description2": "各ステップで確認します。",
 	"authStudio.logout.footerNote": "自動で移動せず、状態を表示し続けます。",
-	"authStudio.footer.workspace": "{site} · Cloud workspace"
+	"authStudio.footer.workspace": "{site} · Cloud workspace",
+	"consoleEntry.eyebrow": "ENTERING {site}",
+	"consoleEntry.opening": "コンソールに移動しています",
+	"consoleEntry.ready": "コンソールが開きました",
+	"consoleEntry.step.password": "サインインを確認しました",
+	"consoleEntry.step.sso": "SSO 認証を確認しました",
+	"consoleEntry.step.workspace": "ワークスペースを開いています"
 }

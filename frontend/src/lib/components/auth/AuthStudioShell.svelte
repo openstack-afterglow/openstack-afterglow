@@ -39,7 +39,7 @@
 	</header>
 
 	<main id="main-content" tabindex="-1" class="auth-layout">
-		<section class="auth-identity" aria-label={t('authStudio.artLabel')}>
+		<section class="auth-identity" aria-label={t('authStudio.artLabel')} data-route-scene-part="art">
 			<AfterglowOrbit active={motion} interactive />
 			<button type="button" class="auth-motion" onclick={() => { motion = !motion; }}>
 				{motion ? t('landing.story.hero.pauseMotion') : t('landing.story.hero.playMotion')}
@@ -54,7 +54,7 @@
 			</div>
 			{#if variant !== 'logout'}<span class="auth-identity-index" aria-hidden="true">: : CLOUD WORKSPACE : :</span>{/if}
 		</section>
-		<section class="auth-panel">
+		<section class="auth-panel" data-route-scene-part="panel">
 			<div class="auth-panel-content">
 				{@render children()}
 				<footer class="auth-support"><ExperienceSupportCode /></footer>

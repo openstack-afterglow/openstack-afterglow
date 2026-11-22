@@ -248,5 +248,11 @@
 	"authStudio.logout.description1": "সেশন ও সংযোগের প্রকৃত পরিষ্কারের অবস্থা",
 	"authStudio.logout.description2": "প্রতিটি ধাপে নিশ্চিত করা হয়।",
 	"authStudio.logout.footerNote": "স্বয়ংক্রিয়ভাবে সরে না গিয়ে অবস্থা দেখাতে থাকে।",
-	"authStudio.footer.workspace": "{site} · Cloud workspace"
+	"authStudio.footer.workspace": "{site} · Cloud workspace",
+	"consoleEntry.eyebrow": "ENTERING {site}",
+	"consoleEntry.opening": "কনসোলে প্রবেশ করা হচ্ছে",
+	"consoleEntry.ready": "আপনার কনসোল খোলা হয়েছে",
+	"consoleEntry.step.password": "সাইন-ইন যাচাই হয়েছে",
+	"consoleEntry.step.sso": "SSO সাইন-ইন যাচাই হয়েছে",
+	"consoleEntry.step.workspace": "আপনার ওয়ার্কস্পেস খোলা হচ্ছে"
 }

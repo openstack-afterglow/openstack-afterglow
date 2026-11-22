@@ -248,5 +248,11 @@
 	"authStudio.logout.description1": "Keadaan pembersihan sebenar sesi dan sambungan",
 	"authStudio.logout.description2": "disahkan pada setiap langkah.",
 	"authStudio.logout.footerNote": "Halaman ini kekal tanpa ubah hala automatik.",
-	"authStudio.footer.workspace": "{site} · Cloud workspace"
+	"authStudio.footer.workspace": "{site} · Cloud workspace",
+	"consoleEntry.eyebrow": "ENTERING {site}",
+	"consoleEntry.opening": "Memasuki konsol",
+	"consoleEntry.ready": "Konsol anda telah dibuka",
+	"consoleEntry.step.password": "Log masuk disahkan",
+	"consoleEntry.step.sso": "Log masuk SSO disahkan",
+	"consoleEntry.step.workspace": "Membuka ruang kerja anda"
 }

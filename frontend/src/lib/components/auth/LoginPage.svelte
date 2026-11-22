@@ -22,6 +22,7 @@
 	import { t } from '$lib/i18n/ns/public-entry';
 	import { t as translateDomain } from '$lib/i18n/ns/domain-auth';
 	import { beginAuthExperience, observedAuthText, createAuthNoticePresenter, type AuthExperience } from './authExperience';
+	import { enterConsole } from '$lib/stores/consoleEntry';
 	const td = translateDomain;
 
 	// Entry redirects belong only to the session present when this page was created.
@@ -200,7 +201,7 @@
 		publishing = true;
 		try { setLoginAuth(mapped.state); } finally { publishing = false; }
 		beginAuthExperience('auth.login', 'load', () => active).state('loading');
-		await goto(freshLoginDestination(mapped.target));
+		await enterConsole(() => goto(freshLoginDestination(mapped.target)), 'password');
 	}
 
 	async function startProvider(provider: LoginProviderOption) {

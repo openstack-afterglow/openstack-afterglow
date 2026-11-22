@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount, untrack } from 'svelte';
-	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
+	import { afterNavigate, beforeNavigate, goto, onNavigate } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { get } from 'svelte/store';
 	import { auth, authReady, authRecovery, AUTH_SERVICE_FAILURE_LIMIT, isLoggedIn, isAdmin, logoutInProgress, enterMockAuth, exitMockAuth, getMockupProfile, isMockAuthActive } from '$lib/stores/auth';
@@ -25,6 +25,8 @@
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import { sidebarOpen } from '$lib/stores/sidebar';
 	import Toast from '$lib/components/ui/Toast.svelte';
+	import ConsoleEntryTransition from '$lib/components/auth/ConsoleEntryTransition.svelte';
+	import { runRouteScene } from '$lib/utils/routeScene';
 	import K3sOperationDock from '$lib/components/dashboard/drover/K3sOperationDock.svelte';
 	import UploadDock from '$lib/components/UploadDock.svelte';
 	import CmdPalette from '$lib/components/CmdPalette.svelte';
@@ -313,6 +315,8 @@
 		authVerification.setEnabled($page.url.pathname !== '/logout' && !isDocumentationRoute && !mockup.active);
 	});
 
+	// Landing ↔ login only; every other navigation returns undefined and proceeds untouched.
+	onNavigate((navigation) => runRouteScene(navigation));
 	let interactionAudit: InteractionAuditController | undefined;
 	beforeNavigate(({ from, willUnload }) => {
 		interactionAudit?.prepareNavigation();
@@ -522,6 +526,7 @@
 	<TutorialController />
 {/if}
 <Toast />
+<ConsoleEntryTransition />
 <div data-background-operation-stack class="fixed bottom-4 right-4 z-[var(--z-toast)] flex max-h-[calc(100dvh-5rem)] w-96 max-w-[calc(100vw-2rem)] flex-col items-end gap-2 overflow-y-auto">
 	<K3sOperationDock inline />
 	{#if showAppChrome && !mockup.active}

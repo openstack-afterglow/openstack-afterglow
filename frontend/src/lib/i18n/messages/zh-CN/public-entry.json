@@ -248,5 +248,11 @@
 	"authStudio.logout.description1": "会话与连接的实际清理状态",
 	"authStudio.logout.description2": "会在每个步骤中确认。",
 	"authStudio.logout.footerNote": "不会自动跳转，状态会保持显示。",
-	"authStudio.footer.workspace": "{site} · Cloud workspace"
+	"authStudio.footer.workspace": "{site} · Cloud workspace",
+	"consoleEntry.eyebrow": "ENTERING {site}",
+	"consoleEntry.opening": "正在进入控制台",
+	"consoleEntry.ready": "控制台已打开",
+	"consoleEntry.step.password": "登录已验证",
+	"consoleEntry.step.sso": "SSO 认证已验证",
+	"consoleEntry.step.workspace": "正在打开工作区"
 }

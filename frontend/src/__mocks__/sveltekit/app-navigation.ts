@@ -9,3 +9,4 @@ export const afterNavigate = (_fn: unknown): void => {};
 export const preloadData = async (_href: string): Promise<unknown> => undefined;
 export const preloadCode = async (..._urls: string[]): Promise<void> => {};
 export const disableScrollHandling = (): void => {};
+export const onNavigate = (_fn: unknown): void => {};

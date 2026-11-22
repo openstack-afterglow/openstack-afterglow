@@ -105,6 +105,7 @@ export const MOTION_CSS_VAR = {
 	durationBase: 'var(--motion-duration-base)',
 	durationPanel: 'var(--motion-duration-panel)',
 	durationData: 'var(--motion-duration-data)',
+	durationScene: 'var(--motion-duration-scene)',
 	easeStandard: 'var(--motion-ease-standard)',
 	easeOut: 'var(--motion-ease-out)',
 	easeInOut: 'var(--motion-ease-in-out)',
@@ -119,6 +120,7 @@ export const MOTION_DURATION_MS = {
 	base: 160,
 	panel: 200,
 	data: 500,
+	scene: 720,
 	shimmer: 1600,
 	stagger: 40,
 } as const;

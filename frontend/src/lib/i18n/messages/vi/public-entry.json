@@ -248,5 +248,11 @@
 	"authStudio.logout.description1": "Trạng thái dọn dẹp thực tế của phiên và kết nối",
 	"authStudio.logout.description2": "được xác nhận ở từng bước.",
 	"authStudio.logout.footerNote": "Trang không tự chuyển hướng và giữ nguyên trạng thái.",
-	"authStudio.footer.workspace": "{site} · Cloud workspace"
+	"authStudio.footer.workspace": "{site} · Cloud workspace",
+	"consoleEntry.eyebrow": "ENTERING {site}",
+	"consoleEntry.opening": "Đang vào bảng điều khiển",
+	"consoleEntry.ready": "Bảng điều khiển đã mở",
+	"consoleEntry.step.password": "Đã xác minh đăng nhập",
+	"consoleEntry.step.sso": "Đã xác minh đăng nhập SSO",
+	"consoleEntry.step.workspace": "Đang mở không gian làm việc"
 }

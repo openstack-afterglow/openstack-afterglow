@@ -248,5 +248,11 @@
 	"authStudio.logout.description1": "The actual cleanup state of sessions and connections",
 	"authStudio.logout.description2": "is confirmed at each step.",
 	"authStudio.logout.footerNote": "This page stays here; it never redirects automatically.",
-	"authStudio.footer.workspace": "{site} · Cloud workspace"
+	"authStudio.footer.workspace": "{site} · Cloud workspace",
+	"consoleEntry.eyebrow": "ENTERING {site}",
+	"consoleEntry.opening": "Entering the console",
+	"consoleEntry.ready": "Your console is open",
+	"consoleEntry.step.password": "Sign-in verified",
+	"consoleEntry.step.sso": "SSO sign-in verified",
+	"consoleEntry.step.workspace": "Opening your workspace"
 }

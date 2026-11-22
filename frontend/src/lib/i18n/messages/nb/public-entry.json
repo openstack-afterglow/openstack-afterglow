@@ -248,5 +248,11 @@
 	"authStudio.logout.description1": "Den faktiske oppryddingen av økter og tilkoblinger",
 	"authStudio.logout.description2": "bekreftes for hvert trinn.",
 	"authStudio.logout.footerNote": "Siden blir værende uten automatisk videresending.",
-	"authStudio.footer.workspace": "{site} · Cloud workspace"
+	"authStudio.footer.workspace": "{site} · Cloud workspace",
+	"consoleEntry.eyebrow": "ENTERING {site}",
+	"consoleEntry.opening": "Åpner konsollen",
+	"consoleEntry.ready": "Konsollen er åpen",
+	"consoleEntry.step.password": "Innlogging bekreftet",
+	"consoleEntry.step.sso": "SSO-innlogging bekreftet",
+	"consoleEntry.step.workspace": "Åpner arbeidsområdet ditt"
 }

@@ -94,7 +94,7 @@
 	</header>
 
 	<div id="landing-content" tabindex="-1">
-		<section id="overview" class="hero" aria-labelledby="landing-hero-title">
+		<section id="overview" class="hero" aria-labelledby="landing-hero-title" data-route-scene-part="art">
 			<AfterglowOrbit active={heroMotion} interactive />
 			<div class="hero-bar">
 				<span class="hero-signature" aria-hidden="true"><i></i>{t('landing.story.hero.signature')}</span>

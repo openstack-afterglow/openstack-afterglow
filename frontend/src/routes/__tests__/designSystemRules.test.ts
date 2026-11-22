@@ -74,6 +74,7 @@ const motionTokenNames = [
 	'--motion-duration-base',
 	'--motion-duration-panel',
 	'--motion-duration-data',
+	'--motion-duration-scene',
 	'--motion-ease-standard',
 	'--motion-ease-out',
 	'--motion-ease-in-out',
@@ -85,6 +86,7 @@ const motionTokenNames = [
 
 // 반복 loop의 정지 frame을 보장하려면 새 duration도 reduced-motion 블록에서 0으로 수렴해야 한다.
 const reducedMotionDurationDeclarations = [
+	'--motion-duration-scene: 0.01ms',
 	'--motion-duration-shimmer: 0.01ms',
 	'--motion-duration-stagger: 0ms',
 ];
@@ -124,6 +126,7 @@ const motionDurationExports = [
 	'base: 160',
 	'panel: 200',
 	'data: 500',
+	'scene: 720',
 	'shimmer: 1600',
 	'stagger: 40',
 	"REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)'",
@@ -139,6 +142,7 @@ const motionCssVars = [
 	"durationBase: 'var(--motion-duration-base)'",
 	"durationPanel: 'var(--motion-duration-panel)'",
 	"durationData: 'var(--motion-duration-data)'",
+	"durationScene: 'var(--motion-duration-scene)'",
 	"easeStandard: 'var(--motion-ease-standard)'",
 	"easeOut: 'var(--motion-ease-out)'",
 	"easeInOut: 'var(--motion-ease-in-out)'",

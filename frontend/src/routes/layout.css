@@ -243,6 +243,8 @@
   --motion-duration-base: 160ms;
   --motion-duration-panel: 200ms;
   --motion-duration-data: 500ms;
+  /* Route-scene choreography: landing → login morph and the console entry overlay. */
+  --motion-duration-scene: 720ms;
   --motion-ease-standard: ease;
   --motion-ease-out: ease-out;
   --motion-ease-in-out: ease-in-out;
@@ -1080,12 +1082,61 @@ body {
   animation: motion-flow var(--motion-duration-shimmer) linear infinite;
 }
 
+/* Route scenes (lib/utils/routeScene.ts). View-transition names exist only while a scene runs.
+   auth-enter: the landing hero artwork morphs into the AuthStudioShell identity side and the auth panel
+   arrives from the inline end. auth-leave reverses it. `detached` skips the art morph when the hero was
+   off screen. Reduced motion never starts a scene. */
+:root[data-route-scene]:not([data-route-scene-art='detached']) [data-route-scene-part='art'] {
+  view-transition-name: afterglow-art;
+}
+:root[data-route-scene] [data-route-scene-part='panel'] {
+  view-transition-name: auth-panel;
+}
+::view-transition-group(root),
+::view-transition-group(afterglow-art),
+::view-transition-group(auth-panel) {
+  animation-duration: var(--motion-duration-scene);
+  animation-timing-function: var(--motion-ease-emphasized);
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: calc(var(--motion-duration-scene) * 0.6);
+}
+/* Both artwork snapshots stay centered and cropped while the box changes shape. */
+::view-transition-old(afterglow-art),
+::view-transition-new(afterglow-art) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  animation-duration: var(--motion-duration-scene);
+}
+:root[data-route-scene='auth-enter']::view-transition-new(auth-panel) {
+  animation: route-scene-panel-in var(--motion-duration-scene) var(--motion-ease-emphasized) both;
+}
+:root[data-route-scene='auth-leave']::view-transition-old(auth-panel) {
+  animation: route-scene-panel-out var(--motion-duration-scene) var(--motion-ease-emphasized) both;
+}
+@keyframes route-scene-panel-in {
+  from { opacity: 0; transform: translateX(min(100%, 32rem)); }
+  40% { opacity: 1; }
+  to { opacity: 1; transform: none; }
+}
+@keyframes route-scene-panel-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateX(min(100%, 32rem)); }
+}
+/* Console entry (ConsoleEntryTransition): the auth form steps aside while the artwork grows over it. */
+:root[data-console-entry] [data-route-scene-part='panel'] > * {
+  animation: route-scene-panel-out calc(var(--motion-duration-scene) * 0.6) var(--motion-ease-emphasized) forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root {
     --motion-duration-fast: 0.01ms;
     --motion-duration-base: 0.01ms;
     --motion-duration-panel: 0.01ms;
     --motion-duration-data: 0.01ms;
+    --motion-duration-scene: 0.01ms;
     --motion-duration-shimmer: 0.01ms;
     --motion-duration-stagger: 0ms;
     --default-transition-duration: 0.01ms;
