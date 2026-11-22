@@ -326,7 +326,6 @@
 	"notion.loadingTargets": "Notion 연동 대상을 불러오는 중",
 	"notion.page.subtitle": "OpenStack 리소스를 여러 Notion DB에 동시에 동기화합니다.",
 	"notion.page.addConnection": "+ 연결 추가",
-	"notion.gate.eyebrow": "Global synchronization gate",
 	"notion.gate.title": "Notion 전체 동기화",
 	"notion.gate.description": "비활성화하면 worker와 수동 테스트 모두 외부 Notion·OpenStack 호출 전에 중단합니다. 대상과 자격 증명은 유지됩니다.",
 	"notion.gate.saving": "저장 중…",

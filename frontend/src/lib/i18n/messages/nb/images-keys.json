@@ -91,7 +91,6 @@
 	"repositoryDetail.default": "Standard",
 	"repositoryDetail.viewDetails": "Vis detaljer",
 	"repositoryDetail.back": "Tilbake til repositorielisten",
-	"repositoryDetail.kicker": "REPOSITORIUM",
 	"repositoryDetail.description": "{tagCount, plural, one {# tagg} other {# tagger}} · {imageCount, plural, one {# opplastet avbild} other {# opplastede avbilder}}. Gjeldende tagger og tidligere opplastinger skilles fra hverandre ved hjelp av SHA-hash·ID.",
 	"repositoryDetail.tag": "Tagg",
 	"repositoryDetail.digest": "SHA-hash · ID",

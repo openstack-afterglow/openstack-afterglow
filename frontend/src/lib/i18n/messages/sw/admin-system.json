@@ -326,7 +326,6 @@
 	"notion.loadingTargets": "Inapakia malengwa ya muunganisho wa Notion",
 	"notion.page.subtitle": "Sawazisha rasilimali za OpenStack kwenye hifadhidata nyingi za Notion kwa wakati mmoja.",
 	"notion.page.addConnection": "+ Ongeza muunganisho",
-	"notion.gate.eyebrow": "Kidhibiti cha usawazishaji wa jumla",
 	"notion.gate.title": "Usawazishaji wa jumla wa Notion",
 	"notion.gate.description": "Ukizimwa, mchakato wa kazi na majaribio ya mkono husimama kabla ya kutuma miito ya nje kwa Notion·OpenStack. Malengwa na taarifa za uthibitishaji huhifadhiwa.",
 	"notion.gate.saving": "Inahifadhi…",

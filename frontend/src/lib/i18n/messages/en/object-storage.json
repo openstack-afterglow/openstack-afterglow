@@ -33,7 +33,6 @@
 	"uploadQueue.hashFailed": "Failed to calculate the integrity hash",
 	"uploadQueue.failed": "Upload failed",
 	"browserHeader.buckets": "Buckets",
-	"browserHeader.eyebrow": "OBJECT STORAGE / EXPLORER",
 	"browserHeader.synced": "Data synchronized",
 	"browserHeader.capacity": "Total size",
 	"browserHeader.objectCount": "Object count",

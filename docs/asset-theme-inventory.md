@@ -621,7 +621,6 @@
 - `frontend/src/lib/components/ui/AfterglowOrbit.svelte`
 - `frontend/src/lib/components/ui/EmptyState.svelte`
 - `frontend/src/lib/components/ui/FileIcon.svelte`
-- `frontend/src/lib/components/ui/GradientText.svelte`
 - `frontend/src/lib/components/ui/ProvisionPipeline.svelte`
 - `frontend/src/lib/components/ui/ResourceIdentifier.svelte`
 - `frontend/src/lib/components/ui/SelectionCheckbox.svelte`

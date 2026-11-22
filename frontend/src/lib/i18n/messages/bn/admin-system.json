@@ -326,7 +326,6 @@
 	"notion.loadingTargets": "Notion ইন্টিগ্রেশনের গন্তব্যগুলো লোড করা হচ্ছে",
 	"notion.page.subtitle": "একই সঙ্গে একাধিক Notion ডেটাবেসে OpenStack রিসোর্স সিঙ্ক্রোনাইজ করুন।",
 	"notion.page.addConnection": "+ সংযোগ যোগ করুন",
-	"notion.gate.eyebrow": "সামগ্রিক সিঙ্ক্রোনাইজেশন নিয়ন্ত্রণ",
 	"notion.gate.title": "Notion-এর সামগ্রিক সিঙ্ক্রোনাইজেশন",
 	"notion.gate.description": "নিষ্ক্রিয় করলে ওয়ার্কার ও ম্যানুয়াল পরীক্ষা উভয়ই বাহ্যিক Notion ও OpenStack কল করার আগেই থেমে যায়। গন্তব্য ও প্রমাণীকরণ তথ্য সংরক্ষিত থাকে।",
 	"notion.gate.saving": "সংরক্ষণ করা হচ্ছে…",

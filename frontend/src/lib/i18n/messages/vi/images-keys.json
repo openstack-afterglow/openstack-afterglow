@@ -91,7 +91,6 @@
 	"repositoryDetail.default": "Mặc định",
 	"repositoryDetail.viewDetails": "Xem chi tiết",
 	"repositoryDetail.back": "Quay lại danh sách kho lưu trữ",
-	"repositoryDetail.kicker": "KHO LƯU TRỮ",
 	"repositoryDetail.description": "{tagCount, plural, one {# thẻ} other {# thẻ}} · {imageCount, plural, one {# ảnh máy đã tải lên} other {# ảnh máy đã tải lên}}. Các thẻ hiện tại và các lần tải lên trước được phân biệt bằng giá trị băm SHA·ID.",
 	"repositoryDetail.tag": "Thẻ",
 	"repositoryDetail.digest": "Mã băm SHA · ID",

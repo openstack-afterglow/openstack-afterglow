@@ -42,7 +42,6 @@
 	<article class="guide-article" aria-labelledby="guide-title">
 		<header class="article-heading">
 			<nav aria-label={messages.breadcrumbs} class="breadcrumbs"><a href={docsHref(undefined, locale, $page.url)}>Docs</a><span aria-hidden="true">/</span><span>{guide.name}</span></nav>
-			<p class="guide-name">{guide.name}</p>
 			<h1 id="guide-title">{guide.title}</h1>
 			<p class="guide-summary">{guide.summary}</p>
 		</header>
@@ -105,9 +104,9 @@
 	.article-heading { padding: 0.5rem 0 2rem; border-bottom: 1px solid var(--color-line); }
 	.breadcrumbs { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; color: var(--color-ink-2); font-size: 0.75rem; }
 	.breadcrumbs a { color: var(--color-ink-2); }
-	.guide-name { margin: 1.5rem 0 0.5rem; color: var(--color-warm-text); font-size: 0.75rem; font-weight: 600; }
-	h1 { margin: 0; color: var(--color-ink-0); font-family: var(--font-display); font-size: clamp(1.5rem, 3vw, 2.25rem); font-weight: 500; line-height: 1.4; letter-spacing: -0.025em; word-break: keep-all; }
+	h1 { margin: 1.5rem 0 0; color: var(--color-ink-0); font-family: var(--font-display); font-size: clamp(1.5rem, 3vw, 2.25rem); font-weight: 500; line-height: 1.4; letter-spacing: -0.025em; word-break: keep-all; }
 	.guide-summary { margin: 1rem 0 0; color: var(--color-ink-2); }
+	.guide-summary, section > p, section > ul:not(.related-guides):not(.content-links), section > ol, .guide-steps li > p { max-inline-size: 72ch; }
 	section { padding-block: 1.75rem; border-bottom: 1px solid var(--color-line); scroll-margin-top: 5.5rem; }
 	section:last-child { border-bottom: 0; }
 	h2 { margin: 0 0 1rem; color: var(--color-ink-0); font-size: 1.25rem; font-weight: 600; line-height: 1.5; }

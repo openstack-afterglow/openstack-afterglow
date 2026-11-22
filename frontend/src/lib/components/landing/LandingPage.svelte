@@ -251,7 +251,7 @@
 	.hero-lead { max-width: 36rem; margin: 1rem auto 0; color: var(--color-ink-1); font-size: 0.9375rem; word-break: var(--landing-word-break, keep-all); text-wrap: pretty; }
 	.hero-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; margin-top: 1.25rem; }
 	.hero-actions :global(.btn), .onprem-actions :global(.btn) { min-height: 2.75rem; }
-	.hero-footer { bottom: 1.5rem; font-size: 0.625rem; flex-wrap: wrap; }
+	.hero-footer { bottom: 1.5rem; font-size: 0.6875rem; flex-wrap: wrap; }
 	.hero-footer span:first-child { letter-spacing: 0.1em; }
 	@media (max-width: 767px) {
 		.hero-footer { justify-content: center; }

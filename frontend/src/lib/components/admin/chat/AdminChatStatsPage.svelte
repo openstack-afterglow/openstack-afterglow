@@ -438,12 +438,12 @@
 		{#if hasData}
 		<!-- KPI 카드 -->
 		<div class="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
-			<StatTile label={t('adminStats.inputTokens')} value={fmtInt(overview.prompt_tokens)} accent="blue" />
-			<StatTile label={t('adminStats.outputTokens')} value={fmtInt(overview.completion_tokens)} accent="violet" />
-			<StatTile label={t('adminStats.totalRequests')} value={fmtInt(overview.request_count)} accent="cyan" />
-			<StatTile label={t('adminStats.activeUsers')} value={fmtInt(overview.active_users)} accent="emerald" />
-			<StatTile label={t('adminStats.deductedCredits')} value={fmtCredit(overview.credited_cost)} accent="amber" />
-			<StatTile label={t('adminStats.costUsd')} value={fmtUsd(overview.raw_cost)} accent="rose" />
+			<StatTile label={t('adminStats.inputTokens')} value={fmtInt(overview.prompt_tokens)} accent="neutral" />
+			<StatTile label={t('adminStats.outputTokens')} value={fmtInt(overview.completion_tokens)} accent="neutral" />
+			<StatTile label={t('adminStats.totalRequests')} value={fmtInt(overview.request_count)} accent="neutral" />
+			<StatTile label={t('adminStats.activeUsers')} value={fmtInt(overview.active_users)} accent="neutral" />
+			<StatTile label={t('adminStats.deductedCredits')} value={fmtCredit(overview.credited_cost)} accent="neutral" />
+			<StatTile label={t('adminStats.costUsd')} value={fmtUsd(overview.raw_cost)} accent="neutral" />
 			<StatTile label={t('adminStats.unpricedBilling')} value={fmtInt(overview.unpriced_requests)} accent="rose" />
 		</div>
 

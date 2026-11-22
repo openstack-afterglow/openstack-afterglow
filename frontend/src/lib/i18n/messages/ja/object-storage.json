@@ -33,7 +33,6 @@
 	"uploadQueue.hashFailed": "整合性ハッシュの計算に失敗しました",
 	"uploadQueue.failed": "アップロードに失敗しました",
 	"browserHeader.buckets": "バケット一覧",
-	"browserHeader.eyebrow": "オブジェクトストレージ / エクスプローラー",
 	"browserHeader.synced": "データ同期完了",
 	"browserHeader.capacity": "合計容量",
 	"browserHeader.objectCount": "オブジェクト数",

@@ -326,7 +326,6 @@
 	"notion.loadingTargets": "Loading Notion integration targets",
 	"notion.page.subtitle": "Synchronize OpenStack resources to multiple Notion databases simultaneously.",
 	"notion.page.addConnection": "+ Add connection",
-	"notion.gate.eyebrow": "Global synchronization gate",
 	"notion.gate.title": "Global Notion synchronization",
 	"notion.gate.description": "When disabled, both the worker and manual tests stop before making external Notion·OpenStack calls. Targets and credentials are retained.",
 	"notion.gate.saving": "Saving…",

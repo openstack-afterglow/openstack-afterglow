@@ -277,9 +277,9 @@
 			<Alert tone="danger" title={t('buckets.dashboardPage.accountLoadFailed')}>{accountError}</Alert>
 		{:else if account}
 			<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-				<StatTile label={t('buckets.dashboardPage.title')} value={account.container_count} accent="indigo" />
-				<StatTile label={t('buckets.dashboardPage.objectCount')} value={account.object_count} accent="cyan" />
-				<StatTile label={t('buckets.dashboardPage.usage')} value={formatAccountBytes(account.bytes_used)} accent="violet" />
+				<StatTile label={t('buckets.dashboardPage.title')} value={account.container_count} accent="neutral" />
+				<StatTile label={t('buckets.dashboardPage.objectCount')} value={account.object_count} accent="neutral" />
+				<StatTile label={t('buckets.dashboardPage.usage')} value={formatAccountBytes(account.bytes_used)} accent="neutral" />
 			</div>
 		{:else}
 			<Alert tone="neutral">{t('buckets.dashboardPage.accountEmpty')}</Alert>

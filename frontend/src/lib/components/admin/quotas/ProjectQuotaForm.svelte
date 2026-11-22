@@ -310,9 +310,9 @@
 								{field.label}
 							</label>
 							{#if !isSupported}
-								<span class="text-[10px] text-ink-3 bg-surface-sunken px-1.5 py-0.5 rounded border border-line/40">{t('quotaForm.unsupported')}</span>
+								<span class="text-[11px] text-ink-3 bg-surface-sunken px-1.5 py-0.5 rounded border border-line/40">{t('quotaForm.unsupported')}</span>
 							{:else if drafts[sec.id]?.[field.key] === -1}
-								<span class="text-[10px] text-accent font-medium bg-accent/10 px-1.5 py-0.5 rounded">{t('quotaForm.unlimited')}</span>
+								<span class="text-[11px] text-accent font-medium bg-accent/10 px-1.5 py-0.5 rounded">{t('quotaForm.unlimited')}</span>
 							{/if}
 						</div>
 

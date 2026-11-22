@@ -326,7 +326,6 @@
 	"notion.loadingTargets": "Notion連携先を読み込み中",
 	"notion.page.subtitle": "OpenStackリソースを複数のNotionデータベースに同時に同期します。",
 	"notion.page.addConnection": "+ 接続を追加",
-	"notion.gate.eyebrow": "全体同期の制御",
 	"notion.gate.title": "Notion全体同期",
 	"notion.gate.description": "無効にすると、ワーカーと手動テストは外部のNotion·OpenStackを呼び出す前に停止します。連携先と認証情報は保持されます。",
 	"notion.gate.saving": "保存中…",

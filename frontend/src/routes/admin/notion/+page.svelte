@@ -258,7 +258,6 @@
 	<Card padding="md" surface="subtle">
 		<div class="global-gate">
 			<div>
-				<p class="gate-eyebrow">{t('notion.gate.eyebrow')}</p>
 				<h2>{t('notion.gate.title')}</h2>
 				<p>{t('notion.gate.description')}</p>
 				{#if gateAvailable && notionSyncEnabled === null}
@@ -334,22 +333,13 @@
 		gap: 1rem;
 	}
 
-	.gate-eyebrow {
-		margin: 0 0 0.25rem;
-		color: var(--admin-tone, var(--color-warm));
-		font-size: 0.68rem;
-		font-weight: 700;
-		letter-spacing: 0.16em;
-		text-transform: uppercase;
-	}
-
 	h2 {
 		margin: 0;
 		color: var(--color-ink-0);
 		font-size: 1rem;
 	}
 
-	.global-gate p:not(.gate-eyebrow) {
+	.global-gate p {
 		margin: 0.35rem 0 0;
 		color: var(--color-ink-2);
 		font-size: 0.82rem;

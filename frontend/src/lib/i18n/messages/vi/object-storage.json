@@ -33,7 +33,6 @@
 	"uploadQueue.hashFailed": "Không thể tính giá trị băm kiểm tra tính toàn vẹn",
 	"uploadQueue.failed": "Tải lên thất bại",
 	"browserHeader.buckets": "Bucket",
-	"browserHeader.eyebrow": "LƯU TRỮ ĐỐI TƯỢNG / TRÌNH KHÁM PHÁ",
 	"browserHeader.synced": "Đã đồng bộ dữ liệu",
 	"browserHeader.capacity": "Tổng dung lượng",
 	"browserHeader.objectCount": "Số lượng đối tượng",

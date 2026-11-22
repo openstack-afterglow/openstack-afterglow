@@ -96,7 +96,6 @@
 	<div class="detail-header">
 		<Button variant="ghost" size="icon" ariaLabel={t('repositoryDetail.back')} onclick={onBack}>‹</Button>
 		<div class="detail-heading">
-			<p class="detail-kicker">{t('repositoryDetail.kicker')}</p>
 			<h2>{repositoryName}</h2>
 			<p><AnimatedNumber value={group?.tags.length ?? 0} format={(value) => t('repositoryDetail.description', { tagCount: Math.round(value), imageCount: group?.images.length ?? 0 })} /></p>
 		</div>
@@ -158,13 +157,12 @@
 	:global(.repository-detail) { overflow: hidden; }
 	.detail-header { display: flex; align-items: flex-start; gap: 0.75rem; padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--color-line); }
 	.detail-heading { min-width: 0; }
-	.detail-kicker { margin: 0 0 0.3rem; color: var(--color-warm); font-size: 0.625rem; font-weight: 700; letter-spacing: 0.14em; }
 	h2 { margin: 0; color: var(--color-ink-0); font-family: var(--font-mono); font-size: 1.05rem; overflow-wrap: anywhere; }
 	.detail-heading p:last-child { margin: 0.35rem 0 0; color: var(--color-ink-2); font-size: 0.75rem; }
 	.table-wrap { overflow-x: auto; }
 	table { width: 100%; border-collapse: collapse; min-width: 48rem; }
 	.table-wrap :global(th), td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--color-line); text-align: left; white-space: nowrap; }
-	.table-wrap :global(th) { color: var(--color-ink-2); font-size: 0.625rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+	.table-wrap :global(th) { color: var(--color-ink-2); font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
 	td { color: var(--color-ink-1); font-size: 0.75rem; }
 	tbody tr:hover { background: var(--color-surface-sunken); }
 	.tag-name { display: inline-block; max-width: 14rem; margin-right: 0.4rem; color: var(--color-ink-0); font-family: var(--font-mono); font-weight: 600; white-space: normal; overflow-wrap: anywhere; }

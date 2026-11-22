@@ -125,7 +125,7 @@
 					<button
 						onclick={() => (selectedInst = inst)}
 						class="w-full text-left px-3 py-2.5 border-b border-line hover:bg-surface-sunken transition-colors
-							{selected?.id === inst.id ? 'bg-surface-sunken border-l-2 border-l-blue-500 pl-2.5' : ''}"
+							{selected?.id === inst.id ? 'bg-surface-selected' : ''}"
 						data-tour={index === 0 ? 'admin-monitoring-row' : undefined}
 						aria-pressed={selected?.id === inst.id}
 					>

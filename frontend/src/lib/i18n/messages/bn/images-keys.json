@@ -91,7 +91,6 @@
 	"repositoryDetail.default": "ডিফল্ট",
 	"repositoryDetail.viewDetails": "বিস্তারিত দেখুন",
 	"repositoryDetail.back": "রিপোজিটরি তালিকায় ফিরে যান",
-	"repositoryDetail.kicker": "রিপোজিটরি",
 	"repositoryDetail.description": "{tagCount}টি ট্যাগ · {imageCount}টি আপলোড করা ইমেজ। বর্তমান ট্যাগ এবং পূর্ববর্তী আপলোডসমূহ SHA হ্যাশ·ID দ্বারা পৃথক করা হয়।",
 	"repositoryDetail.tag": "ট্যাগ",
 	"repositoryDetail.digest": "SHA হ্যাশ · ID",

@@ -25,7 +25,6 @@
 
 <div class="docs-index">
 	<header class="intro">
-		<p class="eyebrow">{messages.userDocs}</p>
 		<h1>{messages.heroTitle[0]}<br />{messages.heroTitle[1]}</h1>
 		<p class="intro-copy">{messages.heroCopy[0]}<br />{messages.heroCopy[1]}</p>
 		<Button variant="primary" href={docsHref('getting-started', locale, $page.url)} class="min-h-11 mt-6">{messages.getStarted} →</Button>
@@ -65,7 +64,6 @@
 <style>
 	.docs-index { min-width: 0; }
 	.intro { padding: 1rem 0 2.5rem; border-bottom: 1px solid var(--color-line); }
-	.eyebrow { margin: 0 0 1rem; color: var(--color-warm-text); font-size: 0.75rem; font-weight: 600; }
 	h1 { margin: 0; color: var(--color-ink-0); font-family: var(--font-display); font-size: clamp(1.875rem, 4vw, 3rem); font-weight: 500; line-height: 1.3; letter-spacing: -0.03em; word-break: keep-all; }
 	.intro-copy { margin: 1.25rem 0 0; color: var(--color-ink-2); font-size: 0.875rem; line-height: 1.8; word-break: keep-all; }
 	.search-area { display: grid; gap: 0.75rem; margin-block: 2rem; }

@@ -19,7 +19,6 @@ export { default as EmptyState } from './EmptyState.svelte';
 export { default as Field } from './Field.svelte';
 export { default as FileIcon } from './FileIcon.svelte';
 export { default as FormModal } from './FormModal.svelte';
-export { default as GradientText } from './GradientText.svelte';
 export { default as Modal } from './Modal.svelte';
 export { default as PageHeader } from './PageHeader.svelte';
 export { default as PageShell } from './PageShell.svelte';
