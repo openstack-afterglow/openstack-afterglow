@@ -285,7 +285,7 @@
 					<p class="mb-2 text-xs text-state-warning-text" aria-live="polite">{statusLabel('partial')}</p>
 				{/if}
 
-				<div class="min-h-48">
+				<div class="min-h-30">
 				{#if m.data === null}
 					<div class="flex items-center justify-center h-30"><LoadingState variant="inline" label={t('metrics.loading')} /></div>
 				{:else if !hasValues(m.data) && !hasValues(ex?.data)}
@@ -310,7 +310,7 @@
 				</div>
 
 				<!-- 통계 요약 행 (min / avg / max) -->
-				<div class="flow-root min-h-16">
+				<div class="flow-root">
 				{#if summaryStats[chart.key]}
 					{@const s = summaryStats[chart.key]}
 					<div class="flex flex-wrap gap-4 mt-2 pt-2 border-t border-line text-xs text-ink-2">

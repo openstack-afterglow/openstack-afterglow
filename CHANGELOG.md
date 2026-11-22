@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+## [1.32.32] - 2026-11-22
+
+### Changed
+
 - 관리자 모델 설정에서 탭을 AI 프로바이더별로 바꾸고, 모델 종류를 다중 선택 칩으로 필터링합니다. 상단 전체 네이티브 모델 카탈로그는 제거했습니다.
 - Admin model settings now use AI-provider tabs and multi-select model-kind chips. The full native model catalog is removed from the top of the page.
 - 랜딩 페이지에서 히어로 위 영문 문구, 안내 문장의 넓은 자간, 연결선 펄스의 발광 효과, 화살표를 만드는 테두리를 제거하고 가운데 정렬 설명 문단의 줄 길이를 줄였습니다.
@@ -15,6 +19,8 @@
 - SSO 콜백의 "로그인 처리 중…" 안내가 제목과 진행 표시에 두 번 보이던 것을 한 번만 보이게 하고(접근성 상태 알림은 유지), 진행 표시를 제목과 같은 왼쪽에 맞췄습니다.
 - Login/logout drop the tracked English eyebrows and the decorative `: : CLOUD WORKSPACE : :` index, dashboard stat tiles drop their cyan/violet icon colors, and the empty Lumen chat drops its icon tile. Crushed heading tracking and text under 11px (chat and project label) are corrected.
 - The SSO callback shows "로그인 처리 중…" once instead of twice (the accessible status is kept) and aligns the progress bar with the title.
+- 대시보드 사용 추세 카드와 VM 모니터링 차트 카드가 제거된 지표 줄 때문에 남기던 빈 공간을 없앴습니다. 같은 조건에서 측정한 높이는 사용 추세 카드 278px → 182px, VM 모니터링 차트 영역 최소 256px → 120px입니다(로딩·빈 상태 높이 유지).
+- The dashboard usage-trend cards and the VM monitoring chart cards no longer reserve blank space for the removed metric lines. Measured under identical conditions, a usage-trend card goes from 278px to 182px and the VM monitoring chart area from a 256px minimum to 120px (loading and empty states keep the same height).
 
 ## [1.32.31] - 2026-11-22
 

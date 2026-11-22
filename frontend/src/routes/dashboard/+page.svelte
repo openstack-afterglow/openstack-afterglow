@@ -507,7 +507,7 @@
 				{@const current = available && Number.isFinite(series!.data.at(-1)) ? series!.data.at(-1)! : null}
 				{@const known = available ? series!.data.filter(Number.isFinite) : []}
 				<div role="group" aria-label={card.label} aria-busy={pending} data-metric={card.key} data-state={pending ? 'loading' : available ? trendState.error ? 'stale' : 'ready' : trendState.error && !currentTrend ? 'error' : series?.status ?? 'empty'} class="metric-slot min-w-0 rounded-lg border border-line bg-surface-base p-5">
-					<div class="flex min-h-11 items-baseline justify-between gap-2">
+					<div class="flex min-h-8 items-baseline justify-between gap-2">
 						<h3 class="min-w-0 flex-1 text-xs text-ink-2">{card.label}</h3>
 						{#if current !== null}
 							<span class="shrink-0 text-xl font-semibold tabular-nums text-ink-0"><AnimatedNumber value={current} format={(value) => value.toFixed(1)} /><span class="ml-0.5 text-xs text-ink-2">{card.unit}</span></span>
@@ -625,8 +625,9 @@
 		grid-template-rows: auto 1fr auto;
 		gap: 0.5rem;
 	}
-	.metric-slot-content { min-block-size: 7.5rem; }
-	.metric-slot-meta { min-block-size: 3.5rem; }
+	.metric-slot-content { min-block-size: 4.5rem; }
+	.metric-slot-content :global(.loading-state--section) { padding-block: 0.5rem; }
+	.metric-slot-meta { min-block-size: 1.25rem; }
 
 	@media (min-width: 1024px) {
 		.system-alert-list {
