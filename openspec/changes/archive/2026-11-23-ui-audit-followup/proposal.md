@@ -12,7 +12,7 @@ The 1.32.32 audit left real findings open: decorative eyebrows above headings, t
 - Correct the 1.32.32 CHANGELOG card-height wording. Chat blockquotes use a 1px neutral line (not a fill, which would collide with the code-block fill); the monitoring list uses a separate dot token and a hover class that does not override the selected row.
 
 ## Measured
-`/docs/lumen` and `/docs/mcp` at 1280px: maximum paragraph measure 72ch (previously up to 102ch from the audit, 80.6ch captions before the final cap); no horizontal overflow at 390px.
+`/docs/lumen` and `/docs/mcp` at 1280px: maximum leaf text measure 72ch (previously up to 102ch from the audit, 80.6ch captions before the final cap). Only text blocks are capped: step lists are not capped, so screenshots and code blocks inside steps keep 712px of the 736px article (710px for code), the same as section-level ones. No horizontal overflow at 390px.
 
 ## Non-goals
-`uppercase tracking-wide` table headers and form labels (about 300 uses) are a project convention, not an eyebrow, and are unchanged. Neutral 2px tree guide lines (EvidenceMap, TaskTree, TopologyNetworkPanel) are unchanged. No API, auth or data change; no version bump.
+`uppercase tracking-wide` table headers and form labels (about 300 uses) are a project convention, not an eyebrow, and are unchanged. Neutral 2px tree guide lines (EvidenceMap, TaskTree, TopologyNetworkPanel) are unchanged. No API, auth or data change. Released as 1.32.33.

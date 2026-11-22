@@ -25,7 +25,7 @@ Decisions BFF는 Lumen 서비스 권한을 확인한 뒤에만 본문을 읽는�
 **세 번째 시각 정리 (2026-11-16, source/local):** 기존 layout.css semantic text token과 shared embedded/flat/table/card/form 경계를 재사용해 consumer/admin 상세·계정·Lumen 설정의 중첩 외곽선, 제목 단계, 작업 대비와 좁은 상세 header를 수정한다. AuthStudioShell은 기존 resolvedTheme를 SVG color-scheme에 전달하고 보조 글자 크기만 기존 type role로 올린다. 포트 생성창은 기존 localized heading을 dialog 이름으로 연결한다. 자원·credential·권위·API·scope·polling·tutorial 가용성·DB/schema·배포 경계는 바꾸지 않는 presentation-only 변경이다. 실제 렌더·native 조작과 synthetic/redirect 한계는 docs/testing.md에 구분하며 운영 수용으로 승격하지 않는다.
 
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 root/backend/frontend와 Helm 버전은 `1.32.32`(AI 프로바이더 탭·모델 종류 칩 모델 설정과 상단 네이티브 카탈로그 패널 제거, 랜딩·로그인·채팅·대시보드 AI 슬롭 정리, SSO 콜백 단일 상태 안내, 사용 추세·VM 모니터링 카드 빈 공간 제거 릴리스 준비)이다. 현재 운영 버전은 불변 tag `1.32.28`(`83b7cf88`)이다. `1.32.29` 이상은 먼저 배포한 Lumen `0.6.21` 이상이 필요하며 설정 키 `[services] lumen_ingress_secret`·`lumen_external_url`을 추가하고 DB schema는 바꾸지 않는다. `1.32.30`의 키 등록일·월별 사용량은 해당 필드를 제공하는 Lumen이 배포돼야 값이 나오며, 그 전에는 알 수 없음으로 표시한다. 발행·배포 수신증과 운영 브라우저 검증 범위는 [`docs/testing.md`](docs/testing.md)에 있다. Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock 버전은 `8.2.2`다. Source·합성 검증과 실제 OpenStack 배포 증거를 구분한다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 root/backend/frontend와 Helm 버전은 `1.32.33`(제목 위 장식 문구·11px 미만 글자·색 띠 정리, 요약 타일 장식 색 제거, 문서 본문 줄 길이 제한 릴리스 준비. 직전 `1.32.32`는 AI 프로바이더 탭·모델 종류 칩 모델 설정과 상단 네이티브 카탈로그 패널 제거, 사용 추세·VM 모니터링 카드 빈 공간 제거를 포함)이다. 현재 운영 버전은 불변 tag `1.32.28`(`83b7cf88`)이다. `1.32.29` 이상은 먼저 배포한 Lumen `0.6.21` 이상이 필요하며 설정 키 `[services] lumen_ingress_secret`·`lumen_external_url`을 추가하고 DB schema는 바꾸지 않는다. `1.32.30`의 키 등록일·월별 사용량은 해당 필드를 제공하는 Lumen이 배포돼야 값이 나오며, 그 전에는 알 수 없음으로 표시한다. 발행·배포 수신증과 운영 브라우저 검증 범위는 [`docs/testing.md`](docs/testing.md)에 있다. Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock 버전은 `8.2.2`다. Source·합성 검증과 실제 OpenStack 배포 증거를 구분한다.
 
 **1.32.11 준비 (2026-11-08, source/local):** `1.32.10` 이후 dev의 도메인 IAM 그룹 관리(`/api/v1/iam/groups*`), 도메인 manager 프로젝트 수정(`PATCH /api/v1/iam/projects/{id}`, 이름·설명만), 프로젝트 표·슬라이드인 화면, manager 전용 프로젝트 생성(`project_creator` 위임 폐기)과 manager 투영의 native `manager` 부여(v1 `reader` 투영 migration, 투영 파생 row의 manager 계산 제외)를 포함한다. 사용자 페이지의 `/api/v1/{chat,k3s,waygate,palimpsest}/*`에서 시스템 관리자 승격을 제거하고 `/admin/*` 하위에만 남긴다. 스키마·SQL 변경과 새 설정 키는 없다. 시스템 관리자 승격을 제거한 `deps._resolve_jwt_session` 경계는 `test_auth_domain_boundaries`로 검증했다. 브라우저 실화면과 실제 Keystone의 reader→manager 투영 migration은 확인하지 않았다. 이 항목은 source/local 준비이며 발행·운영 배포는 별도 기록한다.
 
@@ -2317,9 +2317,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "b571dca83c90e95869edacc5e0e426f821ca44c9abab987069feb73cfa7b8c7c",
-  "reviewed_at": "2026-11-22T15:58:00Z",
-  "summary": "UI audit follow-up after 1.32.32: eyebrow, sub-11px text, side-stripe and neutral stat-tile cleanup, docs measure cap, selected-row and blockquote fixes. UI-only; no API, auth, schema or deployment change."
+  "source_sha256": "5a926b0d43fe4b6e8aeceb291df48089634cffd68e7da38a8a0cd4fe965c6fc7",
+  "reviewed_at": "2026-11-22T16:08:17Z",
+  "summary": "Afterglow 1.32.33 release candidate: eyebrow, sub-11px text, side-stripe and neutral stat-tile cleanup, docs measure cap (steps uncapped). UI-only; no API, auth, schema or deployment change."
 }
 ```
 <!-- architecture-review:end -->

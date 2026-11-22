@@ -106,7 +106,7 @@
 	.breadcrumbs a { color: var(--color-ink-2); }
 	h1 { margin: 1.5rem 0 0; color: var(--color-ink-0); font-family: var(--font-display); font-size: clamp(1.5rem, 3vw, 2.25rem); font-weight: 500; line-height: 1.4; letter-spacing: -0.025em; word-break: keep-all; }
 	.guide-summary { margin: 1rem 0 0; color: var(--color-ink-2); }
-	.guide-summary, section > p, section > ul:not(.related-guides):not(.content-links), section > ol, .guide-steps li > p { max-inline-size: 72ch; }
+	.guide-summary, section > p, section > ul:not(.related-guides):not(.content-links), section > ol:not(.guide-steps), .guide-steps li > p { max-inline-size: 72ch; }
 	section { padding-block: 1.75rem; border-bottom: 1px solid var(--color-line); scroll-margin-top: 5.5rem; }
 	section:last-child { border-bottom: 0; }
 	h2 { margin: 0 0 1rem; color: var(--color-ink-0); font-size: 1.25rem; font-weight: 600; line-height: 1.5; }
