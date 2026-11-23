@@ -9,4 +9,4 @@
 - [x] `svelte-check` 0 errors; `i18n:check` clean; frontend vitest 8,748 passed.
 - [x] `npm run test:gate` on a clean worktree of the exact commit.
 - [x] Bump metadata to 1.32.33 (`node scripts/sync-version.js 1.32.33`); version-sync check passes.
-- [ ] Push dev, exact-SHA CI, immutable `1.32.33` tag, bilingual GitHub Release, image/alias/Helm verification.
+- [x] Push dev (`5a5a24146a`), exact-SHA CI (run 45042620081), immutable `1.32.33` tag, bilingual GitHub Release, image/alias/Helm verification (runs 45043528187, 45043528105; digests of `1.32.33` and `latest` match for all three images).

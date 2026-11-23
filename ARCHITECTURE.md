@@ -2318,8 +2318,8 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 {
   "schema_version": 1,
   "source_sha256": "5a926b0d43fe4b6e8aeceb291df48089634cffd68e7da38a8a0cd4fe965c6fc7",
-  "reviewed_at": "2026-11-22T16:08:17Z",
-  "summary": "Afterglow 1.32.33 release candidate: eyebrow, sub-11px text, side-stripe and neutral stat-tile cleanup, docs measure cap (steps uncapped). UI-only; no API, auth, schema or deployment change."
+  "reviewed_at": "2026-11-23T14:54:21Z",
+  "summary": "Post-release 1.32.33: close OpenSpec release task with CI, tag, image and Helm receipts. Docs only; no code, API, schema or deployment change."
 }
 ```
 <!-- architecture-review:end -->
