@@ -327,7 +327,7 @@
 	.provider-count {
 		color: var(--color-ink-2);
 		font-family: var(--font-mono);
-		font-size: 0.68rem;
+		font-size: 0.6875rem;
 		flex-shrink: 0;
 	}
 	.list {

@@ -326,7 +326,6 @@
 	"notion.loadingTargets": "Đang tải các đích tích hợp Notion",
 	"notion.page.subtitle": "Đồng bộ hóa tài nguyên OpenStack với nhiều cơ sở dữ liệu Notion cùng lúc.",
 	"notion.page.addConnection": "+ Thêm kết nối",
-	"notion.gate.eyebrow": "Cổng kiểm soát đồng bộ hóa toàn cục",
 	"notion.gate.title": "Đồng bộ hóa Notion toàn cục",
 	"notion.gate.description": "Khi bị tắt, cả tiến trình xử lý nền và các kiểm tra thủ công đều dừng trước khi thực hiện các lệnh gọi bên ngoài tới Notion·OpenStack. Các đích và thông tin xác thực được giữ lại.",
 	"notion.gate.saving": "Đang lưu…",

@@ -164,11 +164,11 @@
 	<Card padding="md">
 		<SectionHeader title={t('subnetDetailPage.usage')} class="mb-3" />
 		<div class="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-			<StatTile label={t('subnetDetailPage.totalPoolIps')} value={count(subnet.ip_usage.total_pool_ips)} class="min-w-0 [&_.stat-value]:break-all" />
-			<StatTile label={t('subnetDetailPage.allocatedPoolIps')} value={count(subnet.ip_usage.allocated_pool_ips)} accent="violet" />
-			<StatTile label={t('subnetDetailPage.reservedPoolIps')} value={count(subnet.ip_usage.reserved_pool_ips)} accent="amber" />
+			<StatTile label={t('subnetDetailPage.totalPoolIps')} value={count(subnet.ip_usage.total_pool_ips)} accent="neutral" class="min-w-0 [&_.stat-value]:break-all" />
+			<StatTile label={t('subnetDetailPage.allocatedPoolIps')} value={count(subnet.ip_usage.allocated_pool_ips)} accent="neutral" />
+			<StatTile label={t('subnetDetailPage.reservedPoolIps')} value={count(subnet.ip_usage.reserved_pool_ips)} accent="neutral" />
 			<StatTile label={t('subnetDetailPage.availablePoolIps')} value={subnet.ip_usage.available_pool_ips === null ? t('subnetDetailPage.remainingUnavailable') : count(subnet.ip_usage.available_pool_ips)} accent="emerald" class="min-w-0 [&_.stat-value]:break-all" />
-			<StatTile label={t('subnetDetailPage.totalAllocatedIps')} value={count(subnet.ip_usage.allocated_ips)} accent="cyan" />
+			<StatTile label={t('subnetDetailPage.totalAllocatedIps')} value={count(subnet.ip_usage.allocated_ips)} accent="neutral" />
 			<StatTile label={t('subnetDetailPage.outsidePoolIps')} value={count(subnet.ip_usage.outside_pool_ips)} accent="rose" />
 		</div>
 		{#if subnet.ip_usage.available_pool_ips === null}

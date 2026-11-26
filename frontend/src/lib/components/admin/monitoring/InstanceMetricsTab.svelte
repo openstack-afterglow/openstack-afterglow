@@ -124,14 +124,14 @@
 				{#each filtered as inst, index (inst.id)}
 					<button
 						onclick={() => (selectedInst = inst)}
-						class="w-full text-left px-3 py-2.5 border-b border-line hover:bg-surface-sunken transition-colors
-							{selected?.id === inst.id ? 'bg-surface-sunken border-l-2 border-l-blue-500 pl-2.5' : ''}"
+						class="w-full text-left px-3 py-2.5 border-b border-line transition-colors
+							{selected?.id === inst.id ? 'bg-surface-selected' : 'hover:bg-surface-sunken'}"
 						data-tour={index === 0 ? 'admin-monitoring-row' : undefined}
 						aria-pressed={selected?.id === inst.id}
 					>
 						<div class="flex items-center gap-2">
 							<div class="w-1.5 h-1.5 rounded-full flex-shrink-0
-								{inst.status === 'ACTIVE' ? 'bg-green-400' : inst.status === 'ERROR' ? 'bg-red-400' : 'bg-surface-selected'}"></div>
+								{inst.status === 'ACTIVE' ? 'bg-green-400' : inst.status === 'ERROR' ? 'bg-red-400' : 'bg-ink-3'}"></div>
 							<span class="text-sm text-ink-1 truncate">{inst.name}</span>
 							{#if inst.flavor.toLowerCase().startsWith('gpu.')}
 								<span class="text-xs text-purple-400 bg-purple-900/30 px-1 rounded flex-shrink-0">GPU</span>

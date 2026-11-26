@@ -91,7 +91,6 @@
 	"repositoryDetail.default": "기본",
 	"repositoryDetail.viewDetails": "상세 보기",
 	"repositoryDetail.back": "repository 목록으로 돌아가기",
-	"repositoryDetail.kicker": "REPOSITORY",
 	"repositoryDetail.description": "{tagCount}개 tag · {imageCount}개 업로드 이미지. 현재 tag와 이전 업로드를 SHA 해시·ID로 구분합니다.",
 	"repositoryDetail.tag": "Tag",
 	"repositoryDetail.digest": "SHA 해시 · ID",

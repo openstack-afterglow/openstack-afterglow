@@ -91,7 +91,6 @@
 	"repositoryDetail.default": "デフォルト",
 	"repositoryDetail.viewDetails": "詳細を表示",
 	"repositoryDetail.back": "リポジトリー一覧に戻る",
-	"repositoryDetail.kicker": "リポジトリー",
 	"repositoryDetail.description": "{tagCount}件のタグ · {imageCount}件のアップロード済みイメージ。現在のタグと以前のアップロードをSHAハッシュ·IDで区別します。",
 	"repositoryDetail.tag": "タグ",
 	"repositoryDetail.digest": "SHAハッシュ · ID",

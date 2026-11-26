@@ -31,7 +31,6 @@
 	import { t as studioT } from '$lib/i18n/ns/chat-studio';
 	import ModelMediaPricingEditor from './ModelMediaPricingEditor.svelte';
 	import ModelKindEditor from './ModelKindEditor.svelte';
-	import NativeCatalogPanel from './NativeCatalogPanel.svelte';
 	import { FOLLOW_NATIVE_CATALOG_PRICES, catalogSourceUrl, type ProviderFamily, type PriceOrigin, type NativeCatalogSummary, type NativeCatalogEntry } from '$lib/api/nativeCatalog';
 	import ProviderAccountsPanel from './ProviderAccountsPanel.svelte';
 	import {
@@ -524,17 +523,21 @@
 	// 등록된 모델 일괄 선택/삭제
 	let selectedModelIds = $state<Record<number, boolean>>({});
 	let deletingBulk = $state(false);
+	// 등록된 모델은 AI 프로바이더 탭으로 나누고, 모델 종류는 토글 칩으로 보이거나 숨긴다.
 	let registeredProviderId = $state('');
-	const modelKindTabStorageKey = 'afterglow.admin.models.kindTab';
-	const modelKindTabListId = 'registered-model-kinds';
-	const modelKindTabs = [...Object.keys(MEDIA_LABELS) as ModelKind[], 'unknown'] as const;
-	type ModelKindTab = (typeof modelKindTabs)[number];
-	let preferredModelKind = $state<string | null>(null);
+	const providerTabStorageKey = 'afterglow.admin.models.providerTab';
+	const hiddenKindsStorageKey = 'afterglow.admin.models.hiddenKinds';
+	const providerTabListId = 'registered-model-providers';
+	const modelKindOrder = [...Object.keys(MEDIA_LABELS) as ModelKind[], 'unknown'] as const;
+	type ModelKindTab = (typeof modelKindOrder)[number];
+	let hiddenKinds = $state<ModelKindTab[]>([]);
 
 	onMount(() => {
 		if (section !== 'models') return;
 		try {
-			preferredModelKind = localStorage.getItem(modelKindTabStorageKey);
+			registeredProviderId = localStorage.getItem(providerTabStorageKey) ?? '';
+			const stored = JSON.parse(localStorage.getItem(hiddenKindsStorageKey) ?? '[]');
+			if (Array.isArray(stored)) hiddenKinds = modelKindOrder.filter((kind) => stored.includes(kind));
 		} catch { /* Storage is optional. */ }
 	});
 
@@ -542,27 +545,26 @@
 		return knownModelKind(model.model_kind ?? 'text') ?? 'unknown';
 	}
 
-	const modelKindCounts = $derived.by(() => {
+	const registeredProviderTabs = $derived(providers.filter((provider) => models.some((model) => model.provider_id === provider.id)).map((provider) => ({
+		value: String(provider.id),
+		label: provider.name,
+		panelId: `${providerTabListId}-${provider.id}-panel`,
+		disabled: deletingBulk || modelOrderSaving
+	})));
+	const activeProviderTab = $derived(
+		registeredProviderTabs.find((tab) => tab.value === registeredProviderId)?.value ?? registeredProviderTabs[0]?.value
+	);
+	const providerModels = $derived(models.filter((model) => String(model.provider_id) === activeProviderTab));
+	const providerKindCounts = $derived.by(() => {
 		const counts = new Map<ModelKindTab, number>();
-		for (const model of models) {
+		for (const model of providerModels) {
 			const kind = registeredModelKind(model);
 			counts.set(kind, (counts.get(kind) ?? 0) + 1);
 		}
 		return counts;
 	});
-	const registeredKindTabs = $derived(modelKindTabs.filter((kind) => modelKindCounts.has(kind)).map((kind) => ({
-		value: kind,
-		label: t('pricing.modelKindTabCount', { kind: modelKindLabel(kind), count: formatNumber(modelKindCounts.get(kind)!) }),
-		panelId: `${modelKindTabListId}-${kind}-panel`,
-		disabled: deletingBulk || modelOrderSaving
-	})));
-	const activeRegisteredKind = $derived(
-		registeredKindTabs.find((tab) => tab.value === preferredModelKind)?.value ?? registeredKindTabs[0]?.value
-	);
-	const visibleModels = $derived(models.filter((model) =>
-		registeredModelKind(model) === activeRegisteredKind &&
-		(registeredProviderId === '' || model.provider_id === Number(registeredProviderId))
-	));
+	const providerKindChips = $derived(modelKindOrder.filter((kind) => providerKindCounts.has(kind)));
+	const visibleModels = $derived(providerModels.filter((model) => !hiddenKinds.includes(registeredModelKind(model))));
 	const visibleModelsByProvider = $derived.by(() => {
 		const groups = new Map<number, Model[]>();
 		for (const model of visibleModels) {
@@ -580,12 +582,20 @@
 		selectedModelIds = {};
 		resetModelDrag();
 	}
-	function selectRegisteredKind(kind: string) {
-		if (kind === preferredModelKind || deletingBulk || modelOrderSaving) return;
-		if (kind !== activeRegisteredKind) resetRegisteredSelection();
-		preferredModelKind = kind;
+	function selectRegisteredProvider(providerId: string) {
+		if (providerId === activeProviderTab || deletingBulk || modelOrderSaving) return;
+		resetRegisteredSelection();
+		registeredProviderId = providerId;
 		try {
-			localStorage.setItem(modelKindTabStorageKey, kind);
+			localStorage.setItem(providerTabStorageKey, providerId);
+		} catch { /* Storage is optional. */ }
+	}
+	function toggleModelKind(kind: ModelKindTab) {
+		if (deletingBulk || modelOrderSaving) return;
+		hiddenKinds = hiddenKinds.includes(kind) ? hiddenKinds.filter((value) => value !== kind) : [...hiddenKinds, kind];
+		resetRegisteredSelection();
+		try {
+			localStorage.setItem(hiddenKindsStorageKey, JSON.stringify(hiddenKinds));
 		} catch { /* Storage is optional. */ }
 	}
 
@@ -1038,7 +1048,7 @@
 	}
 
 	function modelSiblings(model: Model) {
-		return registeredModelKind(model) === activeRegisteredKind ? visibleModelsByProvider.get(model.provider_id) ?? [] : [];
+		return visibleModels.filter((row) => row.provider_id === model.provider_id && registeredModelKind(row) === registeredModelKind(model));
 	}
 	function handleModelPointerDown(event: PointerEvent | MouseEvent, model: Model) {
 		const target = event.target instanceof Element ? event.target : null;
@@ -2276,7 +2286,6 @@
 
 	{#if section === 'models'}
 	<!-- 모델 -->
-	<NativeCatalogPanel />
 	<section>
 		<h2 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('configuration.models')}</h2>
 		<p class="mb-3 text-xs text-[var(--color-ink-2)]">
@@ -2287,40 +2296,11 @@
 		</div>
 
 		{#snippet activeModelsPanel(kind: ModelKindTab)}
-			<div class="mb-3">
-				<Field label={t('pricing.registeredProviderFilter')} for="registered-model-provider" help={t('pricing.registeredProviderHelp')}>
-					<SelectInput id="registered-model-provider" bind:value={registeredProviderId} onchange={resetRegisteredSelection} disabled={deletingBulk || modelOrderSaving}>
-						<option value="">{t('pricing.allProviders')}</option>
-						{#each providers as provider (provider.id)}<option value={String(provider.id)}>{provider.name}</option>{/each}
-					</SelectInput>
-				</Field>
-				<p class="mt-2 text-xs text-[var(--color-ink-2)]">{t('pricing.registeredCount', { visible: formatNumber(visibleModels.length), total: formatNumber(modelKindCounts.get(kind) ?? 0) })}</p>
-				<p id="model-reorder-help" class="mt-1 text-xs text-[var(--color-ink-2)]">{t('pricing.modelReorderHelp')}</p>
-				<p role="status" aria-live="polite" class="mt-1 text-xs text-[var(--color-ink-2)]">{modelOrderStatus}</p>
-				{#if modelOrderSaveError}<Alert tone="danger" class="mt-2">{modelOrderSaveError}</Alert>{/if}
-			</div>
-			{#if visibleModels.length === 0}
-				<EmptyState headline={t('pricing.filteredEmpty')} class="py-4 [&_.motion-enter]:animate-none" />
-			{:else}
-			<div class="mb-2 flex items-center justify-between gap-3 px-1">
-				<label class="flex cursor-pointer items-center gap-2 text-xs text-[var(--color-ink-2)]">
-					<input
-						type="checkbox"
-						checked={allModelsSelected}
-						disabled={deletingBulk || modelOrderSaving}
-						onchange={(e) => toggleAllModels(e.currentTarget.checked)}
-					/>
-					{t('configuration.selectAllWithCount', { v0: selectedCount > 0 ? ` (${formatNumber(selectedCount)})` : '' })}
-				</label>
-				{#if selectedCount > 0}
-					<Button variant="danger-outline" size="sm" onclick={deleteSelectedModels} disabled={deletingBulk || modelOrderSaving} ariaBusy={deletingBulk}>
-						{#if deletingBulk}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{deletingBulk ? t('configuration.deleting') : t('configuration.deleteSelected', { v0: formatNumber(selectedCount) })}
-					</Button>
-				{/if}
-			</div>
-			{#each visibleModelsByProvider as [providerId, siblings] (providerId)}
-				<h3 id="registered-model-provider-{providerId}" class="mt-4 mb-2 break-words text-sm font-semibold text-[var(--color-ink-1)]">{providerName(providerId)}</h3>
-				<ul class="space-y-2" aria-labelledby="registered-model-provider-{providerId}" aria-busy={modelOrderSaving}>
+			<h3 class="mt-3 mb-2 text-sm font-semibold text-[var(--color-ink-1)]">{modelKindLabel(kind)} · {formatNumber(providerKindCounts.get(kind) ?? 0)}</h3>
+			{#each visibleModelsByProvider as [providerId, allSiblings] (providerId)}
+				{@const siblings = allSiblings.filter((model) => registeredModelKind(model) === kind)}
+				{#if siblings.length}
+				<ul class="space-y-2" aria-label={`${providerName(providerId)} · ${modelKindLabel(kind)}`} aria-busy={modelOrderSaving}>
 				{#each siblings as m, siblingIndex (m.id)}
 					{@const catalogPriced = m.price_origin === 'native_catalog'}
 					<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -2438,19 +2418,45 @@
 					</li>
 				{/each}
 				</ul>
+				{/if}
 			{/each}
-			{/if}
 		{/snippet}
 
 		{#if loading}
 			<LoadingState variant="section" label={t('configuration.loadingModels')} />
-		{:else if registeredKindTabs.length === 0}
+		{:else if registeredProviderTabs.length === 0}
 			<EmptyState headline={t('configuration.noModelsRegistered')} class="py-4 [&_.motion-enter]:animate-none" />
 		{:else}
-			<Tabs id={modelKindTabListId} class="mb-3" value={activeRegisteredKind ?? ''} items={registeredKindTabs} onchange={selectRegisteredKind} ariaLabel={t('pricing.registeredKindTabs')} />
-			{#each registeredKindTabs as tab (tab.value)}
-				<div id={tab.panelId} role="tabpanel" aria-labelledby="{modelKindTabListId}-{tab.value}" hidden={tab.value !== activeRegisteredKind}>
-					{#if tab.value === activeRegisteredKind}{@render activeModelsPanel(tab.value)}{/if}
+			<Tabs id={providerTabListId} class="mb-3" value={activeProviderTab ?? ''} items={registeredProviderTabs} onchange={selectRegisteredProvider} ariaLabel={t('configuration.providerSettings')} />
+			{#each registeredProviderTabs as tab (tab.value)}
+				<div id={tab.panelId} role="tabpanel" aria-labelledby="{providerTabListId}-{tab.value}" hidden={tab.value !== activeProviderTab}>
+					{#if tab.value === activeProviderTab}
+						<div class="mb-4 flex flex-wrap gap-2" aria-label={t('pricing.registeredKindTabs')}>
+							{#each providerKindChips as kind (kind)}
+								<Button variant={hiddenKinds.includes(kind) ? 'outline' : 'primary'} size="sm" ariaPressed={!hiddenKinds.includes(kind)} disabled={deletingBulk || modelOrderSaving} onclick={() => toggleModelKind(kind)}>{modelKindLabel(kind)} · {formatNumber(providerKindCounts.get(kind) ?? 0)}</Button>
+							{/each}
+						</div>
+						<div class="mb-3">
+							<p id="model-reorder-help" class="mt-1 text-xs text-[var(--color-ink-2)]">{t('pricing.modelReorderHelp')}</p>
+							<p role="status" aria-live="polite" class="mt-1 text-xs text-[var(--color-ink-2)]">{modelOrderStatus}</p>
+							{#if modelOrderSaveError}<Alert tone="danger" class="mt-2">{modelOrderSaveError}</Alert>{/if}
+						</div>
+						<div class="mb-2 flex items-center justify-between gap-3 px-1">
+							<label class="flex cursor-pointer items-center gap-2 text-xs text-[var(--color-ink-2)]">
+								<input type="checkbox" checked={allModelsSelected} disabled={deletingBulk || modelOrderSaving} onchange={(e) => toggleAllModels(e.currentTarget.checked)} />
+								{t('configuration.selectAllWithCount', { v0: selectedCount > 0 ? ` (${formatNumber(selectedCount)})` : '' })}
+							</label>
+							{#if selectedCount > 0}
+								<Button variant="danger-outline" size="sm" onclick={deleteSelectedModels} disabled={deletingBulk || modelOrderSaving} ariaBusy={deletingBulk}>
+									{#if deletingBulk}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{deletingBulk ? t('configuration.deleting') : t('configuration.deleteSelected', { v0: formatNumber(selectedCount) })}
+								</Button>
+							{/if}
+						</div>
+						{#each providerKindChips.filter((kind) => !hiddenKinds.includes(kind)) as kind (kind)}
+							{@render activeModelsPanel(kind)}
+						{/each}
+						{#if visibleModels.length === 0}<EmptyState headline={t('pricing.filteredEmpty')} class="py-4 [&_.motion-enter]:animate-none" />{/if}
+					{/if}
 				</div>
 			{/each}
 		{/if}

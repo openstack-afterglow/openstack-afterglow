@@ -91,7 +91,6 @@
 	"repositoryDetail.default": "默认",
 	"repositoryDetail.viewDetails": "查看详情",
 	"repositoryDetail.back": "返回仓库列表",
-	"repositoryDetail.kicker": "仓库",
 	"repositoryDetail.description": "{tagCount} 个标签 · {imageCount} 个已上传镜像。通过 SHA 哈希·ID 区分当前标签和以前的上传。",
 	"repositoryDetail.tag": "标签",
 	"repositoryDetail.digest": "SHA 哈希 · ID",

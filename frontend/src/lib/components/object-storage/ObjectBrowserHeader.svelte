@@ -23,8 +23,6 @@
 	</a>
 </div>
 
-<div class="text-xs text-ink-2 uppercase tracking-widest mb-3">{t('browserHeader.eyebrow')}</div>
-
 <div class="flex items-start justify-between mb-4">
 	<div>
 		<h1 class="text-2xl font-bold text-ink-0">{s.containerName}</h1>

@@ -579,7 +579,7 @@ function applyCloudInitPreset(event: Event) {
 				</div>
 			{/each}
 		</div>
-		<p class="text-[10.5px] text-ink-2 mt-1">{t('config.mounts.pathsHelp')}</p>
+		<p class="text-[11px] text-ink-2 mt-1">{t('config.mounts.pathsHelp')}</p>
 	{/if}
 </div>
 {/if}
@@ -592,7 +592,7 @@ function applyCloudInitPreset(event: Event) {
 	</label>
 	<div class="relative">
 		<div class="absolute top-2 right-2 flex gap-1 z-[2] bg-surface-base border border-line-2 rounded-md p-0.5">
-			<select aria-label={t('config.cloudInit.defaultPresets')} onchange={applyCloudInitPreset} class="px-2 py-1 text-[10.5px] font-mono bg-surface-base text-ink-1 rounded">
+			<select aria-label={t('config.cloudInit.defaultPresets')} onchange={applyCloudInitPreset} class="px-2 py-1 text-[11px] font-mono bg-surface-base text-ink-1 rounded">
 				<option value="">{t('config.cloudInit.examples')}</option>
 				{#each CLOUD_INIT_PRESETS as preset}<option value={preset.id}>{preset.label}</option>{/each}
 			</select>

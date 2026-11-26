@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { classifyRouteScene, runRouteScene, type RouteSceneNavigation } from '../routeScene';
+import { classifyRouteScene, runRouteScene, startSceneTransition, type RouteSceneNavigation } from '../routeScene';
 
 function navigation(from: string, to: string, overrides: Partial<RouteSceneNavigation> = {}): RouteSceneNavigation {
 	return {
@@ -104,5 +104,37 @@ describe('runRouteScene', () => {
 		const complete = Promise.reject(new Error('cancelled'));
 		await runRouteScene(navigation('/login', '/', { complete }));
 		await vi.waitFor(() => expect(document.documentElement.dataset.routeScene).toBeUndefined());
+	});
+});
+
+describe('startSceneTransition', () => {
+	const originalMatchMedia = window.matchMedia;
+	beforeEach(() => setReducedMotion(false));
+	afterEach(() => {
+		delete (document as unknown as { startViewTransition?: unknown }).startViewTransition;
+		delete document.documentElement.dataset.routeScene;
+		delete document.documentElement.dataset.routeSceneSwapped;
+		window.matchMedia = originalMatchMedia;
+	});
+
+	it('returns null without View Transitions or under reduced motion', () => {
+		expect(startSceneTransition('console-enter', () => {})).toBeNull();
+		stubTransition();
+		setReducedMotion(true);
+		expect(startSceneTransition('console-enter', () => {})).toBeNull();
+		expect(document.documentElement.dataset.routeScene).toBeUndefined();
+	});
+
+	it('hands the shared name to the incoming element after the update, then clears the scene', async () => {
+		stubTransition();
+		const seen: Array<string | undefined> = [];
+		const scene = startSceneTransition('console-enter', () => { seen.push(document.documentElement.dataset.routeSceneSwapped); });
+		expect(scene).not.toBeNull();
+		expect(document.documentElement.dataset.routeScene).toBe('console-enter');
+		await scene!.updated;
+		expect(seen).toEqual([undefined]);
+		await scene!.finished;
+		expect(document.documentElement.dataset.routeScene).toBeUndefined();
+		expect(document.documentElement.dataset.routeSceneSwapped).toBeUndefined();
 	});
 });

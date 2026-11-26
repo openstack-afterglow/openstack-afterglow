@@ -51,7 +51,8 @@ const model = {
 const second = { ...model, id: 71, display_name: 'Second', model_name: 'openai/second', sort_order: 0, is_title_model: false };
 const hidden = { ...model, id: 20, provider_id: 2, display_name: 'Hidden', model_name: 'openai/hidden', sort_order: 100, is_title_model: false };
 const image = { ...second, id: 72, display_name: 'Image', model_name: 'openai/image', model_kind: 'image', sort_order: 5 };
-const tabStorageKey = 'afterglow.admin.models.kindTab';
+const providerTabStorageKey = 'afterglow.admin.models.providerTab';
+const hiddenKindsStorageKey = 'afterglow.admin.models.hiddenKinds';
 let providers: typeof nim[];
 let models: typeof model[];
 
@@ -98,7 +99,9 @@ async function dragModel(source: HTMLElement, target: HTMLElement, edge: 'before
 
 beforeEach(() => {
 	vi.resetAllMocks();
-	localStorage.removeItem(tabStorageKey);
+	localStorage.removeItem(providerTabStorageKey);
+	localStorage.removeItem(hiddenKindsStorageKey);
+	localStorage.setItem(providerTabStorageKey, '7');
 	mocks.auth.set({ token: 'token', projectId: 'project' });
 	mocks.authReady.set(true); mocks.projectSwitching.set(false);
 	providers = [{ ...nim }, { ...empty }, { ...other }];
@@ -216,50 +219,67 @@ describe('provider catalog administration', () => {
 		view.unmount();
 		const modelView = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
-		const panel = screen.getByRole('tabpanel', { name: '텍스트 (4)' });
-		expect(within(panel).getAllByRole('heading').map((heading) => heading.textContent)).toEqual(['NVIDIA NIM', 'Empty', 'Other']);
-		expect(rowOrder(modelView.container)).toEqual([70, 71, 90, 20]);
-		expect(within(screen.getByLabelText('등록 모델 프로바이더 필터')).getAllByRole('option').slice(1).map((option) => option.textContent)).toEqual(['NVIDIA NIM', 'Empty', 'Other']);
+		const panel = screen.getByRole('tabpanel', { name: 'NVIDIA NIM' });
+		expect(within(panel).getAllByRole('heading').map((heading) => heading.textContent)).toEqual(['텍스트 · 2']);
+		expect(rowOrder(modelView.container)).toEqual([70, 71]);
+		expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['NVIDIA NIM', 'Empty', 'Other']);
 		await fireEvent.click(screen.getByRole('button', { name: '+ 모델 추가' }));
 		expect(within(screen.getByLabelText('조회 프로바이더')).getAllByRole('option').slice(1).map((option) => option.textContent)).toEqual(['NVIDIA NIM', 'Empty', 'Other']);
 		await fireEvent.click(screen.getByRole('button', { name: '직접 입력' }));
 		expect(within(screen.getByLabelText('조회 프로바이더')).getAllByRole('option').slice(1).map((option) => option.textContent)).toEqual(['NVIDIA NIM', 'Empty', 'Other']);
 	});
 
-	it('clears selection on provider changes and bulk deletes only models shown in the active tab', async () => {
+	it('clears selection on provider and kind changes and bulk deletes only visible models', async () => {
 		models.push(image);
 		const view = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
-		await fireEvent.click(screen.getByRole('checkbox', { name: 'Hidden 선택' }));
-		await fireEvent.change(screen.getByLabelText('등록 모델 프로바이더 필터'), { target: { value: '7' } });
+		await fireEvent.click(screen.getByRole('checkbox', { name: 'Nemotron 선택' }));
+		await fireEvent.click(screen.getByRole('tab', { name: 'Other' }));
 		expect(screen.queryByRole('button', { name: /선택 삭제/ })).toBeNull();
-		expect(screen.queryByRole('checkbox', { name: 'Hidden 선택' })).toBeNull();
-		expect(screen.queryByLabelText('조회 프로바이더')).toBeNull();
-		expect(rowOrder(view.container)).toEqual([71, 70]);
+		expect(screen.getByRole('checkbox', { name: 'Hidden 선택' })).toBeTruthy();
+		await fireEvent.click(screen.getByRole('tab', { name: 'NVIDIA NIM' }));
+		expect(rowOrder(view.container)).toEqual([71, 70, 72]);
 		for (const action of ['가격 수정', '기능 수정', 'Nemotron 위로 이동', 'Nemotron 아래로 이동', '비활성화', '제목요약 해제', '삭제']) {
 			expect(within(modelRow(70)).getByRole('button', { name: action })).toBeTruthy();
 		}
+		await fireEvent.click(screen.getByRole('button', { name: '텍스트 · 2', pressed: true }));
+		expect(screen.queryByRole('button', { name: /선택 삭제/ })).toBeNull();
+		expect(screen.queryByRole('checkbox', { name: 'Nemotron 선택' })).toBeNull();
 		await fireEvent.click(screen.getByRole('checkbox', { name: '현재 탭에 표시된 모델 전체 선택' }));
-		await fireEvent.click(screen.getByRole('button', { name: '선택 삭제 (2)' }));
+		await fireEvent.click(screen.getByRole('button', { name: '선택 삭제 (1)' }));
 		await waitFor(() => expect(rowOrder(view.container)).toEqual([]));
-		expect(models.map((row) => row.id)).toEqual([20, 72]);
-		await fireEvent.change(screen.getByLabelText('등록 모델 프로바이더 필터'), { target: { value: '' } });
-		expect((await screen.findByRole('checkbox', { name: 'Hidden 선택' }) as HTMLInputElement).checked).toBe(false);
+		expect(models.map((row) => row.id)).toEqual([70, 20, 71]);
 	});
 
-	it('does not delete hidden rows when the filter changes while confirmation is open', async () => {
+	it('does not delete hidden rows when the provider changes while confirmation is open', async () => {
+		models.push(image);
 		const confirmation = deferred<boolean>();
 		mocks.confirm.mockReturnValueOnce(confirmation.promise);
 		render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
 		await fireEvent.click(screen.getByRole('checkbox', { name: '현재 탭에 표시된 모델 전체 선택' }));
 		await fireEvent.click(screen.getByRole('button', { name: '선택 삭제 (3)' }));
-		await fireEvent.change(screen.getByLabelText('등록 모델 프로바이더 필터'), { target: { value: '2' } });
+		await fireEvent.click(screen.getByRole('tab', { name: 'Other' }));
 		confirmation.resolve(true);
 		await confirmation.promise;
 		await waitFor(() => expect(screen.queryByRole('button', { name: /선택 삭제/ })).toBeNull());
 		expect(mocks.delete).not.toHaveBeenCalled();
-		expect(models.map((row) => row.id)).toEqual([70, 20, 71]);
+		expect(models.map((row) => row.id)).toEqual([70, 20, 71, 72]);
+	});
+	it('restores selected provider and hidden model kinds from local storage', async () => {
+		models.push(image);
+		const first = render(ModelPage);
+		await screen.findByRole('tab', { name: 'NVIDIA NIM', selected: true });
+		await fireEvent.click(screen.getByRole('button', { name: '텍스트 · 2', pressed: true }));
+		expect(JSON.parse(localStorage.getItem(hiddenKindsStorageKey) ?? '[]')).toEqual(['text']);
+		await fireEvent.click(screen.getByRole('tab', { name: 'Other' }));
+		expect(localStorage.getItem(providerTabStorageKey)).toBe('2');
+		await fireEvent.click(screen.getByRole('tab', { name: 'NVIDIA NIM' }));
+		first.unmount();
+		render(ModelPage);
+		await screen.findByRole('tab', { name: 'NVIDIA NIM', selected: true });
+		expect(screen.getByRole('button', { name: '텍스트 · 2', pressed: false })).toBeTruthy();
+		expect(screen.getByRole('checkbox', { name: 'Image 선택' })).toBeTruthy();
 	});
 
 	it('drops stale selected IDs on reload so a later reappearing row is not selected', async () => {
@@ -279,42 +299,40 @@ describe('provider catalog administration', () => {
 	it('drags a whole card before or after another card and retains its non-order configuration after reload', async () => {
 		const view = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
-		expect(rowOrder(view.container)).toEqual([20, 71, 70]);
+		expect(rowOrder(view.container)).toEqual([71, 70]);
 		await dragModel(modelRow(70), modelRow(71), 'before');
-		await waitFor(() => expect(rowOrder(view.container)).toEqual([20, 70, 71]));
+		await waitFor(() => expect(rowOrder(view.container)).toEqual([70, 71]));
 		await waitFor(() => expect(modelRow(70).getAttribute('draggable')).toBe('true'));
 		expect(within(modelRow(70)).getByText(/입력 1.25 · 출력 5 USD/)).toBeTruthy();
 		expect(within(modelRow(70)).getByRole('button', { name: '제목요약 해제' })).toBeTruthy();
 		expect(within(modelRow(70)).getByRole('button', { name: '비활성화' })).toBeTruthy();
 		await dragModel(modelRow(70), modelRow(71), 'after');
-		await waitFor(() => expect(rowOrder(view.container)).toEqual([20, 71, 70]));
+		await waitFor(() => expect(rowOrder(view.container)).toEqual([71, 70]));
 		await waitFor(() => expect(modelRow(70).getAttribute('draggable')).toBe('true'));
 		view.unmount();
 		const reloaded = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
-		expect(rowOrder(reloaded.container)).toEqual([20, 71, 70]);
+		expect(rowOrder(reloaded.container)).toEqual([71, 70]);
 	});
 
 	it.each(['drag', 'keyboard'])('sends complete provider lists and preserves hidden-kind slots during %s reorder', async (method) => {
 		models.push(image);
 		const view = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
-		expect(rowOrder(view.container)).toEqual([20, 71, 70]);
+		expect(rowOrder(view.container)).toEqual([71, 70, 72]);
 		if (method === 'drag') {
 			await dragModel(modelRow(70), modelRow(71), 'before');
 		} else {
 			await fireEvent.click(within(modelRow(70)).getByRole('button', { name: 'Nemotron 위로 이동' }));
 		}
-		const list = screen.getByRole('list', { name: 'NVIDIA NIM' });
+		const list = screen.getByRole('list', { name: 'NVIDIA NIM · 텍스트' });
 		await waitFor(() => expect(list.getAttribute('aria-busy')).toBe('false'));
-		expect(rowOrder(view.container)).toEqual([20, 70, 71]);
+		expect(rowOrder(view.container)).toEqual([70, 71, 72]);
 		expect(mocks.post).toHaveBeenCalledExactlyOnceWith('/api/v1/chat/admin/models/reorder', {
 			provider_id: 7, expected_model_ids: [71, 72, 70], model_ids: [70, 72, 71]
 		}, 'token', 'project');
 		expect(models.find((row) => row.id === 20)?.sort_order).toBe(100);
 		expect(models.find((row) => row.id === 72)?.sort_order).toBe(1);
-		await fireEvent.click(screen.getByRole('tab', { name: '이미지 (1)' }));
-		expect(rowOrder(view.container)).toEqual([72]);
 		expect((within(modelRow(72)).getByRole('button', { name: 'Image 위로 이동' }) as HTMLButtonElement).disabled).toBe(true);
 		expect((within(modelRow(72)).getByRole('button', { name: 'Image 아래로 이동' }) as HTMLButtonElement).disabled).toBe(true);
 	});
@@ -329,21 +347,19 @@ describe('provider catalog administration', () => {
 		await dragModel(modelRow(70), modelRow(71), 'before');
 		await screen.findByRole('alert');
 		await screen.findByText(/입력 2 · 출력 5 USD/);
-		expect(rowOrder(view.container)).toEqual([20, 71, 70]);
+		expect(rowOrder(view.container)).toEqual([71, 70]);
 		expect(screen.queryByText('unsafe upstream details')).toBeNull();
 		await fireEvent.click(within(modelRow(70)).getByRole('button', { name: 'Nemotron 위로 이동' }));
-		await waitFor(() => expect(rowOrder(view.container)).toEqual([20, 70, 71]));
-		await waitFor(() => expect(document.activeElement).toBe(within(modelRow(70)).getByRole('button', { name: 'Nemotron 아래로 이동' })));
+		await waitFor(() => expect(rowOrder(view.container)).toEqual([70, 71]));
 		expect(screen.queryByRole('alert')).toBeNull();
 		expect(within(modelRow(70)).getByRole('button', { name: '활성화' })).toBeTruthy();
 		expect(within(modelRow(70)).getByRole('button', { name: '제목요약 지정' })).toBeTruthy();
 	});
 
-	it('ignores cross-provider drops, control starts, canceled drags and tab changes mid-drag', async () => {
+	it('ignores cross-provider drops, control starts, canceled drags and kind changes mid-drag', async () => {
 		models.push(image);
 		const view = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
-		await dragModel(modelRow(70), modelRow(20), 'before');
 		const control = within(modelRow(70)).getByRole('button', { name: '가격 수정' });
 		await fireEvent.mouseDown(control, { button: 0 });
 		expect((await dragEvent(modelRow(70), 'dragstart', { dataTransfer: { setData: vi.fn() } })).defaultPrevented).toBe(true);
@@ -351,13 +367,17 @@ describe('provider catalog administration', () => {
 		await dragEvent(modelRow(70), 'dragend');
 		await dragEvent(modelRow(71), 'drop', { clientY: -1 });
 		await startDrag(modelRow(70));
-		await fireEvent.click(screen.getByRole('tab', { name: '이미지 (1)' }));
-		expect((await dragEvent(modelRow(72), 'dragover', { clientY: -1 })).defaultPrevented).toBe(false);
+		await fireEvent.click(screen.getByRole('tab', { name: 'Other' }));
+		await dragEvent(modelRow(20), 'dragover', { clientY: -1 });
+		await dragEvent(modelRow(20), 'drop', { clientY: -1 });
+		await fireEvent.click(screen.getByRole('tab', { name: 'NVIDIA NIM' }));
+		await startDrag(modelRow(70));
+		await fireEvent.click(screen.getByRole('button', { name: '텍스트 · 2', pressed: true }));
+		await dragEvent(modelRow(72), 'dragover', { clientY: -1 });
 		await dragEvent(modelRow(72), 'drop', { clientY: -1 });
-		await fireEvent.click(screen.getByRole('tab', { name: '텍스트 (3)' }));
-		await dragEvent(modelRow(71), 'drop', { clientY: -1 });
-		expect(rowOrder(view.container)).toEqual([20, 71, 70]);
+		expect(rowOrder(view.container)).toEqual([72]);
 		expect(mocks.post).not.toHaveBeenCalled();
+		await fireEvent.click(screen.getByRole('button', { name: '텍스트 · 2', pressed: false }));
 		await fireEvent.click(within(modelRow(70)).getByRole('button', { name: '가격 수정' }));
 		expect((within(screen.getByRole('dialog')).getByLabelText('입력') as HTMLInputElement).value).toBe('1.25');
 	});
@@ -371,15 +391,15 @@ describe('provider catalog administration', () => {
 		});
 		const view = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
-		const list = screen.getByRole('list', { name: 'NVIDIA NIM' });
+		const list = screen.getByRole('list', { name: 'NVIDIA NIM · 텍스트' });
 		const card = modelRow(70);
 		await fireEvent.click(within(card).getByRole('button', { name: 'Nemotron 위로 이동' }));
-		expect(rowOrder(view.container)).toEqual([20, 71, 70, 72]);
+		expect(rowOrder(view.container)).toEqual([71, 70, 72]);
 		expect((within(card).getByRole('button', { name: 'Nemotron 위로 이동' }) as HTMLButtonElement).disabled).toBe(false);
 		await dragModel(card, modelRow(71), 'before');
 		await fireEvent.click(within(card).getByRole('button', { name: 'Nemotron 아래로 이동' }));
 		await fireEvent.click(within(card).getByRole('button', { name: 'Nemotron 위로 이동' }));
-		expect(rowOrder(view.container)).toEqual([20, 70, 71, 72]);
+		expect(rowOrder(view.container)).toEqual([70, 71, 72]);
 		expect(document.activeElement).toBe(within(card).getByRole('button', { name: 'Nemotron 아래로 이동' }));
 		expect(mocks.post).toHaveBeenCalledTimes(1);
 		pending.resolve();
@@ -390,13 +410,13 @@ describe('provider catalog administration', () => {
 		view.unmount();
 		const reloaded = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
-		expect(rowOrder(reloaded.container)).toEqual([20, 70, 71, 72]);
+		expect(rowOrder(reloaded.container)).toEqual([70, 71, 72]);
 	});
 
 	it('keeps the exposed list during reconciliation and ignores a stale read when another move is queued', async () => {
 		const view = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
-		const list = screen.getByRole('list', { name: 'NVIDIA NIM' });
+		const list = screen.getByRole('list', { name: 'NVIDIA NIM · 텍스트' });
 		const card = modelRow(70);
 		const read = deferred<typeof models>();
 		mocks.get.mockImplementationOnce(async (path: string) => {
@@ -406,34 +426,28 @@ describe('provider catalog administration', () => {
 		await fireEvent.click(within(card).getByRole('button', { name: 'Nemotron 위로 이동' }));
 		const savedSnapshot = models.map((row) => ({ ...row }));
 		expect(list.isConnected).toBe(true);
-		expect(rowOrder(view.container)).toEqual([20, 70, 71]);
+		expect(rowOrder(view.container)).toEqual([70, 71]);
 		await fireEvent.click(within(card).getByRole('button', { name: 'Nemotron 아래로 이동' }));
-		expect(rowOrder(view.container)).toEqual([20, 71, 70]);
+		expect(rowOrder(view.container)).toEqual([71, 70]);
 		read.resolve(savedSnapshot);
 		await waitFor(() => expect(list.getAttribute('aria-busy')).toBe('false'));
-		expect(rowOrder(view.container)).toEqual([20, 71, 70]);
+		expect(rowOrder(view.container)).toEqual([71, 70]);
 		expect(modelRow(70)).toBe(card);
 		expect(models.filter((row) => row.provider_id === 7).sort((a, b) => a.sort_order - b.sort_order).map((row) => row.id)).toEqual([71, 70]);
 	});
 
-	it('saves queued moves for separate providers without replacing either visible order', async () => {
+	it('keeps each provider order isolated when switching provider tabs', async () => {
 		models.push({ ...hidden, id: 21, display_name: 'Other Second', sort_order: 101 });
-		const pending = deferred<void>();
-		mocks.post.mockImplementationOnce(async (_path: string, body: ModelOrderRequest) => {
-			await pending.promise;
-			persistModelOrder(body);
-		});
 		const view = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
-		await fireEvent.click(within(modelRow(70)).getByRole('button', { name: 'Nemotron 위로 이동' }));
+		await fireEvent.click(screen.getByRole('tab', { name: 'Other' }));
 		await fireEvent.click(within(modelRow(20)).getByRole('button', { name: 'Hidden 아래로 이동' }));
-		expect(rowOrder(view.container)).toEqual([21, 20, 70, 71]);
-		pending.resolve();
-		await waitFor(() => expect(screen.getByRole('list', { name: 'NVIDIA NIM' }).getAttribute('aria-busy')).toBe('false'));
-		view.unmount();
-		const reloaded = render(ModelPage);
-		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
-		expect(rowOrder(reloaded.container)).toEqual([21, 20, 70, 71]);
+		await waitFor(() => expect(rowOrder(view.container)).toEqual([21, 20]));
+		const otherList = screen.getByRole('list', { name: 'Other · 텍스트' });
+		await waitFor(() => expect(otherList.getAttribute('aria-busy')).toBe('false'));
+		await fireEvent.click(screen.getByRole('tab', { name: 'NVIDIA NIM' }));
+		expect(rowOrder(view.container)).toEqual([71, 70]);
+		expect(models.filter((row) => row.provider_id === 7).sort((a, b) => a.sort_order - b.sort_order).map((row) => row.id)).toEqual([71, 70]);
 	});
 
 	it.each([409, 503])('restores the last confirmed order when a subsequent queued save fails with %i', async (status) => {
@@ -448,21 +462,21 @@ describe('provider catalog administration', () => {
 		});
 		const view = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
-		const list = screen.getByRole('list', { name: 'NVIDIA NIM' });
+		const list = screen.getByRole('list', { name: 'NVIDIA NIM · 텍스트' });
 		const card = modelRow(70);
 		await fireEvent.click(within(card).getByRole('button', { name: 'Nemotron 위로 이동' }));
 		await fireEvent.click(within(card).getByRole('button', { name: 'Nemotron 위로 이동' }));
-		expect(rowOrder(view.container)).toEqual([20, 70, 71, 72]);
+		expect(rowOrder(view.container)).toEqual([70, 71, 72]);
 		pending.resolve();
 		await screen.findByRole('alert');
 		await waitFor(() => expect(list.getAttribute('aria-busy')).toBe('false'));
-		expect(rowOrder(view.container)).toEqual([20, 71, 70, 72]);
+		expect(rowOrder(view.container)).toEqual([71, 70, 72]);
 		expect(within(card).getByText(/입력 2 · 출력 5 USD/)).toBeTruthy();
 		expect(screen.queryByText('unsafe private failure')).toBeNull();
 		expect(modelRow(70)).toBe(card);
 		await fireEvent.click(within(card).getByRole('button', { name: 'Nemotron 위로 이동' }));
 		await waitFor(() => expect(list.getAttribute('aria-busy')).toBe('false'));
-		expect(rowOrder(view.container)).toEqual([20, 70, 71, 72]);
+		expect(rowOrder(view.container)).toEqual([70, 71, 72]);
 		expect(screen.queryByRole('alert')).toBeNull();
 	});
 
@@ -473,12 +487,12 @@ describe('provider catalog administration', () => {
 		mocks.get.mockRejectedValueOnce(new mocks.ApiError('private catalog failure', 503));
 		await fireEvent.click(within(card).getByRole('button', { name: 'Nemotron 위로 이동' }));
 		await screen.findByRole('alert');
-		expect(rowOrder(view.container)).toEqual([20, 70, 71]);
+		expect(rowOrder(view.container)).toEqual([70, 71]);
 		expect(screen.queryByText('private catalog failure')).toBeNull();
 		view.unmount();
 		const reloaded = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
-		expect(rowOrder(reloaded.container)).toEqual([20, 70, 71]);
+		expect(rowOrder(reloaded.container)).toEqual([70, 71]);
 	});
 
 	it('applies changed server metadata after saving while retaining the keyed card and its selection', async () => {
@@ -504,7 +518,7 @@ describe('provider catalog administration', () => {
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
 		await dragModel(modelRow(70), modelRow(71), 'before');
 		await fireEvent.click(within(modelRow(70)).getByRole('button', { name: 'Nemotron 아래로 이동' }));
-		expect(rowOrder(view.container)).toEqual([20, 71, 70]);
+		expect(rowOrder(view.container)).toEqual([71, 70]);
 		models = [{ ...model, id: 90, display_name: 'Fresh A', sort_order: 0 }, { ...model, id: 91, display_name: 'Fresh B', sort_order: 1 }];
 		mocks.auth.set({ token: 'fresh-token', projectId: 'fresh-project' });
 		await screen.findByRole('checkbox', { name: 'Fresh A 선택' });

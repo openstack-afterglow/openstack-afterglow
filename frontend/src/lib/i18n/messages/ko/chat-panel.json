@@ -139,7 +139,6 @@
 	"sidebar.summarizingTitle": "제목 요약 중",
 	"sidebar.newConversation": "새 대화",
 	"sidebar.history": "대화 기록",
-	"sidebar.domainScope": "내 대화 기록은 이 도메인의 프로젝트 간에 공유됩니다. 사용량은 선택한 프로젝트에 기록되며 클라우드 도구도 그 프로젝트에서 실행됩니다.",
 	"sidebar.closeHistory": "대화 기록 닫기",
 	"sidebar.openHistory": "대화 기록 열기",
 	"sidebar.newChat": "새 채팅",

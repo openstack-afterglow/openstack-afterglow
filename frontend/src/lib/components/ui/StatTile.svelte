@@ -3,7 +3,7 @@
   import AnimatedNumber from './AnimatedNumber.svelte';
   import BklitChart from '$lib/components/charts/BklitChart.svelte';
 
-  type Accent = 'blue' | 'cyan' | 'violet' | 'emerald' | 'amber' | 'teal' | 'rose' | 'indigo' | 'admin-tone';
+  type Accent = 'neutral' | 'blue' | 'cyan' | 'violet' | 'emerald' | 'amber' | 'teal' | 'rose' | 'indigo' | 'admin-tone';
 
   interface Props {
     label: string;
@@ -39,6 +39,7 @@
   const displayUnit = $derived(unit ?? suffix);
 
   const TONE_MAP: Record<Accent, string> = {
+    neutral: 'icon-neutral',
     blue: 'icon-accent',
     cyan: 'icon-info',
     violet: 'icon-accent2',
@@ -52,6 +53,7 @@
 
   const chipClass = $derived(iconBgClass ?? TONE_MAP[accent] ?? TONE_MAP.blue);
   const TILE_TONE_MAP: Record<Accent, string> = {
+    neutral: 'tile-neutral',
     blue: 'tile-accent',
     cyan: 'tile-info',
     violet: 'tile-accent2',
@@ -134,6 +136,15 @@
   .tile-accent2 {
     --stat-tile-tone: var(--color-accent-2);
     --stat-tile-ring: color-mix(in oklab, var(--color-accent-2) 30%, transparent);
+  }
+  .tile-neutral {
+    --stat-tile-tone: var(--color-ink-2);
+    --stat-tile-ring: var(--color-line-2);
+  }
+  .icon-neutral {
+    background: var(--color-surface-sunken);
+    border-color: var(--color-line);
+    color: var(--color-ink-2);
   }
   .tile-success {
     --stat-tile-tone: var(--color-state-success);

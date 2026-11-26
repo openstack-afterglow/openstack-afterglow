@@ -100,8 +100,7 @@
 				<span class="hero-signature" aria-hidden="true"><i></i>{t('landing.story.hero.signature')}</span>
 				<button type="button" class="hero-motion" onclick={() => { heroMotion = !heroMotion; }}>{heroMotion ? t('landing.story.hero.pauseMotion') : t('landing.story.hero.playMotion')}</button>
 			</div>
-			<div class="hero-caption">
-				<p class="hero-eyebrow" aria-hidden="true">{t('landing.story.hero.eyebrow')}</p>
+			<div class="hero-caption" data-route-scene-copy="landing">
 				<h1 id="landing-hero-title" class="hero-wordmark">{siteName.toLowerCase()}<span aria-hidden="true">.</span></h1>
 				<p class="hero-lead">{t('landing.story.hero.body')}</p>
 				<div class="hero-actions">
@@ -221,7 +220,7 @@
 	.landing-page:lang(ja), .landing-page:lang(zh-CN) { --landing-word-break: normal; }
 	.container { box-sizing: border-box; width: 100%; max-width: var(--app-content-max-width); margin-inline: auto; padding-inline: var(--landing-gutter); }
 	h1, h2, p { margin: 0; }
-	h1, h2 { font-family: var(--font-display); font-weight: 500; letter-spacing: -0.045em; word-break: var(--landing-word-break, keep-all); text-wrap: balance; }
+	h1, h2 { font-family: var(--font-display); font-weight: 500; letter-spacing: -0.035em; word-break: var(--landing-word-break, keep-all); text-wrap: balance; }
 	.landing-page :global(a:focus-visible), .landing-page :global(button:focus-visible) { outline: none; box-shadow: var(--focus-ring); }
 	#landing-content, section[id] { scroll-margin-top: calc(var(--landing-nav-height) + 1rem); }
 	.skip-link { position: fixed; top: 0.75rem; left: 1rem; z-index: var(--z-toast); display: inline-flex; align-items: center; min-height: 2.75rem; padding: 0 0.875rem; border: 1px solid var(--color-warm); border-radius: var(--radius-md); color: var(--color-ink-0); background: var(--color-surface-base); text-decoration: none; transform: translateY(-160%); }
@@ -240,21 +239,21 @@
 	.hero { position: relative; isolation: isolate; overflow: hidden; display: grid; min-height: max(calc(100svh - var(--landing-nav-height)), 32rem); background: var(--afterglow-artwork-base); color: var(--afterglow-artwork-ink); }
 	.hero-bar, .hero-footer { position: absolute; left: clamp(1.25rem, 4vw, 4rem); right: clamp(1.25rem, 4vw, 4rem); display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 	.hero-bar { top: 1rem; }
-	.hero-signature, .hero-footer, .hero-eyebrow { font-family: var(--font-mono); letter-spacing: 0.15em; color: var(--color-ink-2); }
+	.hero-signature, .hero-footer { font-family: var(--font-mono); color: var(--color-ink-2); }
+	.hero-signature { letter-spacing: 0.15em; }
 	.hero-signature { display: flex; align-items: center; gap: 0.75rem; font-size: 0.75rem; }
 	.hero-signature i { width: 0.75rem; height: 0.75rem; border: 1px solid var(--color-warm); border-radius: 50%; }
 	.hero-motion { min-height: 2.75rem; padding: 0.5rem 0.75rem; border: 1px solid transparent; border-radius: var(--radius-md); color: var(--color-ink-2); background: transparent; font: inherit; font-size: 0.75rem; cursor: pointer; }
 	.hero-motion:hover { border-color: var(--color-line-2); color: var(--color-ink-0); }
 	.hero-caption { position: relative; align-self: end; margin-bottom: clamp(5rem, 11svh, 8rem); padding: 0 1.25rem; text-align: center; }
-	.hero-eyebrow { margin-bottom: 0.8rem; font-size: 0.625rem; letter-spacing: 0.24em; }
-	.hero-wordmark { font-family: var(--font-mono); font-size: clamp(2.4rem, 4.5vw, 4.5rem); font-weight: 400; line-height: 1.1; letter-spacing: -0.065em; color: var(--color-ink-0); }
+	.hero-wordmark { font-family: var(--font-mono); font-size: clamp(2.4rem, 4.5vw, 4.5rem); font-weight: 400; line-height: 1.1; letter-spacing: -0.04em; color: var(--color-ink-0); }
 	.hero-wordmark span { color: var(--color-warm); }
 	.hero-lead { max-width: 36rem; margin: 1rem auto 0; color: var(--color-ink-1); font-size: 0.9375rem; word-break: var(--landing-word-break, keep-all); text-wrap: pretty; }
 	.hero-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; margin-top: 1.25rem; }
 	.hero-actions :global(.btn), .onprem-actions :global(.btn) { min-height: 2.75rem; }
-	.hero-footer { bottom: 1.5rem; font-size: 0.625rem; letter-spacing: 0.1em; flex-wrap: wrap; }
+	.hero-footer { bottom: 1.5rem; font-size: 0.6875rem; flex-wrap: wrap; }
+	.hero-footer span:first-child { letter-spacing: 0.1em; }
 	@media (max-width: 767px) {
-		.hero-eyebrow { font-size: 0.5rem; letter-spacing: 0.13em; }
 		.hero-footer { justify-content: center; }
 		.hero-footer span:first-child { display: none; }
 	}
@@ -268,7 +267,6 @@
 	.server-feature, .gateway-feature, .kubernetes-feature { background: var(--color-surface-base); }
 	.centered-copy { text-align: center; margin-inline: auto; }
 	.centered-copy h2, .centered-copy p { margin-inline: auto; }
-	.centered-copy p { max-width: 48rem; }
 	.wide-scene { max-width: 60rem; margin: 1rem auto 0; }
 	.onprem-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 2rem; }
 	.onprem-copy .availability, .onprem-copy .concept-note { max-width: 34rem; margin: 1.25rem 0 0; color: var(--color-ink-2); font-size: 0.75rem; line-height: 1.65; }

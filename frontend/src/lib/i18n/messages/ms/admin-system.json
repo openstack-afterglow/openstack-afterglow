@@ -326,7 +326,6 @@
 	"notion.loadingTargets": "Sedang memuatkan sasaran integrasi Notion",
 	"notion.page.subtitle": "Segerakkan sumber OpenStack ke berbilang pangkalan data Notion secara serentak.",
 	"notion.page.addConnection": "+ Tambah sambungan",
-	"notion.gate.eyebrow": "Kawalan penyegerakan global",
 	"notion.gate.title": "Penyegerakan Notion global",
 	"notion.gate.description": "Apabila dinyahdayakan, proses pekerja dan ujian manual kedua-duanya berhenti sebelum membuat panggilan luaran Notion·OpenStack. Sasaran dan bukti kelayakan dikekalkan.",
 	"notion.gate.saving": "Sedang menyimpan…",

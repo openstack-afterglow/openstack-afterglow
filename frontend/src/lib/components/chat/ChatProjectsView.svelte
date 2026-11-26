@@ -419,7 +419,7 @@
 		margin-top: 0.2rem;
 	}
 	.badge {
-		font-size: 0.68rem;
+		font-size: 0.6875rem;
 		font-weight: 550;
 		padding: 0.12rem 0.45rem;
 		border-radius: 999px;

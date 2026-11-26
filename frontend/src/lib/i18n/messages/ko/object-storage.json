@@ -33,7 +33,6 @@
 	"uploadQueue.hashFailed": "무결성 해시 계산 실패",
 	"uploadQueue.failed": "업로드 실패",
 	"browserHeader.buckets": "버킷 목록",
-	"browserHeader.eyebrow": "OBJECT STORAGE / EXPLORER",
 	"browserHeader.synced": "데이터 동기화 완료",
 	"browserHeader.capacity": "총 용량",
 	"browserHeader.objectCount": "객체 수",

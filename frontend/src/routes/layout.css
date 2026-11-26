@@ -1082,15 +1082,45 @@ body {
   animation: motion-flow var(--motion-duration-shimmer) linear infinite;
 }
 
-/* Route scenes (lib/utils/routeScene.ts). View-transition names exist only while a scene runs.
-   auth-enter: the landing hero artwork morphs into the AuthStudioShell identity side and the auth panel
-   arrives from the inline end. auth-leave reverses it. `detached` skips the art morph when the hero was
-   off screen. Reduced motion never starts a scene. */
-:root[data-route-scene]:not([data-route-scene-art='detached']) [data-route-scene-part='art'] {
+/* Route scenes (lib/utils/routeScene.ts, lib/stores/consoleEntry.ts). View-transition names exist only
+   while a scene runs. One picture travels: only the AfterglowOrbit layer is shared (never the copy over
+   it), only the outgoing snapshot is visible while the box moves, and it keeps its pixel size (clipped,
+   not rescaled) because every afterglowGeometry ring has nearly the same radius. The live incoming canvas
+   takes over at the end, where both rings coincide. Page copy/chrome leaves early and arrives late.
+   - auth-enter: the landing artwork shrinks into the AuthStudioShell identity; the panel enters from the
+     inline end. auth-leave grows it back and the panel leaves.
+   - console-enter: after sign-in the identity artwork grows into ConsoleEntryTransition (the incoming
+     owner of `afterglow-art` once `data-route-scene-swapped` is set) while the panel slides out.
+   `detached` skips the art morph when the hero was off screen. Reduced motion never starts a scene. */
+:root[data-route-scene]:not([data-route-scene-art='detached']):not([data-route-scene-swapped]) [data-route-scene-part='art'] > .afterglow-orbit {
   view-transition-name: afterglow-art;
 }
-:root[data-route-scene] [data-route-scene-part='panel'] {
+:root[data-route-scene='console-enter'][data-route-scene-swapped] [data-console-entry-part='art'] > .afterglow-orbit {
+  view-transition-name: afterglow-art;
+}
+:root[data-route-scene='console-enter'][data-route-scene-swapped] [data-console-entry-part='copy'] {
+  view-transition-name: console-entry-copy;
+}
+/* Outgoing-only during console-enter: the login page may be replaced while the scene runs, and a named
+   incoming element that disappears would abort the transition. */
+:root[data-route-scene]:not([data-route-scene-swapped]) [data-route-scene-part='panel'] {
   view-transition-name: auth-panel;
+}
+/* Copy over the artwork gets its own layer, so it fades above the travelling picture instead of being
+   covered by it. Distinct names: landing and auth copy never morph into each other. */
+:root[data-route-scene]:not([data-route-scene-swapped]) [data-route-scene-copy='landing'] {
+  view-transition-name: scene-copy-landing;
+}
+:root[data-route-scene]:not([data-route-scene-swapped]) [data-route-scene-copy='auth'] {
+  view-transition-name: scene-copy-auth;
+}
+::view-transition-old(scene-copy-landing),
+::view-transition-old(scene-copy-auth) {
+  animation: route-scene-copy-out calc(var(--motion-duration-scene) * 0.4) var(--motion-ease-out) both;
+}
+::view-transition-new(scene-copy-landing),
+::view-transition-new(scene-copy-auth) {
+  animation: route-scene-copy-in var(--motion-duration-scene) var(--motion-ease-out) both;
 }
 ::view-transition-group(root),
 ::view-transition-group(afterglow-art),
@@ -1098,23 +1128,60 @@ body {
   animation-duration: var(--motion-duration-scene);
   animation-timing-function: var(--motion-ease-emphasized);
 }
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation-duration: calc(var(--motion-duration-scene) * 0.6);
+::view-transition-group(afterglow-art) {
+  overflow: clip;
 }
-/* Both artwork snapshots stay centered and cropped while the box changes shape. */
+:root[data-route-scene]::view-transition-old(root) {
+  animation: route-scene-copy-out calc(var(--motion-duration-scene) * 0.4) var(--motion-ease-out) both;
+}
+:root[data-route-scene]::view-transition-new(root) {
+  animation: route-scene-copy-in var(--motion-duration-scene) var(--motion-ease-out) both;
+}
 ::view-transition-old(afterglow-art),
 ::view-transition-new(afterglow-art) {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  animation-duration: var(--motion-duration-scene);
+  object-fit: none;
+  mix-blend-mode: normal;
+}
+:root[data-route-scene]::view-transition-old(afterglow-art) {
+  animation: none;
+  opacity: 1;
+}
+:root[data-route-scene='auth-enter']::view-transition-new(afterglow-art) {
+  animation: route-scene-art-settle var(--motion-duration-scene) linear both;
+}
+/* Growing scenes uncover area the old picture never had, so the live canvas arrives earlier. */
+:root[data-route-scene='auth-leave']::view-transition-new(afterglow-art),
+:root[data-route-scene='console-enter']::view-transition-new(afterglow-art) {
+  animation: route-scene-art-fill var(--motion-duration-scene) linear both;
+}
+/* The status copy runs its own entrance on the live element. */
+::view-transition-new(console-entry-copy) {
+  animation: none;
 }
 :root[data-route-scene='auth-enter']::view-transition-new(auth-panel) {
   animation: route-scene-panel-in var(--motion-duration-scene) var(--motion-ease-emphasized) both;
 }
-:root[data-route-scene='auth-leave']::view-transition-old(auth-panel) {
+:root[data-route-scene='auth-leave']::view-transition-old(auth-panel),
+:root[data-route-scene='console-enter']::view-transition-old(auth-panel) {
   animation: route-scene-panel-out var(--motion-duration-scene) var(--motion-ease-emphasized) both;
+}
+@keyframes route-scene-copy-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes route-scene-copy-in {
+  0%, 45% { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes route-scene-art-settle {
+  0%, 78% { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes route-scene-art-fill {
+  0%, 45% { opacity: 0; }
+  to { opacity: 1; }
 }
 @keyframes route-scene-panel-in {
   from { opacity: 0; transform: translateX(min(100%, 32rem)); }

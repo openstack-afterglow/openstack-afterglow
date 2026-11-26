@@ -1,7 +1,8 @@
+import { tick } from 'svelte';
 import { writable, get } from 'svelte/store';
 import { MOTION_DURATION_MS } from '$lib/design/tokens';
 import { prefersReducedMotion } from '$lib/utils/motion';
-import { ROUTE_SCENE_PART_SELECTOR } from '$lib/utils/routeScene';
+import { ROUTE_SCENE_PART_SELECTOR, startSceneTransition } from '$lib/utils/routeScene';
 
 /**
  * Console entry scene: after a password login or SSO callback has published the session, the auth artwork
@@ -25,9 +26,14 @@ export interface ConsoleEntryState {
 	/** `true` once the destination route has been applied (or the navigation ended). */
 	opened: boolean;
 	origin: ConsoleEntryOrigin;
+	/**
+	 * `true` when a View Transition carries the entrance: the login's own artwork grows into the overlay,
+	 * so the overlay's CSS entrance is off. `false` uses the translate/opacity fallback from `origin`.
+	 */
+	scene: boolean;
 }
 
-const IDLE: ConsoleEntryState = { id: 0, phase: 'idle', method: 'password', opened: false, origin: { x: 0, y: 0 } };
+const IDLE: ConsoleEntryState = { id: 0, phase: 'idle', method: 'password', opened: false, origin: { x: 0, y: 0 }, scene: false };
 const state = writable<ConsoleEntryState>(IDLE);
 export const consoleEntry = { subscribe: state.subscribe };
 
@@ -88,8 +94,21 @@ export function finishConsoleEntry(id: number) {
  */
 export async function enterConsole<T>(navigate: () => Promise<T>, method: ConsoleEntryMethod): Promise<T> {
 	const id = ++serial;
-	state.set({ id, phase: 'entering', method, opened: false, origin: measureOrigin() });
-	const entrance = waitForEntrance(id);
+	const entering: ConsoleEntryState = { id, phase: 'entering', method, opened: false, origin: measureOrigin(), scene: false };
+	let entrance: Promise<void>;
+	const transition = startSceneTransition('console-enter', async () => {
+		state.set({ ...entering, scene: true });
+		await tick();
+	});
+	if (transition) {
+		// The old snapshot is taken before navigation can change the page underneath.
+		await transition.updated;
+		if (get(state).id !== id) state.set({ ...entering, scene: true });
+		entrance = transition.finished;
+	} else {
+		state.set(entering);
+		entrance = waitForEntrance(id);
+	}
 	try {
 		return await navigate();
 	} finally {

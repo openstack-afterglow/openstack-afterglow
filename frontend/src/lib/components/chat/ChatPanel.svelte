@@ -3555,7 +3555,7 @@
 		min-width: 0;
 	}
 	.model-lock-hint {
-		font-size: 0.66rem;
+		font-size: 0.6875rem;
 		color: var(--color-ink-2);
 	}
 	.model-billing-notices {

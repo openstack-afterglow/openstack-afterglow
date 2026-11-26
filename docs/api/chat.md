@@ -244,7 +244,7 @@ Studio는 선택 모델의 `provider_type="gemini"`와 `model_kind="decision"` �
 
 `api_provider`는 소문자 영문자로 시작하는 1~40자의 영문 소문자·숫자·`_`·`-` 식별자다. 표시 이름은 공백만일 수 없으며 `sort_order`는 `0..2147483647`의 정수다. 작은 값이 먼저, 같은 프로바이더 순서는 provider ID, 같은 모델 순서는 model ID가 먼저다. 변경 실패 시 편집 draft를 유지하고, 성공 시 서버 목록을 다시 읽고 기존 credential-free 모델 무효화 신호로 사용자 선택창을 갱신한다. 진행 중인 run이 사용하는 설정은 기존 mutation fence에 따라 409를 반환할 수 있다.
 
-관리자 `/admin/chat/models`의 **등록 모델 프로바이더 필터**는 후보 조회·수동 등록의 프로바이더 선택과 독립이다. 필터 변경은 기존 bulk 선택을 비우며 전체 선택·선택 삭제는 현재 보이는 행만 대상으로 한다. 모델 카드는 전체 영역을 위·아래로 끌어 같은 프로바이더 안에서 순서를 조정하며, 순서 grip의 위/아래 이동 버튼으로 키보드·터치 조작도 지원한다. 순서 변경은 `POST /api/v1/chat/admin/models/reorder`로 저장되어 가격·기능·활성·제목 요약 설정을 덮어쓰지 않고 rank만 단일 트랜잭션으로 원자 변경한다. 다른 사용자의 변경이나 실행 중인 run 충돌 시 409를 반환하고 목록을 최신화한다.
+관리자 `/admin/chat/models`는 등록된 모델이 있는 AI 프로바이더별 탭을 표시하고, 각 탭에서 모델 종류 칩을 여러 개 선택해 필터링한다. 프로바이더·종류 변경 시 선택 상태를 비우며 전체 선택·선택 삭제는 현재 보이는 모델만 대상으로 한다. 순서 조정은 같은 프로바이더·종류의 모델 안에서만 가능하고, 다른 종류의 모델 순위 슬롯은 보존한다. 모델 카드는 전체 영역을 위·아래로 끌어 순서를 바꾸며, 위/아래 이동 버튼으로 키보드·터치 조작도 지원한다. 순서 변경은 `POST /api/v1/chat/admin/models/reorder`로 저장되어 가격·기능·활성·제목 요약 설정을 덮어쓰지 않고 rank만 단일 트랜잭션으로 원자 변경한다. 다른 사용자의 변경이나 실행 중인 run 충돌 시 409를 반환하고 목록을 최신화한다.
 
 Lumen migration `021-provider-identity-catalog-order`를 먼저 적용한 API/worker가 필요하다. 기존 `api_provider`는 `provider_type`, 두 표시 순서는 0으로 backfill하며 기존 중복 선택자는 보존한다. `/api/v1/chat/models`는 `provider_id`, `provider_type`, `provider_sort_order`, `sort_order`와 공개 선택자를 반환하고 `(provider_sort_order, provider_id, sort_order, id)` 순으로 정렬한다. 사용자 선택창은 이 순서를 그대로 유지하고 mutable 표시 이름 대신 provider ID로 필터를 고정한다. 표시 순서로 실행 endpoint를 선택하지 않으며 한 공개 model/selector가 여러 provider에 일치하면 409로 거부한다.
 

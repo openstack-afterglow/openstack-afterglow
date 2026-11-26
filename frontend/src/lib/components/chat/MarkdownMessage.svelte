@@ -164,7 +164,7 @@
 	.md-body :global(blockquote) {
 		margin: 0 0 0.75em;
 		padding: 0.25em 0 0.25em 0.9em;
-		border-left: 3px solid var(--color-line-2);
+		border-left: 1px solid var(--color-line-2);
 		color: var(--color-ink-2);
 	}
 	.md-body :global(hr) {

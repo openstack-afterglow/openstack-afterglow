@@ -168,11 +168,11 @@
 		{/if}
 		<!-- KPI Tiles -->
 		<div class="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3 lg:grid-cols-5">
-			<StatTile label={t('activity.today')} value={kpi.total} accent="blue" flat />
+			<StatTile label={t('activity.today')} value={kpi.total} accent="neutral" flat />
 			<StatTile label={t('activity.failed')} value={kpi.failed} unit="/ {terminalTotal}" accent="rose" flat />
-			<StatTile label={t('activity.last24Hours')} value={kpi.last_24h} unit={t('activity.events', { count: kpi.last_24h })} accent="amber" flat />
-			<StatTile label={t('activity.activeUsers')} value={kpi.unique_users} accent="emerald" flat />
-			<StatTile label={t('activity.successRate')} value={successRate} unit="%" accent="cyan" flat />
+			<StatTile label={t('activity.last24Hours')} value={kpi.last_24h} unit={t('activity.events', { count: kpi.last_24h })} accent="neutral" flat />
+			<StatTile label={t('activity.activeUsers')} value={kpi.unique_users} accent="neutral" flat />
+			<StatTile label={t('activity.successRate')} value={successRate} unit="%" accent="emerald" flat />
 		</div>
 
 		<!-- Hour Distribution Card -->

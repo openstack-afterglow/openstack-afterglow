@@ -46,7 +46,7 @@
 			label={t('statTiles.instances')}
 			value={summary?.instances.total ?? '—'}
 			unit={quotaUnit(quotas?.compute.instances)}
-			accent="blue"
+			accent="neutral"
 			flat
 		>
 			{#snippet icon()}
@@ -65,7 +65,7 @@
 			label={t('statTiles.volumes')}
 			value={quotas?.storage.volumes.in_use ?? '—'}
 			unit={quotaUnit(quotas?.storage.volumes)}
-			accent="cyan"
+			accent="neutral"
 			flat
 		>
 			{#snippet icon()}
@@ -84,7 +84,7 @@
 			label={t('statTiles.floatingIp')}
 			value={quotas?.network.floatingip.in_use ?? '—'}
 			unit={quotaUnit(quotas?.network.floatingip)}
-			accent="violet"
+			accent="neutral"
 			flat
 		>
 			{#snippet icon()}
@@ -97,7 +97,7 @@
 	{/if}
 
 	{#if k3sDisabled}
-		<StatTile label={t('statTiles.drover')} value={t('statTiles.notApplicable')} accent="blue" flat>
+		<StatTile label={t('statTiles.drover')} value={t('statTiles.notApplicable')} accent="neutral" flat>
 			{#snippet icon()}
 				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linejoin="round" stroke-width="1.8" d="M12 2.4 19.8 6.1 21.7 14.3 16.3 20.8H7.7l-5.4-6.5 1.9-8.2L12 2.4Z"/><circle cx="12" cy="12" r="4.1" stroke-width="1.8"/><circle cx="12" cy="12" r="0.85" fill="currentColor" stroke="none"/><path stroke-linecap="round" stroke-width="1.8" d="M12 9.8V6.2M13.72 10.63l2.81-2.25M14.14 12.49l3.51.8M12.95 13.98l1.57 3.25M11.05 13.98l-1.57 3.25M9.86 12.49l-3.51.8M10.28 10.63 7.47 8.38"/></svg>
 			{/snippet}
@@ -109,7 +109,7 @@
 			label={t('statTiles.drover')}
 			value={k3sStats?.available === false ? t('statTiles.unavailable') : (k3sStats?.active ?? '—')}
 			unit={k3sStats && k3sStats.available !== false ? t('statTiles.active') : undefined}
-			accent="blue"
+			accent="neutral"
 			flat
 		>
 			{#snippet icon()}

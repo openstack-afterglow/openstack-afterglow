@@ -122,9 +122,9 @@
 				{@const totalBps = iface.rx_bps + iface.tx_bps}
 				<div
 					class="flex items-center gap-2 px-3 py-1.5"
-					style="border-left: 3px solid {col}"
 					data-anchor-key="{row.id}|{iface.netId}"
 				>
+					<span class="h-2 w-2 shrink-0 rounded-full" style="background: {col}" aria-hidden="true"></span>
 					<div class="flex-1 min-w-0">
 						<div class="flex items-center gap-1 flex-wrap">
 							{#each iface.ips as ip}
@@ -159,9 +159,9 @@
 		<div class="border-t" style="border-color: {isLight ? '#e5e7eb' : 'rgb(55 65 81 / 0.5)'}">
 			<div
 				class="flex items-center gap-2 px-3 py-1.5"
-				style="border-left: 3px solid {col}"
 				data-anchor-key="lb|{lbItem.lb.id}|{lbItem.vipNetId}"
 			>
+				<span class="h-2 w-2 shrink-0 rounded-full" style="background: {col}" aria-hidden="true"></span>
 				{#if lbItem.lb.vip_address}
 					<span class="text-xs font-mono" style="color: {isLight ? '#374151' : '#d1d5db'}">VIP: {lbItem.lb.vip_address}</span>
 				{/if}

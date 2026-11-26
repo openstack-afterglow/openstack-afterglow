@@ -326,7 +326,6 @@
 	"notion.loadingTargets": "Laster inn Notion-integrasjonsmål",
 	"notion.page.subtitle": "Synkroniser OpenStack-ressurser til flere Notion-databaser samtidig.",
 	"notion.page.addConnection": "+ Legg til tilkobling",
-	"notion.gate.eyebrow": "Global synkroniseringskontroll",
 	"notion.gate.title": "Global Notion-synkronisering",
 	"notion.gate.description": "Når deaktivert, stopper både bakgrunnsprosessen og manuelle tester før eksterne kall til Notion·OpenStack utføres. Mål og påloggingsopplysninger beholdes.",
 	"notion.gate.saving": "Lagrer…",

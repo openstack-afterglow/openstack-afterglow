@@ -84,3 +84,29 @@ describe('consoleEntry', () => {
 		void second;
 	});
 });
+
+describe('consoleEntry with View Transitions', () => {
+	const originalMatchMedia = window.matchMedia;
+	afterEach(() => {
+		resetConsoleEntry();
+		delete (document as unknown as { startViewTransition?: unknown }).startViewTransition;
+		window.matchMedia = originalMatchMedia;
+	});
+
+	it('mounts the overlay inside the transition, starts navigation after it, and reveals when it finishes', async () => {
+		setReducedMotion(false);
+		let finish!: () => void;
+		const finished = new Promise<void>((resolve) => { finish = resolve; });
+		const order: string[] = [];
+		(document as unknown as { startViewTransition: unknown }).startViewTransition = (update: () => Promise<void>) => {
+			const done = Promise.resolve().then(async () => { await update(); order.push('updated'); });
+			return { ready: done, updateCallbackDone: done, finished: done.then(() => finished) };
+		};
+		const result = enterConsole(async () => { order.push('navigate'); }, 'sso');
+		await result;
+		expect(order).toEqual(['updated', 'navigate']);
+		expect(get(consoleEntry)).toMatchObject({ phase: 'entering', scene: true, opened: true, method: 'sso' });
+		finish();
+		await vi.waitFor(() => expect(get(consoleEntry).phase).toBe('revealing'));
+	});
+});

@@ -91,7 +91,6 @@
 	"repositoryDetail.default": "Chaguomsingi",
 	"repositoryDetail.viewDetails": "Angalia maelezo",
 	"repositoryDetail.back": "Rudi kwenye orodha ya hazina",
-	"repositoryDetail.kicker": "HAZINA",
 	"repositoryDetail.description": "{tagCount, plural, one {Lebo #} other {Lebo #}} · {imageCount, plural, one {Image # iliyopakiwa} other {Image # zilizopakiwa}}. Lebo za sasa na upakiaji wa awali hutofautishwa kwa hashi ya SHA·ID.",
 	"repositoryDetail.tag": "Lebo",
 	"repositoryDetail.digest": "Hashi ya SHA · ID",

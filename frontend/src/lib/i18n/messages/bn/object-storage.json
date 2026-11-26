@@ -33,7 +33,6 @@
 	"uploadQueue.hashFailed": "অখণ্ডতা যাচাইয়ের হ্যাশ গণনা ব্যর্থ হয়েছে",
 	"uploadQueue.failed": "আপলোড ব্যর্থ হয়েছে",
 	"browserHeader.buckets": "বাকেটের তালিকা",
-	"browserHeader.eyebrow": "অবজেক্ট স্টোরেজ / এক্সপ্লোরার",
 	"browserHeader.synced": "ডেটা সিঙ্ক হয়েছে",
 	"browserHeader.capacity": "মোট আকার",
 	"browserHeader.objectCount": "অবজেক্টের সংখ্যা",

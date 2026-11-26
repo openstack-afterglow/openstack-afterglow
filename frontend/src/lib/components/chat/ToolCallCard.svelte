@@ -193,7 +193,7 @@
 	}
 	.tool-duration {
 		color: var(--color-ink-2);
-		font-size: 0.66rem;
+		font-size: 0.6875rem;
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
 	}
@@ -217,7 +217,7 @@
 		gap: 0.5rem;
 	}
 	.detail-label {
-		font-size: 0.66rem;
+		font-size: 0.6875rem;
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
 		color: var(--color-ink-2);
@@ -285,7 +285,7 @@
 		background: color-mix(in oklab, var(--color-state-danger) 9%, var(--color-surface-base));
 		color: var(--color-state-danger);
 		font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-		font-size: 0.68rem;
+		font-size: 0.6875rem;
 		overflow-wrap: anywhere;
 	}
 </style>

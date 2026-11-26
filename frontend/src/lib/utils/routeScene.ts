@@ -9,10 +9,14 @@ import { prefersReducedMotion } from '$lib/utils/motion';
  * while `html[data-route-scene]` is set, so ordinary rendering never carries view-transition names.
  */
 export type RouteScene = 'auth-enter' | 'auth-leave';
+/** `console-enter` is started by lib/stores/consoleEntry.ts, not by a route change. */
+export type SceneName = RouteScene | 'console-enter';
 
 export const ROUTE_SCENE_ATTRIBUTE = 'routeScene';
 /** `detached`: the source artwork is off screen, so only the panel/page choreography runs. */
 export const ROUTE_SCENE_ART_ATTRIBUTE = 'routeSceneArt';
+/** Set once the update callback ran: the incoming element now owns `afterglow-art` (console-enter). */
+export const ROUTE_SCENE_SWAPPED_ATTRIBUTE = 'routeSceneSwapped';
 export const ROUTE_SCENE_PART_SELECTOR = '[data-route-scene-part="art"]';
 
 export function classifyRouteScene(from: string | null | undefined, to: string | null | undefined): RouteScene | null {
@@ -91,4 +95,44 @@ export function runRouteScene(navigation: RouteSceneNavigation, doc: Document | 
 		transition.updateCallbackDone.catch(() => {});
 		transition.finished.catch(() => {}).finally(clear);
 	});
+}
+
+export interface SceneTransition {
+	/** The update callback finished; the new DOM is in place. */
+	updated: Promise<void>;
+	/** The transition finished or was skipped; scene attributes are cleared. */
+	finished: Promise<void>;
+}
+
+/**
+ * Starts a non-navigation scene (console-enter). Returns `null` when View Transitions are unavailable or
+ * reduced motion is requested, so the caller can use its own fallback.
+ */
+export function startSceneTransition(scene: SceneName, update: () => Promise<void> | void, doc: Document | undefined = typeof document === 'undefined' ? undefined : document): SceneTransition | null {
+	const start = doc ? startViewTransitionOf(doc) : null;
+	if (!doc || !start || prefersReducedMotion()) return null;
+	const root = doc.documentElement;
+	root.dataset[ROUTE_SCENE_ATTRIBUTE] = scene;
+	delete root.dataset[ROUTE_SCENE_ART_ATTRIBUTE];
+	delete root.dataset[ROUTE_SCENE_SWAPPED_ATTRIBUTE];
+	const clear = () => {
+		if (root.dataset[ROUTE_SCENE_ATTRIBUTE] !== scene) return;
+		delete root.dataset[ROUTE_SCENE_ATTRIBUTE];
+		delete root.dataset[ROUTE_SCENE_SWAPPED_ATTRIBUTE];
+	};
+	let transition: ViewTransitionLike;
+	try {
+		transition = start(async () => {
+			await update();
+			root.dataset[ROUTE_SCENE_SWAPPED_ATTRIBUTE] = '';
+		});
+	} catch {
+		clear();
+		return null;
+	}
+	transition.ready.catch(() => {});
+	return {
+		updated: transition.updateCallbackDone.catch(() => {}),
+		finished: transition.finished.catch(() => {}).finally(clear),
+	};
 }

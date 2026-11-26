@@ -326,7 +326,6 @@
 	"notion.loadingTargets": "正在加载 Notion 集成目标",
 	"notion.page.subtitle": "将 OpenStack 资源同时同步到多个 Notion 数据库。",
 	"notion.page.addConnection": "+ 添加连接",
-	"notion.gate.eyebrow": "全局同步开关",
 	"notion.gate.title": "Notion 全局同步",
 	"notion.gate.description": "禁用后，工作进程和手动测试都会在调用外部 Notion·OpenStack 前停止。目标和凭据将保留。",
 	"notion.gate.saving": "正在保存…",

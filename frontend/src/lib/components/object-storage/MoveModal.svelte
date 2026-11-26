@@ -76,7 +76,7 @@
 						{@const isSelected = (dir === moveRoot && s.moveSelectedDir === '') || dir === s.moveSelectedDir}
 						<button id="field-movemodal-56"
 							onclick={() => bulk ? s.selectBulkMoveDir(dir) : s.selectMoveDir(dir)}
-							class="w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors {isSelected ? 'bg-indigo-600/20 text-indigo-300 border-l-2 border-indigo-500' : 'text-ink-2 hover:bg-surface-selected/50'}"
+							class="w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors {isSelected ? 'bg-indigo-600/20 text-indigo-300' : 'text-ink-2 hover:bg-surface-selected/50'}"
 						>
 							<svg class="w-4 h-4 shrink-0 {isSelected ? 'text-indigo-400' : 'text-warm-text'}" viewBox="0 0 20 20" fill="currentColor">
 								<path d="M2 6a2 2 0 012-2h4l2 2h6a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/>

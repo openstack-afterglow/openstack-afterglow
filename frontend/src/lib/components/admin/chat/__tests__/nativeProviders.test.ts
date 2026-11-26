@@ -16,7 +16,6 @@ vi.mock('$lib/stores/chatModels', () => ({ invalidateChatModels: vi.fn() }));
 vi.mock('$lib/stores/toast', () => ({ toast: { success: calls.success, error: calls.error } }));
 import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 import ChatConfiguration from '../ChatConfiguration.svelte';
-import NativeCatalogPanel from '../NativeCatalogPanel.svelte';
 import ModelCapabilityBadges from '$lib/components/chat/ModelCapabilityBadges.svelte';
 
 const provider = { id: 1, name: 'Fixture OpenAI', provider_type: 'openai', provider_family: 'native', api_provider: 'openai', api_base: null, auth_mode: 'api_key', has_api_key: true, is_active: true, sort_order: 0 };
@@ -61,26 +60,6 @@ beforeEach(() => {
 afterEach(() => { cleanup(); initLocale('ko'); });
 
 describe('native catalog registry', () => {
-	it('loads bundled catalog with GET and exposes version, verification, official sources and Decisions', async () => {
-		render(NativeCatalogPanel);
-		await screen.findByText(t('catalog.version', { version: catalog.catalog_version }));
-		await fireEvent.click(screen.getByRole('button', { name: `OpenAI · ${t('catalog.count', { filtered: 1, total: 1 })}` }));
-		expect(screen.getByText(t('catalog.verified', { date: entry.verified_at }))).toBeTruthy();
-		expect(screen.getByText(t('decisions.label'))).toBeTruthy();
-		expect(screen.getAllByRole('link').every(link => link.getAttribute('href') === entry.source_urls[0] && link.getAttribute('rel') === 'noreferrer')).toBe(true);
-		expect(calls.get).toHaveBeenCalledWith('/api/v1/chat/admin/models/native-catalog', 'token', 'project', expect.objectContaining({ cache: 'no-store', signal: expect.any(AbortSignal) }));
-		expect(calls.post).not.toHaveBeenCalled(); expect(calls.patch).not.toHaveBeenCalled();
-	});
-
-	it.each([[], {}, { schema_version: 1, catalog_version: '', providers: [] }])('shows catalog failure instead of raw provenance placeholders for invalid response %j', async (response) => {
-		calls.get.mockResolvedValue(response);
-		render(NativeCatalogPanel);
-		await screen.findByText(t('catalog.error'));
-		expect(document.body.textContent).not.toMatch(/\{\w+\}/);
-		expect(screen.queryByText(t('catalog.empty'))).toBeNull();
-		expect(calls.patch).not.toHaveBeenCalled();
-	});
-
 	it('clears every stored price slot explicitly without storing native_catalog provenance', async () => {
 		render(ChatConfiguration, { section: 'models' });
 		const dialog = await openPricing();
@@ -141,16 +120,6 @@ describe('native catalog registry', () => {
 		await fireEvent.click(within(dialog).getByRole('button', { name: t('price.follow') }));
 		await waitFor(() => expect((within(dialog).getByRole('button', { name: t('price.follow') }) as HTMLButtonElement).disabled).toBe(true));
 		expect(calls.patch).toHaveBeenCalledTimes(1);
-	});
-
-	it('discards catalog reads after synchronous owner A-B-A', async () => {
-		const pending = Promise.withResolvers<NativeCatalog>(); calls.get.mockReturnValue(pending.promise);
-		render(NativeCatalogPanel); await waitFor(() => expect(calls.get).toHaveBeenCalledTimes(1));
-		auth.update(state => ({ ...state, userId: 'other' })); auth.update(state => ({ ...state, userId: 'owner' }));
-		calls.get.mockResolvedValue({ ...catalog, catalog_version: 'fresh' }); await tick();
-		pending.resolve(catalog);
-		await screen.findByText(t('catalog.version', { version: 'fresh' }));
-		expect(screen.queryByText(t('catalog.version', { version: catalog.catalog_version }))).toBeNull();
 	});
 
 	it.each(['owner', 'authority', 'readiness', 'switching'] as const)('drops follow completion after %s A-B-A without replay', async (change) => {

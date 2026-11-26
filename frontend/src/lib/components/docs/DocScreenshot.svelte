@@ -24,6 +24,6 @@
 	img { display: block; box-sizing: border-box; max-width: 100%; height: auto; border: 1px solid var(--color-line); border-radius: var(--radius-lg); }
 	.original-hint { display: flex; align-items: center; min-height: 2.75rem; font-size: 0.75rem; line-height: 1.6; text-decoration: underline; text-underline-offset: 0.25rem; }
 	figcaption { font-size: 0.75rem; line-height: 1.6; }
-	.caption { margin: 0 0 0.25rem; color: var(--color-ink-1); }
+	.caption { max-inline-size: 72ch; margin: 0 0 0.25rem; color: var(--color-ink-1); }
 	.language-note { margin: 0; color: var(--color-ink-2); }
 </style>

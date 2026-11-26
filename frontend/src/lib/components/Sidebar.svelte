@@ -100,7 +100,7 @@
 		</div>
 
 		<div class="hidden lg:block px-4 py-3">
-			<div class="text-[10px] text-ink-2 uppercase tracking-widest font-medium">{t('sidebar.project')}</div>
+			<div class="text-xs text-ink-2 font-medium">{t('sidebar.project')}</div>
 			<div class="text-[13px] text-ink-1 font-medium mt-0.5 truncate">{$auth.projectName ?? '—'}</div>
 		</div>
 

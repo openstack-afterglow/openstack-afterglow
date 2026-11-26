@@ -7,6 +7,43 @@
 
 ## [Unreleased]
 
+### Added
+
+- 메인에서 콘솔 접속을 누르면 메인 화면의 배경 그림이 그대로 왼쪽 영역으로 줄어들고 로그인 창이 오른쪽에서 들어옵니다. 메인으로 돌아갈 때는 반대로 재생됩니다.
+- 비밀번호나 SSO로 로그인하면 로그인 화면의 그림이 전체 화면으로 커지며 로그인 확인·작업 공간 열기 상태를 보여 주고, 콘솔이 실제로 열린 뒤 사라집니다. 가짜 진행률이나 추가 대기는 없으며, 동작 줄이기 설정에서는 효과 없이 이동합니다.
+- Selecting Open console on the landing page now shrinks the landing artwork itself into the login's left panel while the sign-in panel slides in from the right; going back reverses it.
+- After a password or SSO sign-in, the login artwork grows to full screen, shows the sign-in verified and opening workspace states, and fades out once the console has actually opened. There is no fake progress or extra wait; with reduced motion the page changes without the effect.
+
+## [1.32.33] - 2026-11-23
+
+### Changed
+
+- 1.32.32 CHANGELOG의 카드 높이 문구를 바로잡았습니다. 사용 추세 카드만 로딩·빈 상태에서 높이가 같고, VM 모니터링 카드는 최소·평균·최대 줄과 범례가 도착하면 높이가 늘어납니다.
+- 문서 안내(가이드 제목 위 중복 문구, 문서 홈 영문 문구), 이미지 저장소 상세·오브젝트 스토리지 브라우저·Notion 전체 동기화 카드의 제목 위 장식 문구를 제거했습니다. 문서 본문·스크린샷 설명의 한 줄 길이는 72자 이내로 제한했습니다.
+- 11px 미만 글자(명령 팔레트, 네트워크 지도, 쿼터 폼 배지, 이미지 저장소 상세 표 머리글, 랜딩 하단 문구, VM 생성 마법사의 10.5px 도움말·프리셋 선택)를 11px 이상으로 올렸습니다.
+- 토폴로지 인터페이스 행의 3px 색 띠는 색 점으로, 모니터링 목록·폴더 선택의 선택 띠는 배경색으로, 채팅 인용문의 3px 띠는 1px 중립 선으로 바꾸고 사용하지 않는 `GradientText` 컴포넌트를 삭제했습니다. 모니터링 목록은 선택 행의 상태 점과 호버 색이 겹치지 않게 했습니다.
+- 채팅 통계·서브넷 사용량·활동·버킷 요약 타일의 장식용 색상을 중립 색으로 통일했습니다. 실패·미과금·풀 밖 IP 같은 의미 있는 색은 유지합니다.
+- Corrected the card-height wording in the 1.32.32 CHANGELOG: only usage-trend cards keep the same height while loading or empty; VM monitoring cards grow when the min/avg/max row and legend arrive.
+- Removed the duplicate label above guide titles, the English label on the docs home, and the decorative labels above the headings in image repository detail, the object-storage browser and the Notion global sync card. Docs body text and screenshot captions are capped at 72 characters per line.
+- Text under 11px (command palette, network map, quota form badges, image repository detail table headers, landing footer, and the 10.5px help and preset select in the VM creation wizard) is raised to at least 11px.
+- The 3px color stripe on topology interface rows becomes a color dot, the selection stripes in the monitoring list and folder picker become a background, and the 3px chat blockquote stripe becomes a 1px neutral line; the unused `GradientText` component is removed. The monitoring list keeps the status dot and hover tint distinct from the selected row.
+- Decorative colors on the chat statistics, subnet usage, activity and bucket summary tiles are now neutral. Colors that carry meaning (failed, unpriced, outside-pool IPs) stay.
+
+## [1.32.32] - 2026-11-22
+
+### Changed
+
+- 관리자 모델 설정에서 탭을 AI 프로바이더별로 바꾸고, 모델 종류를 다중 선택 칩으로 필터링합니다. 상단 전체 네이티브 모델 카탈로그는 제거했습니다.
+- Admin model settings now use AI-provider tabs and multi-select model-kind chips. The full native model catalog is removed from the top of the page.
+- 랜딩 페이지에서 히어로 위 영문 문구, 안내 문장의 넓은 자간, 연결선 펄스의 발광 효과, 화살표를 만드는 테두리를 제거하고 가운데 정렬 설명 문단의 줄 길이를 줄였습니다.
+- The landing page drops the tracked eyebrow above the hero, wide tracking on the footer tagline, the glow on link pulses and the border-built arrowheads, and narrows the centered description measure.
+- 로그인·로그아웃 화면의 영문 장식 문구와 `: : CLOUD WORKSPACE : :`, 대시보드 요약 타일의 청록·보라 아이콘 색, Lumen 빈 채팅 화면의 아이콘 타일을 제거했습니다. 좁은 자간 제목과 11px 미만 글자(채팅·프로젝트 라벨)를 정리했습니다.
+- SSO 콜백의 "로그인 처리 중…" 안내가 제목과 진행 표시에 두 번 보이던 것을 한 번만 보이게 하고(접근성 상태 알림은 유지), 진행 표시를 제목과 같은 왼쪽에 맞췄습니다.
+- Login/logout drop the tracked English eyebrows and the decorative `: : CLOUD WORKSPACE : :` index, dashboard stat tiles drop their cyan/violet icon colors, and the empty Lumen chat drops its icon tile. Crushed heading tracking and text under 11px (chat and project label) are corrected.
+- The SSO callback shows "로그인 처리 중…" once instead of twice (the accessible status is kept) and aligns the progress bar with the title.
+- 대시보드 사용 추세 카드와 VM 모니터링 차트 카드가 제거된 지표 줄 때문에 남기던 빈 공간을 없앴습니다. 같은 조건에서 측정한 높이는 사용 추세 카드 278px → 182px, VM 모니터링 차트 영역 최소 256px → 120px입니다. 사용 추세 카드는 로딩·빈 상태에서도 높이가 같고, VM 모니터링 카드는 최소·평균·최대 줄과 읽기/쓰기 범례가 도착하면 그만큼 높이가 늘어납니다.
+- The dashboard usage-trend cards and the VM monitoring chart cards no longer reserve blank space for the removed metric lines. Measured under identical conditions, a usage-trend card goes from 278px to 182px and the VM monitoring chart area from a 256px minimum to 120px. Usage-trend cards keep the same height while loading or empty; VM monitoring cards grow when the min/avg/max row and the read/write legend arrive.
+
 ## [1.32.31] - 2026-11-22
 
 ### Changed

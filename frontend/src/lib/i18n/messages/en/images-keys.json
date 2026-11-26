@@ -91,7 +91,6 @@
 	"repositoryDetail.default": "Default",
 	"repositoryDetail.viewDetails": "View details",
 	"repositoryDetail.back": "Back to repository list",
-	"repositoryDetail.kicker": "REPOSITORY",
 	"repositoryDetail.description": "{tagCount, plural, one {# tag} other {# tags}} · {imageCount, plural, one {# uploaded image} other {# uploaded images}}. Current tags and previous uploads are distinguished by SHA hash·ID.",
 	"repositoryDetail.tag": "Tag",
 	"repositoryDetail.digest": "SHA hash · ID",

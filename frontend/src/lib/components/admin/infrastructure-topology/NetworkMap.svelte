@@ -97,13 +97,13 @@
 	.unknown { stroke: var(--color-line-2); }
 	.dashed { stroke-dasharray: 5 4; }
 	.stale { opacity: 0.55; }
-	text { fill: var(--color-ink-2); font-size: 10px; paint-order: stroke; stroke: var(--color-surface-raised); stroke-width: 3px; stroke-linejoin: round; }
+	text { fill: var(--color-ink-2); font-size: 11px; paint-order: stroke; stroke: var(--color-surface-raised); stroke-width: 3px; stroke-linejoin: round; }
 	.node { position: absolute; width: 180px; min-width: 0; }
 	.node-name { display: block; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); }
 	.node-box { min-height: 44px; display: flex; align-items: center; padding: 0.5rem 0.75rem; border: 1px solid var(--color-topology-router); border-radius: var(--radius-md); background: var(--color-surface-raised); font-size: 0.75rem; }
 	[data-node-kind='destination'] .node-box, [data-node-kind='peer'] .node-box { border-color: var(--color-topology-external); }
 	[data-node-kind='gap'] .node-box { border-color: var(--color-line-2); border-style: dashed; }
-	.node-detail { margin: 0.25rem 0 0; color: var(--color-ink-2); font-size: 0.625rem; overflow-wrap: anywhere; }
+	.node-detail { margin: 0.25rem 0 0; color: var(--color-ink-2); font-size: 0.6875rem; overflow-wrap: anywhere; }
 	.legend { display: grid; gap: 0.35rem; list-style: disc; padding-inline-start: 1rem; }
 	.path-list { display: grid; gap: 0.75rem; min-width: 0; }
 	.path-detail { min-width: 0; overflow-wrap: anywhere; border-top: 1px solid var(--color-line); padding-block-start: 0.75rem; }

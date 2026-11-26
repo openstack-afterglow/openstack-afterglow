@@ -1,7 +1,6 @@
 <script lang="ts">
 	import AfterglowOrbit from '$lib/components/ui/AfterglowOrbit.svelte';
 	import type { AfterglowGeometry } from '$lib/components/ui/afterglowLoadingScene';
-	import { siteConfig } from '$lib/config/site';
 	import { consoleEntry, finishConsoleEntry, markConsoleEntryEntered } from '$lib/stores/consoleEntry';
 	import { t } from '$lib/i18n/ns/public-entry';
 
@@ -29,23 +28,24 @@
 		<div
 			class="console-entry"
 			data-phase={entry.phase}
+			data-scene={entry.scene ? '' : undefined}
 			data-testid="console-entry"
 			style:--entry-origin-x={`${entry.origin.x}px`}
 			style:--entry-origin-y={`${entry.origin.y}px`}
 			onanimationend={animationEnded}
 		>
-			<div class="console-entry__art" bind:this={art} aria-hidden="true">
+			<div class="console-entry__art" bind:this={art} aria-hidden="true" data-console-entry-part="art">
 				<AfterglowOrbit ongeometry={(value) => { geometry = value; }} />
 			</div>
 			<div
 				class="console-entry__copy"
+				data-console-entry-part="copy"
 				role="status"
 				aria-live="polite"
 				style:--orbit-center-x={geometry ? `${geometry.centerX}px` : undefined}
 				style:--orbit-center-y={geometry ? `${geometry.centerY}px` : undefined}
 				style:--orbit-radius={geometry ? `${geometry.radius}px` : undefined}
 			>
-				<p class="console-entry__eyebrow" aria-hidden="true">{t('consoleEntry.eyebrow', { site: $siteConfig.site_name.toUpperCase() })}</p>
 				<p class="console-entry__title">{entry.opened ? t('consoleEntry.ready') : t('consoleEntry.opening')}</p>
 				<ol class="console-entry__steps">
 					<li data-state="done">
@@ -79,6 +79,8 @@
 		background: var(--afterglow-artwork-base);
 		animation: console-entry-art-in var(--motion-duration-scene) var(--motion-ease-emphasized) both;
 	}
+	/* A View Transition already grows the login artwork into this layer. */
+	.console-entry[data-scene][data-phase='entering'] .console-entry__art { animation: none; }
 	.console-entry__copy {
 		position: absolute;
 		top: var(--orbit-center-y, 38%);
@@ -89,12 +91,6 @@
 		animation: console-entry-copy-in var(--motion-duration-panel) var(--motion-ease-emphasized) both;
 		animation-delay: calc(var(--motion-duration-scene) * 0.55);
 		overflow-wrap: anywhere;
-	}
-	.console-entry__eyebrow {
-		margin: 0 0 0.75rem;
-		font: 0.625rem var(--font-mono);
-		letter-spacing: 0.2em;
-		color: var(--afterglow-artwork-light);
 	}
 	.console-entry__title {
 		margin: 0 0 1rem;

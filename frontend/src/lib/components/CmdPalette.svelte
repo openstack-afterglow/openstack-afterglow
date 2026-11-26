@@ -154,7 +154,7 @@
             autocomplete="off"
             class="flex-1 bg-transparent text-[14px] text-ink-0 placeholder-ink-3 outline-none"
           />
-          <kbd class="rounded border border-line px-1.5 py-0.5 font-mono text-[10px] text-ink-2">ESC</kbd>
+          <kbd class="rounded border border-line px-1.5 py-0.5 font-mono text-[11px] text-ink-2">ESC</kbd>
         </div>
 
         <p class="sr-only" aria-live="polite">{results.length > 0 ? t('palette.resultCount', { count: results.length }) : t('palette.noResultsLive')}</p>
@@ -182,7 +182,7 @@
                       <span class="block truncate text-xs text-ink-2">{item.sublabel}</span>
                     {/if}
                   </span>
-                  <kbd class="text-[10px] text-ink-2 opacity-0 group-hover:opacity-100">↵</kbd>
+                  <kbd class="text-[11px] text-ink-2 opacity-0 group-hover:opacity-100">↵</kbd>
                 </button>
               </li>
             {/each}

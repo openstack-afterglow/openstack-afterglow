@@ -33,7 +33,6 @@
 	"uploadQueue.hashFailed": "Kunne ikke beregne integritetshashen",
 	"uploadQueue.failed": "Opplasting mislyktes",
 	"browserHeader.buckets": "Bøtter",
-	"browserHeader.eyebrow": "OBJEKTLAGRING / UTFORSKER",
 	"browserHeader.synced": "Data synkronisert",
 	"browserHeader.capacity": "Total størrelse",
 	"browserHeader.objectCount": "Antall objekter",

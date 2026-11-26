@@ -364,7 +364,7 @@
 	}
 	.vis-badge {
 		flex-shrink: 0;
-		font-size: 0.68rem;
+		font-size: 0.6875rem;
 		padding: 0.1rem 0.4rem;
 		border-radius: 999px;
 		background: color-mix(in oklab, var(--color-accent) 14%, transparent);
