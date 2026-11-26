@@ -77,9 +77,9 @@
 
 <div class="landing-page" bind:this={root}>
 	<a class="skip-link" href="#landing-content" onclick={focusLandingContent}>{t('landing.skipLink')}</a>
-	<header class="top-strip">
+	<header class="top-strip" data-route-scene-part="topbar">
 		<nav class="container nav" aria-label={t('landing.nav.ariaLabel')}>
-			<a class="brand" href="/">
+			<a class="brand" href="/" data-route-scene-part="brand">
 				<img src={logoPath} alt="" width="28" height="28" />
 				<span>{siteName}</span>
 			</a>

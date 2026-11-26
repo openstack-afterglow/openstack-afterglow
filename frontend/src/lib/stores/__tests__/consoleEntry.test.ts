@@ -55,14 +55,17 @@ describe('consoleEntry', () => {
 		expect(get(consoleEntry)).toMatchObject({ phase: 'entering', method: 'sso', opened: true });
 		await vi.advanceTimersByTimeAsync(MOTION_DURATION_MS.scene + 120);
 		expect(get(consoleEntry).phase).toBe('revealing');
+		// The reveal waits for the status copy to leave (panel), then one scene.
 		await vi.advanceTimersByTimeAsync(MOTION_DURATION_MS.scene + 120);
+		expect(get(consoleEntry).phase).toBe('revealing');
+		await vi.advanceTimersByTimeAsync(MOTION_DURATION_MS.panel);
 		expect(get(consoleEntry).phase).toBe('idle');
 	});
 
 	it('reveals the page that is shown when navigation fails and rethrows', async () => {
 		await expect(enterConsole(async () => { throw new Error('navigation failed'); }, 'password')).rejects.toThrow('navigation failed');
 		expect(get(consoleEntry).opened).toBe(true);
-		await vi.advanceTimersByTimeAsync(MOTION_DURATION_MS.scene * 2 + 240);
+		await vi.advanceTimersByTimeAsync(MOTION_DURATION_MS.scene * 2 + MOTION_DURATION_MS.panel + 240);
 		expect(get(consoleEntry).phase).toBe('idle');
 	});
 

@@ -115,12 +115,16 @@
 	.console-entry__steps li[data-state='done'] { color: var(--afterglow-artwork-ink); }
 	.console-entry__mark { flex: none; min-width: 2.5rem; font-family: var(--font-mono); color: var(--afterglow-artwork-warm); white-space: pre; }
 
+	/* Reveal: the status leaves first, then the picture opens onto the console. */
 	.console-entry[data-phase='revealing'] {
 		pointer-events: none;
-		animation: console-entry-reveal var(--motion-duration-scene) var(--motion-ease-emphasized) forwards;
+		animation: console-entry-reveal var(--motion-duration-scene) var(--motion-ease-emphasized) var(--motion-duration-panel) forwards;
+	}
+	.console-entry[data-phase='revealing'] .console-entry__copy {
+		animation: console-entry-copy-out var(--motion-duration-panel) var(--motion-ease-out) forwards;
 	}
 	.console-entry[data-phase='revealing'] .console-entry__art {
-		animation: console-entry-art-out var(--motion-duration-scene) var(--motion-ease-emphasized) forwards;
+		animation: console-entry-art-out var(--motion-duration-scene) var(--motion-ease-emphasized) var(--motion-duration-panel) forwards;
 	}
 
 	@keyframes console-entry-art-in {
@@ -131,6 +135,10 @@
 	@keyframes console-entry-copy-in {
 		from { opacity: 0; transform: translate(-50%, calc(-50% + 0.5rem)); }
 		to { opacity: 1; transform: translate(-50%, -50%); }
+	}
+	@keyframes console-entry-copy-out {
+		from { opacity: 1; }
+		to { opacity: 0; }
 	}
 	@keyframes console-entry-reveal {
 		from { opacity: 1; }

@@ -79,7 +79,8 @@ function reveal(id: number) {
 	if (current.id !== id || current.phase !== 'entering') return;
 	if (prefersReducedMotion()) { state.set(IDLE); return; }
 	state.set({ ...current, phase: 'revealing' });
-	schedule(() => finishConsoleEntry(id), MOTION_DURATION_MS.scene + SAFETY_MARGIN_MS);
+	// The reveal starts after the status copy leaves (panel), then runs one scene.
+	schedule(() => finishConsoleEntry(id), MOTION_DURATION_MS.panel + MOTION_DURATION_MS.scene + SAFETY_MARGIN_MS);
 }
 
 /** The overlay reports that its reveal motion finished (or the safety timer fired). */

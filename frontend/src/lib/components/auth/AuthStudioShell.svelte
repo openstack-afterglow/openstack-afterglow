@@ -27,8 +27,8 @@
 </script>
 
 <div class="auth-studio" data-variant={variant} class:auth-wide={wide}>
-	<header class="auth-topbar">
-		<a class="auth-brand" href="/" aria-label={t('loginBrand.home')}>
+	<header class="auth-topbar" data-route-scene-part="topbar">
+		<a class="auth-brand" href="/" aria-label={t('loginBrand.home')} data-route-scene-part="brand">
 			{#if operatorLogo}<img src={operatorLogo} alt="" height="28" style:color-scheme={$resolvedTheme} />{/if}
 			<span>{site}</span>
 		</a>

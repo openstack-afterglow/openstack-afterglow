@@ -23,3 +23,12 @@ Base: origin/dev 29131d05.
 - [x] Tests: startSceneTransition and View Transition console-entry path; frontend 632 files / 8,765 tests; svelte-check 0 errors; i18n, catalog, docs checks; backend test_experience* 31 passed.
 - [x] Chromium verification of the real app (vite dev, mocked auth API, scene slowed to 3.6s) and the preview artifact.
 - [ ] NOT RUN: contract/functional/backend-lint parts of `npm run test:gate` (need Docker DB services).
+
+## Follow-up 2026-11-26 (2) (user: "check the real behavior and continue naturally from the full screen")
+
+- [x] Dense frame capture of the real app (vite dev, 4x slowed): found the panel sliding over the unmoved art, lingering landing copy, a missing top bar mid-scene, a dimming login page and empty edges while the console art grew, and status copy over the dashboard on reveal.
+- [x] Always show the larger picture clipped by the moving window (growing scenes show the incoming live picture from the start).
+- [x] Attach the panel to the art edge (exact own-size translate, same curve, no fade; vertical when stacked).
+- [x] One bar: `site-topbar`/`site-brand` (no stretching: object-fit none, left anchored).
+- [x] Copy drifts with the picture while fading; console-enter keeps the login page still; reveal removes the status copy first.
+- [x] Re-captured desktop enter/leave/console and mobile enter in the real app; mirrored the rules in the preview artifact.
