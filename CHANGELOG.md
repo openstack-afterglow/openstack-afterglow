@@ -11,8 +11,10 @@
 
 - 메인에서 콘솔 접속을 누르면 메인 화면의 배경 그림이 그대로 왼쪽 영역으로 줄어들고 로그인 창이 오른쪽에서 들어옵니다. 메인으로 돌아갈 때는 반대로 재생됩니다.
 - 비밀번호나 SSO로 로그인하면 로그인 화면의 그림이 전체 화면으로 커지며 로그인 확인·작업 공간 열기 상태를 보여 주고, 콘솔이 실제로 열린 뒤 사라집니다. 가짜 진행률이나 추가 대기는 없으며, 동작 줄이기 설정에서는 효과 없이 이동합니다.
+- 모바일에서는 로그인·회원가입·계정 찾기·로그아웃 화면의 배경 그림이 화면 전체에 깔리고, 입력 영역은 위아래 여백이 있는 가운데 카드로 표시됩니다.
 - Selecting Open console on the landing page now shrinks the landing artwork itself into the login's left panel while the sign-in panel slides in from the right; going back reverses it.
 - After a password or SSO sign-in, the login artwork grows to full screen, shows the sign-in verified and opening workspace states, and fades out once the console has actually opened. There is no fake progress or extra wait; with reduced motion the page changes without the effect.
+- On phones the sign-in, sign-up, account recovery and sign-out screens show the artwork as a full background with the form in a centered card that leaves space above and below.
 
 ## [1.32.33] - 2026-11-23
 

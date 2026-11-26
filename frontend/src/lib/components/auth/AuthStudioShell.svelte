@@ -176,12 +176,23 @@
 		.auth-topbar, .auth-footer { padding-inline: 1.25rem; }
 		.auth-brand { font-size: 1rem; }
 		.auth-brand img { height: 24px; }
-		.auth-layout { grid-template-columns: 1fr; grid-template-rows: minmax(60px, 15%) minmax(0, 1fr); }
-		.auth-identity { border-right: 0; border-bottom: 1px solid var(--color-line); }
+		/* Phone: the artwork is the whole background and the task is a centered card, so the picture
+		   stays visible above and below it. Short viewports shrink the margins before the card. */
+		.auth-layout { position: relative; grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr); }
+		.auth-identity { position: absolute; inset: 0; border: 0; }
 		.auth-identity-copy { display: none; }
 		.auth-motion { left: auto; right: 1rem; bottom: 0.25rem; }
-		.auth-panel { padding: 0.75rem 1.25rem; }
-		.auth-panel-content { max-width: 440px; }
+		.auth-panel {
+			position: relative; z-index: 1; background: transparent;
+			padding: clamp(2.5rem, 9vh, 5rem) 1rem;
+			/* Outside the card the artwork (and its pause control) stays reachable. */
+			pointer-events: none;
+		}
+		.auth-panel-content {
+			max-width: 440px; padding: 1.25rem; pointer-events: auto;
+			border: 1px solid var(--color-line); border-radius: var(--radius-lg);
+			background: var(--color-surface-base);
+		}
 		.auth-footer-note { display: none; }
 		.auth-panel-content :global(.auth-flow) { gap: 0.85rem; }
 	}
@@ -195,7 +206,8 @@
 		.auth-panel-content :global(.auth-flow-heading h1) { font-size: 1.35rem; }
 	}
 	@media (max-width: 767px) and (max-height: 800px) {
-		.auth-layout { grid-template-rows: minmax(32px, 9%) minmax(0, 1fr); }
+		.auth-panel { padding: clamp(1.5rem, 6vh, 3rem) 0.75rem; }
+		.auth-panel-content { padding: 1rem; }
 		.auth-motion { bottom: 0; }
 	}
 	@media (max-height: 620px) {

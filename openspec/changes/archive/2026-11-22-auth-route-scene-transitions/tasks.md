@@ -32,3 +32,4 @@ Base: origin/dev 29131d05.
 - [x] One bar: `site-topbar`/`site-brand` (no stretching: object-fit none, left anchored).
 - [x] Copy drifts with the picture while fading; console-enter keeps the login page still; reveal removes the status copy first.
 - [x] Re-captured desktop enter/leave/console and mobile enter in the real app; mirrored the rules in the preview artifact.
+- [x] Mobile (<768px) AuthStudioShell: artwork as full background, task panel as a centered card with clamp() margins above and below; verified login (390x844, 375x667, dark/light), signup, recover, logout and mobile scenes; artifact mirrors it.
