@@ -1108,8 +1108,16 @@ body {
 :root[data-route-scene='console-enter'][data-route-scene-swapped] [data-console-entry-part='copy'] {
   view-transition-name: console-entry-copy;
 }
-:root[data-route-scene]:not([data-route-scene-swapped]) [data-route-scene-part='panel'] {
+/* Wide layouts: in landing ↔ login the panel is part of the still login page that the picture uncovers
+   or covers, so it is only its own layer when it leaves during console-enter. Phones: the panel is a
+   card above the full-background artwork, so it is a layer in every scene. */
+:root[data-route-scene='console-enter']:not([data-route-scene-swapped]) [data-route-scene-part='panel'] {
   view-transition-name: auth-panel;
+}
+@media (max-width: 767px) {
+  :root[data-route-scene^='auth-'] [data-route-scene-part='panel'] {
+    view-transition-name: auth-panel;
+  }
 }
 :root[data-route-scene^='auth-'] [data-route-scene-part='topbar'] {
   view-transition-name: site-topbar;
@@ -1130,13 +1138,22 @@ body {
 ::view-transition-group(afterglow-art) {
   overflow: clip;
 }
-/* Page body: auth scenes swap it behind the travelling parts; console-enter keeps the login page
-   still until the growing picture has covered it. */
+/* Page body. Only the picture moves; the page under it holds still, like a curtain over a set:
+   auth-enter shows the login page at once beneath the landing picture, which draws back into the
+   identity side and uncovers the form; auth-leave keeps the login page still while the picture grows
+   over it; console-enter keeps the login page still until the growing picture has covered it. Without
+   the art morph (`detached`) the bodies cross-fade. */
 :root[data-route-scene^='auth-']::view-transition-old(root) {
   animation: route-scene-fade-out calc(var(--motion-duration-scene) * 0.35) var(--motion-ease-out) both;
 }
 :root[data-route-scene^='auth-']::view-transition-new(root) {
   animation: route-scene-fade-in-late var(--motion-duration-scene) var(--motion-ease-out) both;
+}
+:root[data-route-scene='auth-enter']:not([data-route-scene-art='detached'])::view-transition-new(root) {
+  animation: none;
+}
+:root[data-route-scene='auth-leave']::view-transition-old(root) {
+  animation: none;
 }
 :root[data-route-scene='console-enter']::view-transition-old(root) {
   animation: none;
@@ -1204,7 +1221,7 @@ body {
 ::view-transition-new(console-entry-copy) {
   animation: none;
 }
-/* Panel attached to the artwork edge. */
+/* Phone card (auth scenes) and the leaving panel (console-enter) stay attached to the artwork edge. */
 :root[data-route-scene='auth-enter']::view-transition-new(auth-panel) {
   animation: route-scene-panel-in var(--motion-duration-scene) var(--motion-ease-emphasized) both;
 }

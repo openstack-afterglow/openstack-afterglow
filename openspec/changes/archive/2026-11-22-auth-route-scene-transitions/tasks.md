@@ -33,3 +33,9 @@ Base: origin/dev 29131d05.
 - [x] Copy drifts with the picture while fading; console-enter keeps the login page still; reveal removes the status copy first.
 - [x] Re-captured desktop enter/leave/console and mobile enter in the real app; mirrored the rules in the preview artifact.
 - [x] Mobile (<768px) AuthStudioShell: artwork as full background, task panel as a centered card with clamp() margins above and below; verified login (390x844, 375x667, dark/light), signup, recover, logout and mobile scenes; artifact mirrors it.
+
+## Follow-up 2026-11-27 (user: login -> console is natural, landing -> login still is not)
+
+- [x] Diagnosis: console entry moves one layer over a still page; landing -> login still cross-faded two page bodies and slid the panel separately.
+- [x] Landing <-> login mirrors console entry: login page shown at once beneath the landing picture (auth-enter) / held still under it (auth-leave); the picture is the only moving layer and uncovers or covers the form. Panel is a layer only for console-enter and the phone card.
+- [x] Real-app dense captures (desktop enter/leave, mobile enter) and console-entry regression check; artifact mirrored.
