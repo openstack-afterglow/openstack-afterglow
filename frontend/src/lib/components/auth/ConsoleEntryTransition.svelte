@@ -1,12 +1,17 @@
 <script lang="ts">
-	import AfterglowOrbit from '$lib/components/ui/AfterglowOrbit.svelte';
-	import type { AfterglowGeometry } from '$lib/components/ui/afterglowLoadingScene';
+	import EntryTopbar from '$lib/components/entry/EntryTopbar.svelte';
+	import EntryStage from '$lib/components/entry/EntryStage.svelte';
+	import { entryNavLinks } from '$lib/components/entry/entryNav';
+	import { siteConfig } from '$lib/config/site';
+	import { resolveLandingLogoPath } from '$lib/config/brandAssets';
+	import { resolvedTheme } from '$lib/stores/theme';
 	import { consoleEntry, finishConsoleEntry, markConsoleEntryEntered } from '$lib/stores/consoleEntry';
 	import { t } from '$lib/i18n/ns/public-entry';
 
-	let geometry = $state<AfterglowGeometry | null>(null);
 	let art = $state<HTMLDivElement | null>(null);
 	const entry = $derived($consoleEntry);
+	const site = $derived($siteConfig.site_name);
+	const logo = $derived(resolveLandingLogoPath($siteConfig, $resolvedTheme));
 
 	// The auth panel's own exit is page CSS keyed on this root attribute (layout.css).
 	$effect(() => {
@@ -34,72 +39,54 @@
 			style:--entry-origin-y={`${entry.origin.y}px`}
 			onanimationend={animationEnded}
 		>
-			<div class="console-entry__art" bind:this={art} aria-hidden="true" data-console-entry-part="art">
-				<AfterglowOrbit ongeometry={(value) => { geometry = value; }} />
-			</div>
-			<div
-				class="console-entry__copy"
-				data-console-entry-part="copy"
-				role="status"
-				aria-live="polite"
-				style:--orbit-center-x={geometry ? `${geometry.centerX}px` : undefined}
-				style:--orbit-center-y={geometry ? `${geometry.centerY}px` : undefined}
-				style:--orbit-radius={geometry ? `${geometry.radius}px` : undefined}
-			>
-				<p class="console-entry__title">{entry.opened ? t('consoleEntry.ready') : t('consoleEntry.opening')}</p>
-				<ol class="console-entry__steps">
-					<li data-state="done">
-						<span class="console-entry__mark" aria-hidden="true">[✓]</span>
-						<span>{entry.method === 'sso' ? t('consoleEntry.step.sso') : t('consoleEntry.step.password')}</span>
-					</li>
-					<li data-state={entry.opened ? 'done' : 'active'}>
-						<span class="console-entry__mark" aria-hidden="true">{entry.opened ? '[✓]' : '[ ~ ]'}</span>
-						<span>{t('consoleEntry.step.workspace')}</span>
-					</li>
-				</ol>
+			<!-- The login bar and stage, unchanged: the stage only widens to the full screen. -->
+			<EntryTopbar siteName={site} logoPath={logo} links={entryNavLinks('/')} decorative scenePart="console" />
+			<div class="console-entry__art" bind:this={art}>
+				<EntryStage wordmark={site} captionRole="status" motionToggle={false} interactive={false} data-console-entry-part="art">
+					{#snippet lead()}
+						<p class="console-entry__copy console-entry__title">{entry.opened ? t('consoleEntry.ready') : t('consoleEntry.opening')}</p>
+					{/snippet}
+					{#snippet actions()}
+						<ol class="console-entry__copy console-entry__steps">
+							<li data-state="done">
+								<span class="console-entry__mark" aria-hidden="true">[✓]</span>
+								<span>{entry.method === 'sso' ? t('consoleEntry.step.sso') : t('consoleEntry.step.password')}</span>
+							</li>
+							<li data-state={entry.opened ? 'done' : 'active'}>
+								<span class="console-entry__mark" aria-hidden="true">{entry.opened ? '[✓]' : '[ ~ ]'}</span>
+								<span>{t('consoleEntry.step.workspace')}</span>
+							</li>
+						</ol>
+					{/snippet}
+				</EntryStage>
 			</div>
 		</div>
 	{/key}
 {/if}
 
 <style>
-	/* Decoration over real work: the art grows from the auth identity side, the copy states the actual
-	   handoff, and the whole layer fades away once the destination route is shown. Transform/opacity only. */
+	/* Decoration over real work: the login stage widens to the full screen under the same bar, the lead
+	   states the actual handoff, and the whole layer fades away once the destination route is shown.
+	   Transform/opacity only. */
 	.console-entry {
 		position: fixed;
 		inset: 0;
 		z-index: calc(var(--z-command) + 1);
 		overflow: hidden;
 		pointer-events: auto;
-		color: var(--afterglow-artwork-ink);
+		background: var(--color-surface-canvas);
 	}
+	.console-entry :global(.entry-topbar) { position: absolute; }
 	.console-entry__art {
 		position: absolute;
-		inset: 0;
-		background: var(--afterglow-artwork-base);
+		inset: var(--entry-nav-height) 0 0;
 		animation: console-entry-art-in var(--motion-duration-scene) var(--motion-ease-emphasized) both;
 	}
-	/* A View Transition already grows the login artwork into this layer. */
+	/* A View Transition already widens the login stage into this layer. */
 	.console-entry[data-scene][data-phase='entering'] .console-entry__art { animation: none; }
 	.console-entry__copy {
-		position: absolute;
-		top: var(--orbit-center-y, 38%);
-		left: var(--orbit-center-x, 50%);
-		width: min(max(calc(var(--orbit-radius, 7rem) * 1.6), 15rem), calc(100vw - 2rem));
-		transform: translate(-50%, -50%);
-		text-align: center;
 		animation: console-entry-copy-in var(--motion-duration-panel) var(--motion-ease-emphasized) both;
 		animation-delay: calc(var(--motion-duration-scene) * 0.55);
-		overflow-wrap: anywhere;
-	}
-	.console-entry__title {
-		margin: 0 0 1rem;
-		font-size: clamp(1.15rem, 2vw, 1.5rem);
-		font-weight: 500;
-		line-height: 1.35;
-		letter-spacing: -0.04em;
-		word-break: keep-all;
-		text-wrap: balance;
 	}
 	.console-entry__steps {
 		display: inline-grid;
@@ -133,8 +120,8 @@
 		to { opacity: 1; transform: none; }
 	}
 	@keyframes console-entry-copy-in {
-		from { opacity: 0; transform: translate(-50%, calc(-50% + 0.5rem)); }
-		to { opacity: 1; transform: translate(-50%, -50%); }
+		from { opacity: 0; transform: translateY(0.5rem); }
+		to { opacity: 1; transform: none; }
 	}
 	@keyframes console-entry-copy-out {
 		from { opacity: 1; }
@@ -149,7 +136,6 @@
 		to { transform: scale(1.08); }
 	}
 	@media (forced-colors: active) {
-		.console-entry__art { background: Canvas; }
-		.console-entry { color: CanvasText; }
+		.console-entry { background: Canvas; color: CanvasText; }
 	}
 </style>

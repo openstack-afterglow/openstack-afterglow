@@ -459,10 +459,17 @@ describe('design system source contracts', () => {
 
 	it('keeps auth branding tied to the app theme and functional utility text on the type ramp', () => {
 		const auth = source('lib/components/auth/AuthStudioShell.svelte');
-		expect(auth).toContain('style:color-scheme={$resolvedTheme}');
+		const bar = source('lib/components/entry/EntryTopbar.svelte');
+		const stage = source('lib/components/entry/EntryStage.svelte');
+		expect(bar).toContain('style:color-scheme={$resolvedTheme}');
 		expect(auth).toContain('font-size: var(--type-support)');
 		expect(auth).toContain('font-size: var(--type-identifier)');
-		expect(auth).not.toMatch(/\.auth-motion\s*\{[^}]*font-size:\s*0\.(?:5625|625|6875)rem/);
+		expect(stage).toMatch(/\.entry-stage-motion\s*\{[^}]*font-size: var\(--type-identifier\)/);
+		// Landing, login and the console entry overlay are one design: the same bar over the same stage.
+		for (const path of ['lib/components/landing/LandingPage.svelte', 'lib/components/auth/AuthStudioShell.svelte', 'lib/components/auth/ConsoleEntryTransition.svelte']) {
+			expect(source(path), path).toContain('<EntryTopbar');
+			expect(source(path), path).toContain('<EntryStage');
+		}
 		const beta = source('lib/components/ui/BetaFeatureGate.svelte');
 		expect(beta).toContain('color: var(--color-ink-1)');
 		expect(beta).not.toContain('box-shadow');

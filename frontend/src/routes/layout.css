@@ -1082,54 +1082,75 @@ body {
   animation: motion-flow var(--motion-duration-shimmer) linear infinite;
 }
 
-/* Route scenes (lib/utils/routeScene.ts, lib/stores/consoleEntry.ts). View-transition names exist only
-   while a scene runs. The screen behaves as one surface:
-   - One picture travels. Only the AfterglowOrbit layer is shared (never the copy over it). The window
-     moves on the emphasized curve and always shows the larger picture at its own pixel size, clipped
-     (`object-fit: none`): shrinking keeps the outgoing full picture, growing shows the incoming live one
-     from the start. Every afterglowGeometry ring sits at the same place relative to its window, so the
-     ring travels without a second render appearing.
-   - The auth panel is attached to the artwork edge: it moves exactly its own size on the same curve,
-     with no fade, so no gap or overlap opens between them (horizontal ≥1024px, vertical when stacked).
-   - The landing nav and the auth topbar are one bar and the brand slides to its new place.
-   - Copy over the artwork leaves early (drifting with the picture) and arrives late.
-   auth-enter shrinks the landing into the AuthStudioShell identity; auth-leave reverses it; console-enter
-   grows the identity into ConsoleEntryTransition (which owns `afterglow-art` once
-   `data-route-scene-swapped` is set) while the panel leaves and the login page stays under it.
-   Incoming named elements must survive the scene: during console-enter only outgoing elements are named
-   besides the overlay, because the login page may be replaced mid-scene. `detached` skips the art morph
-   when the hero was off screen. Reduced motion never starts a scene. */
-:root[data-route-scene]:not([data-route-scene-art='detached']):not([data-route-scene-swapped]) [data-route-scene-part='art'] > .afterglow-orbit {
-  view-transition-name: afterglow-art;
+/* Public entry bar (lib/components/entry/EntryTopbar.svelte): the landing, the auth shell and the console
+   entry overlay render the same bar at the same height and pad their content by it. */
+:root {
+  --entry-nav-height: 6.5rem;
 }
+@media (min-width: 1024px) {
+  :root {
+    --entry-nav-height: 4rem;
+  }
+}
+@media (max-width: 1023px) and (max-height: 620px) {
+  :root {
+    --entry-nav-height: 3.5rem;
+  }
+}
+
+/* Route scenes (lib/utils/routeScene.ts, lib/stores/consoleEntry.ts). View-transition names exist only
+   while a scene runs. Landing, login and the console entry overlay are one design: the same bar
+   (EntryTopbar) over the same Afterglow stage (EntryStage). A scene changes only the stage width:
+   - auth-enter narrows the full-width landing stage to the login identity side and uncovers the form
+     beside it; auth-leave widens it back; console-enter widens the identity stage to the full screen
+     (ConsoleEntryTransition owns the stage once `data-route-scene-swapped` is set) while the panel leaves.
+   - The stage picture (AfterglowOrbit) is one layer shown at its own pixel size and clipped by the
+     moving window (`object-fit: none`). afterglowGeometry keeps the ring at the same place relative to
+     its window, so the ring travels with the window centre instead of being redrawn.
+   - Every stage part is its own layer at its own size (`--stage-vt-*`, read by EntryStage): signature
+     and motion control keep their edge, wordmark and lead keep the centre, footer keeps its edges.
+     Identical parts simply travel; the lead cross-fades when its words differ; parts only one side has
+     (landing actions, motion control in the overlay) fade where they are.
+   - The bar is identical, so it holds still and only the actions that differ cross-fade.
+   - Below 1024px the stage is the full background on both sides and the task is a card attached to the
+     bottom edge (a layer that slides in or out); the wordmark and lead fade because the card covers them.
+   Incoming named elements must survive the scene: during console-enter only outgoing elements are named
+   besides the overlay, because the login page may be replaced mid-scene. `detached` skips the stage
+   morph when the hero was off screen. Reduced motion never starts a scene. */
+:root[data-route-scene]:not([data-route-scene-art='detached']):not([data-route-scene-swapped]) [data-route-scene-part='art'] > .afterglow-orbit,
 :root[data-route-scene='console-enter'][data-route-scene-swapped] [data-console-entry-part='art'] > .afterglow-orbit {
   view-transition-name: afterglow-art;
 }
-:root[data-route-scene='console-enter'][data-route-scene-swapped] [data-console-entry-part='copy'] {
-  view-transition-name: console-entry-copy;
+:root[data-route-scene]:not([data-route-scene-art='detached']):not([data-route-scene-swapped]) [data-route-scene-part='art'],
+:root[data-route-scene='console-enter'][data-route-scene-swapped] [data-console-entry-part='art'] {
+  --stage-vt-signature: stage-signature;
+  --stage-vt-motion: stage-motion;
+  --stage-vt-wordmark: stage-wordmark;
+  --stage-vt-lead: stage-lead;
+  --stage-vt-actions: stage-actions;
+  --stage-vt-footer-start: stage-footer-start;
+  --stage-vt-footer-end: stage-footer-end;
 }
-/* Wide layouts: in landing ↔ login the panel is part of the still login page that the picture uncovers
-   or covers, so it is only its own layer when it leaves during console-enter. Phones: the panel is a
-   card above the full-background artwork, so it is a layer in every scene. */
+/* Wide layouts: in landing ↔ login the panel is part of the still login page that the stage uncovers or
+   covers, so it is only its own layer when it leaves during console-enter. Below 1024px the panel is a
+   card above the full-background stage, so it is a layer in every scene. */
 :root[data-route-scene='console-enter']:not([data-route-scene-swapped]) [data-route-scene-part='panel'] {
   view-transition-name: auth-panel;
 }
-@media (max-width: 767px) {
+@media (max-width: 1023px) {
   :root[data-route-scene^='auth-'] [data-route-scene-part='panel'] {
     view-transition-name: auth-panel;
   }
 }
-:root[data-route-scene^='auth-'] [data-route-scene-part='topbar'] {
+:root[data-route-scene^='auth-'] [data-route-scene-part='topbar'],
+:root[data-route-scene='console-enter']:not([data-route-scene-swapped]) [data-route-scene-part='topbar'],
+:root[data-route-scene='console-enter'][data-route-scene-swapped] [data-console-entry-part='topbar'] {
   view-transition-name: site-topbar;
 }
-:root[data-route-scene^='auth-'] [data-route-scene-part='brand'] {
+:root[data-route-scene^='auth-'] [data-route-scene-part='brand'],
+:root[data-route-scene='console-enter']:not([data-route-scene-swapped]) [data-route-scene-part='brand'],
+:root[data-route-scene='console-enter'][data-route-scene-swapped] [data-console-entry-part='brand'] {
   view-transition-name: site-brand;
-}
-:root[data-route-scene]:not([data-route-scene-swapped]) [data-route-scene-copy='landing'] {
-  view-transition-name: scene-copy-landing;
-}
-:root[data-route-scene]:not([data-route-scene-swapped]) [data-route-scene-copy='auth'] {
-  view-transition-name: scene-copy-auth;
 }
 ::view-transition-group(*) {
   animation-duration: var(--motion-duration-scene);
@@ -1138,11 +1159,11 @@ body {
 ::view-transition-group(afterglow-art) {
   overflow: clip;
 }
-/* Page body. Only the picture moves; the page under it holds still, like a curtain over a set:
-   auth-enter shows the login page at once beneath the landing picture, which draws back into the
-   identity side and uncovers the form; auth-leave keeps the login page still while the picture grows
-   over it; console-enter keeps the login page still until the growing picture has covered it. Without
-   the art morph (`detached`) the bodies cross-fade. */
+/* Page body. Only the stage moves; the page under it holds still, like a curtain over a set:
+   auth-enter shows the login page at once beneath the landing stage, which draws back into the
+   identity side and uncovers the form; auth-leave keeps the login page still while the stage widens
+   over it; console-enter keeps the login page still until the widening stage has covered it. Without
+   the stage morph (`detached`) the bodies cross-fade. */
 :root[data-route-scene^='auth-']::view-transition-old(root) {
   animation: route-scene-fade-out calc(var(--motion-duration-scene) * 0.35) var(--motion-ease-out) both;
 }
@@ -1162,7 +1183,7 @@ body {
   animation: none;
   opacity: 0;
 }
-/* Artwork: the larger picture stays visible, clipped by the moving window. */
+/* Stage picture: the larger picture stays visible, clipped by the moving window. */
 ::view-transition-old(afterglow-art),
 ::view-transition-new(afterglow-art) {
   width: 100%;
@@ -1184,44 +1205,53 @@ body {
 :root[data-route-scene='console-enter']::view-transition-new(afterglow-art) {
   animation: none;
 }
-/* One bar: content cross-fades in place at its own size (never stretched) while the bar and the brand
-   move to their new boxes. */
-::view-transition-old(site-topbar),
-::view-transition-new(site-topbar),
-::view-transition-old(site-brand),
-::view-transition-new(site-brand) {
+/* Stage parts and the bar: content at its own size (never stretched) while the box travels. */
+::view-transition-old(stage-signature), ::view-transition-new(stage-signature),
+::view-transition-old(stage-motion), ::view-transition-new(stage-motion),
+::view-transition-old(stage-wordmark), ::view-transition-new(stage-wordmark),
+::view-transition-old(stage-lead), ::view-transition-new(stage-lead),
+::view-transition-old(stage-actions), ::view-transition-new(stage-actions),
+::view-transition-old(stage-footer-start), ::view-transition-new(stage-footer-start),
+::view-transition-old(stage-footer-end), ::view-transition-new(stage-footer-end),
+::view-transition-old(site-topbar), ::view-transition-new(site-topbar),
+::view-transition-old(site-brand), ::view-transition-new(site-brand) {
   width: 100%;
   height: 100%;
   object-fit: none;
+}
+::view-transition-old(site-topbar), ::view-transition-new(site-topbar) {
   object-position: left top;
   animation-duration: calc(var(--motion-duration-scene) * 0.6);
 }
-::view-transition-old(site-brand),
-::view-transition-new(site-brand) {
+::view-transition-old(site-brand), ::view-transition-new(site-brand) {
   object-position: left center;
 }
-/* Copy over the artwork. */
-:root[data-route-scene]::view-transition-old(scene-copy-landing) {
-  animation:
-    route-scene-fade-out calc(var(--motion-duration-scene) * 0.3) var(--motion-ease-out) both,
-    route-scene-copy-drift var(--motion-duration-scene) var(--motion-ease-emphasized) both;
+/* A part only one side has fades where it is: early when leaving, late when arriving. */
+::view-transition-old(stage-signature):only-child, ::view-transition-old(stage-motion):only-child,
+::view-transition-old(stage-wordmark):only-child, ::view-transition-old(stage-lead):only-child,
+::view-transition-old(stage-actions):only-child, ::view-transition-old(stage-footer-start):only-child,
+::view-transition-old(stage-footer-end):only-child {
+  animation: route-scene-fade-out calc(var(--motion-duration-scene) * 0.3) var(--motion-ease-out) both;
 }
-/* The identity picture moves toward the screen center in auth-leave and console-enter. */
-:root[data-route-scene]::view-transition-old(scene-copy-auth) {
-  --route-scene-copy-offset: var(--route-scene-copy-offset-back);
-  animation:
-    route-scene-fade-out calc(var(--motion-duration-scene) * 0.3) var(--motion-ease-out) both,
-    route-scene-copy-drift var(--motion-duration-scene) var(--motion-ease-emphasized) both;
-}
-:root[data-route-scene]::view-transition-new(scene-copy-landing),
-:root[data-route-scene]::view-transition-new(scene-copy-auth) {
+::view-transition-new(stage-signature):only-child, ::view-transition-new(stage-motion):only-child,
+::view-transition-new(stage-wordmark):only-child, ::view-transition-new(stage-lead):only-child,
+::view-transition-new(stage-footer-start):only-child, ::view-transition-new(stage-footer-end):only-child {
   animation: route-scene-fade-in-late var(--motion-duration-scene) var(--motion-ease-out) both;
 }
-/* The status copy runs its own entrance on the live element. */
-::view-transition-new(console-entry-copy) {
+/* The lead changes its words and the action row empties or fills (the empty row keeps its box, so it
+   travels too): the old content leaves early, the new arrives late. */
+::view-transition-old(stage-lead), ::view-transition-old(stage-actions) {
+  animation: route-scene-fade-out calc(var(--motion-duration-scene) * 0.35) var(--motion-ease-out) both;
+}
+::view-transition-new(stage-lead), ::view-transition-new(stage-actions) {
+  animation: route-scene-fade-in-late var(--motion-duration-scene) var(--motion-ease-out) both;
+}
+/* The console entry status runs its own entrance on the live element. */
+:root[data-route-scene='console-enter']::view-transition-new(stage-lead),
+:root[data-route-scene='console-enter']::view-transition-new(stage-actions) {
   animation: none;
 }
-/* Phone card (auth scenes) and the leaving panel (console-enter) stay attached to the artwork edge. */
+/* Card (below 1024px, auth scenes) and the leaving panel (console-enter) stay attached to the stage edge. */
 :root[data-route-scene='auth-enter']::view-transition-new(auth-panel) {
   animation: route-scene-panel-in var(--motion-duration-scene) var(--motion-ease-emphasized) both;
 }
@@ -1231,14 +1261,10 @@ body {
 }
 :root {
   --route-scene-panel-offset: translateX(100%);
-  --route-scene-copy-offset: translateX(-25vw);
-  --route-scene-copy-offset-back: translateX(25vw);
 }
 @media (max-width: 1023px) {
   :root {
-    --route-scene-panel-offset: translateY(100%);
-    --route-scene-copy-offset: translateY(-35vh);
-    --route-scene-copy-offset-back: translateY(35vh);
+    --route-scene-panel-offset: translateY(100vh);
   }
 }
 @keyframes route-scene-fade-out {
@@ -1248,10 +1274,6 @@ body {
 @keyframes route-scene-fade-in-late {
   0%, 45% { opacity: 0; }
   to { opacity: 1; }
-}
-@keyframes route-scene-copy-drift {
-  from { transform: none; }
-  to { transform: var(--route-scene-copy-offset); }
 }
 @keyframes route-scene-art-settle {
   0%, 78% { opacity: 0; }
@@ -1269,7 +1291,7 @@ body {
   from { transform: none; }
   to { transform: var(--route-scene-panel-offset); }
 }
-/* Console entry (ConsoleEntryTransition): the auth form steps aside while the artwork grows over it. */
+/* Console entry (ConsoleEntryTransition): the auth form steps aside while the stage widens over it. */
 :root[data-console-entry] [data-route-scene-part='panel'] > * {
   animation: route-scene-panel-out calc(var(--motion-duration-scene) * 0.6) var(--motion-ease-emphasized) forwards;
 }

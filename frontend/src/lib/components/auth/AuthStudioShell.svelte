@@ -1,15 +1,18 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import AfterglowOrbit from '$lib/components/ui/AfterglowOrbit.svelte';
 	import ExperienceSupportCode from '$lib/components/ui/ExperienceSupportCode.svelte';
 	import ThemeSelect from '$lib/components/ThemeSelect.svelte';
+	import EntryTopbar from '$lib/components/entry/EntryTopbar.svelte';
+	import EntryStage from '$lib/components/entry/EntryStage.svelte';
+	import { entryNavLinks } from '$lib/components/entry/entryNav';
 	import LocaleSelect from '$lib/i18n/LocaleSelect.svelte';
 	import { siteConfig } from '$lib/config/site';
+	import { resolveLandingLogoPath } from '$lib/config/brandAssets';
 	import { resolvedTheme } from '$lib/stores/theme';
 	import { t } from '$lib/i18n/ns/public-entry';
 
 	interface Props {
-		/** Standalone entry surfaces share artwork, chrome and safe panel scrolling. */
+		/** Standalone entry surfaces share the landing bar, the Afterglow stage and safe panel scrolling. */
 		variant: 'login' | 'logout' | 'account' | 'consent';
 		wide?: boolean;
 		localeId: string;
@@ -19,113 +22,59 @@
 	}
 
 	let { variant, wide = false, localeId, themeId, footerNote, children }: Props = $props();
-	let motion = $state(true);
 	const site = $derived($siteConfig.site_name);
 	const copyVariant = $derived(variant === 'logout' ? 'logout' : 'login');
-	const operatorLogo = $derived(site === 'Afterglow' ? '/afterglow-symbol.svg'
-		: ($resolvedTheme === 'dark' ? ($siteConfig.logo_light_path || $siteConfig.logo_path) : ($siteConfig.logo_dark_path || $siteConfig.logo_path)));
+	const logo = $derived(resolveLandingLogoPath($siteConfig, $resolvedTheme));
+	const links = $derived(entryNavLinks('/'));
 </script>
 
 <div class="auth-studio" data-variant={variant} class:auth-wide={wide}>
-	<header class="auth-topbar" data-route-scene-part="topbar">
-		<a class="auth-brand" href="/" aria-label={t('loginBrand.home')} data-route-scene-part="brand">
-			{#if operatorLogo}<img src={operatorLogo} alt="" height="28" style:color-scheme={$resolvedTheme} />{/if}
-			<span>{site}</span>
-		</a>
-		<div class="auth-top-actions">
+	<EntryTopbar siteName={site} logoPath={logo} {links}>
+		{#snippet actions()}
 			<LocaleSelect id={localeId} variant="compact" />
 			<ThemeSelect id={themeId} />
-		</div>
-	</header>
+		{/snippet}
+	</EntryTopbar>
 
 	<main id="main-content" tabindex="-1" class="auth-layout">
-		<section class="auth-identity" aria-label={t('authStudio.artLabel')} data-route-scene-part="art">
-			<AfterglowOrbit active={motion} interactive />
-			<button type="button" class="auth-motion" onclick={() => { motion = !motion; }}>
-				{motion ? t('landing.story.hero.pauseMotion') : t('landing.story.hero.playMotion')}
-			</button>
-			<div class="auth-identity-copy" data-route-scene-copy="auth">
-				<p class="auth-identity-headline">{t(`authStudio.${copyVariant}.headline1`)}<br />{t(`authStudio.${copyVariant}.headline2`)}</p>
-				<p class="auth-identity-description">{t(`authStudio.${copyVariant}.description1`)}<br />{t(`authStudio.${copyVariant}.description2`, { site })}</p>
-				{#if variant !== 'logout'}
-					<div class="auth-service-terms" aria-hidden="true">NOVA <span>/</span> NEUTRON <span>/</span> CINDER <span>/</span> LUMEN</div>
-				{/if}
-			</div>
+		<section class="auth-identity" aria-label={t('authStudio.artLabel')}>
+			<EntryStage wordmark={site} data-route-scene-part="art">
+				{#snippet lead()}<p>{t(`authStudio.${copyVariant}.headline1`)} {t(`authStudio.${copyVariant}.headline2`)}</p>{/snippet}
+			</EntryStage>
 		</section>
 		<section class="auth-panel" data-route-scene-part="panel">
 			<div class="auth-panel-content">
 				{@render children()}
-				<footer class="auth-support"><ExperienceSupportCode /></footer>
+				<footer class="auth-support">
+					<ExperienceSupportCode />
+					<p class="auth-panel-note">{t('authStudio.footer.workspace', { site })}{#if site !== 'Afterglow'}{' · Powered by Afterglow'}{/if} · {footerNote}</p>
+				</footer>
 			</div>
 		</section>
 	</main>
-
-	<footer class="auth-footer">
-		<span>{t('authStudio.footer.workspace', { site })}{#if site !== 'Afterglow'}{' · Powered by Afterglow'}{/if}</span>
-		<a href="/">{t('loginBrand.home')} <span aria-hidden="true">↗</span></a>
-		<span class="auth-footer-note">{footerNote}</span>
-	</footer>
 </div>
 
 <style>
-	/* Viewport-fit auth composition adapted from output/afterglow-login. The
-	   artwork yields space first; the form panel scrolls rather than hiding
-	   security or error content. */
+	/* The landing bar and the landing stage, with the task beside the stage: wide screens split the
+	   stage and the panel, narrower screens keep the whole stage as background behind a centered card.
+	   The panel scrolls rather than hiding security or error content. */
 	.auth-studio {
+		box-sizing: border-box;
 		height: 100dvh;
 		min-width: 0;
 		display: grid;
-		grid-template-rows: 64px minmax(0, 1fr) 48px;
+		grid-template-rows: minmax(0, 1fr);
+		padding-top: var(--entry-nav-height);
 		background: var(--color-surface-canvas);
 		color: var(--color-ink-0);
 	}
-	.auth-topbar {
-		display: flex; align-items: center; justify-content: space-between; gap: 1rem;
-		padding: 0 clamp(1.25rem, 4vw, 4.5rem);
-		border-bottom: 1px solid var(--color-line);
-		min-width: 0;
-	}
-	.auth-brand {
-		display: inline-flex; align-items: center; gap: 0.65rem; min-height: 44px; min-width: 0;
-		color: var(--color-ink-0); text-decoration: none;
-		font-size: 1.1rem; font-weight: 600; letter-spacing: -0.035em;
-	}
-	.auth-brand img { display: block; height: 28px; width: auto; max-width: 8rem; object-fit: contain; }
-	.auth-brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.auth-brand:focus-visible { outline: 2px solid var(--color-warm-2); outline-offset: 4px; border-radius: 0.25rem; }
-	.auth-top-actions { display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0; }
-
 	.auth-layout { display: grid; grid-template-columns: 1fr 1fr; min-height: 0; min-width: 0; height: 100%; }
-	.auth-identity {
-		position: relative; isolation: isolate; overflow: hidden; min-width: 0; min-height: 0;
-		border-right: 1px solid var(--color-line);
-		background: var(--afterglow-artwork-base);
-	}
-	.auth-motion {
-		position: absolute; z-index: 2; bottom: 1rem; left: clamp(1.25rem, 4vw, 4.5rem);
-		min-height: 44px; padding: 0.5rem 0; border: 0; background: transparent;
-		color: var(--color-ink-2); font: inherit; font-size: var(--type-support); cursor: pointer;
-	}
-	.auth-motion:hover { color: var(--color-ink-0); }
-	.auth-motion:focus-visible { outline: 2px solid var(--color-warm-2); outline-offset: 4px; }
-	.auth-identity-copy {
-		position: absolute; z-index: 1; left: 0; right: 0; bottom: 5rem;
-		padding: 0 clamp(1.5rem, 4vw, 4.5rem); pointer-events: none;
-	}
-	.auth-identity-headline {
-		margin: 0 0 1.1rem; font-size: clamp(1.7rem, 2.6vw, 3rem); font-weight: 400;
-		letter-spacing: -0.03em; line-height: 1.32; word-break: keep-all; overflow-wrap: anywhere;
-	}
-	.auth-identity-description { margin: 0; font-size: 0.8125rem; line-height: 1.9; color: var(--color-ink-2); }
-	.auth-service-terms {
-		display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1.8rem;
-		font: 0.5625rem var(--font-mono); letter-spacing: 0.13em; color: var(--color-ink-2);
-	}
-	.auth-service-terms span { color: var(--color-warm); }
+	.auth-identity { position: relative; min-width: 0; min-height: 0; }
 
 	.auth-panel {
 		display: grid; place-items: safe center; min-width: 0; min-height: 0; overflow-y: auto;
 		padding: clamp(0.75rem, 2.5vh, 2rem) 2rem;
+		border-left: 1px solid var(--color-line);
 		background: var(--color-surface-base);
 	}
 	.auth-panel-content { width: 100%; max-width: 380px; }
@@ -136,7 +85,7 @@
 		line-height: 1.3; letter-spacing: -0.03em; word-break: keep-all; overflow-wrap: anywhere;
 	}
 	.auth-panel-content :global(.auth-flow-heading) { display: grid; gap: 0.65rem; min-width: 0; }
-	.auth-panel-content :global(.auth-flow-heading > p) { margin: 0; font-size: 0.8125rem; line-height: 1.65; color: var(--color-ink-2); }
+	.auth-panel-content :global(.auth-flow-heading > p) { margin: 0; font-size: var(--type-support); line-height: 1.65; color: var(--color-ink-2); }
 	.auth-panel-content :global(.auth-flow-fields) { display: grid; gap: 1rem; min-width: 0; }
 	.auth-panel-content :global(.auth-flow-actions) { display: flex; flex-wrap: wrap; gap: 0.75rem; }
 	.auth-panel-content :global(.auth-flow-actions > *) { flex: 1 1 9rem; min-width: 0; }
@@ -144,48 +93,22 @@
 		display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem;
 		border-top: 1px solid var(--color-line); padding-top: 0.75rem;
 	}
-
-	.auth-footer {
-		display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: nowrap;
-		padding: 0 clamp(1.25rem, 4vw, 4.5rem); min-width: 0;
-		border-top: 1px solid var(--color-line); color: var(--color-ink-2); font-size: var(--type-identifier);
-	}
-	.auth-footer > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.auth-footer a { display: flex; align-items: center; gap: 0.5rem; min-height: 44px; color: inherit; text-decoration: none; white-space: nowrap; }
-	.auth-footer a:hover { color: var(--color-ink-0); }
-	.auth-footer a:focus-visible { outline: 2px solid var(--color-warm-2); outline-offset: 2px; }
-	.auth-footer-note { font-family: var(--font-mono); letter-spacing: 0.08em; white-space: nowrap; }
+	.auth-panel-note { margin: 0.75rem 0 0; color: var(--color-ink-2); font-size: var(--type-identifier); line-height: 1.6; }
 
 	@media (min-width: 1600px) {
 		.auth-layout { grid-template-columns: 1.2fr 1fr; }
 		.auth-panel-content { max-width: 416px; }
-		.auth-identity-copy { padding-left: 7vw; bottom: 6rem; }
 	}
-	@media (min-width: 768px) and (max-width: 1023px) {
-		.auth-layout { grid-template-columns: 1fr; grid-template-rows: minmax(120px, 22%) minmax(0, 1fr); }
-		.auth-identity { border-right: 0; border-bottom: 1px solid var(--color-line); }
-		.auth-identity-copy { bottom: auto; top: 2rem; padding: 0 2.5rem; }
-		.auth-identity-headline { font-size: 1.65rem; }
-		.auth-identity-description, .auth-service-terms { display: none; }
-		.auth-motion { left: auto; right: 1.5rem; bottom: 0.5rem; }
-		.auth-panel-content { max-width: 440px; }
-		.auth-footer-note { display: none; }
-	}
-	@media (max-width: 767px) {
-		.auth-studio { grid-template-rows: 52px minmax(0, 1fr) 45px; }
-		.auth-topbar, .auth-footer { padding-inline: 1.25rem; }
-		.auth-brand { font-size: 1rem; }
-		.auth-brand img { height: 24px; }
-		/* Phone: the artwork is the whole background and the task is a centered card, so the picture
-		   stays visible above and below it. Short viewports shrink the margins before the card. */
+	/* Below 1024px: the stage is the whole background (exactly the landing hero) and the task is a centered
+	   card, so the picture stays visible above and below it. Short viewports shrink the margins first. */
+	@media (max-width: 1023px) {
 		.auth-layout { position: relative; grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr); }
-		.auth-identity { position: absolute; inset: 0; border: 0; }
-		.auth-identity-copy { display: none; }
-		.auth-motion { left: auto; right: 1rem; bottom: 0.25rem; }
+		.auth-identity { position: absolute; inset: 0; }
+		.auth-identity :global(.entry-stage-caption) { display: none; }
 		.auth-panel {
-			position: relative; z-index: 1; background: transparent;
+			position: relative; z-index: 1; border: 0; background: transparent;
 			padding: clamp(2.5rem, 9vh, 5rem) 1rem;
-			/* Outside the card the artwork (and its pause control) stays reachable. */
+			/* Outside the card the stage (and its motion control) stays reachable. */
 			pointer-events: none;
 		}
 		.auth-panel-content {
@@ -193,31 +116,22 @@
 			border: 1px solid var(--color-line); border-radius: var(--radius-lg);
 			background: var(--color-surface-base);
 		}
-		.auth-footer-note { display: none; }
 		.auth-panel-content :global(.auth-flow) { gap: 0.85rem; }
 	}
 	@media (max-height: 800px) {
-		.auth-studio { grid-template-rows: 48px minmax(0, 1fr) 33px; }
-		.auth-footer a { min-height: 32px; }
-		.auth-identity-copy { bottom: 4rem; }
-		.auth-identity-description, .auth-service-terms { display: none; }
 		.auth-panel { padding: 0.5rem 1.25rem; }
 		.auth-panel-content :global(.auth-flow) { gap: 0.75rem; }
 		.auth-panel-content :global(.auth-flow-heading h1) { font-size: 1.35rem; }
 	}
-	@media (max-width: 767px) and (max-height: 800px) {
+	@media (max-width: 1023px) and (max-height: 800px) {
 		.auth-panel { padding: clamp(1.5rem, 6vh, 3rem) 0.75rem; }
 		.auth-panel-content { padding: 1rem; }
-		.auth-motion { bottom: 0; }
 	}
 	@media (max-height: 620px) {
-		.auth-studio { grid-template-rows: 44px minmax(0, 1fr); }
-		.auth-footer, .auth-identity { display: none; }
+		.auth-identity { display: none; }
 		.auth-layout { display: block; }
-		.auth-panel { height: 100%; padding: 0.5rem 1rem; }
-		.auth-panel-content { max-width: 440px; }
-		.auth-brand { font-size: 0.9rem; }
-		.auth-brand img { height: 22px; }
+		.auth-panel { height: 100%; padding: 0.5rem 1rem; border: 0; background: var(--color-surface-base); pointer-events: auto; }
+		.auth-panel-content { max-width: 440px; padding: 0; border: 0; }
 	}
 	@media (max-height: 440px) and (min-width: 480px) {
 		.auth-panel-content { max-width: 760px; }
@@ -225,9 +139,5 @@
 		.auth-panel-content :global(.auth-flow-fields) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem 1rem; }
 		.auth-panel-content :global(.auth-flow-heading) { gap: 0.35rem; }
 		.auth-panel-content :global(.auth-flow-heading h1) { font-size: 1.2rem; }
-	}
-	@media (max-width: 380px) {
-		.auth-brand span { display: none; }
-		.auth-top-actions { gap: 0.5rem; }
 	}
 </style>
